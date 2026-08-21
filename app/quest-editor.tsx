@@ -6,6 +6,7 @@ import { StatIcon } from '@/components/eiyu/icons';
 import { DAYS, STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { suggestEasyVersions } from '@/lib/ai';
 import { formatError } from '@/lib/format-error';
 import { HabitInput } from '@/lib/habits';
 import { Difficulty, Stat } from '@/types/eiyu';
@@ -31,6 +32,23 @@ export default function QuestEditorScreen() {
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const handleSuggest = async () => {
+    if (!name.trim() || suggesting) return;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const result = await suggestEasyVersions(name.trim(), stat);
+      setSuggestions(result);
+    } catch (err) {
+      setSuggestError(formatError(err));
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const toggleDay = (d: number) => {
     setDays(prev => (prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()));
@@ -111,6 +129,32 @@ export default function QuestEditorScreen() {
               value={easyVersion}
               onChangeText={setEasyVersion}
             />
+            <Pressable
+              onPress={handleSuggest}
+              disabled={!name.trim() || suggesting}
+              style={{ marginTop: 8, opacity: !name.trim() || suggesting ? 0.5 : 1 }}>
+              <Text style={[styles.suggestText, { color: theme.accent, fontFamily: fonts.display }]}>
+                {suggesting ? 'THINKING…' : '✨ SUGGEST EASY VERSIONS'}
+              </Text>
+            </Pressable>
+            {suggestError && <Text style={[styles.errorText, { marginTop: 6 }]}>{suggestError}</Text>}
+            {suggestions.length > 0 && (
+              <View style={styles.suggestionList}>
+                {suggestions.map((s, i) => (
+                  <Pressable
+                    key={i}
+                    onPress={() => {
+                      setEasyVersion(s);
+                      setSuggestions([]);
+                    }}
+                    style={[styles.suggestionChip, { borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>
+                    <Text style={[styles.suggestionChipText, { color: theme.text, fontFamily: fonts.body }]}>
+                      {s}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
           </View>
 
           <View>
@@ -292,6 +336,23 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: '#f87171',
+  },
+  suggestText: {
+    fontSize: 11,
+    letterSpacing: 1,
+  },
+  suggestionList: {
+    gap: 6,
+    marginTop: 10,
+  },
+  suggestionChip: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+  },
+  suggestionChipText: {
+    fontSize: 13,
   },
   field: {
     borderWidth: 1,
