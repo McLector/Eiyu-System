@@ -32,10 +32,17 @@ import {
   requestNotificationPermissions,
   scheduleHabitReminders,
 } from '@/lib/notifications';
+import {
+  createLongQuest,
+  deleteLongQuest,
+  fetchLongQuests,
+  LongQuestInput,
+  setStageDone,
+} from '@/lib/long-quests';
 import { fetchProfile, ProfileData } from '@/lib/profile';
 import { fetchStats } from '@/lib/stats';
 import { fetchOrCreateWeeklyQuest, WeeklyQuest } from '@/lib/weekly-quest';
-import { Quest, Stat, StatData, UserProfile } from '@/types/eiyu';
+import { LongQuest, Quest, Stat, StatData, UserProfile } from '@/types/eiyu';
 
 interface EiyuStore {
   user: UserProfile;
@@ -52,7 +59,13 @@ interface EiyuStore {
   completeRecovery: (id: string) => void;
   saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
-  toggleStage: (lqId: string, idx: number) => void;
+  /** R-33: toggle one stage's done state. */
+  toggleStage: (lqId: string, stageId: string) => void;
+  longQuestsLoading: boolean;
+  longQuestsError: string | null;
+  /** R-32: create a Long Quest with ordered stages. */
+  saveLongQuest: (input: LongQuestInput) => Promise<void>;
+  removeLongQuest: (id: string) => Promise<void>;
   /** R-42: global reminder toggle. */
   notificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
@@ -74,11 +87,18 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [questsError, setQuestsError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [weeklyQuest, setWeeklyQuest] = useState<WeeklyQuest | null>(null);
-  // Long Quests are wired in Phase 10 — mock until then.
-  const [longQuests, setLongQuests] = useState(initialUser.longQuests);
+  const [longQuests, setLongQuests] = useState<LongQuest[]>([]);
+  const [longQuestsLoading, setLongQuestsLoading] = useState(false);
+  const [longQuestsError, setLongQuestsError] = useState<string | null>(null);
   // Tracks which quests were frozen as of the previous fetch, so we only
   // notify (R-41) on the transition into frozen, not on every refetch.
   const previouslyFrozenIds = useRef<Set<string>>(new Set());
+
+  const refreshLongQuests = useCallback(async () => {
+    if (!userId) return;
+    const lqs = await fetchLongQuests(userId);
+    setLongQuests(lqs);
+  }, [userId]);
 
   const refreshQuests = useCallback(async () => {
     if (!userId) return;
@@ -127,12 +147,15 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setStats(initialUser.stats);
       setWeeklyQuest(null);
+      setLongQuests([]);
       previouslyFrozenIds.current = new Set();
       return;
     }
     let cancelled = false;
     setQuestsLoading(true);
     setQuestsError(null);
+    setLongQuestsLoading(true);
+    setLongQuestsError(null);
     Promise.all([fetchTodayHabits(userId), fetchProfile(userId), fetchStats(userId)])
       .then(async ([habits, prof, s]) => {
         if (cancelled) return;
@@ -151,6 +174,16 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => {
         if (!cancelled) setQuestsLoading(false);
+      });
+    fetchLongQuests(userId)
+      .then(lqs => {
+        if (!cancelled) setLongQuests(lqs);
+      })
+      .catch(err => {
+        if (!cancelled) setLongQuestsError(formatError(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLongQuestsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -232,14 +265,42 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     cancelHabitReminders(id).catch(() => {});
   };
 
-  const toggleStage = (lqId: string, idx: number) => {
+  const toggleStage = async (lqId: string, stageId: string) => {
+    const lq = longQuests.find(q => q.id === lqId);
+    const stage = lq?.stages.find(s => s.id === stageId);
+    if (!stage) return;
+    const nextDone = !stage.done;
+
     setLongQuests(lqs =>
-      lqs.map(lq =>
-        lq.id === lqId
-          ? { ...lq, stages: lq.stages.map((s, i) => (i === idx ? { ...s, done: !s.done } : s)) }
-          : lq
+      lqs.map(q =>
+        q.id === lqId
+          ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: nextDone } : s)) }
+          : q
       )
     );
+    try {
+      await setStageDone(stageId, nextDone);
+    } catch (err) {
+      setLongQuests(lqs =>
+        lqs.map(q =>
+          q.id === lqId
+            ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: !nextDone } : s)) }
+            : q
+        )
+      );
+      setLongQuestsError(formatError(err));
+    }
+  };
+
+  const saveLongQuest = async (input: LongQuestInput) => {
+    if (!userId) return;
+    await createLongQuest(userId, input);
+    await refreshLongQuests();
+  };
+
+  const removeLongQuest = async (id: string) => {
+    await deleteLongQuest(id);
+    await refreshLongQuests();
   };
 
   const user: UserProfile = useMemo(
@@ -268,11 +329,27 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       saveHabit,
       archiveQuest,
       toggleStage,
+      longQuestsLoading,
+      longQuestsError,
+      saveLongQuest,
+      removeLongQuest,
       notificationsEnabled,
       setNotificationsEnabled,
       weeklyQuest,
     }),
-    [user, darkMode, questsLoading, questsError, quests, userId, notificationsEnabled, weeklyQuest]
+    [
+      user,
+      darkMode,
+      questsLoading,
+      questsError,
+      quests,
+      longQuests,
+      longQuestsLoading,
+      longQuestsError,
+      userId,
+      notificationsEnabled,
+      weeklyQuest,
+    ]
   );
 
   return <EiyuContext.Provider value={value}>{children}</EiyuContext.Provider>;

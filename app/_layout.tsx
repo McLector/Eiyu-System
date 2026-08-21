@@ -70,6 +70,10 @@ function AppNavigator() {
           options={{ presentation: 'modal', headerShown: false }}
         />
         <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen
+          name="long-quest-editor"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
       </Stack.Protected>
     </Stack>
   );

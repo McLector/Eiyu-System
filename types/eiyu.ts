@@ -25,6 +25,7 @@ export interface Quest {
 }
 
 export interface QuestStage {
+  id: string;
   name: string;
   done: boolean;
 }
