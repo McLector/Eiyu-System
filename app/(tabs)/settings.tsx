@@ -7,6 +7,7 @@ import { GlassView } from '@/components/eiyu/glass-view';
 import { ChevronRight, MoonIcon, SunIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { fonts } from '@/constants/eiyu-theme';
+import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 
 function Toggle({ active }: { active: boolean }) {
@@ -73,8 +74,8 @@ function ActionRow({ label, sublabel, danger, onPress }: {
 }
 
 export default function SettingsScreen() {
-  const { theme, darkMode, setDarkMode } = useEiyu();
-  const [notifications, setNotifications] = useState(true);
+  const { theme, darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled } = useEiyu();
+  const { signOut } = useAuth();
   const [reminderSound, setReminderSound] = useState(false);
 
   return (
@@ -116,8 +117,8 @@ export default function SettingsScreen() {
             <ToggleRow
               label="Quest Reminders"
               sublabel="Notify when quest time arrives"
-              value={notifications}
-              onChange={setNotifications}
+              value={notificationsEnabled}
+              onChange={setNotificationsEnabled}
             />
             <Divider />
             <ToggleRow
@@ -125,6 +126,19 @@ export default function SettingsScreen() {
               sublabel="Play sound on completion"
               value={reminderSound}
               onChange={setReminderSound}
+            />
+          </GlassView>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionLabel, { color: theme.dim, fontFamily: fonts.display }]}>
+            PROGRESS
+          </Text>
+          <GlassView style={styles.sectionCard}>
+            <ActionRow
+              label="Quest History"
+              sublabel="Calendar of past completions"
+              onPress={() => router.push('/history')}
             />
           </GlassView>
         </View>
@@ -140,7 +154,7 @@ export default function SettingsScreen() {
               onPress={() => Alert.alert('Exporting data...')}
             />
             <Divider />
-            <ActionRow label="Sign Out" danger onPress={() => router.replace('/auth')} />
+            <ActionRow label="Sign Out" danger onPress={() => signOut()} />
           </GlassView>
         </View>
 

@@ -6,13 +6,11 @@ import { StatIcon } from '@/components/eiyu/icons';
 import { DAYS, STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { Difficulty, Quest, Stat } from '@/types/eiyu';
+import { formatError } from '@/lib/format-error';
+import { HabitInput } from '@/lib/habits';
+import { Difficulty, Stat } from '@/types/eiyu';
 
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
-
-function genId() {
-  return `q${Date.now()}`;
-}
 
 const difficultyColor: Record<Difficulty, string> = {
   Hard: '#f87171',
@@ -21,7 +19,7 @@ const difficultyColor: Record<Difficulty, string> = {
 };
 
 export default function QuestEditorScreen() {
-  const { theme, user, saveQuest, deleteQuest } = useEiyu();
+  const { theme, user, saveHabit, archiveQuest } = useEiyu();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const quest = id ? user.quests.find(q => q.id === id) ?? null : null;
 
@@ -31,35 +29,48 @@ export default function QuestEditorScreen() {
   const [days, setDays] = useState<number[]>(quest?.days ?? [0, 1, 2, 3, 4, 5, 6]);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const toggleDay = (d: number) => {
     setDays(prev => (prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()));
   };
 
-  const valid = name.trim().length > 0;
+  const valid = name.trim().length > 0 && easyVersion.trim().length > 0;
 
-  const handleSave = () => {
-    if (!valid) return;
-    const saved: Quest = {
-      id: quest?.id ?? genId(),
+  const handleSave = async () => {
+    if (!valid || submitting) return;
+    const input: HabitInput = {
       name: name.trim(),
       easyVersion: easyVersion.trim(),
       time,
       days,
       stat,
       difficulty,
-      streak: quest?.streak ?? 0,
-      frozen: quest?.frozen ?? false,
-      completed: quest?.completed ?? false,
     };
-    saveQuest(saved);
-    router.back();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await saveHabit(input, quest?.id);
+      router.back();
+    } catch (err) {
+      setError(formatError(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDelete = () => {
-    if (!quest) return;
-    deleteQuest(quest.id);
-    router.back();
+  const handleDelete = async () => {
+    if (!quest || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await archiveQuest(quest.id);
+      router.back();
+    } catch (err) {
+      setError(formatError(err));
+      setSubmitting(false);
+    }
   };
 
   const fieldStyle = { backgroundColor: theme.track, borderColor: theme.accentBorder, color: theme.text };
@@ -204,20 +215,23 @@ export default function QuestEditorScreen() {
             </View>
           </View>
 
+          {error && <Text style={styles.errorText}>{error}</Text>}
+
           <View style={styles.actionsRow}>
             {quest && (
-              <Pressable style={styles.deleteButton} onPress={handleDelete}>
+              <Pressable style={styles.deleteButton} onPress={handleDelete} disabled={submitting}>
                 <Text style={[styles.deleteButtonText, { fontFamily: fonts.display }]}>DELETE</Text>
               </Pressable>
             )}
             <Pressable
-              disabled={!valid}
+              disabled={!valid || submitting}
               onPress={handleSave}
               style={[
                 styles.saveButton,
                 {
                   backgroundColor: valid ? theme.accentGlass : 'transparent',
                   borderColor: valid ? theme.accentBorder : theme.glassBorder,
+                  opacity: submitting ? 0.6 : 1,
                 },
               ]}>
               <Text
@@ -225,7 +239,7 @@ export default function QuestEditorScreen() {
                   styles.saveButtonText,
                   { color: valid ? theme.accent : theme.dim, fontFamily: fonts.display },
                 ]}>
-                {quest ? 'SAVE CHANGES' : 'CREATE QUEST'}
+                {submitting ? 'SAVING…' : quest ? 'SAVE CHANGES' : 'CREATE QUEST'}
               </Text>
             </Pressable>
           </View>
@@ -274,6 +288,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1.5,
     marginBottom: 7,
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#f87171',
   },
   field: {
     borderWidth: 1,

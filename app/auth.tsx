@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -15,24 +14,93 @@ import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { fonts } from '@/constants/eiyu-theme';
+import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
 
+interface Notice {
+  emoji: string;
+  title: string;
+  message: string;
+}
+
 export default function AuthScreen() {
   const { theme } = useEiyu();
+  const { signIn, signUp, resetPassword } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
-  const handleSubmit = () => {
-    if (mode === 'forgot') {
-      setSubmitted(true);
+  const resetToLogin = () => {
+    setMode('login');
+    setNotice(null);
+    setError(null);
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+
+    if (mode === 'signup' && name.trim().length === 0) {
+      setError('Enter a display name.');
       return;
     }
-    router.replace('/(tabs)/board');
+    if (email.trim().length === 0) {
+      setError('Enter your email.');
+      return;
+    }
+    if (mode !== 'forgot' && password.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (mode === 'forgot') {
+        const { error: err } = await resetPassword(email.trim());
+        if (err) {
+          setError(err);
+          return;
+        }
+        setNotice({
+          emoji: '📨',
+          title: 'Recovery Link Sent',
+          message: `Check ${email} for instructions`,
+        });
+        return;
+      }
+
+      if (mode === 'signup') {
+        const { error: err, needsEmailConfirmation } = await signUp(
+          email.trim(),
+          password,
+          name.trim()
+        );
+        if (err) {
+          setError(err);
+          return;
+        }
+        if (needsEmailConfirmation) {
+          setNotice({
+            emoji: '✅',
+            title: 'Confirm Your Email',
+            message: `We sent a confirmation link to ${email}. Sign in once you've confirmed.`,
+          });
+        }
+        // if no confirmation needed, the session updates and Stack.Protected
+        // redirects to the tabs automatically.
+        return;
+      }
+
+      const { error: err } = await signIn(email.trim(), password);
+      if (err) setError(err);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const fieldStyle = {
@@ -69,22 +137,16 @@ export default function AuthScreen() {
           </View>
 
           <GlassView style={styles.card}>
-            {submitted && mode === 'forgot' ? (
+            {notice ? (
               <View style={styles.recoveryDone}>
-                <Text style={styles.recoveryEmoji}>📨</Text>
+                <Text style={styles.recoveryEmoji}>{notice.emoji}</Text>
                 <Text style={[styles.recoveryTitle, { color: theme.accent, fontFamily: fonts.display }]}>
-                  Recovery Link Sent
+                  {notice.title}
                 </Text>
                 <Text style={[styles.recoverySub, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Check {email || 'your email'} for instructions
+                  {notice.message}
                 </Text>
-                <GhostButton
-                  label="BACK TO LOGIN"
-                  onPress={() => {
-                    setMode('login');
-                    setSubmitted(false);
-                  }}
-                />
+                <GhostButton label="BACK TO LOGIN" onPress={resetToLogin} />
               </View>
             ) : (
               <View style={{ gap: 12 }}>
@@ -138,31 +200,45 @@ export default function AuthScreen() {
                     </Text>
                   </Pressable>
                 )}
+                {error && (
+                  <Text style={[styles.error, { fontFamily: fonts.body }]}>{error}</Text>
+                )}
                 <GhostButton
                   label={
-                    mode === 'login' ? 'ENTER SYSTEM' : mode === 'signup' ? 'BEGIN JOURNEY' : 'SEND RECOVERY LINK'
+                    submitting
+                      ? 'PLEASE WAIT…'
+                      : mode === 'login'
+                        ? 'ENTER SYSTEM'
+                        : mode === 'signup'
+                          ? 'BEGIN JOURNEY'
+                          : 'SEND RECOVERY LINK'
                   }
                   onPress={handleSubmit}
+                  disabled={submitting}
                   style={{ marginTop: 4 }}
                 />
               </View>
             )}
           </GlassView>
 
-          {!submitted && (
+          {!notice && (
             <View style={styles.switchRow}>
               <Text style={[styles.switchText, { color: theme.dim, fontFamily: fonts.body }]}>
                 {mode === 'login' ? 'New adventurer?' : mode === 'signup' ? 'Already enrolled?' : ''}
               </Text>
               {mode !== 'forgot' && (
-                <Pressable onPress={() => setMode(mode === 'login' ? 'signup' : 'login')}>
+                <Pressable
+                  onPress={() => {
+                    setMode(mode === 'login' ? 'signup' : 'login');
+                    setError(null);
+                  }}>
                   <Text style={[styles.switchLink, { color: theme.accent, fontFamily: fonts.body }]}>
                     {mode === 'login' ? 'Register' : 'Sign in'}
                   </Text>
                 </Pressable>
               )}
               {mode === 'forgot' && (
-                <Pressable onPress={() => setMode('login')}>
+                <Pressable onPress={resetToLogin}>
                   <Text style={[styles.switchLink, { color: theme.accent, fontFamily: fonts.body }]}>
                     Back to login
                   </Text>
@@ -230,6 +306,10 @@ const styles = StyleSheet.create({
   },
   forgot: {
     fontSize: 12,
+  },
+  error: {
+    fontSize: 12,
+    color: '#f87171',
   },
   switchRow: {
     flexDirection: 'row',

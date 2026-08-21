@@ -16,12 +16,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
+import { AuthProvider, useAuth } from '@/contexts/auth-store';
 import { EiyuProvider } from '@/contexts/eiyu-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export const unstable_settings = {
-  anchor: 'auth',
-};
 
 SplashScreen.preventAutoHideAsync();
 
@@ -38,25 +35,42 @@ export default function RootLayout() {
     JetBrainsMono_600SemiBold,
   });
 
-  useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync();
-  }, [fontsLoaded]);
-
   if (!fontsLoaded) return null;
 
   return (
-    <EiyuProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="auth" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="quest-editor"
-            options={{ presentation: 'modal', headerShown: false }}
-          />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
-    </EiyuProvider>
+    <AuthProvider>
+      <EiyuProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <AppNavigator />
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </EiyuProvider>
+    </AuthProvider>
+  );
+}
+
+function AppNavigator() {
+  const { session, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading) SplashScreen.hideAsync();
+  }, [loading]);
+
+  if (loading) return null;
+
+  return (
+    <Stack>
+      <Stack.Protected guard={!session}>
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={!!session}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="quest-editor"
+          options={{ presentation: 'modal', headerShown: false }}
+        />
+        <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
+      </Stack.Protected>
+    </Stack>
   );
 }

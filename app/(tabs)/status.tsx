@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Divider } from '@/components/eiyu/divider';
@@ -6,17 +6,45 @@ import { GlassView } from '@/components/eiyu/glass-view';
 import { StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { RadarChart } from '@/components/eiyu/radar-chart';
-import { RANK_CONFIG, STATS, STAT_COLORS, WEEKLY_DATA } from '@/constants/eiyu-data';
+import { RANK_CONFIG, STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
+import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { formatError } from '@/lib/format-error';
+import { fetchWeeklyReview, weeklyDayTotal, weeklyStatTotal, WeeklyDayDatum } from '@/lib/weekly-review';
 import { Stat } from '@/types/eiyu';
 
 type StatusTab = 'stats' | 'weekly';
 
 export default function StatusScreen() {
   const { user, theme, darkMode } = useEiyu();
+  const { session } = useAuth();
   const [tab, setTab] = useState<StatusTab>('stats');
+  const [weeklyData, setWeeklyData] = useState<WeeklyDayDatum[]>([]);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyError, setWeeklyError] = useState<string | null>(null);
   const cfg = RANK_CONFIG[user.rank];
+
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId || tab !== 'weekly') return;
+    let cancelled = false;
+    setWeeklyLoading(true);
+    setWeeklyError(null);
+    fetchWeeklyReview(userId)
+      .then(data => {
+        if (!cancelled) setWeeklyData(data);
+      })
+      .catch(err => {
+        if (!cancelled) setWeeklyError(formatError(err));
+      })
+      .finally(() => {
+        if (!cancelled) setWeeklyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user.id, tab]);
 
   const radarValues = STATS.reduce((acc, stat) => {
     acc[stat] = user.stats[stat].level;
@@ -139,61 +167,71 @@ export default function StatusScreen() {
             <Text style={[styles.weeklyTitle, { color: theme.text, fontFamily: fonts.display }]}>
               LAST 7 DAYS
             </Text>
-            {WEEKLY_DATA.map((day, i) => {
-              const dayTotal = STATS.reduce((s, stat) => s + day[stat], 0);
-              const maxTotal = STATS.length * 2;
-              return (
-                <View key={day.day}>
-                  {i > 0 && <Divider />}
-                  <View style={styles.weeklyRow}>
-                    <Text style={[styles.weeklyDay, { color: theme.muted, fontFamily: fonts.displaySemi }]}>
-                      {day.day}
-                    </Text>
-                    <View style={[styles.weeklyTrack, { backgroundColor: theme.track }]}>
-                      <View
-                        style={[
-                          styles.weeklyTrackFill,
-                          { width: `${(dayTotal / maxTotal) * 100}%`, backgroundColor: theme.accent },
-                        ]}
-                      />
-                    </View>
-                    <View style={styles.weeklyDots}>
-                      {STATS.map(stat => (
-                        <View
-                          key={stat}
+            {weeklyError ? (
+              <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>
+                Couldn&apos;t load weekly review: {weeklyError}
+              </Text>
+            ) : weeklyLoading ? (
+              <Text style={[styles.weeklyEmptyText, { color: theme.muted }]}>Loading…</Text>
+            ) : (
+              <>
+                {weeklyData.map((day, i) => {
+                  const dayTotal = weeklyDayTotal(day);
+                  const maxTotal = Math.max(1, ...weeklyData.map(weeklyDayTotal));
+                  return (
+                    <View key={`${day.day}-${i}`}>
+                      {i > 0 && <Divider />}
+                      <View style={styles.weeklyRow}>
+                        <Text style={[styles.weeklyDay, { color: theme.muted, fontFamily: fonts.displaySemi }]}>
+                          {day.day}
+                        </Text>
+                        <View style={[styles.weeklyTrack, { backgroundColor: theme.track }]}>
+                          <View
+                            style={[
+                              styles.weeklyTrackFill,
+                              { width: `${(dayTotal / maxTotal) * 100}%`, backgroundColor: theme.accent },
+                            ]}
+                          />
+                        </View>
+                        <View style={styles.weeklyDots}>
+                          {STATS.map(stat => (
+                            <View
+                              key={stat}
+                              style={[
+                                styles.weeklyDot,
+                                { backgroundColor: day[stat] > 0 ? STAT_COLORS[stat] : theme.accentGlass },
+                              ]}
+                            />
+                          ))}
+                        </View>
+                        <Text
                           style={[
-                            styles.weeklyDot,
-                            { backgroundColor: day[stat] > 0 ? STAT_COLORS[stat] : theme.accentGlass },
-                          ]}
-                        />
-                      ))}
+                            styles.mono,
+                            { color: dayTotal > 5 ? theme.accent : theme.muted, minWidth: 24, textAlign: 'right' },
+                          ]}>
+                          {dayTotal}
+                        </Text>
+                      </View>
                     </View>
-                    <Text
-                      style={[
-                        styles.mono,
-                        { color: dayTotal > 5 ? theme.accent : theme.muted, minWidth: 24, textAlign: 'right' },
-                      ]}>
-                      {dayTotal}
-                    </Text>
-                  </View>
+                  );
+                })}
+                <Divider style={{ marginTop: 8, marginBottom: 12 }} />
+                <View style={styles.weeklyTotals}>
+                  {STATS.map(stat => {
+                    const total = weeklyStatTotal(weeklyData, stat);
+                    return (
+                      <View key={stat} style={styles.weeklyTotalCell}>
+                        <StatIcon stat={stat} size={14} />
+                        <Text style={[styles.mono, { color: STAT_COLORS[stat], fontSize: 15 }]}>{total}</Text>
+                        <Text style={[styles.weeklyTotalLabel, { color: theme.dim, fontFamily: fonts.body }]}>
+                          {stat}
+                        </Text>
+                      </View>
+                    );
+                  })}
                 </View>
-              );
-            })}
-            <Divider style={{ marginTop: 8, marginBottom: 12 }} />
-            <View style={styles.weeklyTotals}>
-              {STATS.map(stat => {
-                const total = WEEKLY_DATA.reduce((s, d) => s + d[stat], 0);
-                return (
-                  <View key={stat} style={styles.weeklyTotalCell}>
-                    <StatIcon stat={stat} size={14} />
-                    <Text style={[styles.mono, { color: STAT_COLORS[stat], fontSize: 15 }]}>{total}</Text>
-                    <Text style={[styles.weeklyTotalLabel, { color: theme.dim, fontFamily: fonts.body }]}>
-                      {stat}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
+              </>
+            )}
           </GlassView>
         )}
       </ScrollView>
@@ -308,6 +346,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     letterSpacing: 1,
     marginBottom: 16,
+  },
+  weeklyEmptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 20,
   },
   weeklyRow: {
     flexDirection: 'row',

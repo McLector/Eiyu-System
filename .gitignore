@@ -47,10 +47,13 @@ app-example/
 /android
 
 # IDEs and Tools
-.vscode/
 .idea/
 *.swp
 *.swo
+
+# VS Code — ignore personal settings, share workspace recommendations
+.vscode/*
+!.vscode/extensions.json
 
 # AI Assistant Configs
 .claude/
@@ -59,9 +62,19 @@ app-example/
 
 # Testing
 coverage/
+jest-results/
+test-results/
+
+# Expo static generation cache
+.expo/static-tmp/
+
+# React Native / Expo build artifacts
+.gradle/
+local.properties
+*.hprof
 
 # Docs and Agent Files
 CLAUDE.md
 CHANGELOG.md
 AGENTS.md
-docs/
+docs/superpowers/

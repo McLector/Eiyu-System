@@ -19,6 +19,8 @@ export interface Quest {
   streak: number;
   frozen: boolean;
   frozenHoursLeft?: number;
+  /** the missed date to backdate a recovery completion to (R-13); set iff frozen */
+  frozenDate?: string;
   completed: boolean;
 }
 

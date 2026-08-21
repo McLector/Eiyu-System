@@ -1,5 +1,7 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 import { CheckIcon, PlusIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
 import { Divider } from '@/components/eiyu/divider';
@@ -9,6 +11,7 @@ import { PageBackground } from '@/components/eiyu/page-background';
 import { RANK_CONFIG, STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { EASY_XP, FULL_XP } from '@/lib/eiyu-logic';
 import { Quest, Rank } from '@/types/eiyu';
 
 function RankBadge({ rank }: { rank: Rank }) {
@@ -24,7 +27,19 @@ function RankBadge({ rank }: { rank: Rank }) {
   );
 }
 
-function QuestRow({ quest, onToggle, onEdit }: { quest: Quest; onToggle: () => void; onEdit: () => void }) {
+function QuestRow({
+  quest,
+  onToggle,
+  onCompleteEasy,
+  onEdit,
+  xpToast,
+}: {
+  quest: Quest;
+  onToggle: () => void;
+  onCompleteEasy: () => void;
+  onEdit: () => void;
+  xpToast: number | null;
+}) {
   const { theme } = useEiyu();
   const isCompleted = quest.completed;
   const isFrozen = quest.frozen && !isCompleted;
@@ -35,21 +50,33 @@ function QuestRow({ quest, onToggle, onEdit }: { quest: Quest; onToggle: () => v
   return (
     <View style={{ opacity: isCompleted ? 0.55 : 1 }}>
       <View style={styles.questRow}>
-        <Pressable
-          onPress={onToggle}
-          style={[
-            styles.checkbox,
-            {
-              borderColor: isCompleted
-                ? 'rgba(74,222,128,0.5)'
-                : isFrozen
-                  ? 'rgba(96,165,250,0.4)'
-                  : theme.accentBorder,
-              backgroundColor: isCompleted ? 'rgba(74,222,128,0.15)' : 'transparent',
-            },
-          ]}>
-          {isCompleted && <CheckIcon size={14} color="#4ade80" />}
-        </Pressable>
+        <View>
+          <Pressable
+            onPress={onToggle}
+            onLongPress={onCompleteEasy}
+            style={[
+              styles.checkbox,
+              {
+                borderColor: isCompleted
+                  ? 'rgba(74,222,128,0.5)'
+                  : isFrozen
+                    ? 'rgba(96,165,250,0.4)'
+                    : theme.accentBorder,
+                backgroundColor: isCompleted ? 'rgba(74,222,128,0.15)' : 'transparent',
+              },
+            ]}>
+            {isCompleted && <CheckIcon size={14} color="#4ade80" />}
+          </Pressable>
+          {xpToast !== null && (
+            <Animated.View
+              entering={FadeInUp.duration(200)}
+              exiting={FadeOutUp.duration(500)}
+              style={styles.xpToast}
+              pointerEvents="none">
+              <Text style={[styles.xpToastText, { fontFamily: fonts.mono }]}>+{xpToast} XP</Text>
+            </Animated.View>
+          )}
+        </View>
 
         <Pressable style={styles.questInfo} onPress={onEdit}>
           <Text
@@ -93,11 +120,27 @@ function QuestRow({ quest, onToggle, onEdit }: { quest: Quest; onToggle: () => v
 }
 
 export default function BoardScreen() {
-  const { user, theme, toggleQuest } = useEiyu();
+  const { user, theme, toggleQuest, completeEasy, completeRecovery, questsLoading, questsError } = useEiyu();
+  const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const frozenQuest = user.quests.find(q => q.frozen && !q.completed);
   const completed = user.quests.filter(q => q.completed).length;
   const total = user.quests.length;
   const initials = user.name.split(' ').map(n => n[0]).join('');
+
+  const flashXp = (id: string, xp: number) => {
+    setXpToast({ id, xp });
+    setTimeout(() => setXpToast(current => (current?.id === id ? null : current)), 900);
+  };
+
+  const handleToggle = (quest: Quest) => {
+    if (!quest.completed) flashXp(quest.id, FULL_XP);
+    toggleQuest(quest.id);
+  };
+
+  const handleCompleteEasy = (quest: Quest) => {
+    if (!quest.completed) flashXp(quest.id, EASY_XP);
+    completeEasy(quest.id);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.body }}>
@@ -161,7 +204,13 @@ export default function BoardScreen() {
             <Text style={[styles.recoveryEasy, { color: theme.muted, fontFamily: fonts.body }]}>
               Easy version: {frozenQuest.easyVersion}
             </Text>
-            <GhostButton label="Mark Recovery Complete" onPress={() => {}} />
+            <GhostButton
+              label="Mark Recovery Complete"
+              onPress={() => {
+                flashXp(frozenQuest.id, EASY_XP);
+                completeRecovery(frozenQuest.id);
+              }}
+            />
           </View>
         )}
 
@@ -184,14 +233,26 @@ export default function BoardScreen() {
 
         <GlassView style={styles.questList}>
           <Divider />
-          {user.quests.map(quest => (
-            <QuestRow
-              key={quest.id}
-              quest={quest}
-              onToggle={() => toggleQuest(quest.id)}
-              onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-            />
-          ))}
+          {questsError ? (
+            <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
+          ) : questsLoading ? (
+            <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
+          ) : user.quests.length === 0 ? (
+            <Text style={[styles.emptyText, { color: theme.muted }]}>
+              No quests scheduled for today. Tap &quot;Add a Quest&quot; below to create one.
+            </Text>
+          ) : (
+            user.quests.map(quest => (
+              <QuestRow
+                key={quest.id}
+                quest={quest}
+                onToggle={() => handleToggle(quest)}
+                onCompleteEasy={() => handleCompleteEasy(quest)}
+                onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+              />
+            ))
+          )}
         </GlassView>
 
         <GhostButton
@@ -331,6 +392,11 @@ const styles = StyleSheet.create({
   questList: {
     paddingHorizontal: 16,
   },
+  emptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
   questRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -344,6 +410,21 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  xpToast: {
+    position: 'absolute',
+    top: -18,
+    left: -4,
+    backgroundColor: 'rgba(74,222,128,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.4)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  xpToastText: {
+    fontSize: 10,
+    color: '#4ade80',
   },
   questInfo: {
     flex: 1,

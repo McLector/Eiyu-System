@@ -96,13 +96,3 @@ export const initialUser: UserProfile = {
     },
   ],
 };
-
-export const WEEKLY_DATA: Array<{ day: string } & Record<Stat, number>> = [
-  { day: 'Mon', STR: 1, INT: 2, DEX: 1, WIS: 2, CHA: 0 },
-  { day: 'Tue', STR: 2, INT: 2, DEX: 1, WIS: 1, CHA: 1 },
-  { day: 'Wed', STR: 1, INT: 2, DEX: 2, WIS: 2, CHA: 0 },
-  { day: 'Thu', STR: 2, INT: 1, DEX: 1, WIS: 2, CHA: 1 },
-  { day: 'Fri', STR: 1, INT: 2, DEX: 2, WIS: 1, CHA: 1 },
-  { day: 'Sat', STR: 0, INT: 1, DEX: 1, WIS: 2, CHA: 1 },
-  { day: 'Sun', STR: 1, INT: 0, DEX: 0, WIS: 1, CHA: 0 },
-];
