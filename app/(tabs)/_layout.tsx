@@ -1,33 +1,66 @@
+import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
-import React from 'react';
+import { StyleSheet } from 'react-native';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { BoardIcon, GearIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
+import { fonts } from '@/constants/eiyu-theme';
+import { useEiyu } from '@/contexts/eiyu-store';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { theme, darkMode } = useEiyu();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.navDim,
+        tabBarStyle: {
+          position: 'absolute',
+          borderTopWidth: 1,
+          borderTopColor: theme.navBorder,
+          backgroundColor: 'transparent',
+          elevation: 0,
+        },
+        tabBarBackground: () => (
+          <BlurView
+            intensity={40}
+            tint={darkMode ? 'dark' : 'light'}
+            style={[StyleSheet.absoluteFill, { backgroundColor: theme.nav }]}
+          />
+        ),
+        tabBarLabelStyle: {
+          fontFamily: fonts.displaySemi,
+          fontSize: 10,
+          letterSpacing: 1,
+        },
       }}>
       <Tabs.Screen
-        name="index"
+        name="board"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'BOARD',
+          tabBarIcon: ({ color }) => <BoardIcon color={color} size={22} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="status"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'STATUS',
+          tabBarIcon: ({ color }) => <StatusIcon color={color} size={22} />,
+        }}
+      />
+      <Tabs.Screen
+        name="longquests"
+        options={{
+          title: 'QUESTS',
+          tabBarIcon: ({ color }) => <ScrollIcon color={color} size={22} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'SETTINGS',
+          tabBarIcon: ({ color }) => <GearIcon color={color} size={22} />,
         }}
       />
     </Tabs>
