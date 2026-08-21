@@ -27,3 +27,25 @@ export async function suggestStages(questName: string, stat: Stat): Promise<stri
   if (!data?.stages) throw new Error('No stages returned');
   return data.stages;
 }
+
+export interface WeeklySummaryHabitDatum {
+  name: string;
+  stat: Stat;
+  fullCount: number;
+  easyCount: number;
+}
+
+/** R-60: raw call to the ai-proxy for a weekly summary paragraph — caching/generate-once-per-week lives in lib/weekly-summary.ts. */
+export async function generateWeeklySummary(
+  weekStart: string,
+  habits: WeeklySummaryHabitDatum[],
+  statTotals: Record<Stat, number>
+): Promise<string> {
+  const { data, error } = await supabase.functions.invoke<{ summary: string } | AiProxyError>('ai-proxy', {
+    body: { action: 'weekly-summary', weekStart, habits, statTotals },
+  });
+  if (error) throw error;
+  if (data && 'error' in data) throw new Error(data.error);
+  if (!data?.summary) throw new Error('No summary returned');
+  return data.summary;
+}

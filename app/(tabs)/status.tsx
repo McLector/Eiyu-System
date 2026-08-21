@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { formatError } from '@/lib/format-error';
 import { fetchWeeklyReview, weeklyDayTotal, weeklyStatTotal, WeeklyDayDatum } from '@/lib/weekly-review';
+import { fetchOrCreateWeeklySummary } from '@/lib/weekly-summary';
 import { Stat } from '@/types/eiyu';
 
 type StatusTab = 'stats' | 'weekly';
@@ -23,6 +24,9 @@ export default function StatusScreen() {
   const [weeklyData, setWeeklyData] = useState<WeeklyDayDatum[]>([]);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [weeklyError, setWeeklyError] = useState<string | null>(null);
+  const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
+  const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
+  const [weeklySummaryError, setWeeklySummaryError] = useState<string | null>(null);
   const cfg = RANK_CONFIG[user.rank];
 
   useEffect(() => {
@@ -41,9 +45,28 @@ export default function StatusScreen() {
       .finally(() => {
         if (!cancelled) setWeeklyLoading(false);
       });
+
+    // R-60: skip if already loaded once this session — it's cached
+    // server-side per week anyway, no need to re-fetch on every tab switch.
+    if (weeklySummary === null && !weeklySummaryLoading) {
+      setWeeklySummaryLoading(true);
+      setWeeklySummaryError(null);
+      fetchOrCreateWeeklySummary(userId)
+        .then(text => {
+          if (!cancelled) setWeeklySummary(text);
+        })
+        .catch(err => {
+          if (!cancelled) setWeeklySummaryError(formatError(err));
+        })
+        .finally(() => {
+          if (!cancelled) setWeeklySummaryLoading(false);
+        });
+    }
+
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user.id, tab]);
 
   const radarValues = STATS.reduce((acc, stat) => {
@@ -193,10 +216,30 @@ export default function StatusScreen() {
             </GlassView>
           </>
         ) : (
-          <GlassView style={styles.weeklyCard}>
-            <Text style={[styles.weeklyTitle, { color: theme.text, fontFamily: fonts.display }]}>
-              LAST 7 DAYS
-            </Text>
+          <>
+            <GlassView style={styles.summaryCard}>
+              <Text style={[styles.summaryTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                ✨ WEEKLY SUMMARY
+              </Text>
+              {weeklySummaryError ? (
+                <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>
+                  Couldn&apos;t load summary: {weeklySummaryError}
+                </Text>
+              ) : weeklySummaryLoading || weeklySummary === null ? (
+                <Text style={[styles.summaryBody, { color: theme.muted, fontFamily: fonts.body }]}>
+                  Thinking…
+                </Text>
+              ) : (
+                <Text style={[styles.summaryBody, { color: theme.text, fontFamily: fonts.body }]}>
+                  {weeklySummary}
+                </Text>
+              )}
+            </GlassView>
+
+            <GlassView style={styles.weeklyCard}>
+              <Text style={[styles.weeklyTitle, { color: theme.text, fontFamily: fonts.display }]}>
+                LAST 7 DAYS
+              </Text>
             {weeklyError ? (
               <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>
                 Couldn&apos;t load weekly review: {weeklyError}
@@ -263,6 +306,7 @@ export default function StatusScreen() {
               </>
             )}
           </GlassView>
+          </>
         )}
       </ScrollView>
     </View>
@@ -388,6 +432,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     minWidth: 40,
     alignItems: 'center',
+  },
+  summaryCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 8,
+  },
+  summaryTitle: {
+    fontSize: 11,
+    letterSpacing: 1.5,
+  },
+  summaryBody: {
+    fontSize: 14,
+    lineHeight: 21,
   },
   weeklyCard: {
     paddingHorizontal: 16,

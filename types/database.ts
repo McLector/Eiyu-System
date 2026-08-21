@@ -150,6 +150,22 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['weekly_quests']['Row']>;
         Relationships: [];
       };
+      weekly_summaries: {
+        Row: {
+          id: string;
+          user_id: string;
+          week_start: string;
+          summary: string;
+          created_at: string;
+        };
+        Insert: Partial<Database['public']['Tables']['weekly_summaries']['Row']> & {
+          user_id: string;
+          week_start: string;
+          summary: string;
+        };
+        Update: Partial<Database['public']['Tables']['weekly_summaries']['Row']>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

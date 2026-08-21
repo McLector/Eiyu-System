@@ -66,6 +66,35 @@ async function callGeminiForStringArray(system: string, user: string, maxItems: 
   return parsed.filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
 }
 
+/** Calls Gemini for free-form prose — no response schema, since a paragraph isn't structured data. */
+async function callGeminiForText(system: string, user: string): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: user }] }],
+        generationConfig: { maxOutputTokens: 4096 },
+      }),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gemini API error (${res.status}): ${text}`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini API returned no text content');
+  return text.trim();
+}
+
 async function suggestEasyVersions(habitName: string, stat: string): Promise<string[]> {
   const suggestions = await callGeminiForStringArray(
     'You suggest scaled-down "easy version" fallbacks for daily habits — something that takes ' +
@@ -89,6 +118,34 @@ async function suggestStages(questName: string, stat: string): Promise<string[]>
   );
   if (stages.length < 2) throw new Error('Not enough stages returned');
   return stages.slice(0, 6);
+}
+
+interface HabitWeekDatum {
+  name: string;
+  stat: string;
+  fullCount: number;
+  easyCount: number;
+}
+
+/** R-60: a short paragraph — one real pattern, one thing going well, never guilt-based (R-15). */
+async function summarizeWeek(
+  weekStart: string,
+  habits: HabitWeekDatum[],
+  statTotals: Record<string, number>
+): Promise<string> {
+  const summary = await callGeminiForText(
+    'You write a short weekly summary paragraph for a habit-tracking app. Use the JSON data of this ' +
+      "week's habit completions to write 2-4 sentences, in second person (\"you\"), covering exactly " +
+      'ONE real, specific pattern you notice in the data (e.g. a stat that is lagging or excelling, a ' +
+      'habit completed consistently or missed several times) and ONE thing that is going well. Base ' +
+      'everything strictly on the data given — never invent specifics. Tone must be neutral and ' +
+      'encouraging, never guilty, shaming, or punitive — do not use words like "failed", "should have", ' +
+      'or "missed" in a critical way; frame gaps factually. If the data is too sparse for a real pattern, ' +
+      'say so gently instead of inventing one. Output ONLY the paragraph, no heading, no markdown.',
+    JSON.stringify({ weekStart, habits, statTotals })
+  );
+  if (!summary) throw new Error('No summary returned');
+  return summary;
 }
 
 Deno.serve(async req => {
@@ -126,6 +183,14 @@ Deno.serve(async req => {
         }
         const stages = await suggestStages(questName.trim(), stat ?? '');
         return json({ stages });
+      }
+      case 'weekly-summary': {
+        const { weekStart, habits, statTotals } = body;
+        if (typeof weekStart !== 'string' || !Array.isArray(habits) || typeof statTotals !== 'object') {
+          return json({ error: 'weekStart, habits, and statTotals are required' }, 400);
+        }
+        const summary = await summarizeWeek(weekStart, habits, statTotals);
+        return json({ summary });
       }
       default:
         return json({ error: `Unknown action: ${body.action}` }, 400);
