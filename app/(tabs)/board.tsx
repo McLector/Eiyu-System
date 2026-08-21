@@ -52,6 +52,7 @@ function QuestRow({
       <View style={styles.questRow}>
         <View>
           <Pressable
+            testID="quest-checkbox"
             onPress={onToggle}
             onLongPress={onCompleteEasy}
             style={[

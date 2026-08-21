@@ -1,0 +1,25 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "QUESTS"
+- tapOn: "ADD A LONG QUEST"
+- tapOn: "e.g. Ship a Side Project"
+- inputText: "Get a full-stack developer job"
+- hideKeyboard
+- tapOn: ".*SUGGEST STAGES.*"
+- extendedWaitUntil:
+    visible: "THINKING.*"
+    timeout: 10000
+- extendedWaitUntil:
+    notVisible: "THINKING.*"
+    timeout: 20000
+# Suggested stages should land as editable text inputs (R-64) - confirm
+# manual typing lands in the field. (Not erase-and-replace: tapOn places
+# the cursor at the tapped screen position within the pre-filled AI text
+# rather than at its end, so eraseText only deletes backward from
+# mid-string and can't reliably clear the whole field. Proving the field
+# accepts a manual insertion is enough to confirm it's editable, without
+# needing to fully replace the AI-suggested content.)
+- tapOn: "Stage 1"
+- inputText: "MANUALEDITMARKER"
+- assertVisible: ".*MANUALEDITMARKER.*"

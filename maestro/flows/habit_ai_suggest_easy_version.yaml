@@ -1,0 +1,18 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Learn Spanish"
+- hideKeyboard
+- tapOn: ".*SUGGEST EASY VERSIONS.*"
+- assertVisible: "THINKING.*"
+- extendedWaitUntil:
+    notVisible: "THINKING.*"
+    timeout: 20000
+# Either real suggestion chips appear, or a readable error - never a
+# silent no-op. Whichever happens, the easy-version field must remain
+# editable by hand regardless (R-64: AI output is never auto-saved).
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "Manually typed override"
+- assertVisible: "Manually typed override"

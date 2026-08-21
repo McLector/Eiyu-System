@@ -1,0 +1,20 @@
+appId: com.anonymous.eiyusystem
+---
+# Reusable: log in as the persistent Maestro test account (created once by
+# 00_setup_create_test_account.yaml). Included via `runFlow` from every flow
+# that needs a logged-in session.
+- launchApp:
+    clearState: true
+# First JS bundle fetch after a cold Metro/emulator start can take well
+# past Maestro's default assert timeout - wait explicitly rather than
+# flaking on a slow first launch.
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 30000
+- tapOn: "you@example.com"
+- inputText: "maestro.tester@eiyu.test"
+- tapOn: "••••••••"
+- inputText: "TestPass123!"
+- hideKeyboard
+- tapOn: "ENTER SYSTEM"
+- assertVisible: "BOARD"

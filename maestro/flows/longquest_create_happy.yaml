@@ -1,0 +1,25 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "QUESTS"
+- tapOn: "ADD A LONG QUEST"
+- assertVisible: "NEW LONG QUEST"
+- tapOn: "e.g. Ship a Side Project"
+- inputText: "Maestro Long Quest Happy Path"
+- hideKeyboard
+- tapOn: "Stage 1"
+- inputText: "First stage"
+- hideKeyboard
+- tapOn: "Stage 2"
+- inputText: "Second stage"
+- hideKeyboard
+- tapOn: "CREATE LONG QUEST"
+- assertVisible: "Maestro Long Quest Happy Path"
+- assertVisible: "0/2"
+
+# Cleanup: keep the shared test account's board empty between flow runs.
+- tapOn: "Maestro Long Quest Happy Path"
+- tapOn: "Delete Long Quest"
+- assertVisible: ".*will be removed permanently.*"
+- tapOn: "Delete"
+- assertNotVisible: "Maestro Long Quest Happy Path"

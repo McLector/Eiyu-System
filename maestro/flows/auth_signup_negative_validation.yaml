@@ -1,0 +1,32 @@
+appId: com.anonymous.eiyusystem
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 30000
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+
+# Submitting completely empty must not proceed and must explain why.
+- tapOn: "BEGIN JOURNEY"
+- assertVisible: "Enter a display name."
+- assertNotVisible: "BOARD"
+
+- tapOn: "Kaito Mizuru"
+- inputText: "Edge Case Tester"
+- hideKeyboard
+- tapOn: "BEGIN JOURNEY"
+- assertVisible: "Enter your email."
+
+- tapOn: "you@example.com"
+- inputText: "not-an-email"
+- tapOn: "••••••••"
+- inputText: "123"
+- hideKeyboard
+- tapOn: "BEGIN JOURNEY"
+# Client-side only checks password length, not email format — this is
+# expected to fail on the length message; if it instead lets a malformed
+# email through to Supabase, that's a bug-hunt finding.
+- assertVisible: "Password must be at least 6 characters."
+- assertNotVisible: "BOARD"

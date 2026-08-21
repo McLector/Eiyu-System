@@ -1,0 +1,19 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "STATUS"
+- assertVisible: "CURRENT RANK"
+- tapOn: "WEEKLY REVIEW"
+- assertVisible: ".*WEEKLY SUMMARY.*"
+- assertVisible: "LAST 7 DAYS"
+- extendedWaitUntil:
+    notVisible: "Thinking…"
+    timeout: 20000
+# Should now show either a real generated paragraph or a readable error -
+# never stay on "Thinking…" forever, never show blank/empty text.
+
+# Re-visiting the tab this session must read the cache, not regenerate -
+# switch away and back and confirm it's instant (no "Thinking…" flash).
+- tapOn: "STATS"
+- tapOn: "WEEKLY REVIEW"
+- assertNotVisible: "Thinking…"

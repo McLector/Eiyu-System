@@ -1,0 +1,22 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- assertVisible: "NEW QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Maestro Habit Happy Path"
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "Shorter version of it"
+- hideKeyboard
+- tapOn: "STR"
+- tapOn: "Hard"
+- tapOn: "CREATE QUEST"
+- assertVisible: "Maestro Habit Happy Path"
+- assertVisible: "STR"
+
+# Cleanup: this flow shares one persistent test account across runs, so
+# leaving the quest behind would break index-0 checkbox assumptions in
+# other flows (e.g. board_toggle_complete_and_easy) on the next run.
+- tapOn: "Maestro Habit Happy Path"
+- tapOn: "DELETE"
+- assertNotVisible: "Maestro Habit Happy Path"

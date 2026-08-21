@@ -1,0 +1,27 @@
+appId: com.anonymous.eiyusystem
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 30000
+- evalScript: ${output.freshEmail = 'maestro.fresh.' + Date.now() + '@example.com'}
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+- tapOn: "Kaito Mizuru"
+- inputText: "Fresh Signup Tester"
+- tapOn: "you@example.com"
+- inputText: ${output.freshEmail}
+- tapOn: "••••••••"
+- inputText: "FreshPass123!"
+- hideKeyboard
+- tapOn: "BEGIN JOURNEY"
+# Every fresh signup uses a never-before-seen credential pair, so Android's
+# "Save password?" system dialog appears here (it wouldn't for a reused
+# account) - dismiss it if present, no-op otherwise.
+- tapOn:
+    text: "Never"
+    optional: true
+- assertVisible: "BOARD"
+# A brand-new account should have zero quests and a clean E-rank slate.
+- assertVisible: "No quests scheduled for today.*"

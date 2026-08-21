@@ -1,0 +1,6 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- assertVisible: "STATUS"
+- assertVisible: "QUESTS"
+- assertVisible: "SETTINGS"

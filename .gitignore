@@ -83,3 +83,7 @@ docs/superpowers/
 .temp/
 supabase/.temp/
 backend/supabase/.temp/
+
+# Maestro test run artifacts
+maestro/report/
+maestro-logs/

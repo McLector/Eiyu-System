@@ -1,0 +1,32 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Toggle Complete Habit"
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "toggle easy version"
+- hideKeyboard
+- tapOn: "CREATE QUEST"
+- assertVisible: "Toggle Complete Habit"
+- assertVisible: "0/1"
+
+# Full completion via tap -> +20 XP toast (FULL_XP, lib/eiyu-logic.ts) is
+# a ~900ms fade animation, too fast for a reliable screenshot-based
+# assertion - check the persisted progress-pill state instead.
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- assertVisible: "1/1"
+
+# Toggling again should un-complete it rather than getting stuck
+# completed or double-awarding XP.
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- assertVisible: "0/1"
+
+# Cleanup: keep the shared test account's board empty between flow runs.
+- tapOn: "Toggle Complete Habit"
+- tapOn: "DELETE"
+- assertNotVisible: "Toggle Complete Habit"

@@ -1,0 +1,29 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- assertVisible: "CREATE QUEST"
+
+# Nothing filled in - save must stay blocked (button is disabled, not just
+# unhelpful). If this instead creates a blank quest, that's a bug.
+- tapOn: "CREATE QUEST"
+- assertVisible: "NEW QUEST"
+
+# Only the name filled in - easy version is also required (R- recovery
+# fallback always needs a value), save should still be blocked.
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Only Name Filled In"
+- hideKeyboard
+- tapOn: "CREATE QUEST"
+# Still on the creation sheet (blocked) - the typed name legitimately
+# stays visible in the input field itself, so don't assert it's gone;
+# "NEW QUEST" still showing is what proves the save was blocked.
+- assertVisible: "NEW QUEST"
+
+# Whitespace-only input in both fields - the .trim() checks in
+# quest-editor.tsx should treat this the same as empty.
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "   "
+- hideKeyboard
+- tapOn: "CREATE QUEST"
+- assertVisible: "NEW QUEST"

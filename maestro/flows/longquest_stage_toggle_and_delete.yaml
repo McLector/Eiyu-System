@@ -1,0 +1,38 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "QUESTS"
+- tapOn: "ADD A LONG QUEST"
+- tapOn: "e.g. Ship a Side Project"
+- inputText: "Long Quest To Delete"
+- hideKeyboard
+- tapOn: "Stage 1"
+- inputText: "First stage"
+- hideKeyboard
+- tapOn: "Stage 2"
+- inputText: "Second stage"
+- hideKeyboard
+- tapOn: "CREATE LONG QUEST"
+- assertVisible: "Long Quest To Delete"
+
+# Expand the card and toggle the first stage complete.
+- tapOn: "Long Quest To Delete"
+- assertVisible: "First stage"
+- tapOn:
+    id: "stage-checkbox"
+    index: 0
+- assertVisible: "NEXT"
+
+# Delete: native Alert.alert - title text collides with the row button's
+# own label ("Delete Long Quest" appears twice once the dialog is open),
+# so anchor on the alert's body text instead to avoid an ambiguous match.
+- tapOn: "Delete Long Quest"
+- assertVisible: ".*will be removed permanently.*"
+- tapOn: "Cancel"
+- assertVisible: "Long Quest To Delete"
+
+# Now actually delete it.
+- tapOn: "Delete Long Quest"
+- assertVisible: ".*will be removed permanently.*"
+- tapOn: "Delete"
+- assertNotVisible: "Long Quest To Delete"

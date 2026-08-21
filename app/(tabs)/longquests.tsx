@@ -97,7 +97,10 @@ export default function LongQuestsScreen() {
                       {lq.stages.map((stage, i) => (
                         <View key={stage.id}>
                           {i > 0 && <Divider />}
-                          <Pressable style={styles.stageRow} onPress={() => toggleStage(lq.id, stage.id)}>
+                          <Pressable
+                            testID="stage-checkbox"
+                            style={styles.stageRow}
+                            onPress={() => toggleStage(lq.id, stage.id)}>
                             <View
                               style={[
                                 styles.stageCheckbox,

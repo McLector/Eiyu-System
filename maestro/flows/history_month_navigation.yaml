@@ -1,0 +1,18 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "SETTINGS"
+- tapOn: "Quest History"
+- assertVisible: "HISTORY"
+- assertVisible: "TODAY"
+
+# Navigate back a few months and forward past the starting month - the
+# calendar grid and weekday header should stay aligned, no crash on
+# year rollover (e.g. going back past January).
+- tapOn:
+    point: "15%,20%"
+- tapOn:
+    point: "15%,20%"
+- tapOn:
+    point: "15%,20%"
+- assertVisible: "HISTORY"

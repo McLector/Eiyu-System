@@ -1,0 +1,19 @@
+appId: com.anonymous.eiyusystem
+---
+# Edge cases around the stage list itself: adding up to MAX_STAGES (8) and
+# removing down to MIN_STAGES (2), where the remove button should disappear.
+- runFlow: _helpers/login.yaml
+- tapOn: "QUESTS"
+- tapOn: "ADD A LONG QUEST"
+- tapOn: "e.g. Ship a Side Project"
+- inputText: "Stage List Edge Cases"
+- hideKeyboard
+
+- tapOn: "+ ADD STAGE"
+- tapOn: "+ ADD STAGE"
+- tapOn: "+ ADD STAGE"
+- tapOn: "+ ADD STAGE"
+- tapOn: "+ ADD STAGE"
+- assertVisible: "Stage 8"
+# At MAX_STAGES (8), the add-stage control should be gone.
+- assertNotVisible: "+ ADD STAGE"

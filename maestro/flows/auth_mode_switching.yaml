@@ -1,0 +1,21 @@
+appId: com.anonymous.eiyusystem
+---
+# Login <-> Signup <-> Forgot navigation shouldn't leak state between modes
+# (e.g. a typed password surviving a switch to signup, or vice versa).
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Enter the system"
+    timeout: 30000
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+- tapOn: "Kaito Mizuru"
+- inputText: "Should Not Persist"
+- hideKeyboard
+- tapOn: "Sign in"
+- assertVisible: "Enter the system"
+- assertNotVisible: "Should Not Persist"
+- tapOn: "Forgot password?"
+- assertVisible: "Reset access"
+- tapOn: "Back to login"
+- assertVisible: "Enter the system"

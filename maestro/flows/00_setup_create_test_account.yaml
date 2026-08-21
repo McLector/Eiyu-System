@@ -1,0 +1,21 @@
+appId: com.anonymous.eiyusystem
+---
+# Run this ONCE to create the persistent test account the other flows log
+# into (see _helpers/login.yaml). Re-running after the account exists will
+# fail at the last assertion (Supabase rejects the duplicate signup) —
+# that's expected; use _helpers/login.yaml / auth_login_happy.yaml instead.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 30000
+- tapOn: "Register"
+- tapOn: "Kaito Mizuru"
+- inputText: "Maestro Tester"
+- tapOn: "you@example.com"
+- inputText: "maestro.tester@eiyu.test"
+- tapOn: "••••••••"
+- inputText: "TestPass123!"
+- hideKeyboard
+- tapOn: "BEGIN JOURNEY"
+- assertVisible: "BOARD"

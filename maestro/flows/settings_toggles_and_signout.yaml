@@ -1,0 +1,26 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "SETTINGS"
+- assertVisible: "Settings"
+
+# Theme toggle should flip the label and not crash any currently-mounted
+# screen's themed styles.
+- tapOn: "Dark Theme"
+- assertVisible: "Light Theme"
+- tapOn: "Light Theme"
+- assertVisible: "Dark Theme"
+
+- tapOn: "Quest Reminders"
+- tapOn: "Sound Effects"
+
+# BUG (visual): this native Alert.alert dialog renders with the OS's
+# default light theme (white background) against the app's dark navy
+# aesthetic elsewhere - a jarring inconsistency. See build log.
+- tapOn: "Export Data"
+- assertVisible: "Exporting data..."
+- tapOn: "OK"
+
+- tapOn: "Sign Out"
+- assertVisible: "EIYU SYSTEM"
+- assertNotVisible: "BOARD"

@@ -1,0 +1,27 @@
+appId: com.anonymous.eiyusystem
+---
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Habit To Edit Then Delete"
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "delete me easy version"
+- hideKeyboard
+- tapOn: "CREATE QUEST"
+- assertVisible: "Habit To Edit Then Delete"
+
+- tapOn: "Habit To Edit Then Delete"
+- assertVisible: "EDIT QUEST"
+- assertVisible: "SAVE CHANGES"
+- assertVisible: "DELETE"
+- tapOn: "e.g. Code for 2 hours"
+- eraseText
+- inputText: "Habit After Edit"
+- hideKeyboard
+- tapOn: "SAVE CHANGES"
+- assertVisible: "Habit After Edit"
+- assertNotVisible: "Habit To Edit Then Delete"
+
+- tapOn: "Habit After Edit"
+- tapOn: "DELETE"
+- assertNotVisible: "Habit After Edit"

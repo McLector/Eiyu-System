@@ -1,0 +1,35 @@
+appId: com.anonymous.eiyusystem
+---
+# Edge case: rapid double-tap on the same checkbox before the network
+# round-trip for the first toggle resolves. Should not double-count XP,
+# desync from the server, or throw an unhandled error.
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Rapid Tap Habit"
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "rapid tap easy version"
+- hideKeyboard
+- tapOn: "CREATE QUEST"
+- assertVisible: "Rapid Tap Habit"
+
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- extendedWaitUntil:
+    visible: "Rapid Tap Habit"
+    timeout: 5000
+# Manual check afterward: re-launch and confirm the completed state and
+# XP total match a single toggle, not three.
+
+# Cleanup: keep the shared test account's board empty between flow runs
+# so index-0 checkbox targeting stays valid for other flows.
+- tapOn: "Rapid Tap Habit"
+- tapOn: "DELETE"
+- assertNotVisible: "Rapid Tap Habit"
