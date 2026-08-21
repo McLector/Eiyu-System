@@ -121,7 +121,8 @@ function QuestRow({
 }
 
 export default function BoardScreen() {
-  const { user, theme, toggleQuest, completeEasy, completeRecovery, questsLoading, questsError } = useEiyu();
+  const { user, theme, toggleQuest, completeEasy, completeRecovery, questsLoading, questsError, retryQuests } =
+    useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const frozenQuest = user.quests.find(q => q.frozen && !q.completed);
   const completed = user.quests.filter(q => q.completed).length;
@@ -235,7 +236,14 @@ export default function BoardScreen() {
         <GlassView style={styles.questList}>
           <Divider />
           {questsError ? (
-            <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
+            <View style={styles.errorBlock}>
+              <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
+              <Pressable onPress={retryQuests} style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
+                <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>
+                  RETRY
+                </Text>
+              </Pressable>
+            </View>
           ) : questsLoading ? (
             <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
           ) : user.quests.length === 0 ? (
@@ -397,6 +405,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  errorBlock: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 10,
+  },
+  retryButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    letterSpacing: 1,
   },
   questRow: {
     flexDirection: 'row',

@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Divider } from '@/components/eiyu/divider';
 import { GhostButton } from '@/components/eiyu/ghost-button';
@@ -12,14 +12,13 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 
 export default function LongQuestsScreen() {
-  const { user, theme, toggleStage, longQuestsLoading, longQuestsError, removeLongQuest } = useEiyu();
+  const { user, theme, toggleStage, longQuestsLoading, longQuestsError, retryLongQuests, removeLongQuest } =
+    useEiyu();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
 
   const confirmDelete = (id: string, name: string) => {
-    Alert.alert('Delete Long Quest', `"${name}" and its stages will be removed permanently.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => removeLongQuest(id) },
-    ]);
+    setPendingDelete({ id, name });
   };
 
   return (
@@ -34,9 +33,16 @@ export default function LongQuestsScreen() {
         </View>
 
         {longQuestsError ? (
-          <Text style={[styles.emptyText, { color: '#f87171' }]}>
-            Couldn&apos;t load Long Quests: {longQuestsError}
-          </Text>
+          <View style={styles.errorBlock}>
+            <Text style={[styles.emptyText, { color: '#f87171' }]}>
+              Couldn&apos;t load Long Quests: {longQuestsError}
+            </Text>
+            <Pressable onPress={retryLongQuests} style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
+              <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>
+                RETRY
+              </Text>
+            </Pressable>
+          </View>
         ) : longQuestsLoading ? (
           <Text style={[styles.emptyText, { color: theme.muted }]}>Loading…</Text>
         ) : user.longQuests.length === 0 ? (
@@ -155,6 +161,36 @@ export default function LongQuestsScreen() {
           style={{ paddingVertical: 16, marginTop: 16 }}
         />
       </ScrollView>
+
+      <Modal visible={!!pendingDelete} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}>
+        <View style={[styles.confirmOverlay, { backgroundColor: theme.overlay }]}>
+          <GlassView style={styles.confirmCard}>
+            <Text style={[styles.confirmTitle, { color: theme.text, fontFamily: fonts.display }]}>
+              DELETE LONG QUEST
+            </Text>
+            <Text style={[styles.confirmBody, { color: theme.muted, fontFamily: fonts.body }]}>
+              &quot;{pendingDelete?.name}&quot; and its stages will be removed permanently.
+            </Text>
+            <View style={styles.confirmActions}>
+              <Pressable
+                style={[styles.confirmCancel, { borderColor: theme.glassBorder }]}
+                onPress={() => setPendingDelete(null)}>
+                <Text style={[styles.confirmCancelText, { color: theme.text, fontFamily: fonts.display }]}>
+                  CANCEL
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.confirmDelete}
+                onPress={() => {
+                  if (pendingDelete) removeLongQuest(pendingDelete.id);
+                  setPendingDelete(null);
+                }}>
+                <Text style={[styles.confirmDeleteText, { fontFamily: fonts.display }]}>DELETE</Text>
+              </Pressable>
+            </View>
+          </GlassView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -180,6 +216,70 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  errorBlock: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 10,
+  },
+  retryButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  confirmOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  confirmCard: {
+    width: '100%',
+    padding: 20,
+    gap: 8,
+  },
+  confirmTitle: {
+    fontSize: 16,
+    letterSpacing: 1,
+  },
+  confirmBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 8,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmCancel: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  confirmCancelText: {
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  confirmDelete: {
+    flex: 1,
+    backgroundColor: 'rgba(248,113,113,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(248,113,113,0.3)',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  confirmDeleteText: {
+    fontSize: 13,
+    letterSpacing: 0.5,
+    color: '#f87171',
   },
   cardHeader: {
     padding: 16,

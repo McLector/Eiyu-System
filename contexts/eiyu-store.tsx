@@ -51,6 +51,8 @@ interface EiyuStore {
   setDarkMode: (v: boolean) => void;
   questsLoading: boolean;
   questsError: string | null;
+  /** Re-fetch today's quests after a load failure (e.g. a transient network/auth error). */
+  retryQuests: () => Promise<void>;
   /** Full completion if not yet done, undo if already done (R-05, R-07). */
   toggleQuest: (id: string) => void;
   /** Easy/recovery-version completion (R-06). */
@@ -63,6 +65,8 @@ interface EiyuStore {
   toggleStage: (lqId: string, stageId: string) => void;
   longQuestsLoading: boolean;
   longQuestsError: string | null;
+  /** Re-fetch Long Quests after a load failure. */
+  retryLongQuests: () => Promise<void>;
   /** R-32: create a Long Quest with ordered stages. */
   saveLongQuest: (input: LongQuestInput) => Promise<void>;
   removeLongQuest: (id: string) => Promise<void>;
@@ -303,6 +307,30 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     await refreshLongQuests();
   };
 
+  const retryQuests = async () => {
+    setQuestsLoading(true);
+    setQuestsError(null);
+    try {
+      await refreshQuests();
+    } catch (err) {
+      setQuestsError(formatError(err));
+    } finally {
+      setQuestsLoading(false);
+    }
+  };
+
+  const retryLongQuests = async () => {
+    setLongQuestsLoading(true);
+    setLongQuestsError(null);
+    try {
+      await refreshLongQuests();
+    } catch (err) {
+      setLongQuestsError(formatError(err));
+    } finally {
+      setLongQuestsLoading(false);
+    }
+  };
+
   const user: UserProfile = useMemo(
     () => ({
       name: profile?.displayName ?? initialUser.name,
@@ -323,6 +351,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       setDarkMode,
       questsLoading,
       questsError,
+      retryQuests,
       toggleQuest,
       completeEasy,
       completeRecovery,
@@ -331,6 +360,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       toggleStage,
       longQuestsLoading,
       longQuestsError,
+      retryLongQuests,
       saveLongQuest,
       removeLongQuest,
       notificationsEnabled,
