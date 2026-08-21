@@ -78,6 +78,19 @@ async function suggestEasyVersions(habitName: string, stat: string): Promise<str
   return suggestions.slice(0, 3);
 }
 
+/** R-62: break a Long Quest name into 3-6 ordered, editable stages. */
+async function suggestStages(questName: string, stat: string): Promise<string[]> {
+  const stages = await callGeminiForStringArray(
+    'You break a long-term goal into 3 to 6 ordered milestones — concrete, sequential steps ' +
+      'that build toward finishing the goal, each short (under 8 words). Return between 3 and 6 ' +
+      'strings, in the order they should be completed. No prose, no explanation.',
+    `Goal: "${questName}" (stat: ${stat})`,
+    6
+  );
+  if (stages.length < 2) throw new Error('Not enough stages returned');
+  return stages.slice(0, 6);
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -105,6 +118,14 @@ Deno.serve(async req => {
         }
         const suggestions = await suggestEasyVersions(habitName.trim(), stat ?? '');
         return json({ suggestions });
+      }
+      case 'stage-breakdown': {
+        const { questName, stat } = body;
+        if (typeof questName !== 'string' || !questName.trim()) {
+          return json({ error: 'questName is required' }, 400);
+        }
+        const stages = await suggestStages(questName.trim(), stat ?? '');
+        return json({ stages });
       }
       default:
         return json({ error: `Unknown action: ${body.action}` }, 400);

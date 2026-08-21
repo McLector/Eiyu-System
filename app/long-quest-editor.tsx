@@ -6,6 +6,7 @@ import { StatIcon } from '@/components/eiyu/icons';
 import { STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { suggestStages } from '@/lib/ai';
 import { formatError } from '@/lib/format-error';
 import { Stat } from '@/types/eiyu';
 
@@ -19,6 +20,22 @@ export default function LongQuestEditorScreen() {
   const [stages, setStages] = useState<string[]>(['', '', '']);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestingStages, setSuggestingStages] = useState(false);
+  const [suggestStagesError, setSuggestStagesError] = useState<string | null>(null);
+
+  const handleSuggestStages = async () => {
+    if (!name.trim() || suggestingStages) return;
+    setSuggestingStages(true);
+    setSuggestStagesError(null);
+    try {
+      const result = await suggestStages(name.trim(), stat);
+      setStages(result);
+    } catch (err) {
+      setSuggestStagesError(formatError(err));
+    } finally {
+      setSuggestingStages(false);
+    }
+  };
 
   const setStageAt = (i: number, value: string) => {
     setStages(prev => prev.map((s, idx) => (idx === i ? value : s)));
@@ -110,9 +127,21 @@ export default function LongQuestEditorScreen() {
           </View>
 
           <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              STAGES <Text style={{ color: theme.dim, fontSize: 10 }}>(in order, at least 2)</Text>
-            </Text>
+            <View style={styles.stagesHeaderRow}>
+              <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
+                STAGES <Text style={{ color: theme.dim, fontSize: 10 }}>(in order, at least 2)</Text>
+              </Text>
+              <Pressable onPress={handleSuggestStages} disabled={!name.trim() || suggestingStages}>
+                <Text
+                  style={[
+                    styles.suggestText,
+                    { color: theme.accent, fontFamily: fonts.display, opacity: !name.trim() || suggestingStages ? 0.5 : 1 },
+                  ]}>
+                  {suggestingStages ? 'THINKING…' : '✨ SUGGEST STAGES'}
+                </Text>
+              </Pressable>
+            </View>
+            {suggestStagesError && <Text style={[styles.errorText, { marginBottom: 8 }]}>{suggestStagesError}</Text>}
             <View style={{ gap: 8 }}>
               {stages.map((value, i) => (
                 <View key={i} style={styles.stageInputRow}>
@@ -234,6 +263,16 @@ const styles = StyleSheet.create({
   statButtonText: {
     fontSize: 9,
     letterSpacing: 0.5,
+  },
+  stagesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 7,
+  },
+  suggestText: {
+    fontSize: 11,
+    letterSpacing: 1,
   },
   stageInputRow: {
     flexDirection: 'row',

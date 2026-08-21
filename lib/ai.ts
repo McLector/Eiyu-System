@@ -16,3 +16,14 @@ export async function suggestEasyVersions(habitName: string, stat: Stat): Promis
   if (!data?.suggestions) throw new Error('No suggestions returned');
   return data.suggestions;
 }
+
+/** R-62: break a Long Quest name into 3-6 editable stages, always optional (R-64). */
+export async function suggestStages(questName: string, stat: Stat): Promise<string[]> {
+  const { data, error } = await supabase.functions.invoke<{ stages: string[] } | AiProxyError>('ai-proxy', {
+    body: { action: 'stage-breakdown', questName, stat },
+  });
+  if (error) throw error;
+  if (data && 'error' in data) throw new Error(data.error);
+  if (!data?.stages) throw new Error('No stages returned');
+  return data.stages;
+}
