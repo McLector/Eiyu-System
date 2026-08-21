@@ -17,3 +17,11 @@ export function addUtcDays(date: Date, delta: number): Date {
   d.setUTCDate(d.getUTCDate() + delta);
   return d;
 }
+
+/** Monday of the ISO week containing `date` (Sunday counts as the end of its week, not the start). */
+export function mondayOfWeek(date: Date): Date {
+  const d = startOfUtcDay(date);
+  const dow = d.getUTCDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  return addUtcDays(d, diff);
+}

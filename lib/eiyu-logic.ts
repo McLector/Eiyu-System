@@ -60,6 +60,21 @@ export function rankFromStats(stats: Record<Stat, StatData>): Rank {
 }
 
 /**
+ * R-30: the stat targeted by this week's auto-generated Weekly Quest — the
+ * lowest level, tie-broken by lowest xp-into-level, then alphabetically so
+ * the result is deterministic rather than depending on iteration order.
+ */
+export function weakestStat(stats: Record<Stat, StatData>): Stat {
+  return STATS.reduce((weakest, stat) => {
+    const a = stats[stat];
+    const b = stats[weakest];
+    if (a.level !== b.level) return a.level < b.level ? stat : weakest;
+    if (a.xp !== b.xp) return a.xp < b.xp ? stat : weakest;
+    return stat < weakest ? stat : weakest;
+  }, STATS[0]);
+}
+
+/**
  * R-10: consecutive-day streak count. Walks backward day by day from today;
  * only days the habit is scheduled on count. Today not being completed yet
  * doesn't break the streak (it's still in progress). Any other scheduled day

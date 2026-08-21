@@ -34,6 +34,7 @@ import {
 } from '@/lib/notifications';
 import { fetchProfile, ProfileData } from '@/lib/profile';
 import { fetchStats } from '@/lib/stats';
+import { fetchOrCreateWeeklyQuest, WeeklyQuest } from '@/lib/weekly-quest';
 import { Quest, Stat, StatData, UserProfile } from '@/types/eiyu';
 
 interface EiyuStore {
@@ -55,6 +56,8 @@ interface EiyuStore {
   /** R-42: global reminder toggle. */
   notificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+  /** R-30/R-31: this week's auto-generated quest, null until the first load resolves. */
+  weeklyQuest: WeeklyQuest | null;
 }
 
 const EiyuContext = createContext<EiyuStore | null>(null);
@@ -70,6 +73,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [questsLoading, setQuestsLoading] = useState(false);
   const [questsError, setQuestsError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
+  const [weeklyQuest, setWeeklyQuest] = useState<WeeklyQuest | null>(null);
   // Long Quests are wired in Phase 10 — mock until then.
   const [longQuests, setLongQuests] = useState(initialUser.longQuests);
   // Tracks which quests were frozen as of the previous fetch, so we only
@@ -93,6 +97,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     if (!userId) return;
     const s = await fetchStats(userId);
     setStats(s);
+    const wq = await fetchOrCreateWeeklyQuest(userId, s);
+    setWeeklyQuest(wq);
   }, [userId]);
 
   const syncAllReminders = useCallback(
@@ -120,6 +126,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       setQuests([]);
       setProfile(null);
       setStats(initialUser.stats);
+      setWeeklyQuest(null);
       previouslyFrozenIds.current = new Set();
       return;
     }
@@ -127,7 +134,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     setQuestsLoading(true);
     setQuestsError(null);
     Promise.all([fetchTodayHabits(userId), fetchProfile(userId), fetchStats(userId)])
-      .then(([habits, prof, s]) => {
+      .then(async ([habits, prof, s]) => {
         if (cancelled) return;
         // seed (not notify) on cold load — we only want to notify on
         // transitions detected while the app is open, not for freezes that
@@ -136,6 +143,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setQuests(habits);
         setProfile(prof);
         setStats(s);
+        const wq = await fetchOrCreateWeeklyQuest(userId, s);
+        if (!cancelled) setWeeklyQuest(wq);
       })
       .catch(err => {
         if (!cancelled) setQuestsError(formatError(err));
@@ -261,8 +270,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       toggleStage,
       notificationsEnabled,
       setNotificationsEnabled,
+      weeklyQuest,
     }),
-    [user, darkMode, questsLoading, questsError, quests, userId, notificationsEnabled]
+    [user, darkMode, questsLoading, questsError, quests, userId, notificationsEnabled, weeklyQuest]
   );
 
   return <EiyuContext.Provider value={value}>{children}</EiyuContext.Provider>;

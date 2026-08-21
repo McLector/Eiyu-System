@@ -17,7 +17,7 @@ import { Stat } from '@/types/eiyu';
 type StatusTab = 'stats' | 'weekly';
 
 export default function StatusScreen() {
-  const { user, theme, darkMode } = useEiyu();
+  const { user, theme, darkMode, weeklyQuest } = useEiyu();
   const { session } = useAuth();
   const [tab, setTab] = useState<StatusTab>('stats');
   const [weeklyData, setWeeklyData] = useState<WeeklyDayDatum[]>([]);
@@ -76,6 +76,36 @@ export default function StatusScreen() {
             {user.name} · {user.userClass}
           </Text>
         </View>
+
+        {weeklyQuest && (
+          <GlassView style={styles.weeklyQuestCard}>
+            <View style={styles.weeklyQuestHeader}>
+              <View style={styles.weeklyQuestHeaderLeft}>
+                <StatIcon stat={weeklyQuest.stat} size={15} />
+                <Text style={[styles.weeklyQuestLabel, { color: theme.muted, fontFamily: fonts.display }]}>
+                  WEEKLY QUEST
+                </Text>
+              </View>
+              <Text style={[styles.mono, { color: STAT_COLORS[weeklyQuest.stat] }]}>
+                {Math.min(weeklyQuest.currentCount, weeklyQuest.targetCount)}/{weeklyQuest.targetCount}
+              </Text>
+            </View>
+            <Text style={[styles.weeklyQuestBody, { color: theme.text, fontFamily: fonts.body }]}>
+              Complete {weeklyQuest.targetCount} {weeklyQuest.stat} quests this week
+            </Text>
+            <View style={[styles.track, { backgroundColor: theme.track }]}>
+              <View
+                style={[
+                  styles.trackFill,
+                  {
+                    width: `${Math.min(100, (weeklyQuest.currentCount / weeklyQuest.targetCount) * 100)}%`,
+                    backgroundColor: STAT_COLORS[weeklyQuest.stat],
+                  },
+                ]}
+              />
+            </View>
+          </GlassView>
+        )}
 
         <GlassView small style={styles.tabToggle}>
           <View style={styles.tabRow}>
@@ -271,6 +301,27 @@ const styles = StyleSheet.create({
   rankSub: {
     fontSize: 13,
     marginTop: 10,
+  },
+  weeklyQuestCard: {
+    padding: 16,
+    gap: 8,
+  },
+  weeklyQuestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  weeklyQuestHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  weeklyQuestLabel: {
+    fontSize: 11,
+    letterSpacing: 1.5,
+  },
+  weeklyQuestBody: {
+    fontSize: 13,
   },
   tabToggle: {
     padding: 4,

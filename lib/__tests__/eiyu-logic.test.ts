@@ -7,7 +7,9 @@ import {
   rankFromAverageLevel,
   rankFromStats,
   streakState,
+  weakestStat,
 } from '@/lib/eiyu-logic';
+import { mondayOfWeek } from '@/lib/date-utils';
 import { StatData } from '@/types/eiyu';
 
 describe('levelProgress', () => {
@@ -185,5 +187,59 @@ describe('streakState', () => {
     const recovered = streakState(DAILY, completed, today);
     expect(recovered.state).toBe('active');
     expect(recovered.current).toBeGreaterThan(0);
+  });
+});
+
+describe('weakestStat', () => {
+  const stat = (level: number, xp = 0): StatData => ({ level, xp, xpMax: 100 });
+
+  it('picks the single lowest-level stat', () => {
+    const stats = {
+      STR: stat(10),
+      INT: stat(3),
+      DEX: stat(8),
+      WIS: stat(12),
+      CHA: stat(9),
+    };
+    expect(weakestStat(stats)).toBe('INT');
+  });
+
+  it('breaks a level tie by lowest xp-into-level', () => {
+    const stats = {
+      STR: stat(5, 80),
+      INT: stat(5, 20),
+      DEX: stat(9),
+      WIS: stat(9),
+      CHA: stat(9),
+    };
+    expect(weakestStat(stats)).toBe('INT');
+  });
+
+  it('breaks a full tie alphabetically, deterministically', () => {
+    const stats = {
+      STR: stat(5),
+      INT: stat(5),
+      DEX: stat(5),
+      WIS: stat(5),
+      CHA: stat(5),
+    };
+    expect(weakestStat(stats)).toBe('CHA');
+  });
+});
+
+describe('mondayOfWeek', () => {
+  it('returns the same date when already Monday', () => {
+    const monday = new Date('2026-08-17T12:00:00Z');
+    expect(mondayOfWeek(monday).toISOString().slice(0, 10)).toBe('2026-08-17');
+  });
+
+  it('rolls a mid-week date back to that week\'s Monday', () => {
+    const friday = new Date('2026-08-21T12:00:00Z');
+    expect(mondayOfWeek(friday).toISOString().slice(0, 10)).toBe('2026-08-17');
+  });
+
+  it('rolls Sunday back to the Monday that started its own week', () => {
+    const sunday = new Date('2026-08-23T12:00:00Z');
+    expect(mondayOfWeek(sunday).toISOString().slice(0, 10)).toBe('2026-08-17');
   });
 });
