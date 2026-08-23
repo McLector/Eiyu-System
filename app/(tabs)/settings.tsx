@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Divider } from '@/components/eiyu/divider';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { ChevronRight, MoonIcon, SunIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
+import { Screen } from '@/components/eiyu/screen';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
@@ -81,7 +82,7 @@ export default function SettingsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.body }}>
       <PageBackground />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <Screen contentContainerStyle={styles.scroll} topGap={24}>
         <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>Settings</Text>
 
         <View style={styles.section}>
@@ -159,7 +160,7 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={[styles.version, { color: theme.dim }]}>Eiyu System v0.1.0</Text>
-      </ScrollView>
+      </Screen>
     </View>
   );
 }
@@ -167,7 +168,6 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 24,
     paddingBottom: 100,
   },
   title: {

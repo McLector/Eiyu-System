@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Divider } from '@/components/eiyu/divider';
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { CheckIcon, ChevronIcon, PlusIcon, StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
+import { Screen } from '@/components/eiyu/screen';
 import { STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
@@ -24,7 +25,7 @@ export default function LongQuestsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.body }}>
       <PageBackground />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <Screen contentContainerStyle={styles.scroll} topGap={24}>
         <View style={styles.headerBlock}>
           <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>Long Quests</Text>
           <Text style={[styles.subtitle, { color: theme.muted, fontFamily: fonts.body }]}>
@@ -160,7 +161,7 @@ export default function LongQuestsScreen() {
           onPress={() => router.push('/long-quest-editor')}
           style={{ paddingVertical: 16, marginTop: 16 }}
         />
-      </ScrollView>
+      </Screen>
 
       <Modal visible={!!pendingDelete} transparent animationType="fade" onRequestClose={() => setPendingDelete(null)}>
         <View style={[styles.confirmOverlay, { backgroundColor: theme.overlay }]}>
@@ -198,7 +199,6 @@ export default function LongQuestsScreen() {
 const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 24,
     paddingBottom: 100,
   },
   headerBlock: {

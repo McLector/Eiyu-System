@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { StatIcon } from '@/components/eiyu/icons';
+import { Screen } from '@/components/eiyu/screen';
 import { STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
@@ -83,7 +84,7 @@ export default function LongQuestEditorScreen() {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={{ gap: 16 }} showsVerticalScrollIndicator={false}>
+        <Screen edges={[]} contentContainerStyle={{ gap: 16 }}>
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME</Text>
             <TextInput
@@ -193,7 +194,7 @@ export default function LongQuestEditorScreen() {
               {submitting ? 'CREATING…' : 'CREATE LONG QUEST'}
             </Text>
           </Pressable>
-        </ScrollView>
+        </Screen>
       </View>
     </View>
   );

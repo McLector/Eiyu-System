@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Divider } from '@/components/eiyu/divider';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { RadarChart } from '@/components/eiyu/radar-chart';
+import { Screen } from '@/components/eiyu/screen';
 import { RANK_CONFIG, STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
@@ -81,7 +82,7 @@ export default function StatusScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.body }}>
       <PageBackground />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <Screen contentContainerStyle={styles.scroll} topGap={24}>
         <View style={styles.rankWrap}>
           <Text style={[styles.rankLabel, { color: theme.muted, fontFamily: fonts.display }]}>
             CURRENT RANK
@@ -308,7 +309,7 @@ export default function StatusScreen() {
           </GlassView>
           </>
         )}
-      </ScrollView>
+      </Screen>
     </View>
   );
 }
@@ -316,7 +317,6 @@ export default function StatusScreen() {
 const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 24,
     paddingBottom: 100,
     gap: 16,
   },

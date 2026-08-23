@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CheckIcon, ChevronIcon } from '@/components/eiyu/icons';
+import { Screen } from '@/components/eiyu/screen';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
@@ -89,7 +90,7 @@ export default function HistoryScreen() {
           </Pressable>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <Screen edges={[]}>
           <View style={styles.monthRow}>
             <Pressable onPress={() => changeMonth(-1)} style={styles.monthNavButton}>
               <ChevronIcon direction="left" size={16} color={theme.muted} />
@@ -169,7 +170,7 @@ export default function HistoryScreen() {
               ))
             )}
           </View>
-        </ScrollView>
+        </Screen>
       </View>
     </View>
   );

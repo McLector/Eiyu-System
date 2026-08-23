@@ -13,6 +13,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
@@ -41,8 +42,12 @@ export default function RootLayout() {
     <AuthProvider>
       <EiyuProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <AppNavigator />
-          <StatusBar style="auto" />
+          {/* Improvement-pass #1: app-wide keyboard handling (Android edge-to-edge
+              makes classic adjustResize unreliable). */}
+          <KeyboardProvider>
+            <AppNavigator />
+            <StatusBar style="auto" />
+          </KeyboardProvider>
         </ThemeProvider>
       </EiyuProvider>
     </AuthProvider>

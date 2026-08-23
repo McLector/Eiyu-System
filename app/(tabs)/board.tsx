@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 import { CheckIcon, PlusIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
@@ -8,6 +8,7 @@ import { Divider } from '@/components/eiyu/divider';
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
+import { Screen } from '@/components/eiyu/screen';
 import { RANK_CONFIG, STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
@@ -147,7 +148,7 @@ export default function BoardScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.body }}>
       <PageBackground />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <Screen contentContainerStyle={styles.scroll} topGap={24}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View
@@ -270,7 +271,7 @@ export default function BoardScreen() {
           onPress={() => router.push('/quest-editor')}
           style={{ paddingVertical: 16 }}
         />
-      </ScrollView>
+      </Screen>
     </View>
   );
 }
@@ -278,7 +279,6 @@ export default function BoardScreen() {
 const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 24,
     paddingBottom: 100,
     gap: 16,
   },
