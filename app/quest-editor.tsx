@@ -1,7 +1,9 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { GhostButton } from '@/components/eiyu/ghost-button';
 import { StatIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
 import { DAYS, STATS, STAT_COLORS } from '@/constants/eiyu-data';
@@ -10,9 +12,28 @@ import { useEiyu } from '@/contexts/eiyu-store';
 import { suggestEasyVersions } from '@/lib/ai';
 import { formatError } from '@/lib/format-error';
 import { HabitInput } from '@/lib/habits';
-import { Difficulty, Stat } from '@/types/eiyu';
+import { Difficulty, QuestType, Stat } from '@/types/eiyu';
 
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
+
+/** "HH:mm" (24h, as stored) -> "h:mm AM/PM" for the themed trigger. */
+function formatTime12(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const suffix = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+function timeStringToDate(hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function dateToTimeString(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 const difficultyColor: Record<Difficulty, string> = {
   Hard: '#f87171',
@@ -22,12 +43,22 @@ const difficultyColor: Record<Difficulty, string> = {
 
 export default function QuestEditorScreen() {
   const { theme, user, saveHabit, archiveQuest } = useEiyu();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, type } = useLocalSearchParams<{ id?: string; type?: string }>();
   const quest = id ? user.quests.find(q => q.id === id) ?? null : null;
+
+  // Editing locks the quest type; creation takes it from the board's chooser
+  // popup. Round-tripping questType/description here is what keeps an edit
+  // from silently reverting a one-time quest back into a recurring habit.
+  const [questType] = useState<QuestType>(
+    quest?.questType ?? (type === 'one_time' ? 'one_time' : 'habit')
+  );
+  const isOneTime = questType === 'one_time';
 
   const [name, setName] = useState(quest?.name ?? '');
   const [easyVersion, setEasyVersion] = useState(quest?.easyVersion ?? '');
+  const [description, setDescription] = useState(quest?.description ?? '');
   const [time, setTime] = useState(quest?.time ?? '08:00');
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [days, setDays] = useState<number[]>(quest?.days ?? [0, 1, 2, 3, 4, 5, 6]);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
@@ -55,13 +86,16 @@ export default function QuestEditorScreen() {
     setDays(prev => (prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()));
   };
 
-  const valid = name.trim().length > 0 && easyVersion.trim().length > 0;
+  // One-time quests have no easy version — the name alone validates them.
+  const valid = name.trim().length > 0 && (isOneTime || easyVersion.trim().length > 0);
 
   const handleSave = async () => {
     if (!valid || submitting) return;
     const input: HabitInput = {
       name: name.trim(),
-      easyVersion: easyVersion.trim(),
+      easyVersion: isOneTime ? null : easyVersion.trim(),
+      description: description.trim(),
+      questType,
       time,
       days,
       stat,
@@ -100,7 +134,7 @@ export default function QuestEditorScreen() {
         <View style={[styles.handle, { backgroundColor: theme.accentBorder }]} />
         <View style={styles.headerRow}>
           <Text style={[styles.headerTitle, { color: theme.text, fontFamily: fonts.display }]}>
-            {quest ? 'EDIT QUEST' : 'NEW QUEST'}
+            {quest ? 'EDIT QUEST' : isOneTime ? 'NEW ONE-TIME QUEST' : 'NEW QUEST'}
           </Text>
           <Pressable onPress={() => router.back()}>
             <Text style={[styles.closeX, { color: theme.dim }]}>×</Text>
@@ -119,6 +153,23 @@ export default function QuestEditorScreen() {
             />
           </View>
 
+          <View>
+            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
+              NOTE <Text style={{ color: theme.dim, fontSize: 10 }}>(optional)</Text>
+            </Text>
+            <TextInput
+              style={[styles.field, styles.descriptionField, fieldStyle]}
+              placeholder="Context, links, why it matters…"
+              placeholderTextColor={theme.dim}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+          </View>
+
+          {!isOneTime && (
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
               EASY VERSION <Text style={{ color: theme.dim, fontSize: 10 }}>(recovery fallback)</Text>
@@ -157,20 +208,56 @@ export default function QuestEditorScreen() {
               </View>
             )}
           </View>
+          )}
 
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              REMINDER TIME
+              {isOneTime ? 'REMINDER TIME (TODAY)' : 'REMINDER TIME'}
             </Text>
-            <TextInput
-              style={[styles.field, fieldStyle]}
-              placeholder="08:00"
-              placeholderTextColor={theme.dim}
-              value={time}
-              onChangeText={setTime}
-            />
+            {/* Themed trigger -> native platform dialog (#9). Always 12h AM/PM
+                BY DESIGN per the original request ("users shouldn't have to
+                type, no 24-hour format") - is24Hour only affects Android; iOS
+                follows locale regardless. Not locale-adaptive on purpose.
+                Replaces the old free-text "08:00" input users had to type into. */}
+            <Pressable
+              style={[styles.field, styles.timeTrigger, fieldStyle]}
+              onPress={() => setTimePickerVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Choose reminder time">
+              <Text style={{ color: theme.text, fontFamily: fonts.body }}>{formatTime12(time)}</Text>
+            </Pressable>
+            {timePickerVisible && (
+              <View>
+                <DateTimePicker
+                  value={timeStringToDate(time)}
+                  mode="time"
+                  is24Hour={false}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, date) => {
+                    if (Platform.OS === 'android') {
+                      // Android's dialog is modal and fires onChange once.
+                      setTimePickerVisible(false);
+                      if (event.type === 'set' && date) {
+                        setTime(dateToTimeString(date));
+                      }
+                    } else {
+                      // iOS spinner fires continuously while scrolling —
+                      // auto-closing here would unmount it on the first touch.
+                      // Update live; the explicit DONE button closes it.
+                      if (date) {
+                        setTime(dateToTimeString(date));
+                      }
+                    }
+                  }}
+                />
+                {Platform.OS === 'ios' && (
+                  <GhostButton label="DONE" onPress={() => setTimePickerVisible(false)} />
+                )}
+              </View>
+            )}
           </View>
 
+          {!isOneTime && (
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>DAYS</Text>
             <View style={styles.daysRow}>
@@ -199,6 +286,7 @@ export default function QuestEditorScreen() {
               })}
             </View>
           </View>
+          )}
 
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>STAT</Text>
@@ -362,6 +450,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 11,
     paddingHorizontal: 14,
+  },
+  descriptionField: {
+    minHeight: 76,
+  },
+  timeTrigger: {
+    justifyContent: 'center',
   },
   daysRow: {
     flexDirection: 'row',

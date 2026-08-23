@@ -21,11 +21,17 @@ async function countCompletionsForStatThisWeek(
   weekStart: string,
   weekEnd: string
 ): Promise<number> {
+  // Decision (Phase 4 review): one-time quests are EXCLUDED from the weekly
+  // count. The target was calibrated around habit cadence ("roughly one
+  // completion per weekday"); letting a burst of same-day todos blow through
+  // it would trivialize the weekly loop. XP still counts fully — this only
+  // affects progress toward the auto-generated Weekly Quest.
   const { data: habits, error: habitsError } = await supabase
     .from('habits')
     .select('id')
     .eq('user_id', userId)
-    .eq('stat', stat);
+    .eq('stat', stat)
+    .neq('quest_type', 'one_time');
   if (habitsError) throw habitsError;
   const habitIds = (habits ?? []).map(h => h.id);
   if (habitIds.length === 0) return 0;

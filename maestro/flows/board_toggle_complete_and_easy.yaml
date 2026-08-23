@@ -2,6 +2,8 @@ appId: com.anonymous.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
+# Phase 4: the "+" button now opens a quest-type chooser first.
+- tapOn: "HABIT QUEST"
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Toggle Complete Habit"
 - tapOn: "e.g. Code for 20 minutes"

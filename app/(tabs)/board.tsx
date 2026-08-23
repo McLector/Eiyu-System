@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 
 import { CheckIcon, PlusIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
@@ -42,6 +42,7 @@ function QuestRow({
   xpToast: number | null;
 }) {
   const { theme } = useEiyu();
+  const [noteOpen, setNoteOpen] = useState(false);
   const isCompleted = quest.completed;
   const isFrozen = quest.frozen && !isCompleted;
   const diffColor = quest.difficulty === 'Hard' ? '#f87171' : quest.difficulty === 'Medium' ? '#fbbf24' : '#4ade80';
@@ -94,11 +95,30 @@ function QuestRow({
             {quest.name}
           </Text>
           <View style={styles.questMetaRow}>
-            {quest.streak > 0 && (
-              <Text style={[styles.mono, { color: theme.muted }]}>🔥 {quest.streak}</Text>
+            {quest.questType === 'one_time' ? (
+              <View style={styles.oneTimePill}>
+                <Text style={styles.oneTimePillText}>TODAY</Text>
+              </View>
+            ) : (
+              quest.streak > 0 && (
+                <Text style={[styles.mono, { color: theme.muted }]}>🔥 {quest.streak}</Text>
+              )
             )}
             <Text style={[styles.questTime, { color: theme.dim, fontFamily: fonts.body }]}>{quest.time}</Text>
           </View>
+          {quest.description && (
+            <Pressable
+              onPress={() => setNoteOpen(o => !o)}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={noteOpen ? 'Hide note' : 'Show note'}>
+              <Text
+                numberOfLines={noteOpen ? undefined : 1}
+                style={[styles.questNote, { color: theme.muted, fontFamily: fonts.body }]}>
+                📝 {quest.description}
+              </Text>
+            </Pressable>
+          )}
         </Pressable>
 
         <View style={styles.questTags}>
@@ -125,6 +145,7 @@ export default function BoardScreen() {
   const { user, theme, toggleQuest, completeEasy, completeRecovery, questsLoading, questsError, retryQuests } =
     useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
+  const [showTypeChooser, setShowTypeChooser] = useState(false);
   const frozenQuest = user.quests.find(q => q.frozen && !q.completed);
   const completed = user.quests.filter(q => q.completed).length;
   const total = user.quests.length;
@@ -141,7 +162,9 @@ export default function BoardScreen() {
   };
 
   const handleCompleteEasy = (quest: Quest) => {
-    if (!quest.completed) flashXp(quest.id, EASY_XP);
+    // One-time quests have no easy version — completeEasy no-ops in the store,
+    // so the toast must not claim XP nothing received.
+    if (!quest.completed && quest.easyVersion) flashXp(quest.id, EASY_XP);
     completeEasy(quest.id);
   };
 
@@ -174,15 +197,31 @@ export default function BoardScreen() {
 
         <GlassView style={styles.statBar}>
           <View style={styles.statGrid}>
-            {STATS.map(stat => (
-              <View key={stat} style={styles.statCell}>
-                <StatIcon stat={stat} size={15} />
-                <Text style={[styles.statLabel, { color: theme.muted }]}>{stat}</Text>
-                <Text style={[styles.statLevel, { color: STAT_COLORS[stat], fontFamily: fonts.mono }]}>
-                  {user.stats[stat].level}
-                </Text>
-              </View>
-            ))}
+            {STATS.map(stat => {
+              const s = user.stats[stat];
+              const pct = Math.min(100, Math.max(0, Math.round((s.xp / s.xpMax) * 100)));
+              return (
+                <View key={stat} style={styles.statCell}>
+                  <StatIcon stat={stat} size={15} />
+                  <Text style={[styles.statLabel, { color: theme.muted }]}>{stat}</Text>
+                  <Text style={[styles.statLevel, { color: STAT_COLORS[stat], fontFamily: fonts.mono }]}>
+                    {s.level}
+                  </Text>
+                  {/* #14 fix: a level digit alone takes ~5 completions to move,
+                      which read as "my stat didn't increase". The bar gives
+                      per-completion feedback right where quests are completed
+                      (the Status tab already had the full version). */}
+                  <View
+                    style={[styles.xpTrack, { backgroundColor: theme.track }]}
+                    accessible
+                    accessibilityRole="progressbar"
+                    accessibilityValue={{ now: pct, min: 0, max: 100 }}
+                    accessibilityLabel={`${stat} XP progress: ${pct}% to level ${s.level + 1}`}>
+                    <View style={[styles.xpFill, { backgroundColor: STAT_COLORS[stat], width: `${pct}%` }]} />
+                  </View>
+                </View>
+              );
+            })}
           </View>
         </GlassView>
 
@@ -268,15 +307,100 @@ export default function BoardScreen() {
         <GhostButton
           label="ADD A QUEST"
           icon={<PlusIcon size={18} color={theme.accent} />}
-          onPress={() => router.push('/quest-editor')}
+          onPress={() => setShowTypeChooser(true)}
           style={{ paddingVertical: 16 }}
         />
       </Screen>
+
+      {/* Improvement-pass #7: pick the quest kind up-front — a repeating habit
+          (streaks) or a one-time todo for today only. */}
+      <Modal
+        visible={showTypeChooser}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTypeChooser(false)}>
+        <Pressable style={styles.chooserOverlay} onPress={() => setShowTypeChooser(false)}>
+          {/* No-op responder so tapping inside the card (title/subtitle area)
+              doesn't fall through to the backdrop's dismiss handler. */}
+          <Pressable
+            style={[styles.chooserCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}
+            onPress={() => {}}>
+            <Text style={[styles.chooserTitle, { color: theme.text, fontFamily: fonts.display }]}>
+              NEW QUEST
+            </Text>
+            <Text style={[styles.chooserSub, { color: theme.muted, fontFamily: fonts.body }]}>
+              What kind of quest is this?
+            </Text>
+            <Pressable
+              onPress={() => {
+                setShowTypeChooser(false);
+                router.push('/quest-editor');
+              }}
+              style={[styles.chooserOption, { borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>
+              <Text style={[styles.chooserOptionTitle, { color: theme.accent, fontFamily: fonts.display }]}>
+                HABIT QUEST
+              </Text>
+              <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
+                Repeats on chosen days — build streaks
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setShowTypeChooser(false);
+                router.push({ pathname: '/quest-editor', params: { type: 'one_time' } });
+              }}
+              style={[styles.chooserOption, { borderColor: theme.glassBorder }]}>
+              <Text style={[styles.chooserOptionTitle, { color: theme.text, fontFamily: fonts.display }]}>
+                ONE-TIME QUEST
+              </Text>
+              <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
+                A todo for today only — done or gone, no streak
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  chooserOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  chooserCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 20,
+    gap: 12,
+  },
+  chooserTitle: {
+    fontSize: 18,
+    letterSpacing: 1.5,
+  },
+  chooserSub: {
+    fontSize: 13,
+    marginTop: -6,
+  },
+  chooserOption: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 16,
+    gap: 4,
+  },
+  chooserOptionTitle: {
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+  chooserOptionDesc: {
+    fontSize: 12,
+  },
   scroll: {
     paddingHorizontal: 16,
     paddingBottom: 100,
@@ -345,6 +469,36 @@ const styles = StyleSheet.create({
   },
   statLevel: {
     fontSize: 16,
+  },
+  xpTrack: {
+    height: 3,
+    borderRadius: 1.5,
+    width: '80%',
+    alignSelf: 'center',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  xpFill: {
+    height: '100%',
+    borderRadius: 1.5,
+  },
+  oneTimePill: {
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.35)',
+    backgroundColor: 'rgba(251,191,36,0.12)',
+    borderRadius: 6,
+    paddingVertical: 1,
+    paddingHorizontal: 6,
+  },
+  oneTimePillText: {
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: '#fbbf24',
+    fontFamily: fonts.displaySemi,
+  },
+  questNote: {
+    fontSize: 12,
+    marginTop: 3,
   },
   recoveryBanner: {
     borderWidth: 1,

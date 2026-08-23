@@ -1,0 +1,23 @@
+appId: com.anonymous.eiyusystem
+---
+# Phase 4 (#7): the board's "+" opens a quest-type chooser; a ONE-TIME quest
+# is today-only, has no easy version or day-picker, and validates on name alone.
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- assertVisible: "NEW QUEST"
+- tapOn: "ONE-TIME QUEST"
+- assertVisible: "NEW ONE-TIME QUEST"
+- assertNotVisible: "EASY VERSION"
+- assertNotVisible: "DAYS"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Maestro One-Time Quest"
+- hideKeyboard
+- tapOn: "CREATE QUEST"
+- assertVisible: "Maestro One-Time Quest"
+
+# Cleanup: same persistent-account reasoning as habit_create_happy —
+# edit it away so later flows start from a clean board.
+- tapOn: "Maestro One-Time Quest"
+- assertVisible: "EDIT QUEST"
+- tapOn: "DELETE"
+- assertNotVisible: "Maestro One-Time Quest"

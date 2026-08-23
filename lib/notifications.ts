@@ -53,14 +53,44 @@ async function writeIdMap(map: Record<string, string[]>) {
   await AsyncStorage.setItem(NOTIFICATION_IDS_KEY, JSON.stringify(map));
 }
 
-/** R-03/R-40: cancel any previously-scheduled reminders for a habit (edit/archive). */
-export async function cancelHabitReminders(habitId: string) {
-  if (!SUPPORTED) return;
-  const map = await readIdMap();
+/**
+ * The id map is a plain non-atomic read-modify-write on AsyncStorage.
+ * Concurrent scheduling (e.g. syncAllReminders re-arming several one-time
+ * reminders via Promise.all) would let two calls read before either writes,
+ * and the second write clobbers the first quest's entry - leaving an
+ * orphaned OS notification that later cleanup can't find. Serializing every
+ * map operation through this queue makes each read-modify-write atomic
+ * relative to the others.
+ */
+let mapOpQueue: Promise<unknown> = Promise.resolve();
+function serializeMapOp<T>(op: () => Promise<T>): Promise<T> {
+  const run = mapOpQueue.then(op, op);
+  mapOpQueue = run.catch(() => {});
+  return run;
+}
+
+/**
+ * Unlocked cancel used by the schedule* functions while they ALREADY hold the
+ * map lock - calling the public cancelHabitReminders here would re-enter the
+ * non-reentrant mutex and deadlock the shared queue permanently.
+ */
+async function cancelHabitRemindersLocked(
+  map: Record<string, string[]>,
+  habitId: string
+): Promise<void> {
   const ids = map[habitId] ?? [];
   await Promise.all(ids.map(id => Notifications.cancelScheduledNotificationAsync(id)));
   delete map[habitId];
-  await writeIdMap(map);
+}
+
+/** R-03/R-40: cancel any previously-scheduled reminders for a habit (edit/archive). */
+export async function cancelHabitReminders(habitId: string) {
+  if (!SUPPORTED) return;
+  await serializeMapOp(async () => {
+    const map = await readIdMap();
+    await cancelHabitRemindersLocked(map, habitId);
+    await writeIdMap(map);
+  });
 }
 
 /**
@@ -70,31 +100,78 @@ export async function cancelHabitReminders(habitId: string) {
  */
 export async function scheduleHabitReminders(habitId: string, input: ReminderSchedule) {
   if (!SUPPORTED) return;
-  await cancelHabitReminders(habitId);
+  await serializeMapOp(async () => {
+    const map = await readIdMap();
+    // Unlocked variant — we already hold the map lock (see deadlock note above).
+    await cancelHabitRemindersLocked(map, habitId);
 
-  const [hour, minute] = input.time.split(':').map(Number);
-  const ids = await Promise.all(
-    input.days.map(day =>
-      Notifications.scheduleNotificationAsync({
-        content: {
-          title: input.name,
-          body: 'Time for your quest — tap to open Eiyu System.',
-          sound: true,
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-          weekday: day + 1,
-          hour,
-          minute,
-          channelId: CHANNEL_ID,
-        },
-      })
-    )
-  );
+    const [hour, minute] = input.time.split(':').map(Number);
+    const ids = await Promise.all(
+      input.days.map(day =>
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: input.name,
+            body: 'Time for your quest — tap to open Eiyu System.',
+            sound: true,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+            weekday: day + 1,
+            hour,
+            minute,
+            channelId: CHANNEL_ID,
+          },
+        })
+      )
+    );
 
-  const map = await readIdMap();
-  map[habitId] = ids;
-  await writeIdMap(map);
+    map[habitId] = ids;
+    await writeIdMap(map);
+  });
+}
+
+/**
+ * One-time quests (#7): a single DATE trigger at today's HH:mm (local clock,
+ * matching how WEEKLY triggers interpret hour/minute). If that moment has
+ * already passed, nothing is scheduled — the quest is today-only and silently
+ * reminding about a missed todo would violate the app's no-shame principle
+ * (R-15). IDs land in the same map, so cancelHabitReminders/edit/archive
+ * clean these up exactly like weekly ones.
+ */
+export async function scheduleOneTimeReminder(
+  habitId: string,
+  input: { name: string; time: string }
+) {
+  if (!SUPPORTED) return;
+  await serializeMapOp(async () => {
+    const map = await readIdMap();
+    // Unlocked variant — we already hold the map lock (see deadlock note above).
+    await cancelHabitRemindersLocked(map, habitId);
+
+    const [hour, minute] = input.time.split(':').map(Number);
+    const at = new Date();
+    at.setHours(hour, minute, 0, 0);
+    if (at.getTime() <= Date.now()) {
+      await writeIdMap(map); // persist the cancel even when nothing is scheduled
+      return;
+    }
+
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: input.name,
+        body: 'One-time quest reminder — tap to open Eiyu System.',
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: at,
+        channelId: CHANNEL_ID,
+      },
+    });
+
+    map[habitId] = [id];
+    await writeIdMap(map);
+  });
 }
 
 export async function cancelAllHabitReminders() {
