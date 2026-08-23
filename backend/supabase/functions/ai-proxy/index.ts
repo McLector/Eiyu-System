@@ -35,7 +35,11 @@ async function callGeminiForStringArray(system: string, user: string, maxItems: 
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: user }] }],
         generationConfig: {
-          maxOutputTokens: 2048,
+          // Improvement-pass #11: a 3-6 item string array never needed 2048
+          // tokens; the cap dominated end-to-end latency (deploy with
+          // `supabase functions deploy ai-proxy` to take effect). The weekly
+          // summary keeps its larger prose budget below.
+          maxOutputTokens: 512,
           responseMimeType: 'application/json',
           responseSchema: {
             type: 'ARRAY',
