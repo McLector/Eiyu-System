@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'rea
 
 import { useEiyu } from '@/contexts/eiyu-store';
 import { fonts } from '@/constants/eiyu-theme';
+import { hapticLight } from '@/lib/haptics';
 
 export function GhostButton({
   label,
@@ -20,6 +21,7 @@ export function GhostButton({
   return (
     <Pressable
       onPress={onPress}
+      onPressIn={hapticLight}
       disabled={disabled}
       style={({ pressed }) => [
         styles.button,

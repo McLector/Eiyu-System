@@ -176,6 +176,21 @@ export interface Database {
         Args: { p_stat: StatKey; p_delta: number };
         Returns: undefined;
       };
+      /** Migration 012: atomic completion insert + XP award in one call. */
+      complete_habit: {
+        Args: {
+          p_habit_id: string;
+          p_completed_on: string;
+          p_kind: CompletionKind;
+          p_xp: number;
+        };
+        Returns: undefined;
+      };
+      /** Migration 013: atomic undo - delete completion + reverse XP. */
+      undo_habit_completion: {
+        Args: { p_habit_id: string; p_completed_on: string };
+        Returns: undefined;
+      };
     };
   };
 }

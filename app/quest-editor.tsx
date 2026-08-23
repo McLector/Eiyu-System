@@ -11,6 +11,7 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { suggestEasyVersions } from '@/lib/ai';
 import { formatError } from '@/lib/format-error';
+import { hapticLight, hapticSuccess } from '@/lib/haptics';
 import { HabitInput } from '@/lib/habits';
 import { Difficulty, QuestType, Stat } from '@/types/eiyu';
 
@@ -105,6 +106,7 @@ export default function QuestEditorScreen() {
     setError(null);
     try {
       await saveHabit(input, quest?.id);
+      hapticSuccess();
       router.back();
     } catch (err) {
       setError(formatError(err));
@@ -119,6 +121,7 @@ export default function QuestEditorScreen() {
     setError(null);
     try {
       await archiveQuest(quest.id);
+      hapticLight();
       router.back();
     } catch (err) {
       setError(formatError(err));

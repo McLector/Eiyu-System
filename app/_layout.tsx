@@ -84,12 +84,15 @@ function AppNavigator() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen
           name="quest-editor"
-          options={{ presentation: 'modal', headerShown: false }}
+          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }}
         />
-        <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen
+          name="history"
+          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }}
+        />
         <Stack.Screen
           name="long-quest-editor"
-          options={{ presentation: 'modal', headerShown: false }}
+          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }}
         />
       </Stack.Protected>
     </Stack>

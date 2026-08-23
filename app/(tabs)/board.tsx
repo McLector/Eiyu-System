@@ -12,6 +12,7 @@ import { Screen } from '@/components/eiyu/screen';
 import { RANK_CONFIG, STATS, STAT_COLORS } from '@/constants/eiyu-data';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { hapticLight, hapticSuccess } from '@/lib/haptics';
 import { EASY_XP, FULL_XP } from '@/lib/eiyu-logic';
 import { Quest, Rank } from '@/types/eiyu';
 
@@ -57,6 +58,14 @@ function QuestRow({
             testID="quest-checkbox"
             onPress={onToggle}
             onLongPress={onCompleteEasy}
+            hitSlop={8}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isCompleted }}
+            accessibilityLabel={`${quest.name}${isCompleted ? ' (completed)' : ''}`}
+            accessibilityActions={[{ name: 'longpress', label: 'Complete easy version' }]}
+            onAccessibilityAction={event => {
+              if (event.nativeEvent.actionName === 'longpress') onCompleteEasy();
+            }}
             style={[
               styles.checkbox,
               {
@@ -157,14 +166,23 @@ export default function BoardScreen() {
   };
 
   const handleToggle = (quest: Quest) => {
-    if (!quest.completed) flashXp(quest.id, FULL_XP);
+    if (!quest.completed) {
+      // Milestone: completing gets the success cue; undo is a plain tap.
+      hapticSuccess();
+      flashXp(quest.id, FULL_XP);
+    } else {
+      hapticLight();
+    }
     toggleQuest(quest.id);
   };
 
   const handleCompleteEasy = (quest: Quest) => {
     // One-time quests have no easy version — completeEasy no-ops in the store,
     // so the toast must not claim XP nothing received.
-    if (!quest.completed && quest.easyVersion) flashXp(quest.id, EASY_XP);
+    if (!quest.completed && quest.easyVersion) {
+      hapticLight();
+      flashXp(quest.id, EASY_XP);
+    }
     completeEasy(quest.id);
   };
 
