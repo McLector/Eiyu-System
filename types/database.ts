@@ -6,6 +6,8 @@ export type StatKey = 'STR' | 'INT' | 'DEX' | 'WIS' | 'CHA';
 export type DifficultyKey = 'Easy' | 'Medium' | 'Hard';
 export type CompletionKind = 'full' | 'easy';
 export type ThemeKey = 'dark' | 'light';
+/** Recurring habit vs one-time (today-only) quest — see 011_quest_types.sql. */
+export type QuestTypeKey = 'habit' | 'one_time';
 
 export interface Database {
   public: {
@@ -45,7 +47,9 @@ export interface Database {
           id: string;
           user_id: string;
           name: string;
-          easy_version: string;
+          easy_version: string | null;
+          description: string | null;
+          quest_type: QuestTypeKey;
           stat: StatKey;
           difficulty: DifficultyKey;
           reminder_time: string;
@@ -54,10 +58,9 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Partial<Database['public']['Tables']['habits']['Row']> & {
+        Insert: Partial<Omit<Database['public']['Tables']['habits']['Row'], 'user_id'>> & {
           user_id: string;
           name: string;
-          easy_version: string;
           stat: StatKey;
         };
         Update: Partial<Database['public']['Tables']['habits']['Row']>;

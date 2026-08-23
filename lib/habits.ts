@@ -1,36 +1,50 @@
 import { addUtcDays, toDateKey } from '@/lib/date-utils';
 import { streakState } from '@/lib/eiyu-logic';
+import { todayQuestsFilter } from '@/lib/quest-recurrence';
 import { supabase } from '@/lib/supabase';
 import { Database } from '@/types/database';
-import { Difficulty, Quest, Stat } from '@/types/eiyu';
+import { Difficulty, Quest, QuestType, Stat } from '@/types/eiyu';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
 
 function toQuest(row: HabitRow, completedToday: boolean, completedDates: Set<string>, now: Date): Quest {
-  const state = streakState(row.days, completedDates, now, new Date(row.created_at));
+  // One-time quests have no streak/freeze mechanics (binary done/not-done) —
+  // skip the streak computation entirely so a missed day can never freeze one.
+  const state =
+    row.quest_type === 'one_time'
+      ? undefined
+      : streakState(row.days, completedDates, now, new Date(row.created_at));
   return {
     id: row.id,
     name: row.name,
     stat: row.stat,
     difficulty: row.difficulty,
     easyVersion: row.easy_version,
+    description: row.description,
+    questType: row.quest_type,
     time: row.reminder_time.slice(0, 5),
     days: row.days,
-    streak: state.current,
-    frozen: state.state === 'frozen',
-    frozenHoursLeft: state.frozenHoursLeft,
-    frozenDate: state.frozenDate,
+    streak: state?.current ?? 0,
+    frozen: state?.state === 'frozen',
+    frozenHoursLeft: state?.frozenHoursLeft,
+    frozenDate: state?.frozenDate,
     completed: completedToday,
   };
 }
 
-/** Habits scheduled for today, sorted by reminder time, with today's completion state and streak (R-10). */
+/**
+ * Habits scheduled for today, sorted by reminder time, with today's completion
+ * state and streak (R-10). Recurring habits match by day-of-week; ONE-TIME
+ * quests appear only on their creation day (UTC date key, consistent with the
+ * rest of the app's UTC-day math). That explicit created_at window is the
+ * recurrence guard — without it, a one-time row carrying the default
+ * days = [0..6] would reappear every single day.
+ */
 export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   const today = new Date();
   // UTC throughout to stay consistent with completed_on (an ISO date string)
   // and streakState's day-of-week math — mixing local getDay() with UTC date
   // keys silently shifts the day for users outside UTC.
-  const dayOfWeek = today.getUTCDay();
   const todayStr = toDateKey(today);
 
   const { data: habits, error } = await supabase
@@ -38,7 +52,7 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
     .select('*')
     .eq('user_id', userId)
     .eq('archived', false)
-    .contains('days', [dayOfWeek])
+    .or(todayQuestsFilter(today))
     .order('reminder_time', { ascending: true });
   if (error) throw error;
   if (!habits || habits.length === 0) return [];
@@ -70,25 +84,36 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
 
 export interface HabitInput {
   name: string;
-  easyVersion: string;
+  /** One-time quests have no easy/recovery version — leave null (011_quest_types.sql). */
+  easyVersion?: string | null;
   stat: Stat;
   difficulty: Difficulty;
   time: string;
   days: number[];
+  questType?: QuestType;
+  /** Optional note attached to the quest. */
+  description?: string | null;
+}
+
+/** Shared insert/update column mapping so both write paths stay in lockstep. */
+function habitColumns(input: HabitInput) {
+  return {
+    name: input.name,
+    easy_version:
+      input.questType === 'one_time' ? null : input.easyVersion?.trim() ? input.easyVersion.trim() : null,
+    description: input.description?.trim() ? input.description.trim() : null,
+    quest_type: input.questType ?? ('habit' as QuestType),
+    stat: input.stat,
+    difficulty: input.difficulty,
+    reminder_time: input.time,
+    days: input.days,
+  };
 }
 
 export async function createHabit(userId: string, input: HabitInput): Promise<string> {
   const { data, error } = await supabase
     .from('habits')
-    .insert({
-      user_id: userId,
-      name: input.name,
-      easy_version: input.easyVersion,
-      stat: input.stat,
-      difficulty: input.difficulty,
-      reminder_time: input.time,
-      days: input.days,
-    })
+    .insert({ user_id: userId, ...habitColumns(input) })
     .select('id')
     .single();
   if (error) throw error;
@@ -102,29 +127,49 @@ export interface ActiveHabitReminder {
   days: number[];
 }
 
-/** All non-archived habits regardless of today's schedule — for (re)scheduling local reminders (R-40). */
+/**
+ * All non-archived RECURRING habits regardless of today's schedule — for
+ * (re)scheduling local reminders (R-40). One-time quests are excluded on
+ * purpose: their reminders are one-shots arranged at creation time, and
+ * letting the reminder resync see them would revert that back into a
+ * recurring pattern every time the toggle flips.
+ */
 export async function fetchAllActiveHabits(userId: string): Promise<ActiveHabitReminder[]> {
   const { data, error } = await supabase
     .from('habits')
     .select('id, name, reminder_time, days')
     .eq('user_id', userId)
-    .eq('archived', false);
+    .eq('archived', false)
+    .neq('quest_type', 'one_time');
   if (error) throw error;
   return (data ?? []).map(h => ({ id: h.id, name: h.name, time: h.reminder_time.slice(0, 5), days: h.days }));
 }
 
-export async function updateHabit(id: string, input: HabitInput) {
-  const { error } = await supabase
+/**
+ * One-time quests created TODAY (UTC) — for re-arming their one-shot
+ * reminders after cancelAllHabitReminders wipes the shared id map
+ * (notifications toggle off/on). The created-today window matters: older
+ * one-time quests are already off the board, so their reminders must not
+ * come back.
+ */
+export async function fetchTodayOneTimeHabits(
+  userId: string
+): Promise<{ id: string; name: string; time: string }[]> {
+  const today = new Date();
+  const { data, error } = await supabase
     .from('habits')
-    .update({
-      name: input.name,
-      easy_version: input.easyVersion,
-      stat: input.stat,
-      difficulty: input.difficulty,
-      reminder_time: input.time,
-      days: input.days,
-    })
-    .eq('id', id);
+    .select('id, name, reminder_time')
+    .eq('user_id', userId)
+    .eq('archived', false)
+    .eq('quest_type', 'one_time')
+    .gte('created_at', toDateKey(today))
+    .lt('created_at', toDateKey(addUtcDays(today, 1)));
+  if (error) throw error;
+  return (data ?? []).map(h => ({ id: h.id, name: h.name, time: h.reminder_time.slice(0, 5) }));
+}
+
+export async function updateHabit(id: string, input: HabitInput) {
+  const { error } = await supabase.from('habits').update(habitColumns(input)).eq('id', id);
   if (error) throw error;
 }
 

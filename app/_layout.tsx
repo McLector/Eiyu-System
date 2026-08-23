@@ -9,6 +9,7 @@ import {
   Rajdhani_600SemiBold,
   Rajdhani_700Bold,
 } from '@expo-google-fonts/rajdhani';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -18,7 +19,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/contexts/auth-store';
-import { EiyuProvider } from '@/contexts/eiyu-store';
+import { EiyuProvider, persister, queryClient } from '@/contexts/eiyu-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 SplashScreen.preventAutoHideAsync();
@@ -39,18 +40,26 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <AuthProvider>
-      <EiyuProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          {/* Improvement-pass #1: app-wide keyboard handling (Android edge-to-edge
-              makes classic adjustResize unreliable). */}
-          <KeyboardProvider>
-            <AppNavigator />
-            <StatusBar style="auto" />
-          </KeyboardProvider>
-        </ThemeProvider>
-      </EiyuProvider>
-    </AuthProvider>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        // A week of local-first reads; stale data still revalidates on mount.
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+      }}>
+      <AuthProvider>
+        <EiyuProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            {/* Improvement-pass #1: app-wide keyboard handling (Android edge-to-edge
+                makes classic adjustResize unreliable). */}
+            <KeyboardProvider>
+              <AppNavigator />
+              <StatusBar style="auto" />
+            </KeyboardProvider>
+          </ThemeProvider>
+        </EiyuProvider>
+      </AuthProvider>
+    </PersistQueryClientProvider>
   );
 }
 

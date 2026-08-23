@@ -1,3 +1,22 @@
+/**
+ * Eiyu store - Phase 3 improvement pass.
+ *
+ * TanStack Query is now the fetch/cache engine: stale-while-revalidate reads,
+ * request dedup, retry, and AsyncStorage persistence (local-first hydrate).
+ * The useEiyu() public API below is UNCHANGED from the pre-Phase-3 store -
+ * screens consume it exactly as before; only the internals moved.
+ *
+ * Side-effect orchestration that does not map onto queries lives in effects
+ * inside this provider:
+ * - frozen-recovery notifications fire only on the transition INTO frozen,
+ *   never on cold/hydrated loads (those are seeded silently);
+ * - reminder rescheduling follows userId/notificationsEnabled;
+ * - the weekly quest chains off freshly loaded stats.
+ */
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
+import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import {
   createContext,
   useCallback,
@@ -19,17 +38,22 @@ import {
   archiveHabit,
   createHabit,
   fetchAllActiveHabits,
+  fetchTodayOneTimeHabits,
   fetchTodayHabits,
   HabitInput,
   updateHabit,
 } from '@/lib/habits';
-import { getNotificationsEnabled, setNotificationsEnabled as persistNotificationsEnabled } from '@/lib/notification-prefs';
+import {
+  getNotificationsEnabled,
+  setNotificationsEnabled as persistNotificationsEnabled,
+} from '@/lib/notification-prefs';
 import {
   cancelAllHabitReminders,
   cancelHabitReminders,
   ensureNotificationSetup,
   notifyRecoveryQuestGenerated,
   requestNotificationPermissions,
+  scheduleOneTimeReminder,
   scheduleHabitReminders,
 } from '@/lib/notifications';
 import {
@@ -39,10 +63,30 @@ import {
   LongQuestInput,
   setStageDone,
 } from '@/lib/long-quests';
-import { fetchProfile, ProfileData } from '@/lib/profile';
+import { fetchProfile } from '@/lib/profile';
 import { fetchStats } from '@/lib/stats';
 import { fetchOrCreateWeeklyQuest, WeeklyQuest } from '@/lib/weekly-quest';
-import { LongQuest, Quest, Stat, StatData, UserProfile } from '@/types/eiyu';
+import { LongQuest, Quest, UserProfile } from '@/types/eiyu';
+
+/** App-wide client - also used by PersistQueryClientProvider in app/_layout.tsx. */
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Local-first feel: cached data renders instantly, background revalidate
+      // happens on mount after a minute. Mutations invalidate explicitly.
+      staleTime: 60_000,
+      // Must be >= the persister's maxAge (app/_layout) - a query GC'd out of
+      // memory before maxAge expires silently drops out of persistence too.
+      gcTime: 7 * 24 * 60 * 60 * 1000,
+      retry: 1,
+    },
+  },
+});
+
+export const persister = createAsyncStoragePersister({ storage: AsyncStorage });
+
+const habitsTodayKey = (userId?: string) => ['habits', 'today', userId ?? null] as const;
+const longQuestsKey = (userId?: string) => ['longQuests', userId ?? null] as const;
 
 interface EiyuStore {
   user: UserProfile;
@@ -82,48 +126,96 @@ const EiyuContext = createContext<EiyuStore | null>(null);
 export function EiyuProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const userId = session?.user.id;
+  const qc = useQueryClient();
 
   const [darkMode, setDarkMode] = useState(true);
-  const [profile, setProfile] = useState<ProfileData | null>(null);
-  const [quests, setQuests] = useState<Quest[]>([]);
-  const [stats, setStats] = useState<Record<Stat, StatData>>(initialUser.stats);
-  const [questsLoading, setQuestsLoading] = useState(false);
-  const [questsError, setQuestsError] = useState<string | null>(null);
+  const [questActionError, setQuestActionError] = useState<string | null>(null);
+  const [retryingQuests, setRetryingQuests] = useState(false);
+  const [retryingLongQuests, setRetryingLongQuests] = useState(false);
+  const [lqActionError, setLqActionError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
-  const [weeklyQuest, setWeeklyQuest] = useState<WeeklyQuest | null>(null);
-  const [longQuests, setLongQuests] = useState<LongQuest[]>([]);
-  const [longQuestsLoading, setLongQuestsLoading] = useState(false);
-  const [longQuestsError, setLongQuestsError] = useState<string | null>(null);
-  // Tracks which quests were frozen as of the previous fetch, so we only
-  // notify (R-41) on the transition into frozen, not on every refetch.
-  const previouslyFrozenIds = useRef<Set<string>>(new Set());
 
-  const refreshLongQuests = useCallback(async () => {
-    if (!userId) return;
-    const lqs = await fetchLongQuests(userId);
-    setLongQuests(lqs);
+  const habitsQuery = useQuery({
+    queryKey: habitsTodayKey(userId),
+    queryFn: () => fetchTodayHabits(userId!),
+    enabled: !!userId,
+  });
+  const profileQuery = useQuery({
+    queryKey: ['profile', userId ?? null],
+    queryFn: () => fetchProfile(userId!),
+    enabled: !!userId,
+  });
+  const statsQuery = useQuery({
+    queryKey: ['stats', userId ?? null],
+    queryFn: () => fetchStats(userId!),
+    enabled: !!userId,
+  });
+  // Depends on fresh stats (fetch-or-create writes a row server-side).
+  const weeklyQuestQuery = useQuery({
+    queryKey: ['weeklyQuest', userId ?? null],
+    // Self-fetches stats so create-or-fetch can never seed against stale data
+    // even when invalidations below are dispatched in parallel.
+    queryFn: async () => fetchOrCreateWeeklyQuest(userId!, await fetchStats(userId!)),
+    enabled: !!userId,
+  });
+  const longQuestsQuery = useQuery({
+    queryKey: longQuestsKey(userId),
+    queryFn: () => fetchLongQuests(userId!),
+    enabled: !!userId,
+  });
+
+  const quests = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
+  const longQuests = useMemo(() => longQuestsQuery.data ?? [], [longQuestsQuery.data]);
+  const stats = useMemo(() => statsQuery.data ?? initialUser.stats, [statsQuery.data]);
+  const profile = profileQuery.data ?? null;
+  const weeklyQuest = weeklyQuestQuery.data ?? null;
+
+  // A failure in ANY load query must reach the same error+retry UI - deriving
+  // from habitsQuery alone silently dropped profile/stats/weekly failures.
+  // While a retry is in flight, hide the stale error and show loading -
+  // otherwise there is zero visual difference between idle-error and retry.
+  const questsLoadError = retryingQuests
+    ? undefined
+    : [
+    habitsQuery.error,
+    profileQuery.error,
+    statsQuery.error,
+    weeklyQuestQuery.error,
+  ].find((e): e is Error => !!e);
+  const questsError = questsLoadError ? formatError(questsLoadError) : questActionError;
+  const longQuestsError = longQuestsQuery.isPending || retryingLongQuests ? null : longQuestsQuery.error ? formatError(longQuestsQuery.error) : lqActionError;
+
+  // Sign-out hygiene: nothing user-scoped should survive into another account.
+  useEffect(() => {
+    if (!userId) qc.removeQueries();
+  }, [userId, qc]);
+  // Frozen-recovery notifications (R-41): notify only on the transition into
+  // frozen while the app is open. The first observed snapshot of a session -
+  // including one restored from the persisted cache - is seeded silently.
+  const previouslyFrozenIds = useRef<Set<string>>(new Set());
+  const frozenSeeded = useRef(false);
+
+  useEffect(() => {
+    previouslyFrozenIds.current = new Set();
+    frozenSeeded.current = false;
   }, [userId]);
 
-  const refreshQuests = useCallback(async () => {
-    if (!userId) return;
-    const habits = await fetchTodayHabits(userId);
-    const newlyFrozen = habits.filter(h => h.frozen && !previouslyFrozenIds.current.has(h.id));
-    previouslyFrozenIds.current = new Set(habits.filter(h => h.frozen).map(h => h.id));
-    setQuests(habits);
+  useEffect(() => {
+    if (!habitsQuery.data) return;
+    const newlyFrozen = habitsQuery.data.filter(
+      h => h.frozen && !previouslyFrozenIds.current.has(h.id)
+    );
+    previouslyFrozenIds.current = new Set(habitsQuery.data.filter(h => h.frozen).map(h => h.id));
+    if (!frozenSeeded.current) {
+      frozenSeeded.current = true;
+      return;
+    }
     if (notificationsEnabled) {
       newlyFrozen.forEach(h => {
         notifyRecoveryQuestGenerated(h.name).catch(() => {});
       });
     }
-  }, [userId, notificationsEnabled]);
-
-  const refreshStats = useCallback(async () => {
-    if (!userId) return;
-    const s = await fetchStats(userId);
-    setStats(s);
-    const wq = await fetchOrCreateWeeklyQuest(userId, s);
-    setWeeklyQuest(wq);
-  }, [userId]);
+  }, [habitsQuery.data, notificationsEnabled]);
 
   const syncAllReminders = useCallback(
     async (enabled: boolean) => {
@@ -137,6 +229,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       await ensureNotificationSetup();
       const habits = await fetchAllActiveHabits(userId);
       await Promise.all(habits.map(h => scheduleHabitReminders(h.id, h)));
+      // Re-arm today's one-time reminders too - cancelAllHabitReminders wiped
+      // their ids from the shared map, and the recurring resync above excludes
+      // them by design. scheduleOneTimeReminder no-ops for past times.
+      const oneTimeToday = await fetchTodayOneTimeHabits(userId);
+      await Promise.all(oneTimeToday.map(h => scheduleOneTimeReminder(h.id, h)));
     },
     [userId]
   );
@@ -146,190 +243,188 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!userId) {
-      setQuests([]);
-      setProfile(null);
-      setStats(initialUser.stats);
-      setWeeklyQuest(null);
-      setLongQuests([]);
-      previouslyFrozenIds.current = new Set();
-      return;
-    }
-    let cancelled = false;
-    setQuestsLoading(true);
-    setQuestsError(null);
-    setLongQuestsLoading(true);
-    setLongQuestsError(null);
-    Promise.all([fetchTodayHabits(userId), fetchProfile(userId), fetchStats(userId)])
-      .then(async ([habits, prof, s]) => {
-        if (cancelled) return;
-        // seed (not notify) on cold load — we only want to notify on
-        // transitions detected while the app is open, not for freezes that
-        // already existed before this session started.
-        previouslyFrozenIds.current = new Set(habits.filter(h => h.frozen).map(h => h.id));
-        setQuests(habits);
-        setProfile(prof);
-        setStats(s);
-        const wq = await fetchOrCreateWeeklyQuest(userId, s);
-        if (!cancelled) setWeeklyQuest(wq);
-      })
-      .catch(err => {
-        if (!cancelled) setQuestsError(formatError(err));
-      })
-      .finally(() => {
-        if (!cancelled) setQuestsLoading(false);
-      });
-    fetchLongQuests(userId)
-      .then(lqs => {
-        if (!cancelled) setLongQuests(lqs);
-      })
-      .catch(err => {
-        if (!cancelled) setLongQuestsError(formatError(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLongQuestsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
-
-  useEffect(() => {
     if (!userId) return;
     syncAllReminders(notificationsEnabled).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, notificationsEnabled]);
 
-  const setNotificationsEnabled = (enabled: boolean) => {
+  const setNotificationsEnabled = useCallback((enabled: boolean) => {
     setNotificationsEnabledState(enabled);
     persistNotificationsEnabled(enabled).catch(() => {});
-  };
+  }, []);
 
-  const runCompletion = async (id: string, action: () => Promise<void>, optimisticCompleted: boolean) => {
-    if (!userId) return;
-    const quest = quests.find(q => q.id === id);
-    if (!quest) return;
+  /** Optimistic completion with rollback (same semantics as the pre-Phase-3 store). */
+  const runCompletion = useCallback(
+    async (id: string, action: () => Promise<void>, optimisticCompleted: boolean) => {
+      if (!userId) return;
+      const key = habitsTodayKey(userId);
+      qc.setQueryData<Quest[]>(key, qs =>
+        qs?.map(q => (q.id === id ? { ...q, completed: optimisticCompleted } : q))
+      );
+      try {
+        await action();
+        // Recompute streaks/XP/weekly progress from fresh server state.
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['stats', userId] }),
+          qc.invalidateQueries({ queryKey: key }),
+          qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
+        ]);
+        setQuestActionError(null);
+      } catch (err) {
+        qc.setQueryData<Quest[]>(key, qs =>
+          qs?.map(q => (q.id === id ? { ...q, completed: !optimisticCompleted } : q))
+        );
+        setQuestActionError(formatError(err));
+      }
+    },
+    [userId, qc]
+  );
 
-    setQuests(qs => qs.map(q => (q.id === id ? { ...q, completed: optimisticCompleted } : q)));
+  const toggleQuest = useCallback(
+    (id: string) => {
+      const quest = quests.find(q => q.id === id);
+      if (!quest || !userId) return;
+      if (quest.completed) {
+        void runCompletion(id, () => undoCompletion(userId, id, quest.stat), false);
+      } else {
+        void runCompletion(id, () => completeHabit(userId, id, quest.stat, 'full'), true);
+      }
+    },
+    [quests, userId, runCompletion]
+  );
+
+  const completeEasy = useCallback(
+    (id: string) => {
+      const quest = quests.find(q => q.id === id);
+      if (!quest || !userId || quest.completed || !quest.easyVersion) return;
+      void runCompletion(id, () => completeHabit(userId, id, quest.stat, 'easy'), true);
+    },
+    [quests, userId, runCompletion]
+  );
+
+  const completeRecovery = useCallback(
+    async (id: string) => {
+      const quest = quests.find(q => q.id === id);
+      if (!quest || !userId || !quest.frozen || !quest.frozenDate) return;
+      try {
+        await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate);
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['stats', userId] }),
+          qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
+          qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
+        ]);
+        setQuestActionError(null);
+      } catch (err) {
+        setQuestActionError(formatError(err));
+      }
+    },
+    [quests, userId, qc]
+  );
+
+  const saveHabit = useCallback(
+    async (input: HabitInput, existingId?: string) => {
+      if (!userId) return;
+      let id: string;
+      if (existingId) {
+        await updateHabit(existingId, input);
+        id = existingId;
+      } else {
+        id = await createHabit(userId, input);
+      }
+      await qc.invalidateQueries({ queryKey: ['habits'] });
+      setQuestActionError(null);
+      if (!notificationsEnabled) return;
+      if (input.questType === 'one_time') {
+        // True one-shot DATE trigger for today; no-ops if the time passed.
+        scheduleOneTimeReminder(id, { name: input.name, time: input.time }).catch(() => {});
+      } else {
+        scheduleHabitReminders(id, input).catch(() => {});
+      }
+    },
+    [userId, qc, notificationsEnabled]
+  );
+
+  const archiveQuest = useCallback(
+    async (id: string) => {
+      await archiveHabit(id);
+      await qc.invalidateQueries({ queryKey: ['habits'] });
+      setQuestActionError(null);
+      cancelHabitReminders(id).catch(() => {});
+    },
+    [qc]
+  );
+
+  const retryQuests = useCallback(async () => {
+    setQuestActionError(null);
+    // Retry EVERY load query - any of them may be the failed one.
+    setRetryingQuests(true);
+    await Promise.all([
+      qc.refetchQueries({ queryKey: habitsTodayKey(userId), type: 'active' }),
+      qc.refetchQueries({ queryKey: ['profile', userId], type: 'active' }),
+      qc.refetchQueries({ queryKey: ['stats', userId], type: 'active' }),
+      qc.refetchQueries({ queryKey: ['weeklyQuest', userId], type: 'active' }),
+    ]).finally(() => setRetryingQuests(false));
+  }, [qc, userId]);
+
+  const retryLongQuests = useCallback(async () => {
+    setLqActionError(null);
+    setRetryingLongQuests(true);
     try {
-      await action();
-      // refreshQuests recomputes streak from the new completion history, not just completed-state.
-      await Promise.all([refreshStats(), refreshQuests()]);
-    } catch (err) {
-      setQuests(qs => qs.map(q => (q.id === id ? { ...q, completed: !optimisticCompleted } : q)));
-      setQuestsError(formatError(err));
+      await qc.refetchQueries({ queryKey: longQuestsKey(userId), type: 'active' });
+    } finally {
+      setRetryingLongQuests(false);
     }
-  };
+  }, [qc, userId]);
 
-  const toggleQuest = (id: string) => {
-    const quest = quests.find(q => q.id === id);
-    if (!quest || !userId) return;
-    if (quest.completed) {
-      runCompletion(id, () => undoCompletion(userId, id, quest.stat), false);
-    } else {
-      runCompletion(id, () => completeHabit(userId, id, quest.stat, 'full'), true);
-    }
-  };
-
-  const completeEasy = (id: string) => {
-    const quest = quests.find(q => q.id === id);
-    if (!quest || !userId || quest.completed) return;
-    runCompletion(id, () => completeHabit(userId, id, quest.stat, 'easy'), true);
-  };
-
-  const completeRecovery = async (id: string) => {
-    const quest = quests.find(q => q.id === id);
-    if (!quest || !userId || !quest.frozen || !quest.frozenDate) return;
-    try {
-      await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate);
-      await Promise.all([refreshStats(), refreshQuests()]);
-    } catch (err) {
-      setQuestsError(formatError(err));
-    }
-  };
-
-  const saveHabit = async (input: HabitInput, existingId?: string) => {
-    if (!userId) return;
-    let id: string;
-    if (existingId) {
-      await updateHabit(existingId, input);
-      id = existingId;
-    } else {
-      id = await createHabit(userId, input);
-    }
-    await refreshQuests();
-    if (notificationsEnabled) {
-      scheduleHabitReminders(id, input).catch(() => {});
-    }
-  };
-
-  const archiveQuest = async (id: string) => {
-    await archiveHabit(id);
-    await refreshQuests();
-    cancelHabitReminders(id).catch(() => {});
-  };
-
-  const toggleStage = async (lqId: string, stageId: string) => {
-    const lq = longQuests.find(q => q.id === lqId);
-    const stage = lq?.stages.find(s => s.id === stageId);
-    if (!stage) return;
-    const nextDone = !stage.done;
-
-    setLongQuests(lqs =>
-      lqs.map(q =>
-        q.id === lqId
-          ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: nextDone } : s)) }
-          : q
-      )
-    );
-    try {
-      await setStageDone(stageId, nextDone);
-    } catch (err) {
-      setLongQuests(lqs =>
-        lqs.map(q =>
+  const toggleStage = useCallback(
+    async (lqId: string, stageId: string) => {
+      const lq = longQuests.find(q => q.id === lqId);
+      const stage = lq?.stages.find(s => s.id === stageId);
+      if (!stage || !userId) return;
+      const nextDone = !stage.done;
+      const key = longQuestsKey(userId);
+      qc.setQueryData<LongQuest[]>(key, lqs =>
+        lqs?.map(q =>
           q.id === lqId
-            ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: !nextDone } : s)) }
+            ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: nextDone } : s)) }
             : q
         )
       );
-      setLongQuestsError(formatError(err));
-    }
-  };
+      try {
+        await setStageDone(stageId, nextDone);
+        setLqActionError(null);
+      } catch (err) {
+        qc.setQueryData<LongQuest[]>(key, lqs =>
+          lqs?.map(q =>
+            q.id === lqId
+              ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: !nextDone } : s)) }
+              : q
+          )
+        );
+        setLqActionError(formatError(err));
+      }
+    },
+    [longQuests, userId, qc]
+  );
 
-  const saveLongQuest = async (input: LongQuestInput) => {
-    if (!userId) return;
-    await createLongQuest(userId, input);
-    await refreshLongQuests();
-  };
+  const saveLongQuest = useCallback(
+    async (input: LongQuestInput) => {
+      if (!userId) return;
+      await createLongQuest(userId, input);
+      await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
+      setLqActionError(null);
+    },
+    [userId, qc]
+  );
 
-  const removeLongQuest = async (id: string) => {
-    await deleteLongQuest(id);
-    await refreshLongQuests();
-  };
-
-  const retryQuests = async () => {
-    setQuestsLoading(true);
-    setQuestsError(null);
-    try {
-      await refreshQuests();
-    } catch (err) {
-      setQuestsError(formatError(err));
-    } finally {
-      setQuestsLoading(false);
-    }
-  };
-
-  const retryLongQuests = async () => {
-    setLongQuestsLoading(true);
-    setLongQuestsError(null);
-    try {
-      await refreshLongQuests();
-    } catch (err) {
-      setLongQuestsError(formatError(err));
-    } finally {
-      setLongQuestsLoading(false);
-    }
-  };
+  const removeLongQuest = useCallback(
+    async (id: string) => {
+      await deleteLongQuest(id);
+      await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
+      setLqActionError(null);
+    },
+    [userId, qc]
+  );
 
   const user: UserProfile = useMemo(
     () => ({
@@ -349,7 +444,16 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       theme: darkMode ? darkTheme : lightTheme,
       darkMode,
       setDarkMode,
-      questsLoading,
+      // Gate the board until ALL load queries settle - matching the pre-Phase-3
+      // Promise.all behavior. Otherwise habits can resolve first and flash the
+      // placeholder stats/name from initialUser for a moment.
+      questsLoading:
+        habitsQuery.isPending ||
+        profileQuery.isPending ||
+        statsQuery.isPending ||
+        weeklyQuestQuery.isPending ||
+        retryingQuests,
+      retryingLongQuests,
       questsError,
       retryQuests,
       toggleQuest,
@@ -358,7 +462,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       saveHabit,
       archiveQuest,
       toggleStage,
-      longQuestsLoading,
+      longQuestsLoading: longQuestsQuery.isPending || retryingLongQuests,
       longQuestsError,
       retryLongQuests,
       saveLongQuest,
@@ -370,14 +474,27 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     [
       user,
       darkMode,
-      questsLoading,
+      habitsQuery.isPending,
+      profileQuery.isPending,
+      statsQuery.isPending,
+      weeklyQuestQuery.isPending,
+      retryingQuests,
+      retryingLongQuests,
       questsError,
-      quests,
-      longQuests,
-      longQuestsLoading,
+      retryQuests,
+      toggleQuest,
+      completeEasy,
+      completeRecovery,
+      saveHabit,
+      archiveQuest,
+      toggleStage,
+      longQuestsQuery.isPending,
       longQuestsError,
-      userId,
+      retryLongQuests,
+      saveLongQuest,
+      removeLongQuest,
       notificationsEnabled,
+      setNotificationsEnabled,
       weeklyQuest,
     ]
   );

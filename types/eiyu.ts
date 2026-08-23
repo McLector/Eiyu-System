@@ -1,6 +1,8 @@
 export type Stat = 'STR' | 'INT' | 'DEX' | 'WIS' | 'CHA';
 export type Rank = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
+/** Recurring habit vs one-time (today-only) quest (improvement-pass #7). */
+export type QuestType = 'habit' | 'one_time';
 
 export interface StatData {
   level: number;
@@ -13,7 +15,11 @@ export interface Quest {
   name: string;
   stat: Stat;
   difficulty: Difficulty;
-  easyVersion: string;
+  /** One-time quests have no easy/recovery version (binary done/not-done). */
+  easyVersion: string | null;
+  /** Optional note attached to the quest (improvement-pass #8). */
+  description: string | null;
+  questType: QuestType;
   time: string;
   days: number[];
   streak: number;
