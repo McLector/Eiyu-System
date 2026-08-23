@@ -1,21 +1,21 @@
-import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useMemo, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
+import { Screen } from '@/components/eiyu/screen';
+import { CheckIcon } from '@/components/eiyu/icons';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
+import {
+  passwordStrength,
+  validateConfirmPassword,
+  validateDisplayName,
+  validateEmail,
+  validatePassword,
+} from '@/lib/validation';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
 
@@ -25,6 +25,9 @@ interface Notice {
   message: string;
 }
 
+const STRENGTH_LABELS = ['Weak', 'Okay', 'Good', 'Strong'] as const;
+const STRENGTH_COLORS = ['#f87171', '#fbbf24', '#4ade80', '#4ade80'] as const;
+
 export default function AuthScreen() {
   const { theme } = useEiyu();
   const { signIn, signUp, resetPassword } = useAuth();
@@ -32,29 +35,53 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  const resetToLogin = () => {
-    setMode('login');
-    setNotice(null);
+  /** Switch auth mode without leaking submit-state or errors into the fresh form. */
+  const switchMode = (next: AuthMode) => {
+    setMode(next);
     setError(null);
+    // fieldInvalid() gates on `attempted`; leaving it set would show stale
+    // validation errors on the new form before the user has submitted it.
+    setAttempted(false);
   };
 
+  const resetToLogin = () => {
+    setNotice(null);
+    switchMode('login');
+  };
+
+  /** Per-field validation (improvement-pass #13): inline errors replace the single error blob.
+   * Errors only render once the user has attempted a submit, then update live. */
+  const fieldErrors = useMemo(
+    () => ({
+      name: mode === 'signup' ? validateDisplayName(name) : null,
+      email: validateEmail(email),
+      password: mode !== 'forgot' ? validatePassword(password) : null,
+      confirm: mode === 'signup' ? validateConfirmPassword(password, confirm) : null,
+    }),
+    [mode, name, email, password, confirm]
+  );
+
+  type FieldKey = keyof typeof fieldErrors;
+  const fieldInvalid = (key: FieldKey) => attempted && Boolean(fieldErrors[key]);
+
+  const strength = passwordStrength(mode === 'signup' ? password : '');
+
   const handleSubmit = async () => {
+    setAttempted(true);
     setError(null);
 
-    if (mode === 'signup' && name.trim().length === 0) {
-      setError('Enter a display name.');
-      return;
-    }
-    if (email.trim().length === 0) {
-      setError('Enter your email.');
-      return;
-    }
-    if (mode !== 'forgot' && password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (Object.values(fieldErrors).some(Boolean)) return;
+
+    if (mode === 'signup' && !acceptedTerms) {
+      setError('Please accept the Privacy Policy & Terms to continue.');
       return;
     }
 
@@ -112,12 +139,10 @@ export default function AuthScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.body }}>
       <PageBackground />
-      <KeyboardAvoidingView
+      <Screen
+        edges={['top', 'bottom']}
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled">
+        contentContainerStyle={styles.scroll}>
           <View style={styles.logoWrap}>
             <View
               style={[
@@ -156,12 +181,21 @@ export default function AuthScreen() {
                       DISPLAY NAME
                     </Text>
                     <TextInput
-                      style={[styles.field, fieldStyle]}
+                      style={[
+                        styles.field,
+                        fieldStyle,
+                        fieldInvalid('name') && styles.fieldErrorBorder,
+                      ]}
                       placeholder="Kaito Mizuru"
                       placeholderTextColor={theme.dim}
+                      autoCapitalize="words"
                       value={name}
                       onChangeText={setName}
+                      accessibilityLabel="Display name"
                     />
+                    {fieldInvalid('name') && (
+                      <Text style={styles.fieldError}>{fieldErrors.name}</Text>
+                    )}
                   </View>
                 )}
                 <View>
@@ -169,14 +203,23 @@ export default function AuthScreen() {
                     EMAIL
                   </Text>
                   <TextInput
-                    style={[styles.field, fieldStyle]}
+                    style={[
+                      styles.field,
+                      fieldStyle,
+                      fieldInvalid('email') && styles.fieldErrorBorder,
+                    ]}
                     placeholder="you@example.com"
                     placeholderTextColor={theme.dim}
                     autoCapitalize="none"
+                    autoComplete="email"
                     keyboardType="email-address"
                     value={email}
                     onChangeText={setEmail}
+                    accessibilityLabel="Email address"
                   />
+                  {fieldInvalid('email') && (
+                    <Text style={styles.fieldError}>{fieldErrors.email}</Text>
+                  )}
                 </View>
                 {mode !== 'forgot' && (
                   <View>
@@ -184,17 +227,97 @@ export default function AuthScreen() {
                       PASSWORD
                     </Text>
                     <TextInput
-                      style={[styles.field, fieldStyle]}
+                      style={[
+                        styles.field,
+                        fieldStyle,
+                        fieldInvalid('password') && styles.fieldErrorBorder,
+                      ]}
                       placeholder="••••••••"
                       placeholderTextColor={theme.dim}
                       secureTextEntry
+                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                       value={password}
                       onChangeText={setPassword}
+                      accessibilityLabel="Password"
                     />
+                    {fieldInvalid('password') && (
+                      <Text style={styles.fieldError}>{fieldErrors.password}</Text>
+                    )}
+                    {mode === 'signup' && password.length > 0 && (
+                      <View style={styles.strengthRow}>
+                        {[1, 2, 3].map(seg => (
+                          <View
+                            key={seg}
+                            style={[
+                              styles.strengthSeg,
+                              {
+                                backgroundColor:
+                                  seg <= strength ? STRENGTH_COLORS[strength] : theme.track,
+                              },
+                            ]}
+                          />
+                        ))}
+                        <Text
+                          style={[
+                            styles.strengthLabel,
+                            { color: STRENGTH_COLORS[strength], fontFamily: fonts.body },
+                          ]}>
+                          {STRENGTH_LABELS[strength]}
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 )}
+                {mode === 'signup' && (
+                  <View>
+                    <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
+                      CONFIRM PASSWORD
+                    </Text>
+                    <TextInput
+                      style={[
+                        styles.field,
+                        fieldStyle,
+                        fieldInvalid('confirm') && styles.fieldErrorBorder,
+                      ]}
+                      placeholder="••••••••"
+                      placeholderTextColor={theme.dim}
+                      secureTextEntry
+                      autoComplete="new-password"
+                      value={confirm}
+                      onChangeText={setConfirm}
+                      accessibilityLabel="Confirm password"
+                    />
+                    {fieldInvalid('confirm') && (
+                      <Text style={styles.fieldError}>{fieldErrors.confirm}</Text>
+                    )}
+                  </View>
+                )}
+                {mode === 'signup' && (
+                  <Pressable
+                    onPress={() => setAcceptedTerms(v => !v)}
+                    style={styles.termsRow}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: acceptedTerms }}
+                    accessibilityLabel="Accept Privacy Policy and Terms">
+                    <View
+                      style={[
+                        styles.termsCheckbox,
+                        acceptedTerms && styles.termsCheckboxOn,
+                      ]}>
+                      {acceptedTerms && <CheckIcon size={12} color="#4ade80" />}
+                    </View>
+                    <Text style={[styles.termsText, { color: theme.muted, fontFamily: fonts.body }]}>
+                      I agree to the{' '}
+                      <Text
+                        style={{ color: theme.accent }}
+                        onPress={() => setShowTerms(true)}>
+                        Privacy Policy &amp; Terms
+                      </Text>
+                    </Text>
+                  </Pressable>
+                )}
                 {mode === 'login' && (
-                  <Pressable onPress={() => setMode('forgot')} style={{ alignSelf: 'flex-end' }}>
+                  <Pressable onPress={() => switchMode('forgot')} style={{ alignSelf: 'flex-end' }}>
                     <Text style={[styles.forgot, { color: theme.dim, fontFamily: fonts.body }]}>
                       Forgot password?
                     </Text>
@@ -229,8 +352,7 @@ export default function AuthScreen() {
               {mode !== 'forgot' && (
                 <Pressable
                   onPress={() => {
-                    setMode(mode === 'login' ? 'signup' : 'login');
-                    setError(null);
+                    switchMode(mode === 'login' ? 'signup' : 'login');
                   }}>
                   <Text style={[styles.switchLink, { color: theme.accent, fontFamily: fonts.body }]}>
                     {mode === 'login' ? 'Register' : 'Sign in'}
@@ -246,9 +368,62 @@ export default function AuthScreen() {
               )}
             </View>
           )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </View>
+
+        <Modal
+          visible={showTerms}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowTerms(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
+              <Text style={[styles.modalTitle, { color: theme.text, fontFamily: fonts.display }]}>
+                PRIVACY &amp; TERMS
+              </Text>
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
+                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                  DATA WE COLLECT
+                </Text>
+                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
+                  Your account email, display name, and the quests and completion history you
+                  create. Nothing else.
+                </Text>
+                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                  HOW IT&apos;S USED
+                </Text>
+                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
+                  Only to run your account and sync your progress across your devices. No ads, no
+                  data selling, no third-party trackers. Your password is stored encrypted by our
+                  auth provider and never visible to us.
+                </Text>
+                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                  AI FEATURES
+                </Text>
+                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
+                  Quest names you submit for suggestions are processed by Google&apos;s Gemini API
+                  solely to generate those suggestions. Suggestions are always optional and never
+                  auto-saved.
+                </Text>
+                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                  YOUR CONTROL
+                </Text>
+                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
+                  You can export your data as JSON or delete your account at any time from
+                  Settings.
+                </Text>
+                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                  TERMS OF USE
+                </Text>
+                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
+                  Eiyu System is provided as-is, without warranty. One account per person, keep
+                  content respectful. Your quest data remains yours.
+                </Text>
+              </ScrollView>
+              <GhostButton label="GOT IT" onPress={() => setShowTerms(false)} />
+            </View>
+          </View>
+        </Modal>
+        </Screen>
+      </View>
   );
 }
 
@@ -341,5 +516,86 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 16,
     textAlign: 'center',
+  },
+  fieldError: {
+    fontSize: 12,
+    color: '#f87171',
+    marginTop: 5,
+  },
+  fieldErrorBorder: {
+    borderColor: '#f87171',
+  },
+  strengthRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+  },
+  strengthSeg: {
+    height: 4,
+    width: 32,
+    borderRadius: 2,
+  },
+  strengthLabel: {
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 2,
+  },
+  termsCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: 'rgba(120,140,160,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  termsCheckboxOn: {
+    backgroundColor: 'rgba(74,222,128,0.15)',
+    borderColor: 'rgba(74,222,128,0.5)',
+  },
+  termsText: {
+    fontSize: 13,
+    flexShrink: 1,
+    lineHeight: 18,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 20,
+    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    letterSpacing: 1.5,
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalSectionTitle: {
+    fontSize: 11,
+    letterSpacing: 1.2,
+    marginTop: 10,
+    marginBottom: 3,
+  },
+  modalBody: {
+    fontSize: 13,
+    lineHeight: 19,
   },
 });
