@@ -17,7 +17,7 @@ interface AiProxyError {
  */
 
 export const AI_TIMEOUT_MS = 20_000;
-const CACHE_KEY = 'eiyu:ai-suggestions';
+export const AI_SUGGESTIONS_STORAGE_KEY = 'eiyu:ai-suggestions';
 export const SUGGESTION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface CachedSuggestions {
@@ -52,14 +52,14 @@ export function isFreshSuggestions(
 }
 
 async function readSuggestionCache(): Promise<SuggestionCache> {
-  const raw = await AsyncStorage.getItem(CACHE_KEY);
+  const raw = await AsyncStorage.getItem(AI_SUGGESTIONS_STORAGE_KEY);
   return raw ? JSON.parse(raw) : {};
 }
 
 async function writeSuggestionCacheEntry(key: string, value: string[]): Promise<void> {
   const cache = await readSuggestionCache();
   cache[key] = { at: Date.now(), value };
-  await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  await AsyncStorage.setItem(AI_SUGGESTIONS_STORAGE_KEY, JSON.stringify(cache));
 }
 
 /**

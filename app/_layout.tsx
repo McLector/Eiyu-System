@@ -20,6 +20,7 @@ import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/contexts/auth-store';
 import { EiyuProvider, persister, queryClient } from '@/contexts/eiyu-store';
+import { DevBall } from '@/components/eiyu/dev-ball';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 SplashScreen.preventAutoHideAsync();
@@ -54,6 +55,8 @@ export default function RootLayout() {
                 makes classic adjustResize unreliable). */}
             <KeyboardProvider>
               <AppNavigator />
+              {/* Improvement-pass #10: __DEV__-only testing ball; renders null in production. */}
+              <DevBall />
               <StatusBar style="auto" />
             </KeyboardProvider>
           </ThemeProvider>
