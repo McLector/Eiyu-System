@@ -43,13 +43,22 @@ export default function AuthScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
-  /** Switch auth mode without leaking submit-state or errors into the fresh form. */
+  /** Switch auth mode without leaking submit-state, stale errors, or secrets
+   * across forms. Password/confirm/terms are cleared deliberately: a login-
+   * typed password silently pre-filling signup would let an account be created
+   * with a secret the user never knowingly entered there, and a ticked terms
+   * box carried across modes would record an acknowledgement that never
+   * happened. Email is KEPT on purpose - it's the same person registering.
+   * (Found live on-device: login -> Register showed a filled password + strength meter.) */
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
     // fieldInvalid() gates on `attempted`; leaving it set would show stale
     // validation errors on the new form before the user has submitted it.
     setAttempted(false);
+    setPassword('');
+    setConfirm('');
+    setAcceptedTerms(false);
   };
 
   const resetToLogin = () => {
