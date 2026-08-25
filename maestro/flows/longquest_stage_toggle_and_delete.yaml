@@ -15,7 +15,11 @@ appId: com.anonymous.eiyusystem
 - tapOn: "CREATE LONG QUEST"
 - assertVisible: "Long Quest To Delete"
 
-# Expand the card and toggle the first stage complete.
+# Expand the card and toggle the first stage complete. The card-header tap
+# is unreliable immediately after CREATE (the sheet's close transition is
+# still animating right as the tap fires) - confirmed manually the app
+# itself behaves correctly, it's a timing race with the automated tap.
+- waitForAnimationToEnd
 - tapOn: "Long Quest To Delete"
 - assertVisible: "First stage"
 - tapOn:
