@@ -23,9 +23,14 @@ import {
 } from 'react-native';
 
 import { fonts } from '@/constants/eiyu-theme';
+import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { AI_SUGGESTIONS_STORAGE_KEY } from '@/lib/ai';
-import { HabitInput } from '@/lib/habits';
+import { completeHabit } from '@/lib/completions';
+import { addUtcDays, mondayOfWeek, startOfUtcDay, toDateKey } from '@/lib/date-utils';
+import { createHabit, HabitInput } from '@/lib/habits';
+import { supabase } from '@/lib/supabase';
+import { CompletionKind } from '@/types/database';
 import { Difficulty, QuestType, Stat } from '@/types/eiyu';
 
 const BALL_SIZE = 52;
@@ -84,6 +89,20 @@ function seedOneTimeInput(): HabitInput {
   };
 }
 
+/**
+ * Every date key from this ISO week's Monday through today, inclusive - the
+ * window a backfilled "already completed" quest should cover. Uses the same
+ * UTC helpers as eiyu-logic so seeded keys line up with what the board and
+ * history screens read back.
+ */
+function weekToDateKeys(now: Date = new Date()): string[] {
+  const monday = mondayOfWeek(now);
+  const today = startOfUtcDay(now);
+  const keys: string[] = [];
+  for (let d = monday; d <= today; d = addUtcDays(d, 1)) keys.push(toDateKey(d));
+  return keys;
+}
+
 interface Tool {
   label: string;
   run: () => void | Promise<void>;
@@ -96,6 +115,8 @@ export function DevBall() {
 
 function DevBallInner() {
   const { user, theme, saveHabit, toggleQuest, setDarkMode, darkMode, notificationsEnabled } = useEiyu();
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   const qc = useQueryClient();
   const [showMenu, setShowMenu] = useState(false);
   const [pos, setPosState] = useState(() => ({
@@ -166,6 +187,72 @@ function DevBallInner() {
     {
       label: 'Undo all today',
       run: () => user.quests.filter(q => q.completed).forEach(q => toggleQuest(q.id)),
+    },
+    {
+      label: 'Seed quest completed this week',
+      run: async () => {
+        if (!userId) throw new Error('Not signed in.');
+        const input = seedHabitInput();
+        const habitId = await createHabit(userId, input);
+        // Backdate through complete_habit rather than inserting rows directly:
+        // the RPC awards the matching XP in the same transaction, so seeded
+        // history and the stat bars agree instead of drifting apart.
+        const keys = weekToDateKeys();
+        let seeded = 0;
+        for (const key of keys) {
+          if (Math.random() < 0.25) continue; // leave some gaps to exercise streak breaks
+          const kind: CompletionKind = Math.random() < 0.75 ? 'full' : 'easy';
+          await completeHabit(userId, habitId, input.stat, kind, key);
+          seeded += 1;
+        }
+        await qc.invalidateQueries();
+        Alert.alert(
+          'Seeded',
+          `"${input.name}" with ${seeded} of ${keys.length} day(s) this week completed.`
+        );
+      },
+    },
+    {
+      label: 'Wipe completion history',
+      run: () => {
+        if (!userId) throw new Error('Not signed in.');
+        Alert.alert(
+          'Wipe completion history?',
+          'Deletes every habit completion on this account and reverses the XP each one awarded. Quests themselves are kept.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Wipe',
+              style: 'destructive',
+              onPress: async () => {
+                // Runs outside the menu's try/catch (Alert callbacks are
+                // detached), so it owns its own error reporting.
+                try {
+                  const { data, error } = await supabase
+                    .from('habit_completions')
+                    .select('habit_id, completed_on')
+                    .eq('user_id', userId);
+                  if (error) throw error;
+                  // One undo RPC per row rather than a bulk delete: the RPC is
+                  // what reverses xp_awarded, and a raw delete would leave the
+                  // stat bars holding XP for history that no longer exists.
+                  for (const row of data ?? []) {
+                    const { error: rpcError } = await supabase.rpc('undo_habit_completion', {
+                      p_habit_id: row.habit_id,
+                      p_completed_on: row.completed_on,
+                    });
+                    if (rpcError) throw rpcError;
+                  }
+                  await qc.invalidateQueries();
+                  Alert.alert('History wiped', `Removed ${(data ?? []).length} completion(s).`);
+                } catch (err) {
+                  Alert.alert('Wipe failed', String(err));
+                }
+              },
+            },
+          ]
+        );
+      },
     },
     { label: 'Refetch everything', run: () => qc.invalidateQueries() },
     {
