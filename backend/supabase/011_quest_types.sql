@@ -1,9 +1,15 @@
 -- Quest types (improvement-pass #7/#8): recurring habit quests vs one-time
 -- "today-only" quests, plus an optional description/note on every quest.
+-- `if not exists` so this file is safe to re-run: every other statement
+-- below is already idempotent, and without it a second run aborts on the
+-- very first statement ("column quest_type already exists") without
+-- reporting anything about the rest of the migration. ADD COLUMN is atomic
+-- per statement, so the column and its CHECK are always applied together -
+-- if the column is present, so is the constraint.
 alter table public.habits
-  add column quest_type text not null default 'habit'
+  add column if not exists quest_type text not null default 'habit'
     check (quest_type in ('habit', 'one_time')),
-  add column description text;
+  add column if not exists description text;
 
 -- One-time quests are binary done/not-done with no streak to protect, so they
 -- have no easy-version concept. Relax NOT NULL conditionally: habit rows must
