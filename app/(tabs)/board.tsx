@@ -1,7 +1,14 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  FadeInUp,
+  FadeOutUp,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { CheckIcon, PlusIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
 import { Divider } from '@/components/eiyu/divider';
@@ -15,6 +22,43 @@ import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
 import { EASY_XP, FULL_XP } from '@/lib/eiyu-logic';
 import { Quest, Rank } from '@/types/eiyu';
+
+/**
+ * The per-stat XP bar, animated. It used to set `width: \`${pct}%\`` directly,
+ * which made the one visual that represents "you gained XP" snap to its new
+ * value between frames - the gain was over before the eye could register it.
+ * Animating scaleX (not width) keeps the whole thing on the UI thread, so the
+ * fill still glides while JS is busy committing the completion.
+ */
+function StatXpBar({ pct, color, track, stat, level }: {
+  pct: number;
+  color: string;
+  track: string;
+  stat: string;
+  level: number;
+}) {
+  const progress = useSharedValue(pct / 100);
+
+  useEffect(() => {
+    progress.value = withTiming(pct / 100, {
+      duration: 550,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [pct, progress]);
+
+  const fillStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: progress.value }] }));
+
+  return (
+    <View
+      style={[styles.xpTrack, { backgroundColor: track }]}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityValue={{ now: pct, min: 0, max: 100 }}
+      accessibilityLabel={`${stat} XP progress: ${pct}% to level ${level + 1}`}>
+      <Animated.View style={[styles.xpFill, { backgroundColor: color }, fillStyle]} />
+    </View>
+  );
+}
 
 function RankBadge({ rank }: { rank: Rank }) {
   const cfg = RANK_CONFIG[rank];
@@ -79,15 +123,6 @@ function QuestRow({
             ]}>
             {isCompleted && <CheckIcon size={14} color="#4ade80" />}
           </Pressable>
-          {xpToast !== null && (
-            <Animated.View
-              entering={FadeInUp.duration(200)}
-              exiting={FadeOutUp.duration(500)}
-              style={styles.xpToast}
-              pointerEvents="none">
-              <Text style={[styles.xpToastText, { fontFamily: fonts.mono }]}>+{xpToast} XP</Text>
-            </Animated.View>
-          )}
         </View>
 
         <Pressable style={styles.questInfo} onPress={onEdit}>
@@ -129,6 +164,16 @@ function QuestRow({
             </Pressable>
           )}
         </Pressable>
+
+        {xpToast !== null && (
+          <Animated.View
+            entering={FadeInUp.duration(180)}
+            exiting={FadeOutUp.duration(520)}
+            style={styles.xpToast}
+            pointerEvents="none">
+            <Text style={[styles.xpToastText, { fontFamily: fonts.mono }]}>+{xpToast} XP</Text>
+          </Animated.View>
+        )}
 
         <View style={styles.questTags}>
           {isFrozen && <SnowflakeIcon size={13} />}
@@ -229,14 +274,13 @@ export default function BoardScreen() {
                       which read as "my stat didn't increase". The bar gives
                       per-completion feedback right where quests are completed
                       (the Status tab already had the full version). */}
-                  <View
-                    style={[styles.xpTrack, { backgroundColor: theme.track }]}
-                    accessible
-                    accessibilityRole="progressbar"
-                    accessibilityValue={{ now: pct, min: 0, max: 100 }}
-                    accessibilityLabel={`${stat} XP progress: ${pct}% to level ${s.level + 1}`}>
-                    <View style={[styles.xpFill, { backgroundColor: STAT_COLORS[stat], width: `${pct}%` }]} />
-                  </View>
+                  <StatXpBar
+                    pct={pct}
+                    color={STAT_COLORS[stat]}
+                    track={theme.track}
+                    stat={stat}
+                    level={s.level}
+                  />
                 </View>
               );
             })}
@@ -498,7 +542,11 @@ const styles = StyleSheet.create({
   },
   xpFill: {
     height: '100%',
+    width: '100%',
     borderRadius: 1.5,
+    // scaleX drives progress, so the bar must grow from the left edge
+    // rather than from its centre.
+    transformOrigin: 'left',
   },
   oneTimePill: {
     borderWidth: 1,
@@ -607,19 +655,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  /**
+   * Anchored to the quest ROW, bottom-left, so it always sits INSIDE the
+   * row's bounds - the quest list's GlassView clips (overflow: 'hidden'),
+   * and the previous negative offset put this entirely outside its parent.
+   * `bottom` + FadeOutUp means it rises off its resting spot as it leaves.
+   */
   xpToast: {
     position: 'absolute',
-    top: -18,
-    left: -4,
-    backgroundColor: 'rgba(74,222,128,0.18)',
+    left: 34,
+    bottom: 4,
+    backgroundColor: 'rgba(74,222,128,0.22)',
     borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.4)',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    borderColor: 'rgba(74,222,128,0.55)',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
   },
   xpToastText: {
-    fontSize: 10,
+    fontSize: 13,
+    letterSpacing: 0.5,
     color: '#4ade80',
   },
   questInfo: {
