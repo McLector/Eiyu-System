@@ -1,0 +1,30 @@
+appId: com.anonymous.eiyusystem
+---
+# `launchApp` always force-restarts the process (clearState or not), and a
+# fresh dev-client process lands on Expo dev-launcher's server picker screen
+# - that connection is process-level, not persisted data, so clearState
+# doesn't change this. Handle both outcomes: tap the remembered server if the
+# picker shows, no-op otherwise, then wait for the real app.
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: ".*(EIYU SYSTEM|10\\.0\\.2\\.2).*"
+    timeout: 30000
+- tapOn:
+    text: ".*10\\.0\\.2\\.2.*"
+    optional: true
+# First connection after clearState also triggers Expo's one-time dev-menu
+# tutorial overlay, which covers the screen and hides EIYU SYSTEM from the
+# accessibility tree until dismissed. Its "Continue" button advances INTO the
+# full dev-menu panel (not closing it), and that panel's "Go home" exits to
+# the dev-launcher picker (not the app) - both make it worse. The app is
+# already loaded behind the overlay (visible but dimmed), so the hardware
+# back button is what actually closes the sheet in place.
+- extendedWaitUntil:
+    visible: ".*(EIYU SYSTEM|developer menu).*"
+    timeout: 30000
+- back:
+    optional: true
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 30000

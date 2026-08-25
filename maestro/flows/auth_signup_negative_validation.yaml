@@ -1,10 +1,6 @@
 appId: com.anonymous.eiyusystem
 ---
-- launchApp:
-    clearState: true
-- extendedWaitUntil:
-    visible: "EIYU SYSTEM"
-    timeout: 30000
+- runFlow: _helpers/launch_fresh.yaml
 - tapOn: "Register"
 - assertVisible: "Begin your journey"
 
@@ -21,7 +17,9 @@ appId: com.anonymous.eiyusystem
 
 - tapOn: "you@example.com"
 - inputText: "not-an-email"
-- tapOn: "••••••••"
+- tapOn:
+    text: "••••••••"
+    index: 0
 - inputText: "123"
 - hideKeyboard
 - tapOn: "BEGIN JOURNEY"
@@ -29,4 +27,76 @@ appId: com.anonymous.eiyusystem
 # expected to fail on the length message; if it instead lets a malformed
 # email through to Supabase, that's a bug-hunt finding.
 - assertVisible: "Password must be at least 6 characters."
+- assertNotVisible: "BOARD"
+
+# CONFIRM PASSWORD and the terms checkbox are new fields (this diff) with
+# their own error paths - CONFIRM's is field-level like the checks above,
+# but terms is a bespoke setError() outside the fieldErrors object entirely.
+# Each gets its own fresh signup attempt rather than mutating the form
+# above, since both PASSWORD and CONFIRM PASSWORD report as "••••••••" in
+# the accessibility tree regardless of content (see auth_signup_happy_fresh_account.yaml),
+# making incremental edits to an already-filled secure field unreliable.
+
+- runFlow: _helpers/launch_fresh.yaml
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+- tapOn: "Kaito Mizuru"
+- inputText: "Edge Case Tester"
+- tapOn: "you@example.com"
+- inputText: "edgecase@example.com"
+- tapOn:
+    text: "••••••••"
+    index: 0
+- inputText: "ValidPass123"
+- hideKeyboard
+- tapOn:
+    id: "terms-checkbox"
+- tapOn: "BEGIN JOURNEY"
+- assertVisible: "Confirm your password."
+- assertNotVisible: "BOARD"
+
+- runFlow: _helpers/launch_fresh.yaml
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+- tapOn: "Kaito Mizuru"
+- inputText: "Edge Case Tester"
+- tapOn: "you@example.com"
+- inputText: "edgecase2@example.com"
+- tapOn:
+    text: "••••••••"
+    index: 0
+- inputText: "ValidPass123"
+- hideKeyboard
+- tapOn:
+    text: "••••••••"
+    index: 1
+- inputText: "DifferentPass456"
+- hideKeyboard
+- tapOn:
+    id: "terms-checkbox"
+- tapOn: "BEGIN JOURNEY"
+- assertVisible: "Passwords do not match."
+- assertNotVisible: "BOARD"
+
+- runFlow: _helpers/launch_fresh.yaml
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+- tapOn: "Kaito Mizuru"
+- inputText: "Edge Case Tester"
+- tapOn: "you@example.com"
+- inputText: "edgecase3@example.com"
+- tapOn:
+    text: "••••••••"
+    index: 0
+- inputText: "ValidPass123"
+- hideKeyboard
+- tapOn:
+    text: "••••••••"
+    index: 1
+- inputText: "ValidPass123"
+- hideKeyboard
+# Terms deliberately left unchecked - this error comes from a plain
+# setError() call in handleSubmit, not the fieldErrors validation object.
+- tapOn: "BEGIN JOURNEY"
+- assertVisible: "Please accept the Privacy Policy & Terms to continue."
 - assertNotVisible: "BOARD"

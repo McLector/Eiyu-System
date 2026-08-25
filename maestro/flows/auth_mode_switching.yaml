@@ -2,11 +2,7 @@ appId: com.anonymous.eiyusystem
 ---
 # Login <-> Signup <-> Forgot navigation shouldn't leak state between modes
 # (e.g. a typed password surviving a switch to signup, or vice versa).
-- launchApp:
-    clearState: true
-- extendedWaitUntil:
-    visible: "Enter the system"
-    timeout: 30000
+- runFlow: _helpers/launch_fresh.yaml
 - tapOn: "Register"
 - assertVisible: "Begin your journey"
 - tapOn: "Kaito Mizuru"

@@ -309,6 +309,7 @@ export default function AuthScreen() {
                     accessibilityState={{ checked: acceptedTerms }}
                     accessibilityLabel="Accept Privacy Policy and Terms">
                     <View
+                      testID="terms-checkbox"
                       style={[
                         styles.termsCheckbox,
                         acceptedTerms && styles.termsCheckboxOn,

@@ -1,10 +1,6 @@
 appId: com.anonymous.eiyusystem
 ---
-- launchApp:
-    clearState: true
-- extendedWaitUntil:
-    visible: "EIYU SYSTEM"
-    timeout: 30000
+- runFlow: _helpers/launch_fresh.yaml
 - evalScript: ${output.freshEmail = 'maestro.fresh.' + Date.now() + '@example.com'}
 - tapOn: "Register"
 - assertVisible: "Begin your journey"
@@ -12,9 +8,28 @@ appId: com.anonymous.eiyusystem
 - inputText: "Fresh Signup Tester"
 - tapOn: "you@example.com"
 - inputText: ${output.freshEmail}
-- tapOn: "••••••••"
+# PASSWORD and CONFIRM PASSWORD both report as "••••••••" in the
+# accessibility tree, and - unlike a plain-text placeholder - this does NOT
+# clear once a secure field has a value (Android masks password-type field
+# content generically for accessibility). Both taps need an explicit index;
+# relying on "the filled one no longer matches" silently re-taps PASSWORD
+# and doubles up its text while CONFIRM stays empty.
+- tapOn:
+    text: "••••••••"
+    index: 0
 - inputText: "FreshPass123!"
 - hideKeyboard
+- tapOn:
+    text: "••••••••"
+    index: 1
+- inputText: "FreshPass123!"
+- hideKeyboard
+# The label text "Accept Privacy Policy and Terms" spans a row that also
+# contains the nested "Privacy Policy & Terms" link - a tap centered on that
+# label lands on the link (opens the modal) instead of toggling the
+# checkbox. testID disambiguates it (see maestro/README.md precedent).
+- tapOn:
+    id: "terms-checkbox"
 - tapOn: "BEGIN JOURNEY"
 # Every fresh signup uses a never-before-seen credential pair, so Android's
 # "Save password?" system dialog appears here (it wouldn't for a reused
