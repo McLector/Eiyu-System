@@ -40,6 +40,11 @@ async function callGeminiForStringArray(system: string, user: string, maxItems: 
           // `supabase functions deploy ai-proxy` to take effect). The weekly
           // summary keeps its larger prose budget below.
           maxOutputTokens: 512,
+          // Thinking is ON BY DEFAULT for every gemini-3.x model, and it is
+          // the single largest latency contributor here. Rephrasing a habit
+          // into a smaller version needs no chain of reasoning, so cap it at
+          // the cheapest level the model offers ("off" is not available).
+          thinkingConfig: { thinkingLevel: 'low' },
           responseMimeType: 'application/json',
           responseSchema: {
             type: 'ARRAY',
@@ -83,7 +88,17 @@ async function callGeminiForText(system: string, user: string): Promise<string> 
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { maxOutputTokens: 4096 },
+        generationConfig: {
+          // A 2-4 sentence paragraph is ~100 tokens; 4096 was never a real
+          // budget, just an unbounded one. 1024 leaves generous headroom
+          // (thinking tokens count against this too) while keeping the cap
+          // meaningful.
+          maxOutputTokens: 1024,
+          // Same reasoning as above: the weekly summary reads a handful of
+          // completion counts and writes two sentences about them. Default
+          // thinking dominated the wait for no gain in the output.
+          thinkingConfig: { thinkingLevel: 'low' },
+        },
       }),
     }
   );
@@ -94,8 +109,14 @@ async function callGeminiForText(system: string, user: string): Promise<string> 
   }
 
   const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const candidate = data.candidates?.[0];
+  const text = candidate?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Gemini API returned no text content');
+  // A tightened maxOutputTokens can truncate mid-sentence. Fail loudly rather
+  // than caching half a paragraph into weekly_summaries for the whole week.
+  if (candidate?.finishReason === 'MAX_TOKENS') {
+    throw new Error('Gemini response was cut off by the output token limit');
+  }
   return text.trim();
 }
 

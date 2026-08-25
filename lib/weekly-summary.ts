@@ -9,20 +9,24 @@ async function gatherWeekData(
   weekStart: string,
   weekEndExclusive: string
 ): Promise<{ habits: WeeklySummaryHabitDatum[]; statTotals: Record<Stat, number> }> {
-  const { data: habits, error: habitsError } = await supabase
-    .from('habits')
-    .select('id, name, stat')
-    .eq('user_id', userId)
-    .eq('archived', false);
+  // Both reads are user-scoped and independent, so they go out together
+  // rather than one waiting on the other. The completions query used to
+  // filter `.in('habit_id', habits.map(...))`, which forced that wait for
+  // nothing: archived habits' completions are already dropped downstream
+  // (counts are only ever read back through the non-archived habit list).
+  const [
+    { data: habits, error: habitsError },
+    { data: completions, error: completionsError },
+  ] = await Promise.all([
+    supabase.from('habits').select('id, name, stat').eq('user_id', userId).eq('archived', false),
+    supabase
+      .from('habit_completions')
+      .select('habit_id, kind')
+      .eq('user_id', userId)
+      .gte('completed_on', weekStart)
+      .lt('completed_on', weekEndExclusive),
+  ]);
   if (habitsError) throw habitsError;
-
-  const { data: completions, error: completionsError } = await supabase
-    .from('habit_completions')
-    .select('habit_id, kind')
-    .eq('user_id', userId)
-    .in('habit_id', (habits ?? []).map(h => h.id))
-    .gte('completed_on', weekStart)
-    .lt('completed_on', weekEndExclusive);
   if (completionsError) throw completionsError;
 
   const countsByHabit = new Map<string, { full: number; easy: number }>();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Divider } from '@/components/eiyu/divider';
@@ -47,28 +47,51 @@ export default function StatusScreen() {
         if (!cancelled) setWeeklyLoading(false);
       });
 
-    // R-60: skip if already loaded once this session — it's cached
-    // server-side per week anyway, no need to re-fetch on every tab switch.
-    if (weeklySummary === null && !weeklySummaryLoading) {
-      setWeeklySummaryLoading(true);
-      setWeeklySummaryError(null);
-      fetchOrCreateWeeklySummary(userId)
-        .then(text => {
-          if (!cancelled) setWeeklySummary(text);
-        })
-        .catch(err => {
-          if (!cancelled) setWeeklySummaryError(formatError(err));
-        })
-        .finally(() => {
-          if (!cancelled) setWeeklySummaryLoading(false);
-        });
-    }
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user.id, tab]);
+
+  /**
+   * R-60: the summary is PREFETCHED on mount rather than on the weekly tab
+   * tap. Generating one is a cold serial chain (two reads, an Edge Function
+   * hop, then a Gemini call), and starting it at tap time meant staring at a
+   * spinner for all of it. Starting it as soon as Status opens hides that
+   * behind however long the stats tab is read; a week that already has its
+   * summary costs one cached SELECT instead.
+   *
+   * The ref (not `weeklySummaryLoading` state) is what keeps this to one
+   * request: state set inside an effect is not visible to a re-run of that
+   * same effect in the same commit, so a state guard could fire twice.
+   */
+  const summaryRequested = useRef(false);
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId || summaryRequested.current) return;
+    summaryRequested.current = true;
+    let cancelled = false;
+    setWeeklySummaryLoading(true);
+    setWeeklySummaryError(null);
+    fetchOrCreateWeeklySummary(userId)
+      .then(text => {
+        if (!cancelled) setWeeklySummary(text);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          setWeeklySummaryError(formatError(err));
+          // Let a later mount retry a failed generation instead of leaving
+          // the week permanently summary-less.
+          summaryRequested.current = false;
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setWeeklySummaryLoading(false);
+      });
 
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user.id, tab]);
+  }, [session?.user.id]);
 
   const radarValues = STATS.reduce((acc, stat) => {
     acc[stat] = user.stats[stat].level;
