@@ -5,14 +5,28 @@ appId: com.anonymous.eiyusystem
 - tapOn: "Quest History"
 - assertVisible: "HISTORY"
 - assertVisible: "TODAY"
+- assertVisible: "August 2026"
 
 # Navigate back a few months and forward past the starting month - the
 # calendar grid and weekday header should stay aligned, no crash on
-# year rollover (e.g. going back past January).
+# year rollover (e.g. going back past January). The chevrons are icon-only
+# (no text), so a fixed screen-percentage point was used previously - it
+# silently missed the button entirely (confirmed: month never changed)
+# once the safe-area scaffold fix shifted the sheet's on-screen position.
+# testID is the reliable fix, not a different point guess.
 - tapOn:
-    point: "15%,20%"
+    id: "history-prev-month"
+- assertVisible: "July 2026"
 - tapOn:
-    point: "15%,20%"
+    id: "history-prev-month"
+- assertVisible: "June 2026"
 - tapOn:
-    point: "15%,20%"
-- assertVisible: "HISTORY"
+    id: "history-prev-month"
+- assertVisible: "May 2026"
+- tapOn:
+    id: "history-next-month"
+- tapOn:
+    id: "history-next-month"
+- tapOn:
+    id: "history-next-month"
+- assertVisible: "August 2026"

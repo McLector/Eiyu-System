@@ -92,13 +92,19 @@ export default function HistoryScreen() {
 
         <Screen edges={[]} fill={false}>
           <View style={styles.monthRow}>
-            <Pressable onPress={() => changeMonth(-1)} style={styles.monthNavButton}>
+            <Pressable
+              testID="history-prev-month"
+              onPress={() => changeMonth(-1)}
+              style={styles.monthNavButton}>
               <ChevronIcon direction="left" size={16} color={theme.muted} />
             </Pressable>
             <Text style={[styles.monthLabel, { color: theme.text, fontFamily: fonts.display }]}>
               {MONTH_LABELS[month]} {year}
             </Text>
-            <Pressable onPress={() => changeMonth(1)} style={styles.monthNavButton}>
+            <Pressable
+              testID="history-next-month"
+              onPress={() => changeMonth(1)}
+              style={styles.monthNavButton}>
               <ChevronIcon direction="right" size={16} color={theme.muted} />
             </Pressable>
           </View>
