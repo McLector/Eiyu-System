@@ -16,6 +16,13 @@ interface ScreenProps extends Pick<ScrollViewProps, 'showsVerticalScrollIndicato
   edges?: SafeEdge[];
   /** Render inside a keyboard-aware scroll view (default true). Pass false for non-scrolling containers. */
   scroll?: boolean;
+  /**
+   * Whether this screen claims its parent's full height (default true).
+   * Pass false inside a CONTENT-SIZED parent: the bottom-sheet routes give
+   * their sheet a `maxHeight` and no height of its own, so a `flex: 1` child
+   * resolves to zero there and collapses the sheet down to just its header.
+   */
+  fill?: boolean;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: ScrollViewProps['contentContainerStyle'];
   /** Extra padding stacked on top of the top safe-area inset (replaces former hardcoded paddingTop values). */
@@ -25,6 +32,15 @@ interface ScreenProps extends Pick<ScrollViewProps, 'showsVerticalScrollIndicato
 const styles = StyleSheet.create({
   fill: {
     flex: 1,
+  },
+  /**
+   * Content-sized alternative to `fill`: takes its natural content height,
+   * then shrinks (and scrolls the overflow) once the parent's maxHeight
+   * clamps it. `flex: 1` cannot do this - it contributes zero height when
+   * the parent is itself auto-sized.
+   */
+  wrap: {
+    flexShrink: 1,
   },
 });
 
@@ -52,6 +68,7 @@ export function Screen({
   children,
   edges = ['top'],
   scroll = true,
+  fill = true,
   style,
   contentContainerStyle,
   topGap = 0,
@@ -71,13 +88,17 @@ export function Screen({
 
   if (!scroll) {
     const flat = (StyleSheet.flatten(style) ?? {}) as FlatPadding & ViewStyle;
-    return <View style={{ flex: 1, ...withSafePadding(flat) }}>{children}</View>;
+    return (
+      <View style={{ ...(fill ? { flex: 1 } : { flexShrink: 1 }), ...withSafePadding(flat) }}>
+        {children}
+      </View>
+    );
   }
 
   const flatContent = (StyleSheet.flatten(contentContainerStyle) ?? {}) as FlatPadding & ViewStyle;
   return (
     <KeyboardAwareScrollView
-      style={[styles.fill, style]}
+      style={[fill ? styles.fill : styles.wrap, style]}
       contentContainerStyle={withSafePadding(flatContent)}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}>

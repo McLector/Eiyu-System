@@ -90,7 +90,7 @@ export default function HistoryScreen() {
           </Pressable>
         </View>
 
-        <Screen edges={[]}>
+        <Screen edges={[]} fill={false}>
           <View style={styles.monthRow}>
             <Pressable onPress={() => changeMonth(-1)} style={styles.monthNavButton}>
               <ChevronIcon direction="left" size={16} color={theme.muted} />
