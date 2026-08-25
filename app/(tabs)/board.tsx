@@ -125,7 +125,7 @@ function QuestRow({
           </Pressable>
         </View>
 
-        <Pressable style={styles.questInfo} onPress={onEdit}>
+        <Pressable testID="quest-edit-trigger" style={styles.questInfo} onPress={onEdit}>
           <Text
             numberOfLines={1}
             style={[

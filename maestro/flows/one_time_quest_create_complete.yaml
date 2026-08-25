@@ -15,9 +15,11 @@ appId: com.anonymous.eiyusystem
 - tapOn: "CREATE QUEST"
 - assertVisible: "Maestro One-Time Quest"
 
-# Cleanup: same persistent-account reasoning as habit_create_happy —
-# edit it away so later flows start from a clean board.
-- tapOn: "Maestro One-Time Quest"
+# Cleanup: same persistent-account reasoning as habit_create_happy — edit
+# it away so later flows start from a clean board. testID sidesteps the
+# checkbox/edit-trigger label collision (see habit_create_happy.yaml).
+- tapOn:
+    id: "quest-edit-trigger"
 - assertVisible: "EDIT QUEST"
 - tapOn: "DELETE"
 - assertNotVisible: "Maestro One-Time Quest"

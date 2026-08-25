@@ -2,6 +2,10 @@ appId: com.anonymous.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
+# The "+" button opens a quest-type chooser first (also titled "NEW QUEST",
+# same as the habit editor's own header - pick a type before the editor's
+# fields exist to tap on).
+- tapOn: "HABIT QUEST"
 - assertVisible: "NEW QUEST"
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Maestro Habit Happy Path"
@@ -15,8 +19,12 @@ appId: com.anonymous.eiyusystem
 - assertVisible: "STR"
 
 # Cleanup: this flow shares one persistent test account across runs, so
-# leaving the quest behind would break index-0 checkbox assumptions in
-# other flows (e.g. board_toggle_complete_and_easy) on the next run.
-- tapOn: "Maestro Habit Happy Path"
+# leaving the quest behind would break other flows on the next run.
+# The checkbox's accessibilityLabel is the quest's plain name (board.tsx),
+# which collides with the same text on the row's separate edit-trigger
+# Pressable - tapping by name text is unreliable (empirically lands on the
+# checkbox, toggling completion, even with an index). testID sidesteps it.
+- tapOn:
+    id: "quest-edit-trigger"
 - tapOn: "DELETE"
 - assertNotVisible: "Maestro Habit Happy Path"

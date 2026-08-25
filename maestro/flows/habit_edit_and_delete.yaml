@@ -12,7 +12,12 @@ appId: com.anonymous.eiyusystem
 - tapOn: "CREATE QUEST"
 - assertVisible: "Habit To Edit Then Delete"
 
-- tapOn: "Habit To Edit Then Delete"
+# The checkbox's accessibilityLabel is the quest's plain name (board.tsx),
+# colliding with the same text on the row's separate edit-trigger Pressable
+# - tapping by name text is unreliable (empirically lands on the checkbox,
+# toggling completion, even with an index). testID sidesteps it.
+- tapOn:
+    id: "quest-edit-trigger"
 - assertVisible: "EDIT QUEST"
 - assertVisible: "SAVE CHANGES"
 - assertVisible: "DELETE"
@@ -24,6 +29,7 @@ appId: com.anonymous.eiyusystem
 - assertVisible: "Habit After Edit"
 - assertNotVisible: "Habit To Edit Then Delete"
 
-- tapOn: "Habit After Edit"
+- tapOn:
+    id: "quest-edit-trigger"
 - tapOn: "DELETE"
 - assertNotVisible: "Habit After Edit"
