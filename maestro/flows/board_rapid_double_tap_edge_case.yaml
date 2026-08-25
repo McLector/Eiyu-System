@@ -31,7 +31,9 @@ appId: com.anonymous.eiyusystem
 # XP total match a single toggle, not three.
 
 # Cleanup: keep the shared test account's board empty between flow runs
-# so index-0 checkbox targeting stays valid for other flows.
-- tapOn: "Rapid Tap Habit"
+# so index-0 checkbox targeting stays valid for other flows. testID
+# sidesteps the checkbox/edit-trigger label collision (see maestro/README.md).
+- tapOn:
+    id: "quest-edit-trigger"
 - tapOn: "DELETE"
 - assertNotVisible: "Rapid Tap Habit"

@@ -29,6 +29,9 @@ appId: com.anonymous.eiyusystem
 - assertVisible: "0/1"
 
 # Cleanup: keep the shared test account's board empty between flow runs.
-- tapOn: "Toggle Complete Habit"
+# testID sidesteps the checkbox/edit-trigger label collision (see
+# maestro/README.md).
+- tapOn:
+    id: "quest-edit-trigger"
 - tapOn: "DELETE"
 - assertNotVisible: "Toggle Complete Habit"
