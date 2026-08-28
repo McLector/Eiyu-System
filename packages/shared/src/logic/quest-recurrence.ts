@@ -1,4 +1,4 @@
-import { addUtcDays, toDateKey } from '@/lib/date-utils';
+import { addUtcDays, toDateKey } from './date-utils';
 
 /**
  * PostgREST filter selecting what appears on TODAY's board (UTC-day math,

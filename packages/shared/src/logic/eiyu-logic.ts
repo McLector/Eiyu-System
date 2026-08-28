@@ -1,6 +1,6 @@
-import { STATS } from '@/constants/eiyu-data';
-import { addUtcDays, startOfUtcDay, toDateKey } from '@/lib/date-utils';
-import { Rank, Stat, StatData } from '@/types/eiyu';
+import { STATS } from '../constants/eiyu-data';
+import { addUtcDays, startOfUtcDay, toDateKey } from './date-utils';
+import { Rank, Stat, StatData } from '../types/eiyu';
 
 // R-21: full completion = 100% of the base award, easy/recovery = ~20%.
 export const FULL_XP = 20;

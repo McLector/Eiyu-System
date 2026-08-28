@@ -8,9 +8,9 @@ import {
   rankFromStats,
   streakState,
   weakestStat,
-} from '@/lib/eiyu-logic';
-import { mondayOfWeek } from '@/lib/date-utils';
-import { StatData } from '@/types/eiyu';
+} from '../eiyu-logic';
+import { mondayOfWeek } from '../date-utils';
+import { StatData } from '../../types/eiyu';
 
 describe('levelProgress', () => {
   it('starts at level 1 with 0 xp', () => {

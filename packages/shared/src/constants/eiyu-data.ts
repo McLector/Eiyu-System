@@ -1,4 +1,4 @@
-import { Rank, Stat, UserProfile } from '@/types/eiyu';
+import { Rank, Stat, UserProfile } from '../types/eiyu';
 
 export const STAT_COLORS: Record<Stat, string> = {
   STR: '#f87171',
