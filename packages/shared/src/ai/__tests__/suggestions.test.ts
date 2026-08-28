@@ -3,7 +3,7 @@ import {
   SUGGESTION_TTL_MS,
   suggestionCacheKey,
   type CachedSuggestions,
-} from '../ai';
+} from '../suggestions';
 
 describe('suggestionCacheKey', () => {
   it('normalizes case and surrounding whitespace so repeat taps hit the cache', () => {

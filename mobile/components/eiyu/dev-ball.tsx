@@ -25,8 +25,7 @@ import {
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { AI_SUGGESTIONS_STORAGE_KEY } from '@/lib/ai';
-import { completeHabit } from '@eiyu/shared';
+import { AI_SUGGESTIONS_STORAGE_KEY, completeHabit } from '@eiyu/shared';
 import { addUtcDays, mondayOfWeek, startOfUtcDay, toDateKey } from '@eiyu/shared';
 import { createHabit, HabitInput } from '@eiyu/shared';
 import { supabase } from '@/lib/supabase';

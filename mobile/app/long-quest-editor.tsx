@@ -7,8 +7,7 @@ import { Screen } from '@/components/eiyu/screen';
 import { STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { suggestStages } from '@/lib/ai';
-import { formatError } from '@eiyu/shared';
+import { formatError, suggestStages } from '@eiyu/shared';
 import { Stat } from '@eiyu/shared';
 
 const MIN_STAGES = 2;

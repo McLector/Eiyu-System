@@ -13,8 +13,7 @@ import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { formatError } from '@eiyu/shared';
 import { fetchWeeklyReview, weeklyDayTotal, weeklyStatTotal, WeeklyDayDatum } from '@eiyu/shared';
-import { fetchOrCreateWeeklySummary } from '@/lib/weekly-summary';
-import { Stat } from '@eiyu/shared';
+import { fetchOrCreateWeeklySummary, Stat } from '@eiyu/shared';
 
 type StatusTab = 'stats' | 'weekly';
 

@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
-import { initSupabaseClient, type Database } from '@eiyu/shared';
+import { initSupabaseClient, initCacheAdapter, type CacheAdapter, type Database } from '@eiyu/shared';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -33,3 +33,11 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 });
 
 initSupabaseClient(supabase);
+
+const asyncStorageAdapter: CacheAdapter = {
+  getItem: key => AsyncStorage.getItem(key),
+  setItem: (key, value) => AsyncStorage.setItem(key, value),
+  removeItem: key => AsyncStorage.removeItem(key),
+};
+
+initCacheAdapter(asyncStorageAdapter);

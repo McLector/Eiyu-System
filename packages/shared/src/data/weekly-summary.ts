@@ -1,6 +1,8 @@
-import { generateWeeklySummary, WeeklySummaryHabitDatum } from '@/lib/ai';
-import { supabase } from '@/lib/supabase';
-import { STATS, addUtcDays, mondayOfWeek, toDateKey, Stat } from '@eiyu/shared';
+import { generateWeeklySummary, WeeklySummaryHabitDatum } from '../ai/suggestions';
+import { supabase } from '../supabase/client';
+import { STATS } from '../constants/eiyu-data';
+import { addUtcDays, mondayOfWeek, toDateKey } from '../logic/date-utils';
+import { Stat } from '../types/eiyu';
 
 async function gatherWeekData(
   userId: string,
@@ -47,7 +49,7 @@ async function gatherWeekData(
 
 /**
  * R-60: fetches this week's AI summary paragraph, generating one (from the
- * week-to-date's completion data) the first time it's read in a given week —
+ * week-to-date's completion data) the first time it's read in a given week -
  * cached in weekly_summaries so the paragraph is stable and isn't
  * regenerated on every Status screen visit.
  */
@@ -72,7 +74,7 @@ export async function fetchOrCreateWeeklySummary(userId: string, now: Date = new
     .from('weekly_summaries')
     .insert({ user_id: userId, week_start: weekStart, summary });
   // Unique constraint on (user_id, week_start): a second tab racing to
-  // generate the same week's summary loses the insert, not the read — just
+  // generate the same week's summary loses the insert, not the read - just
   // trust whatever won rather than showing two different paragraphs.
   if (insertError && insertError.code !== '23505') throw insertError;
   if (insertError) {

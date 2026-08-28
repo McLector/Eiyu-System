@@ -1,9 +1,10 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
-import { suggestEasyVersions } from '@/lib/ai';
-import { supabase } from '@/lib/supabase';
+import { suggestEasyVersions } from '../suggestions';
+import { supabase } from '../../supabase/client';
+import { initCacheAdapter, type CacheAdapter } from '../../cache/adapter';
 
-jest.mock('@/lib/supabase', () => ({
+jest.mock('../../supabase/client', () => ({
   supabase: {
     functions: {
       invoke: jest.fn(),
@@ -11,9 +12,23 @@ jest.mock('@/lib/supabase', () => ({
   },
 }));
 
+function inMemoryCacheAdapter(): CacheAdapter {
+  const store = new Map<string, string>();
+  return {
+    getItem: async key => store.get(key) ?? null,
+    setItem: async (key, value) => {
+      store.set(key, value);
+    },
+    removeItem: async key => {
+      store.delete(key);
+    },
+  };
+}
+
 describe('invokeAiProxy error handling (via suggestEasyVersions)', () => {
   beforeEach(() => {
     (supabase.functions.invoke as jest.Mock).mockClear();
+    initCacheAdapter(inMemoryCacheAdapter());
   });
 
   it("surfaces ai-proxy's own JSON error message instead of the generic SDK one", async () => {

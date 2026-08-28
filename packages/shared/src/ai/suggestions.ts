@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
-import { Stat } from '@eiyu/shared';
+import { supabase } from '../supabase/client';
+import { getCacheAdapter } from '../cache/adapter';
+import { Stat } from '../types/eiyu';
 
 interface AiProxyError {
   error: string;
@@ -76,14 +76,14 @@ export function isFreshSuggestions(
 }
 
 async function readSuggestionCache(): Promise<SuggestionCache> {
-  const raw = await AsyncStorage.getItem(AI_SUGGESTIONS_STORAGE_KEY);
+  const raw = await getCacheAdapter().getItem(AI_SUGGESTIONS_STORAGE_KEY);
   return raw ? JSON.parse(raw) : {};
 }
 
 async function writeSuggestionCacheEntry(key: string, value: string[]): Promise<void> {
   const cache = await readSuggestionCache();
   cache[key] = { at: Date.now(), value };
-  await AsyncStorage.setItem(AI_SUGGESTIONS_STORAGE_KEY, JSON.stringify(cache));
+  await getCacheAdapter().setItem(AI_SUGGESTIONS_STORAGE_KEY, JSON.stringify(cache));
 }
 
 /**
@@ -154,7 +154,7 @@ export interface WeeklySummaryHabitDatum {
   easyCount: number;
 }
 
-/** R-60: raw call to the ai-proxy for a weekly summary paragraph — generate-once-per-week caching lives in lib/weekly-summary.ts, so no local TTL cache here. */
+/** R-60: raw call to the ai-proxy for a weekly summary paragraph - generate-once-per-week caching lives in data/weekly-summary.ts, so no local TTL cache here. */
 export async function generateWeeklySummary(
   weekStart: string,
   habits: WeeklySummaryHabitDatum[],
