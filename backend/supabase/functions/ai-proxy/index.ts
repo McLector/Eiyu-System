@@ -9,15 +9,32 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const GEMINI_MODEL = 'gemini-3.6-flash';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+// No web deployment exists yet (mobile-only app) — only the local Expo web
+// dev server is allowlisted. Add the production origin here once a web
+// build is deployed. Native mobile requests never send an Origin header, so
+// this has no effect on iOS/Android.
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:8081',
+  'http://localhost:19006',
+]);
 
-function json(body: unknown, status = 200) {
+function corsHeaders(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    // POST is a CORS-safelisted method so preflight passes without this today,
+    // but stating it explicitly removes the "is that actually fine?" question.
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  };
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  return headers;
+}
+
+function json(body: unknown, status = 200, cors: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...cors, 'Content-Type': 'application/json' },
   });
 }
 
@@ -174,11 +191,12 @@ async function summarizeWeek(
 }
 
 Deno.serve(async req => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  const cors = corsHeaders(req.headers.get('Origin'));
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return json({ error: 'Missing Authorization header' }, 401);
+    if (!authHeader) return json({ error: 'Missing Authorization header' }, 401, cors);
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -188,7 +206,7 @@ Deno.serve(async req => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return json({ error: 'Unauthorized' }, 401);
+    if (!user) return json({ error: 'Unauthorized' }, 401, cors);
 
     const body = await req.json();
 
@@ -196,31 +214,35 @@ Deno.serve(async req => {
       case 'easy-versions': {
         const { habitName, stat } = body;
         if (typeof habitName !== 'string' || !habitName.trim()) {
-          return json({ error: 'habitName is required' }, 400);
+          return json({ error: 'habitName is required' }, 400, cors);
         }
         const suggestions = await suggestEasyVersions(habitName.trim(), stat ?? '');
-        return json({ suggestions });
+        return json({ suggestions }, 200, cors);
       }
       case 'stage-breakdown': {
         const { questName, stat } = body;
         if (typeof questName !== 'string' || !questName.trim()) {
-          return json({ error: 'questName is required' }, 400);
+          return json({ error: 'questName is required' }, 400, cors);
         }
         const stages = await suggestStages(questName.trim(), stat ?? '');
-        return json({ stages });
+        return json({ stages }, 200, cors);
       }
       case 'weekly-summary': {
         const { weekStart, habits, statTotals } = body;
         if (typeof weekStart !== 'string' || !Array.isArray(habits) || typeof statTotals !== 'object') {
-          return json({ error: 'weekStart, habits, and statTotals are required' }, 400);
+          return json({ error: 'weekStart, habits, and statTotals are required' }, 400, cors);
         }
         const summary = await summarizeWeek(weekStart, habits, statTotals);
-        return json({ summary });
+        return json({ summary }, 200, cors);
       }
       default:
-        return json({ error: `Unknown action: ${body.action}` }, 400);
+        return json({ error: `Unknown action: ${body.action}` }, 400, cors);
     }
   } catch (err) {
-    return json({ error: err instanceof Error ? err.message : 'Unknown error' }, 500);
+    // Finding 3: don't forward upstream (Gemini) error text to the client —
+    // log it server-side (visible via `supabase functions logs ai-proxy`)
+    // and return a fixed, generic message instead.
+    console.error('[ai-proxy] request failed:', err);
+    return json({ error: 'The AI request failed. Please try again.' }, 500, cors);
   }
 });
