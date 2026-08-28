@@ -7,9 +7,9 @@ import { Screen } from '@/components/eiyu/screen';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { toDateKey } from '@/lib/date-utils';
-import { formatError } from '@/lib/format-error';
-import { fetchMonthHistory, HistoryByDate } from '@/lib/history';
+import { toDateKey } from '@eiyu/shared';
+import { formatError } from '@eiyu/shared';
+import { fetchMonthHistory, HistoryByDate } from '@eiyu/shared';
 
 const MONTH_LABELS = [
   'January', 'February', 'March', 'April', 'May', 'June',

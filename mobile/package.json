@@ -12,6 +12,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@eiyu/shared": "*",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/rajdhani": "^0.4.1",
@@ -72,6 +73,9 @@
     ],
     "setupFiles": [
       "./jest.setup.js"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^@eiyu/shared$": "<rootDir>/../packages/shared/src/index.ts"
+    }
   }
 }

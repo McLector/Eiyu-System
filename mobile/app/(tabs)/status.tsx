@@ -7,14 +7,14 @@ import { StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { RadarChart } from '@/components/eiyu/radar-chart';
 import { Screen } from '@/components/eiyu/screen';
-import { RANK_CONFIG, STATS, STAT_COLORS } from '@/constants/eiyu-data';
+import { RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { formatError } from '@/lib/format-error';
-import { fetchWeeklyReview, weeklyDayTotal, weeklyStatTotal, WeeklyDayDatum } from '@/lib/weekly-review';
+import { formatError } from '@eiyu/shared';
+import { fetchWeeklyReview, weeklyDayTotal, weeklyStatTotal, WeeklyDayDatum } from '@eiyu/shared';
 import { fetchOrCreateWeeklySummary } from '@/lib/weekly-summary';
-import { Stat } from '@/types/eiyu';
+import { Stat } from '@eiyu/shared';
 
 type StatusTab = 'stats' | 'weekly';
 

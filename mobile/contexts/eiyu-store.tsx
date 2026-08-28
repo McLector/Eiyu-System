@@ -28,12 +28,12 @@ import {
   type ReactNode,
 } from 'react';
 
-import { initialUser } from '@/constants/eiyu-data';
+import { initialUser } from '@eiyu/shared';
 import { darkTheme, lightTheme, type EiyuTheme } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
-import { completeHabit, undoCompletion } from '@/lib/completions';
-import { rankFromStats } from '@/lib/eiyu-logic';
-import { formatError } from '@/lib/format-error';
+import { completeHabit, undoCompletion } from '@eiyu/shared';
+import { rankFromStats } from '@eiyu/shared';
+import { formatError } from '@eiyu/shared';
 import {
   archiveHabit,
   createHabit,
@@ -42,7 +42,7 @@ import {
   fetchTodayHabits,
   HabitInput,
   updateHabit,
-} from '@/lib/habits';
+} from '@eiyu/shared';
 import {
   getNotificationsEnabled,
   setNotificationsEnabled as persistNotificationsEnabled,
@@ -62,11 +62,11 @@ import {
   fetchLongQuests,
   LongQuestInput,
   setStageDone,
-} from '@/lib/long-quests';
-import { fetchProfile } from '@/lib/profile';
-import { fetchStats } from '@/lib/stats';
-import { fetchOrCreateWeeklyQuest, WeeklyQuest } from '@/lib/weekly-quest';
-import { LongQuest, Quest, UserProfile } from '@/types/eiyu';
+} from '@eiyu/shared';
+import { fetchProfile } from '@eiyu/shared';
+import { fetchStats } from '@eiyu/shared';
+import { fetchOrCreateWeeklyQuest, WeeklyQuest } from '@eiyu/shared';
+import { LongQuest, Quest, UserProfile } from '@eiyu/shared';
 
 /** App-wide client - also used by PersistQueryClientProvider in app/_layout.tsx. */
 export const queryClient = new QueryClient({

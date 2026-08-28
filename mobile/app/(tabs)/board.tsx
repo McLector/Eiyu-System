@@ -16,12 +16,12 @@ import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { RANK_CONFIG, STATS, STAT_COLORS } from '@/constants/eiyu-data';
+import { RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
-import { EASY_XP, FULL_XP } from '@/lib/eiyu-logic';
-import { Quest, Rank } from '@/types/eiyu';
+import { EASY_XP, FULL_XP } from '@eiyu/shared';
+import { Quest, Rank } from '@eiyu/shared';
 
 /**
  * The per-stat XP bar, animated. It used to set `width: \`${pct}%\`` directly,

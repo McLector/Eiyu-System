@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { Stat } from '@/types/eiyu';
+import { Stat } from '@eiyu/shared';
 
 interface AiProxyError {
   error: string;

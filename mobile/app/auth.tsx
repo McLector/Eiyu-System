@@ -15,7 +15,7 @@ import {
   validateDisplayName,
   validateEmail,
   validatePassword,
-} from '@/lib/validation';
+} from '@eiyu/shared';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
 

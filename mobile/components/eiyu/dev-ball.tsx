@@ -26,12 +26,12 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { AI_SUGGESTIONS_STORAGE_KEY } from '@/lib/ai';
-import { completeHabit } from '@/lib/completions';
-import { addUtcDays, mondayOfWeek, startOfUtcDay, toDateKey } from '@/lib/date-utils';
-import { createHabit, HabitInput } from '@/lib/habits';
+import { completeHabit } from '@eiyu/shared';
+import { addUtcDays, mondayOfWeek, startOfUtcDay, toDateKey } from '@eiyu/shared';
+import { createHabit, HabitInput } from '@eiyu/shared';
 import { supabase } from '@/lib/supabase';
-import { CompletionKind } from '@/types/database';
-import { Difficulty, QuestType, Stat } from '@/types/eiyu';
+import { CompletionKind } from '@eiyu/shared';
+import { Difficulty, QuestType, Stat } from '@eiyu/shared';
 
 const BALL_SIZE = 52;
 const EDGE = 12;

@@ -4,12 +4,12 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { StatIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
-import { STATS, STAT_COLORS } from '@/constants/eiyu-data';
+import { STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { suggestStages } from '@/lib/ai';
-import { formatError } from '@/lib/format-error';
-import { Stat } from '@/types/eiyu';
+import { formatError } from '@eiyu/shared';
+import { Stat } from '@eiyu/shared';
 
 const MIN_STAGES = 2;
 const MAX_STAGES = 8;

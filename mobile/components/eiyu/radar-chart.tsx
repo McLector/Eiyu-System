@@ -1,8 +1,8 @@
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 
-import { STAT_COLORS, STATS } from '@/constants/eiyu-data';
+import { STAT_COLORS, STATS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
-import { Stat } from '@/types/eiyu';
+import { Stat } from '@eiyu/shared';
 
 function pointAt(cx: number, cy: number, r: number, index: number, count: number) {
   const angle = (index * 2 * Math.PI) / count - Math.PI / 2;

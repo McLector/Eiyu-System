@@ -1,7 +1,7 @@
 import Svg, { Circle, Ellipse, Line, Path, Polygon, Polyline } from 'react-native-svg';
 
-import { STAT_COLORS } from '@/constants/eiyu-data';
-import { Stat } from '@/types/eiyu';
+import { STAT_COLORS } from '@eiyu/shared';
+import { Stat } from '@eiyu/shared';
 
 export function StatIcon({ stat, size = 16 }: { stat: Stat; size?: number }) {
   const color = STAT_COLORS[stat];

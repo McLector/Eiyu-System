@@ -1,8 +1,6 @@
-import { STATS } from '@/constants/eiyu-data';
 import { generateWeeklySummary, WeeklySummaryHabitDatum } from '@/lib/ai';
-import { addUtcDays, mondayOfWeek, toDateKey } from '@/lib/date-utils';
 import { supabase } from '@/lib/supabase';
-import { Stat } from '@/types/eiyu';
+import { STATS, addUtcDays, mondayOfWeek, toDateKey, Stat } from '@eiyu/shared';
 
 async function gatherWeekData(
   userId: string,

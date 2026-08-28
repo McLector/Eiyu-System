@@ -6,14 +6,14 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { StatIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
-import { DAYS, STATS, STAT_COLORS } from '@/constants/eiyu-data';
+import { DAYS, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { suggestEasyVersions } from '@/lib/ai';
-import { formatError } from '@/lib/format-error';
+import { formatError } from '@eiyu/shared';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
-import { HabitInput } from '@/lib/habits';
-import { Difficulty, QuestType, Stat } from '@/types/eiyu';
+import { HabitInput } from '@eiyu/shared';
+import { Difficulty, QuestType, Stat } from '@eiyu/shared';
 
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
 

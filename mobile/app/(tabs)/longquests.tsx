@@ -8,7 +8,7 @@ import { GlassView } from '@/components/eiyu/glass-view';
 import { CheckIcon, ChevronIcon, PlusIcon, StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { STAT_COLORS } from '@/constants/eiyu-data';
+import { STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 
