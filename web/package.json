@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@eiyu/shared": "*",
+    "@supabase/supabase-js": "^2.112.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-is": "^19.2.8",

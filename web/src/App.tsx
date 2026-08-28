@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Screen, UserProfile, Quest } from './types';
 import { initialUser } from './data';
+import { useSession } from './hooks/useSession';
+import DevAuth from './DevAuth';
 import Sidebar from './web/Sidebar';
 import Landing from './web/Landing';
-import WebAuth from './web/WebAuth';
 import WebBoard from './web/WebBoard';
 import WebStatus from './web/WebStatus';
 import WebLongQuests from './web/WebLongQuests';
@@ -12,6 +13,7 @@ import WebQuestEditor from './web/WebQuestEditor';
 import WebHistory from './web/WebHistory';
 
 export default function App() {
+  const { session, loading: sessionLoading } = useSession();
   const [stage, setStage] = useState<'landing' | 'auth' | 'app'>('landing');
   const [darkMode, setDarkMode] = useState(true);
   const isLoggedIn = stage === 'app';
@@ -20,6 +22,11 @@ export default function App() {
   const [showEditor, setShowEditor] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    if (sessionLoading) return;
+    setStage(session ? 'app' : 'landing');
+  }, [sessionLoading, session]);
 
   const saveQuest = (quest: Quest) => {
     setUser(u => {
@@ -54,7 +61,7 @@ export default function App() {
       {stage === 'landing' ? (
         <Landing onGetStarted={() => setStage('auth')} />
       ) : stage === 'auth' ? (
-        <WebAuth onLogin={() => setStage('app')} />
+        <DevAuth onAuthenticated={() => setStage('app')} />
       ) : (
         <>
           <Sidebar current={screen} onChange={setScreen} user={user} />
