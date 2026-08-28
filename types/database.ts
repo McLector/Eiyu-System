@@ -176,13 +176,12 @@ export interface Database {
         Args: { p_stat: StatKey; p_delta: number };
         Returns: undefined;
       };
-      /** Migration 012: atomic completion insert + XP award in one call. */
+      /** Migration 012: atomic completion insert + XP award in one call. XP computed server-side since migration 014. */
       complete_habit: {
         Args: {
           p_habit_id: string;
           p_completed_on: string;
           p_kind: CompletionKind;
-          p_xp: number;
         };
         Returns: undefined;
       };

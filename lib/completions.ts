@@ -1,4 +1,3 @@
-import { EASY_XP, FULL_XP } from '@/lib/eiyu-logic';
 import { supabase } from '@/lib/supabase';
 import { CompletionKind } from '@/types/database';
 import { Stat } from '@/types/eiyu';
@@ -9,9 +8,9 @@ function todayKey() {
 
 /**
  * R-05/R-06: record a completion and award XP (R-21) ATOMICALLY via the
- * complete_habit RPC (migration 012). Previously this was an insert followed
- * by a separate increment_stat_xp call - two network round-trips where a
- * crash between them desynced history vs stats.
+ * complete_habit RPC (migration 012, XP made server-side in 014). Previously
+ * this was an insert followed by a separate increment_stat_xp call - two
+ * network round-trips where a crash between them desynced history vs stats.
  * `completedOn` defaults to today; the recovery-quest flow (R-13) backdates
  * it to the missed date so completing it retroactively fills that gap.
  */
@@ -22,17 +21,16 @@ export async function completeHabit(
   kind: CompletionKind,
   completedOn: string = todayKey()
 ) {
-  // userId stays in the signature for API stability; like stat, it's resolved
-  // server-side by the RPC (auth.uid()) so client and DB can't disagree.
+  // userId/stat stay in the signature for API stability; both are resolved
+  // server-side by the RPC (auth.uid(), habit lookup) so client and DB can't
+  // disagree — as of migration 014, so is the XP amount (see 014's comment).
   void userId;
   void stat;
-  const xp = kind === 'full' ? FULL_XP : EASY_XP;
 
   const { error } = await supabase.rpc('complete_habit', {
     p_habit_id: habitId,
     p_completed_on: completedOn,
     p_kind: kind,
-    p_xp: xp,
   });
   if (error) throw error;
 }
