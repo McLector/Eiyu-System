@@ -1,0 +1,156 @@
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* ── Dark theme (default) ────────────────────────── */
+:root {
+  --c-text: #dff0fb;
+  --c-muted: rgba(163, 210, 230, 0.55);
+  --c-dim: rgba(163, 210, 230, 0.38);
+  --c-accent: #67e8f9;
+  --c-accent-glass: rgba(103, 232, 249, 0.08);
+  --c-accent-hover: rgba(103, 232, 249, 0.14);
+  --c-accent-border: rgba(103, 232, 249, 0.22);
+  --c-accent-strong: rgba(103, 232, 249, 0.38);
+  --c-glass: rgba(6, 22, 42, 0.65);
+  --c-glass-sm: rgba(6, 22, 42, 0.75);
+  --c-glass-border: rgba(103, 232, 249, 0.12);
+  --c-track: rgba(6, 20, 40, 0.8);
+  --c-modal: rgba(5, 18, 35, 0.97);
+  --c-overlay: rgba(3, 13, 26, 0.85);
+  --c-nav: rgba(4, 12, 22, 0.92);
+  --c-nav-border: rgba(103, 232, 249, 0.1);
+  --c-nav-dim: rgba(163, 210, 230, 0.35);
+  --c-page: radial-gradient(ellipse 100% 55% at 50% -8%, rgba(6,78,115,0.32) 0%, transparent 65%),
+            radial-gradient(ellipse 60% 40% at 15% 85%, rgba(2,45,75,0.3) 0%, transparent 55%),
+            radial-gradient(ellipse 40% 35% at 85% 70%, rgba(74,222,128,0.06) 0%, transparent 50%),
+            linear-gradient(180deg, #040f1e 0%, #030c18 50%, #040e1c 100%);
+  --c-body: #030d1a;
+}
+
+/* ── Light theme ─────────────────────────────────── */
+[data-theme="light"] {
+  --c-text: #0b1e32;
+  --c-muted: rgba(14, 52, 80, 0.55);
+  --c-dim: rgba(14, 52, 80, 0.38);
+  --c-accent: #0891b2;
+  --c-accent-glass: rgba(8, 145, 178, 0.08);
+  --c-accent-hover: rgba(8, 145, 178, 0.14);
+  --c-accent-border: rgba(8, 145, 178, 0.22);
+  --c-accent-strong: rgba(8, 145, 178, 0.38);
+  --c-glass: rgba(255, 255, 255, 0.62);
+  --c-glass-sm: rgba(255, 255, 255, 0.78);
+  --c-glass-border: rgba(8, 145, 178, 0.2);
+  --c-track: rgba(8, 145, 178, 0.1);
+  --c-modal: rgba(237, 248, 255, 0.97);
+  --c-overlay: rgba(180, 220, 245, 0.75);
+  --c-nav: rgba(210, 240, 255, 0.92);
+  --c-nav-border: rgba(8, 145, 178, 0.15);
+  --c-nav-dim: rgba(14, 52, 80, 0.35);
+  --c-page: radial-gradient(ellipse 100% 55% at 50% -8%, rgba(6,150,200,0.22) 0%, transparent 60%),
+            radial-gradient(ellipse 50% 40% at 85% 80%, rgba(20,180,130,0.07) 0%, transparent 50%),
+            linear-gradient(180deg, #d6ebf8 0%, #e5f4ff 50%, #d4e9f6 100%);
+  --c-body: #d6ebf8;
+}
+
+* {
+  scrollbar-width: none;
+  box-sizing: border-box;
+}
+*::-webkit-scrollbar { display: none; }
+
+body {
+  font-family: 'Inter', sans-serif;
+  background: var(--c-body);
+  color: var(--c-text);
+  min-height: 100svh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.glass {
+  background: var(--c-glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--c-glass-border);
+  border-radius: 20px;
+}
+
+.glass-sm {
+  background: var(--c-glass-sm);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--c-glass-border);
+  border-radius: 14px;
+}
+
+.btn-ghost {
+  background: var(--c-accent-glass);
+  border: 1px solid var(--c-accent-border);
+  border-radius: 50px;
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: var(--c-accent-hover);
+  border-color: var(--c-accent-strong);
+  box-shadow: 0 0 18px var(--c-accent-glass);
+}
+
+.btn-ghost:active {
+  transform: scale(0.97);
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--c-glass-border);
+  margin: 0;
+}
+
+.field {
+  background: var(--c-track);
+  border: 1px solid var(--c-accent-border);
+  border-radius: 12px;
+  color: var(--c-text);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  padding: 11px 14px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.field:focus {
+  border-color: var(--c-accent-strong);
+  box-shadow: 0 0 0 2px var(--c-accent-glass);
+}
+
+.field::placeholder {
+  color: var(--c-dim);
+}
+
+select.field option {
+  background: var(--c-modal);
+  color: var(--c-text);
+}
+
+@keyframes fadeOut {
+  0% { opacity: 1; transform: translateY(0); }
+  70% { opacity: 1; transform: translateY(-4px); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
