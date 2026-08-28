@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from '../supabase/client';
 
 export interface ProfileData {
   displayName: string;

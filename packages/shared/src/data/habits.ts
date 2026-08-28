@@ -1,9 +1,9 @@
-import { addUtcDays, toDateKey } from '@/lib/date-utils';
-import { streakState } from '@/lib/eiyu-logic';
-import { todayQuestsFilter } from '@/lib/quest-recurrence';
-import { supabase } from '@/lib/supabase';
-import { Database } from '@/types/database';
-import { Difficulty, Quest, QuestType, Stat } from '@/types/eiyu';
+import { addUtcDays, toDateKey } from '../logic/date-utils';
+import { streakState } from '../logic/eiyu-logic';
+import { todayQuestsFilter } from '../logic/quest-recurrence';
+import { supabase } from '../supabase/client';
+import { Database } from '../types/database';
+import { Difficulty, Quest, QuestType, Stat } from '../types/eiyu';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
 

@@ -1,5 +1,5 @@
-import { supabase } from '@/lib/supabase';
-import { LongQuest, QuestStage, Stat } from '@/types/eiyu';
+import { supabase } from '../supabase/client';
+import { LongQuest, QuestStage, Stat } from '../types/eiyu';
 
 /** R-32/R-33: real Long Quests, replacing the mock data that shipped with the UI. */
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {

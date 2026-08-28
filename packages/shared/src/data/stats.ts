@@ -1,7 +1,7 @@
-import { STATS } from '@/constants/eiyu-data';
-import { levelProgress } from '@/lib/eiyu-logic';
-import { supabase } from '@/lib/supabase';
-import { Stat, StatData } from '@/types/eiyu';
+import { STATS } from '../constants/eiyu-data';
+import { levelProgress } from '../logic/eiyu-logic';
+import { supabase } from '../supabase/client';
+import { Stat, StatData } from '../types/eiyu';
 
 export async function fetchStats(userId: string): Promise<Record<Stat, StatData>> {
   const { data, error } = await supabase.from('stats').select('stat, xp').eq('user_id', userId);

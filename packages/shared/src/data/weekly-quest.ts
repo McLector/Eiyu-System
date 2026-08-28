@@ -1,7 +1,7 @@
-import { addUtcDays, mondayOfWeek, toDateKey } from '@/lib/date-utils';
-import { weakestStat } from '@/lib/eiyu-logic';
-import { supabase } from '@/lib/supabase';
-import { Stat, StatData } from '@/types/eiyu';
+import { addUtcDays, mondayOfWeek, toDateKey } from '../logic/date-utils';
+import { weakestStat } from '../logic/eiyu-logic';
+import { supabase } from '../supabase/client';
+import { Stat, StatData } from '../types/eiyu';
 
 // Roughly one completion every weekday — simple, defensible, and avoids
 // tying the target to each habit's schedule (Could-priority feature, not

@@ -1,6 +1,6 @@
-import { supabase } from '@/lib/supabase';
-import { CompletionKind } from '@/types/database';
-import { Stat } from '@/types/eiyu';
+import { supabase } from '../supabase/client';
+import { CompletionKind } from '../types/database';
+import { Stat } from '../types/eiyu';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);

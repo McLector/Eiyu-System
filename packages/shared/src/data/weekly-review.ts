@@ -1,7 +1,7 @@
-import { STATS } from '@/constants/eiyu-data';
-import { addUtcDays, toDateKey } from '@/lib/date-utils';
-import { supabase } from '@/lib/supabase';
-import { Stat } from '@/types/eiyu';
+import { STATS } from '../constants/eiyu-data';
+import { addUtcDays, toDateKey } from '../logic/date-utils';
+import { supabase } from '../supabase/client';
+import { Stat } from '../types/eiyu';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 

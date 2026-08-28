@@ -1,6 +1,6 @@
-import { toDateKey } from '@/lib/date-utils';
-import { supabase } from '@/lib/supabase';
-import { CompletionKind } from '@/types/database';
+import { toDateKey } from '../logic/date-utils';
+import { supabase } from '../supabase/client';
+import { CompletionKind } from '../types/database';
 
 export interface HistoryCompletion {
   habitName: string;

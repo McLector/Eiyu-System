@@ -1,7 +1,7 @@
-import { completeHabit, undoCompletion } from '@/lib/completions';
-import { supabase } from '@/lib/supabase';
+import { completeHabit, undoCompletion } from '../completions';
+import { supabase } from '../../supabase/client';
 
-jest.mock('@/lib/supabase', () => ({
+jest.mock('../../supabase/client', () => ({
   supabase: {
     rpc: jest.fn(async () => ({ error: null })),
   },
