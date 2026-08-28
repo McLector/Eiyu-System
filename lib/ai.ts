@@ -1,9 +1,33 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { Stat } from '@/types/eiyu';
 
 interface AiProxyError {
   error: string;
+}
+
+/**
+ * On a non-2xx response, supabase-js throws a FunctionsHttpError whose own
+ * `.message` is always the generic "Edge Function returned a non-2xx status
+ * code" - it never reads the response body. ai-proxy always returns a JSON
+ * `{ error }` body on failure, so read that back out here; fall back to the
+ * SDK's error unchanged for anything that isn't a parseable HTTP error body
+ * (a network-level FunctionsFetchError/FunctionsRelayError, or a body that
+ * isn't the shape we expect).
+ */
+async function toAiProxyError(error: unknown): Promise<Error> {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await error.context.json();
+      if (body && typeof body === 'object' && typeof body.error === 'string') {
+        return new Error(body.error);
+      }
+    } catch {
+      // Response body wasn't parseable JSON - fall through.
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 /**
@@ -78,7 +102,7 @@ async function invokeAiProxy<T>(body: Record<string, unknown>): Promise<T> {
     return await Promise.race([
       (async () => {
         const { data, error } = await supabase.functions.invoke('ai-proxy', { body });
-        if (error) throw error;
+        if (error) throw await toAiProxyError(error);
         if (data && typeof data === 'object' && 'error' in data) {
           throw new Error((data as AiProxyError).error);
         }
