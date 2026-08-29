@@ -9,7 +9,7 @@ Plan A (merged to `main` at `deb3227`) wired the web app to real data across eve
 
 **Risk profile is the middle case between Plan A's two extremes.** Plan A was purely additive (new `web/` folder, cheap to revert). Plan B modifies the auth/session core of an already-working, already-verified app — routing touches every screen's mount path, and session consolidation touches the exact code the race lives in. That's more risk than "additive polish," less than "new subsystem." Process stays the same pipeline (brainstorm → design doc → plan → SDD) with the same per-task-review-plus-one-whole-branch-review gate structure Plan A used; only the design doc itself is leaner, since most of the real decision-making already happened in the brainstorm this doc is transcribing.
 
-**Own branch, no worktree.** `web-plan-b-session-routing`, branched off `deb3227` (the merged, pushed Plan A tip). Unlike Plan A, this branch has no Figma MCP dependency, so a separate worktree buys nothing — Plan A's own final review already drew this exact distinction: worktree isolation is for external-transport dependencies and directory-safety concerns Plan B doesn't have, while *branch* isolation (mandatory here, unlike Plan A) is for exactly this profile — rewriting a working core.
+**Own branch, no worktree.** `web-plan-b-session-routing`, branched off `main`'s current tip (this design doc's own commit, so the branch's history includes the doc it's built from). Unlike Plan A, this branch has no Figma MCP dependency, so a separate worktree buys nothing — Plan A's own final review already drew this exact distinction: worktree isolation is for external-transport dependencies and directory-safety concerns Plan B doesn't have, while *branch* isolation (mandatory here, unlike Plan A) is for exactly this profile — rewriting a working core.
 
 ## 2. Decisions
 
@@ -59,7 +59,7 @@ SessionProvider → QueryClientProvider → EiyuProvider → App
 | Route | Class | Notes |
 |---|---|---|
 | `/` | public | Pure auth-state redirector — no Landing page (see below) |
-| `/auth` | public | `DevAuth` during this phase; swapped for real `WebAuth` in Phase 5.3 |
+| `/auth` | public | `DevAuth` during this phase; swapped for real `WebAuth` in Phase 3 |
 | `/board`, `/status`, `/longquests`, `/settings`, `/history` | protected | |
 | `/quest-editor/:id?` | protected | No `id` = create, `id` = edit |
 
