@@ -24,7 +24,7 @@ function AiSummary({ userId }: { userId: string }) {
   if (isPending) {
     return (
       <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--c-accent-glass)', border: '1px solid var(--c-accent-border)', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted)' }}>
-        Generating this week's summary…
+        Generating this week&apos;s summary…
       </div>
     );
   }
@@ -175,7 +175,7 @@ export default function WebStatus({ darkMode }: Props) {
               {weeklyReviewQuery.isLoading ? (
                 <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)', padding: '12px 0' }}>Loading…</div>
               ) : weeklyReviewQuery.error ? (
-                <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn't load this week's data.</div>
+                <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn&apos;t load this week&apos;s data.</div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   {STATS.map(stat => (

@@ -21,7 +21,6 @@ function QuestRow({ quest, onToggle, onRecover, onEdit }: {
   quest: Quest; onToggle: () => void; onRecover: () => void; onEdit: () => void;
 }) {
   const color = STAT_COLORS[quest.stat];
-  const today = new Date().getDay();
 
   return (
     <div style={{

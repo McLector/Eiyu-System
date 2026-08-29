@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 
 import RootRedirect from './RootRedirect';
 import RequireAuth from './RequireAuth';
@@ -30,4 +30,5 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  { path: '*', element: <Navigate to="/" replace /> },
 ]);

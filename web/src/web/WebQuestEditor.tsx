@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
-import { STAT_COLORS, DAYS } from '@eiyu/shared';
+import { STAT_COLORS } from '@eiyu/shared';
 import { StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 

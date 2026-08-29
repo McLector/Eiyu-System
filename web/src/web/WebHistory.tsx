@@ -90,7 +90,7 @@ export default function WebHistory({ userId, onClose }: Props) {
           {historyQuery.isPending ? (
             <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>
           ) : historyQuery.error ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn't load this month's history.</div>
+            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn&apos;t load this month&apos;s history.</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
               {cells.map((day, i) => {
@@ -134,7 +134,7 @@ export default function WebHistory({ userId, onClose }: Props) {
           <div style={{ borderTop: '1px solid var(--c-glass-border)', paddingTop: 16 }}>
             <p style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.14em', color: 'var(--c-dim)', marginBottom: 10 }}>TODAY</p>
             {!isCurrentMonth ? (
-              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Navigate to the current month to see today's completions.</p>
+              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Navigate to the current month to see today&apos;s completions.</p>
             ) : todayCompletions.length === 0 ? (
               <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Nothing completed yet today.</p>
             ) : (
