@@ -62,23 +62,6 @@ export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onL
           }
         />
 
-        <SectionLabel label="NOTIFICATIONS" />
-        <SettingRow
-          label="Daily Quest Reminders"
-          sub="Receive push reminders for scheduled quests"
-          right={<Toggle on={true} onToggle={() => {}} />}
-        />
-        <SettingRow
-          label="Streak Alerts"
-          sub="Warn when a streak is at risk"
-          right={<Toggle on={true} onToggle={() => {}} />}
-        />
-        <SettingRow
-          label="Sound Effects"
-          sub="Play audio on quest completion"
-          right={<Toggle on={false} onToggle={() => {}} />}
-        />
-
         <SectionLabel label="DATA" />
         <SettingRow
           label="Quest History"
@@ -86,15 +69,6 @@ export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onL
           right={
             <button onClick={onShowHistory} className="btn-ghost" style={{ padding: '6px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
               VIEW
-            </button>
-          }
-        />
-        <SettingRow
-          label="Export Data"
-          sub="Download your quest log as CSV"
-          right={
-            <button className="btn-ghost" style={{ padding: '6px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
-              EXPORT
             </button>
           }
         />

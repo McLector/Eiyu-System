@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from './hooks/useSession';
 import { useEiyu } from './store/eiyu-store';
+import { supabase } from './lib/supabase';
 import DevAuth from './DevAuth';
 import Sidebar, { type Screen } from './web/Sidebar';
 import Landing from './web/Landing';
@@ -63,7 +64,7 @@ export default function App() {
                 darkMode={darkMode}
                 onToggleDark={() => setDarkMode(d => !d)}
                 onShowHistory={() => setShowHistory(true)}
-                onLogout={() => setStage('landing')}
+                onLogout={() => { void supabase.auth.signOut(); }}
               />
             )}
           </main>
