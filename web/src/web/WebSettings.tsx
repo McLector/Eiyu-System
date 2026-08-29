@@ -5,6 +5,7 @@ interface Props {
   onToggleDark: () => void;
   onShowHistory: () => void;
   onLogout: () => void;
+  signOutError?: string | null;
 }
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -42,7 +43,7 @@ function SectionLabel({ label }: { label: string }) {
   return <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--c-dim)', marginTop: 24, marginBottom: 4 }}>{label}</div>;
 }
 
-export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onLogout }: Props) {
+export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onLogout, signOutError }: Props) {
   return (
     <div style={{ maxWidth: 560 }}>
       <h2 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: '0 0 4px' }}>SETTINGS</h2>
@@ -84,6 +85,9 @@ export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onL
               </button>
             }
           />
+          {signOutError && (
+            <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171', margin: '8px 0 0' }}>{signOutError}</p>
+          )}
         </div>
       </div>
 

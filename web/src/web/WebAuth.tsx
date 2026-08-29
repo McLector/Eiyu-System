@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { supabase } from '../lib/supabase';
+
 type Mode = 'login' | 'signup' | 'forgot';
 
 interface Props { onLogin: () => void; }
@@ -29,11 +31,39 @@ export default function WebAuth({ onLogin }: Props) {
   const [name, setName] = useState('');
   const [terms, setTerms] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const valid =
+    mode === 'forgot'
+      ? email.trim().length > 0
+      : mode === 'login'
+        ? email.trim().length > 0 && password.length > 0
+        : email.trim().length > 0 && name.trim().length > 0 && password.length >= 6 && password === confirmPw && terms;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === 'forgot') { setSubmitted(true); return; }
-    onLogin();
+    if (!valid || submitting) return;
+    setError(null);
+    setSubmitting(true);
+    try {
+      if (mode === 'forgot') {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+        if (resetError) throw resetError;
+        setSubmitted(true);
+        return;
+      }
+      const { error: authError } =
+        mode === 'login'
+          ? await supabase.auth.signInWithPassword({ email, password })
+          : await supabase.auth.signUp({ email, password, options: { data: { display_name: name } } });
+      if (authError) throw authError;
+      onLogin();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -73,7 +103,7 @@ export default function WebAuth({ onLogin }: Props) {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form onSubmit={e => void handleSubmit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {mode === 'signup' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>DISPLAY NAME</label>
@@ -95,6 +125,9 @@ export default function WebAuth({ onLogin }: Props) {
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>CONFIRM PASSWORD</label>
                   <input className="field" type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
+                  {confirmPw.length > 0 && confirmPw !== password && (
+                    <p style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', marginTop: 6 }}>Passwords don't match</p>
+                  )}
                 </div>
               )}
               {mode === 'signup' && (
@@ -124,8 +157,9 @@ export default function WebAuth({ onLogin }: Props) {
                   </button>
                 </div>
               )}
-              <button type="submit" className="btn-ghost" style={{ width: '100%', padding: '14px', marginTop: 4, fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>
-                {mode === 'login' ? 'ENTER SYSTEM' : mode === 'signup' ? 'BEGIN JOURNEY' : 'SEND RECOVERY LINK'}
+              {error && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171' }}>{error}</p>}
+              <button type="submit" disabled={!valid || submitting} className="btn-ghost" style={{ width: '100%', padding: '14px', marginTop: 4, fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', opacity: !valid || submitting ? 0.6 : 1 }}>
+                {submitting ? 'WORKING…' : mode === 'login' ? 'ENTER SYSTEM' : mode === 'signup' ? 'BEGIN JOURNEY' : 'SEND RECOVERY LINK'}
               </button>
             </form>
           )}
@@ -138,12 +172,12 @@ export default function WebAuth({ onLogin }: Props) {
               {mode === 'login' ? 'New adventurer?' : mode === 'signup' ? 'Already enrolled?' : ''}
             </span>
             {mode !== 'forgot' && (
-              <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null); }} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                 {mode === 'login' ? 'Register' : 'Sign in'}
               </button>
             )}
             {mode === 'forgot' && (
-              <button onClick={() => setMode('login')} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              <button onClick={() => { setMode('login'); setError(null); }} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                 Back to login
               </button>
             )}
