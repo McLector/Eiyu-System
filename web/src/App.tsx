@@ -75,7 +75,9 @@ export default function App() {
               onClose={() => { setShowEditor(false); setEditingId(null); }}
             />
           )}
-          {showHistory && <WebHistory onClose={() => setShowHistory(false)} />}
+          {showHistory && session && (
+            <WebHistory userId={session.user.id} onClose={() => setShowHistory(false)} />
+          )}
         </>
       )}
     </div>

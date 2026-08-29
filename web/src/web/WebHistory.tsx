@@ -1,29 +1,34 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { fetchMonthHistory, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
 
-interface Props { onClose: () => void; }
+interface Props { userId: string; onClose: () => void; }
 
 const DAYS_HEADER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-// Mock completion data for August 2026
-const COMPLETIONS: Record<number, 'full' | 'partial' | null> = {
-  1: 'full', 2: 'full', 3: 'partial', 4: 'full', 5: 'full', 6: null, 7: null,
-  8: 'full', 9: 'full', 10: 'partial', 11: 'full', 12: 'full', 13: 'full', 14: null,
-  15: 'full', 16: 'full', 17: 'partial', 18: 'full', 19: 'full', 20: 'full', 21: null,
-  22: 'full', 23: 'full', 24: 'full', 25: 'partial', 26: 'full', 27: 'full', 28: 'full',
-};
+function dateKey(year: number, month: number, day: number): string {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
 
-const TODAY_QUESTS = [
-  { name: 'Morning run (5 km)', xp: 20, kind: 'full' },
-  { name: 'Meditate 15 minutes', xp: 20, kind: 'full' },
-  { name: 'Code for 2 hours', xp: 20, kind: 'full' },
-];
+function dayStatus(completions: HistoryCompletion[] | undefined): 'full' | 'partial' | null {
+  if (!completions || completions.length === 0) return null;
+  return completions.some(c => c.kind === 'full') ? 'full' : 'partial';
+}
 
-export default function WebHistory({ onClose }: Props) {
-  const [year, setYear] = useState(2026);
-  const [month, setMonth] = useState(7); // 0-indexed, 7 = Aug
+export default function WebHistory({ userId, onClose }: Props) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth());
+
+  const historyQuery = useQuery({
+    queryKey: ['monthHistory', userId, year, month],
+    queryFn: () => fetchMonthHistory(userId, year, month),
+    enabled: !!userId,
+  });
 
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const today = 28; // Aug 28, 2026
+  const today = now.getDate();
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -33,6 +38,9 @@ export default function WebHistory({ onClose }: Props) {
 
   const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
   while (cells.length % 7 !== 0) cells.push(null);
+
+  const data = historyQuery.data ?? {};
+  const todayCompletions = isCurrentMonth ? data[dateKey(year, month, today)] ?? [] : [];
 
   return (
     <div style={{
@@ -73,32 +81,36 @@ export default function WebHistory({ onClose }: Props) {
           </div>
 
           {/* Calendar grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
-            {cells.map((day, i) => {
-              if (!day) return <div key={i} />;
-              const completion = month === 7 ? COMPLETIONS[day] : null;
-              const isToday = month === 7 && day === today;
-              return (
-                <div key={i} style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-                  padding: '6px 2px',
-                  borderRadius: 8,
-                  background: isToday ? 'var(--c-accent-glass)' : 'transparent',
-                  border: isToday ? '1px solid var(--c-accent-border)' : '1px solid transparent',
-                }}>
-                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: isToday ? 'var(--c-accent)' : 'var(--c-text)' }}>{day}</span>
-                  {completion && (
-                    <div style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: completion === 'full' ? '#4ade80' : '#fbbf24',
-                      boxShadow: `0 0 4px ${completion === 'full' ? '#4ade8080' : '#fbbf2480'}`,
-                    }} />
-                  )}
-                  {!completion && <div style={{ width: 6, height: 6 }} />}
-                </div>
-              );
-            })}
-          </div>
+          {historyQuery.isPending ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
+              {cells.map((day, i) => {
+                if (!day) return <div key={i} />;
+                const completion = dayStatus(data[dateKey(year, month, day)]);
+                const isToday = isCurrentMonth && day === today;
+                return (
+                  <div key={i} style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                    padding: '6px 2px',
+                    borderRadius: 8,
+                    background: isToday ? 'var(--c-accent-glass)' : 'transparent',
+                    border: isToday ? '1px solid var(--c-accent-border)' : '1px solid transparent',
+                  }}>
+                    <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: isToday ? 'var(--c-accent)' : 'var(--c-text)' }}>{day}</span>
+                    {completion && (
+                      <div style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: completion === 'full' ? '#4ade80' : '#fbbf24',
+                        boxShadow: `0 0 4px ${completion === 'full' ? '#4ade8080' : '#fbbf2480'}`,
+                      }} />
+                    )}
+                    {!completion && <div style={{ width: 6, height: 6 }} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Legend */}
           <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
@@ -113,15 +125,23 @@ export default function WebHistory({ onClose }: Props) {
           {/* Today's completions */}
           <div style={{ borderTop: '1px solid var(--c-glass-border)', paddingTop: 16 }}>
             <p style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.14em', color: 'var(--c-dim)', marginBottom: 10 }}>TODAY</p>
-            {TODAY_QUESTS.map((q, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? '1px solid var(--c-glass-border)' : 'none' }}>
-                <div style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(74,222,128,0.15)', border: '1.5px solid rgba(74,222,128,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+            {!isCurrentMonth ? (
+              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Navigate to the current month to see today's completions.</p>
+            ) : todayCompletions.length === 0 ? (
+              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Nothing completed yet today.</p>
+            ) : (
+              todayCompletions.map((q, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? '1px solid var(--c-glass-border)' : 'none' }}>
+                  <div style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(74,222,128,0.15)', border: '1.5px solid rgba(74,222,128,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  </div>
+                  <span style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)', flex: 1 }}>{q.habitName}</span>
+                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 5, padding: '2px 6px' }}>
+                    +{q.kind === 'full' ? FULL_XP : EASY_XP} XP
+                  </span>
                 </div>
-                <span style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)', flex: 1 }}>{q.name}</span>
-                <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 5, padding: '2px 6px' }}>+{q.xp} XP</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
