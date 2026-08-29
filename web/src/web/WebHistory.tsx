@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchMonthHistory, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
+import { fetchMonthHistory, toDateKey, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
 
 interface Props { userId: string; onClose: () => void; }
 
@@ -17,8 +17,9 @@ function dayStatus(completions: HistoryCompletion[] | undefined): 'full' | 'part
 
 export default function WebHistory({ userId, onClose }: Props) {
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
+  const [nowUtcYear, nowUtcMonth, nowUtcDay] = toDateKey(now).split('-').map(Number);
+  const [year, setYear] = useState(nowUtcYear);
+  const [month, setMonth] = useState(nowUtcMonth - 1); // toDateKey is 1-indexed month; this component's month state is 0-indexed
 
   const historyQuery = useQuery({
     queryKey: ['monthHistory', userId, year, month],
@@ -27,8 +28,8 @@ export default function WebHistory({ userId, onClose }: Props) {
   });
 
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const today = now.getDate();
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const today = nowUtcDay;
+  const isCurrentMonth = year === nowUtcYear && month === nowUtcMonth - 1;
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
