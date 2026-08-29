@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Screen, UserProfile, Quest } from './types';
-import { initialUser } from './data';
 import { useSession } from './hooks/useSession';
+import { useEiyu } from './store/eiyu-store';
 import DevAuth from './DevAuth';
-import Sidebar from './web/Sidebar';
+import Sidebar, { type Screen } from './web/Sidebar';
 import Landing from './web/Landing';
 import WebBoard from './web/WebBoard';
 import WebStatus from './web/WebStatus';
@@ -14,11 +13,10 @@ import WebHistory from './web/WebHistory';
 
 export default function App() {
   const { session, loading: sessionLoading } = useSession();
+  const { user } = useEiyu();
   const [stage, setStage] = useState<'landing' | 'auth' | 'app'>('landing');
   const [darkMode, setDarkMode] = useState(true);
-  const isLoggedIn = stage === 'app';
   const [screen, setScreen] = useState<Screen>('board');
-  const [user, setUser] = useState<UserProfile>(initialUser);
   const [showEditor, setShowEditor] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -27,26 +25,6 @@ export default function App() {
     if (sessionLoading) return;
     setStage(session ? 'app' : 'landing');
   }, [sessionLoading, session]);
-
-  const saveQuest = (quest: Quest) => {
-    setUser(u => {
-      const exists = u.quests.some(q => q.id === quest.id);
-      return {
-        ...u,
-        quests: exists
-          ? u.quests.map(q => q.id === quest.id ? quest : q)
-          : [...u.quests, quest],
-      };
-    });
-    setShowEditor(false);
-    setEditingId(null);
-  };
-
-  const deleteQuest = (id: string) => {
-    setUser(u => ({ ...u, quests: u.quests.filter(q => q.id !== id) }));
-    setShowEditor(false);
-    setEditingId(null);
-  };
 
   const editingQuest = editingId ? user.quests.find(q => q.id === editingId) ?? null : null;
 
@@ -64,23 +42,21 @@ export default function App() {
         <DevAuth onAuthenticated={() => setStage('app')} />
       ) : (
         <>
-          <Sidebar current={screen} onChange={setScreen} user={user} />
+          <Sidebar current={screen} onChange={setScreen} />
 
           {/* Main content */}
           <main style={{ marginLeft: 220, minHeight: '100svh', padding: '36px 40px' }}>
             {screen === 'board' && (
               <WebBoard
-                user={user}
-                setUser={setUser}
                 onNewQuest={() => { setEditingId(null); setShowEditor(true); }}
                 onEditQuest={id => { setEditingId(id); setShowEditor(true); }}
               />
             )}
             {screen === 'status' && (
-              <WebStatus user={user} darkMode={darkMode} />
+              <WebStatus darkMode={darkMode} />
             )}
             {screen === 'longquests' && (
-              <WebLongQuests user={user} setUser={setUser} />
+              <WebLongQuests />
             )}
             {screen === 'settings' && (
               <WebSettings
@@ -96,8 +72,6 @@ export default function App() {
           {showEditor && (
             <WebQuestEditor
               editingQuest={editingQuest}
-              onSave={saveQuest}
-              onDelete={editingId ? deleteQuest : undefined}
               onClose={() => { setShowEditor(false); setEditingId(null); }}
             />
           )}

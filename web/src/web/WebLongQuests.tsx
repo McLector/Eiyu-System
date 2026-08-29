@@ -1,12 +1,7 @@
 import { useState } from 'react';
-import { UserProfile, LongQuest } from '../types';
-import { STAT_COLORS } from '../data';
+import { LongQuest, STAT_COLORS, type Stat } from '@eiyu/shared';
 import { StatIcon, PlusIcon, CheckIcon, ChevronIcon } from '../Icons';
-
-interface Props {
-  user: UserProfile;
-  setUser: (u: UserProfile) => void;
-}
+import { useEiyu } from '../store/eiyu-store';
 
 // ── SVG assets ──────────────────────────────────────────
 
@@ -385,20 +380,14 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
 
 // ── Quest card ───────────────────────────────────────────
 
-function LongQuestCard({ lq, user, setUser, expanded, onToggleExpand }: {
-  lq: LongQuest; user: UserProfile; setUser: (u: UserProfile) => void; expanded: boolean; onToggleExpand: () => void;
+function LongQuestCard({ lq, expanded, onToggleExpand }: {
+  lq: LongQuest; expanded: boolean; onToggleExpand: () => void;
 }) {
+  const { toggleStage: toggleStageAction } = useEiyu();
   const color = STAT_COLORS[lq.stat];
 
-  const toggleStage = (si: number) => {
-    setUser({
-      ...user,
-      longQuests: user.longQuests.map(q =>
-        q.id === lq.id
-          ? { ...q, stages: q.stages.map((s, i) => i === si ? { ...s, done: !s.done } : s) }
-          : q
-      ),
-    });
+  const toggleStage = (stageId: string) => {
+    toggleStageAction(lq.id, stageId);
   };
 
   return (
@@ -440,8 +429,8 @@ function LongQuestCard({ lq, user, setUser, expanded, onToggleExpand }: {
             STAGES
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {lq.stages.map((stage, i) => (
-              <button key={i} onClick={() => toggleStage(i)} style={{
+            {lq.stages.map(stage => (
+              <button key={stage.id} onClick={() => toggleStage(stage.id)} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
                 borderRadius: 10, cursor: 'pointer', textAlign: 'left', width: '100%',
                 background: stage.done ? 'rgba(74,222,128,0.05)' : 'var(--c-accent-glass)',
@@ -473,22 +462,32 @@ function LongQuestCard({ lq, user, setUser, expanded, onToggleExpand }: {
 
 // ── Page ─────────────────────────────────────────────────
 
-export default function WebLongQuests({ user, setUser }: Props) {
+export default function WebLongQuests() {
+  const { user, longQuestsLoading, longQuestsError, retryLongQuests, saveLongQuest } = useEiyu();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newStat, setNewStat] = useState<'STR' | 'INT' | 'DEX' | 'WIS' | 'CHA'>('INT');
+  const [newStat, setNewStat] = useState<Stat>('INT');
   const [newStages, setNewStages] = useState(['', '']);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const addLongQuest = () => {
-    if (!newName.trim()) return;
-    const stages = newStages.filter(s => s.trim()).map(name => ({ name, done: false }));
-    if (stages.length === 0) return;
-    const lq: LongQuest = { id: Date.now().toString(), name: newName, stat: newStat, stages };
-    setUser({ ...user, longQuests: [...user.longQuests, lq] });
-    setShowNew(false);
-    setNewName('');
-    setNewStages(['', '']);
+  const addLongQuest = async () => {
+    if (!newName.trim() || creating) return;
+    const stageNames = newStages.map(s => s.trim()).filter(Boolean);
+    if (stageNames.length === 0) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await saveLongQuest({ name: newName.trim(), stat: newStat, stageNames });
+      setShowNew(false);
+      setNewName('');
+      setNewStages(['', '']);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -523,30 +522,40 @@ export default function WebLongQuests({ user, setUser }: Props) {
             <button onClick={() => setNewStages([...newStages, ''])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', cursor: 'pointer' }}>
               + Add stage
             </button>
+            {createError && <p style={{ color: '#f87171', fontSize: 12 }}>{createError}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button onClick={addLongQuest} className="btn-ghost" style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>CREATE</button>
+              <button onClick={() => void addLongQuest()} className="btn-ghost" style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>CREATE</button>
               <button onClick={() => setShowNew(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {user.longQuests.length === 0 ? (
-          <div className="glass" style={{ padding: '48px', textAlign: 'center' }}>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-dim)', letterSpacing: '0.06em', marginBottom: 6 }}>NO LONG QUESTS</div>
-            <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Create a multi-stage quest to track your big goals</div>
-          </div>
-        ) : (
-          user.longQuests.map(lq => (
-            <LongQuestCard
-              key={lq.id} lq={lq} user={user} setUser={setUser}
-              expanded={expanded === lq.id}
-              onToggleExpand={() => setExpanded(expanded === lq.id ? null : lq.id)}
-            />
-          ))
-        )}
-      </div>
+      {longQuestsLoading ? (
+        <div style={{ padding: 40, textAlign: 'center', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>
+      ) : longQuestsError ? (
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', marginBottom: 12 }}>{longQuestsError}</p>
+          <button onClick={() => void retryLongQuests()} className="btn-ghost" style={{ padding: '8px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700 }}>RETRY</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {user.longQuests.length === 0 ? (
+            <div className="glass" style={{ padding: '48px', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-dim)', letterSpacing: '0.06em', marginBottom: 6 }}>NO LONG QUESTS</div>
+              <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Create a multi-stage quest to track your big goals</div>
+            </div>
+          ) : (
+            user.longQuests.map(lq => (
+              <LongQuestCard
+                key={lq.id} lq={lq}
+                expanded={expanded === lq.id}
+                onToggleExpand={() => setExpanded(expanded === lq.id ? null : lq.id)}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

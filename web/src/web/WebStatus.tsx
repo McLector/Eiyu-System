@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { UserProfile, Stat } from '../types';
-import { STAT_COLORS, STATS, RANK_CONFIG, DAYS } from '../data';
+import { STAT_COLORS, STATS, RANK_CONFIG, DAYS, type Stat, type UserProfile } from '@eiyu/shared';
 import { StatIcon } from '../Icons';
+import { useEiyu } from '../store/eiyu-store';
 
-interface Props { user: UserProfile; darkMode: boolean; }
+interface Props { darkMode: boolean; }
 
 const WEEKLY_DATA: Record<string, number[]> = {
   STR: [2, 3, 1, 3, 2, 3, 0],
@@ -61,7 +61,8 @@ function StatBar({ stat, user }: { stat: Stat; user: UserProfile }) {
   );
 }
 
-export default function WebStatus({ user, darkMode }: Props) {
+export default function WebStatus({ darkMode }: Props) {
+  const { user } = useEiyu();
   const [tab, setTab] = useState<'stats' | 'weekly'>('stats');
   const rankCfg = RANK_CONFIG[user.rank];
 

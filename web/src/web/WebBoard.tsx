@@ -1,11 +1,9 @@
 import { useState } from 'react';
-import { UserProfile, Quest } from '../types';
-import { STAT_COLORS, RANK_CONFIG, STATS, DAYS } from '../data';
-import { StatIcon, CheckIcon, SnowflakeIcon, PlusIcon } from '../Icons';
+import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS } from '@eiyu/shared';
+import { StatIcon, CheckIcon, PlusIcon } from '../Icons';
+import { useEiyu } from '../store/eiyu-store';
 
 interface Props {
-  user: UserProfile;
-  setUser: (u: UserProfile) => void;
   onNewQuest: () => void;
   onEditQuest: (id: string) => void;
 }
@@ -19,12 +17,11 @@ function XpBar({ value, max, color }: { value: number; max: number; color: strin
   );
 }
 
-function QuestRow({ quest, onToggle, onFreeze, onEdit }: {
-  quest: Quest; onToggle: () => void; onFreeze: () => void; onEdit: () => void;
+function QuestRow({ quest, onToggle, onRecover, onEdit }: {
+  quest: Quest; onToggle: () => void; onRecover: () => void; onEdit: () => void;
 }) {
   const color = STAT_COLORS[quest.stat];
   const today = new Date().getDay();
-  const isScheduledToday = quest.days.includes(today);
 
   return (
     <div style={{
@@ -66,7 +63,7 @@ function QuestRow({ quest, onToggle, onFreeze, onEdit }: {
         </div>
       </div>
 
-      {/* Days + freeze */}
+      {/* Days + recover */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
         <div style={{ display: 'flex', gap: 2 }}>
           {DAYS.map((d, i) => (
@@ -80,9 +77,12 @@ function QuestRow({ quest, onToggle, onFreeze, onEdit }: {
             </div>
           ))}
         </div>
-        {!quest.frozen && !quest.completed && isScheduledToday && (
-          <button onClick={onFreeze} title="Freeze today" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
-            <SnowflakeIcon />
+        {quest.frozen && (
+          <button onClick={onRecover} title="Complete the missed day to restore your streak" style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+            fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, color: '#67e8f9', letterSpacing: '0.06em',
+          }}>
+            RECOVER
           </button>
         )}
       </div>
@@ -90,7 +90,8 @@ function QuestRow({ quest, onToggle, onFreeze, onEdit }: {
   );
 }
 
-export default function WebBoard({ user, setUser, onNewQuest, onEditQuest }: Props) {
+export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
+  const { user, questsLoading, questsError, retryQuests, toggleQuest: toggleQuestAction, completeRecovery } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
   const completedToday = user.quests.filter(q => q.completed).length;
   const totalToday = user.quests.filter(q => q.days.includes(new Date().getDay())).length;
@@ -99,17 +100,24 @@ export default function WebBoard({ user, setUser, onNewQuest, onEditQuest }: Pro
   const toggleQuest = (id: string) => {
     const q = user.quests.find(q => q.id === id);
     if (!q || q.frozen) return;
-    const xpGain = q.difficulty === 'Hard' ? 30 : q.difficulty === 'Medium' ? 20 : 10;
     if (!q.completed) {
-      setXpToast(`+${xpGain} ${q.stat} XP`);
+      setXpToast(`+${FULL_XP} ${q.stat} XP`);
       setTimeout(() => setXpToast(null), 2000);
     }
-    setUser({ ...user, quests: user.quests.map(x => x.id === id ? { ...x, completed: !x.completed } : x) });
+    toggleQuestAction(id);
   };
 
-  const freezeQuest = (id: string) => {
-    setUser({ ...user, quests: user.quests.map(x => x.id === id ? { ...x, frozen: true, frozenHoursLeft: 24 } : x) });
-  };
+  if (questsLoading) {
+    return <div style={{ padding: 40, textAlign: 'center', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>;
+  }
+  if (questsError) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', marginBottom: 12 }}>{questsError}</p>
+        <button onClick={() => void retryQuests()} className="btn-ghost" style={{ padding: '8px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700 }}>RETRY</button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 24, alignItems: 'start' }}>
@@ -210,7 +218,7 @@ export default function WebBoard({ user, setUser, onNewQuest, onEditQuest }: Pro
                 <QuestRow
                   key={q.id} quest={q}
                   onToggle={() => toggleQuest(q.id)}
-                  onFreeze={() => freezeQuest(q.id)}
+                  onRecover={() => completeRecovery(q.id)}
                   onEdit={() => onEditQuest(q.id)}
                 />
               ))

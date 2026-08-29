@@ -1,5 +1,4 @@
-import { Stat } from './types';
-import { STAT_COLORS } from './data';
+import { Stat, STAT_COLORS } from '@eiyu/shared';
 
 export function StatIcon({ stat, size = 16 }: { stat: Stat; size?: number }) {
   const color = STAT_COLORS[stat];

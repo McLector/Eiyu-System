@@ -1,11 +1,12 @@
-import { Screen, UserProfile } from '../types';
 import { BoardIcon, StatusIcon, ScrollIcon, GearIcon } from '../Icons';
-import { RANK_CONFIG } from '../data';
+import { RANK_CONFIG } from '@eiyu/shared';
+import { useEiyu } from '../store/eiyu-store';
+
+export type Screen = 'board' | 'status' | 'longquests' | 'settings';
 
 interface Props {
   current: Screen;
   onChange: (s: Screen) => void;
-  user: UserProfile;
 }
 
 const NAV: { id: Screen; label: string; Icon: React.FC<{ active: boolean }> }[] = [
@@ -15,7 +16,8 @@ const NAV: { id: Screen; label: string; Icon: React.FC<{ active: boolean }> }[] 
   { id: 'settings', label: 'SETTINGS', Icon: GearIcon },
 ];
 
-export default function Sidebar({ current, onChange, user }: Props) {
+export default function Sidebar({ current, onChange }: Props) {
+  const { user } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
 
   return (
