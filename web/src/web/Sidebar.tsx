@@ -1,22 +1,16 @@
+import { NavLink } from 'react-router-dom';
 import { BoardIcon, StatusIcon, ScrollIcon, GearIcon } from '../Icons';
 import { RANK_CONFIG } from '@eiyu/shared';
 import { useEiyu } from '../store/eiyu-store';
 
-export type Screen = 'board' | 'status' | 'longquests' | 'settings';
-
-interface Props {
-  current: Screen;
-  onChange: (s: Screen) => void;
-}
-
-const NAV: { id: Screen; label: string; Icon: React.FC<{ active: boolean }> }[] = [
-  { id: 'board', label: 'BOARD', Icon: BoardIcon },
-  { id: 'status', label: 'STATUS', Icon: StatusIcon },
-  { id: 'longquests', label: 'LONG QUESTS', Icon: ScrollIcon },
-  { id: 'settings', label: 'SETTINGS', Icon: GearIcon },
+const NAV: { to: string; label: string; Icon: React.FC<{ active: boolean }> }[] = [
+  { to: '/board', label: 'BOARD', Icon: BoardIcon },
+  { to: '/status', label: 'STATUS', Icon: StatusIcon },
+  { to: '/longquests', label: 'LONG QUESTS', Icon: ScrollIcon },
+  { to: '/settings', label: 'SETTINGS', Icon: GearIcon },
 ];
 
-export default function Sidebar({ current, onChange }: Props) {
+export default function Sidebar() {
   const { user } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
 
@@ -55,34 +49,42 @@ export default function Sidebar({ current, onChange }: Props) {
 
       {/* Nav */}
       <nav style={{ flex: 1, paddingTop: 8 }}>
-        {NAV.map(({ id, label, Icon }) => {
-          const active = current === id;
-          return (
-            <button
-              key={id}
-              onClick={() => onChange(id)}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-                padding: '12px 20px',
-                background: active ? 'var(--c-accent-glass)' : 'transparent',
-                borderTop: 'none', borderRight: 'none', borderBottom: 'none',
-                borderLeft: `3px solid ${active ? 'var(--c-accent)' : 'transparent'}`,
-                cursor: 'pointer', transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--c-accent-glass)'; }}
-              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-            >
-              <Icon active={active} />
-              <span style={{
-                fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 600, letterSpacing: '0.12em',
-                color: active ? 'var(--c-accent)' : 'var(--c-nav-dim)',
-                transition: 'color 0.15s',
-              }}>
-                {label}
-              </span>
-            </button>
-          );
-        })}
+        {NAV.map(({ to, label, Icon }) => (
+          <NavLink
+            key={to}
+            to={to}
+            style={({ isActive }) => ({
+              width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 20px', textDecoration: 'none', boxSizing: 'border-box',
+              background: isActive ? 'var(--c-accent-glass)' : 'transparent',
+              borderLeft: `3px solid ${isActive ? 'var(--c-accent)' : 'transparent'}`,
+              cursor: 'pointer', transition: 'all 0.15s',
+            })}
+            onMouseEnter={e => {
+              if (e.currentTarget.getAttribute('aria-current') !== 'page') {
+                e.currentTarget.style.background = 'var(--c-accent-glass)';
+              }
+            }}
+            onMouseLeave={e => {
+              if (e.currentTarget.getAttribute('aria-current') !== 'page') {
+                e.currentTarget.style.background = 'transparent';
+              }
+            }}
+          >
+            {({ isActive }) => (
+              <>
+                <Icon active={isActive} />
+                <span style={{
+                  fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 600, letterSpacing: '0.12em',
+                  color: isActive ? 'var(--c-accent)' : 'var(--c-nav-dim)',
+                  transition: 'color 0.15s',
+                }}>
+                  {label}
+                </span>
+              </>
+            )}
+          </NavLink>
+        ))}
       </nav>
 
       {/* User card */}
