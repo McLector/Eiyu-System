@@ -7,7 +7,7 @@ import {
 } from '@eiyu/shared';
 import { StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
-import { useSession } from '../hooks/useSession';
+import { useSession } from '../store/session-context';
 
 interface Props { darkMode: boolean; }
 
@@ -81,8 +81,8 @@ function StatBar({ stat, user }: { stat: Stat; user: UserProfile }) {
 
 export default function WebStatus({ darkMode }: Props) {
   const { user } = useEiyu();
-  const { session } = useSession();
-  const userId = session?.user.id;
+  const { user: authUser } = useSession();
+  const userId = authUser?.id;
   const [tab, setTab] = useState<'stats' | 'weekly'>('stats');
   const rankCfg = RANK_CONFIG[user.rank];
 

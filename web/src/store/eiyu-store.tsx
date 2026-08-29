@@ -31,7 +31,7 @@ import {
   type UserProfile,
 } from '@eiyu/shared';
 
-import { useSession } from '../hooks/useSession';
+import { useSession } from './session-context';
 
 export const queryClient = new QueryClient({
   defaultOptions: {

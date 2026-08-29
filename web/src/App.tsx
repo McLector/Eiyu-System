@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSession } from './hooks/useSession';
+import { useSession } from './store/session-context';
 import { useEiyu } from './store/eiyu-store';
 import { supabase } from './lib/supabase';
 import DevAuth from './DevAuth';
