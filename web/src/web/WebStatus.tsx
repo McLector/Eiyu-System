@@ -172,7 +172,7 @@ export default function WebStatus({ darkMode }: Props) {
           <>
             <div className="glass" style={{ padding: '18px 20px' }}>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 14 }}>LAST 7 DAYS</div>
-              {weeklyReviewQuery.isPending ? (
+              {weeklyReviewQuery.isLoading ? (
                 <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)', padding: '12px 0' }}>Loading…</div>
               ) : weeklyReviewQuery.error ? (
                 <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn't load this week's data.</div>

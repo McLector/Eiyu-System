@@ -32,8 +32,12 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
 
   const toggleDay = (d: number) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
+  // One-time quests have no easy version — habit-type quests require one
+  // (the DB enforces this with the habits_easy_version_present CHECK constraint).
+  const valid = name.trim().length > 0 && (questType === 'onetime' || easyVer.trim().length > 0);
+
   const handleSave = async () => {
-    if (!name.trim() || saving) return;
+    if (!valid || saving) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -151,7 +155,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           {/* Easy version */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)' }}>EASY VERSION</label>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)' }}>EASY VERSION <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim)' }}> (required for habits)</span></label>
               <button
                 type="button"
                 onClick={() => void handleAiSuggest()}
@@ -244,7 +248,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-            <button onClick={() => void handleSave()} disabled={saving} className="btn-ghost" style={{ flex: 1, padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: saving ? 0.6 : 1 }}>
+            <button onClick={() => void handleSave()} disabled={saving || !valid} className="btn-ghost" style={{ flex: 1, padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: saving || !valid ? 0.6 : 1 }}>
               {saving ? 'SAVING…' : editingQuest ? 'SAVE CHANGES' : 'CREATE QUEST'}
             </button>
             <button onClick={onClose} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted)', cursor: 'pointer' }}>

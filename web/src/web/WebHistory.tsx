@@ -83,6 +83,8 @@ export default function WebHistory({ userId, onClose }: Props) {
           {/* Calendar grid */}
           {historyQuery.isPending ? (
             <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>
+          ) : historyQuery.error ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn't load this month's history.</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
               {cells.map((day, i) => {
