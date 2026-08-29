@@ -16,6 +16,7 @@ const GEMINI_MODEL = 'gemini-3.6-flash';
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:8081',
   'http://localhost:19006',
+  'http://localhost:5173',
 ]);
 
 function corsHeaders(origin: string | null): Record<string, string> {

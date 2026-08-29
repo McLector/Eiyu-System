@@ -1,26 +1,44 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import { STAT_COLORS, STATS, RANK_CONFIG, DAYS, type Stat, type UserProfile } from '@eiyu/shared';
+import {
+  STAT_COLORS, STATS, RANK_CONFIG, type Stat, type UserProfile,
+  fetchWeeklyReview, fetchOrCreateWeeklySummary, formatError,
+} from '@eiyu/shared';
 import { StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
+import { useSession } from '../hooks/useSession';
 
 interface Props { darkMode: boolean; }
 
-const WEEKLY_DATA: Record<string, number[]> = {
-  STR: [2, 3, 1, 3, 2, 3, 0],
-  INT: [3, 3, 2, 3, 3, 3, 2],
-  DEX: [1, 2, 1, 2, 1, 2, 1],
-  WIS: [2, 2, 2, 3, 2, 2, 2],
-  CHA: [0, 1, 0, 1, 1, 1, 0],
-};
-
-const AI_TEXT = `Strong INT consistency this week — 3 completions on 5 days. STR shows improvement with back-to-back completions Wednesday through Friday. CHA remains the weakest point; consider adding a lighter social task to build momentum on off days. Your 7-day streak is a personal best — protect it heading into the weekend. WIS tracking is steady and close to threshold for a level-up next week if you maintain current pace.`;
-
-function AiSummary() {
+function AiSummary({ userId }: { userId: string }) {
   const [expanded, setExpanded] = useState(false);
+  const { data: summary, isPending, error } = useQuery({
+    queryKey: ['weeklySummary', userId],
+    queryFn: () => fetchOrCreateWeeklySummary(userId),
+    enabled: !!userId,
+    staleTime: Infinity,
+  });
   const SHORT_LIMIT = 160;
-  const isLong = AI_TEXT.length > SHORT_LIMIT;
-  const displayed = expanded || !isLong ? AI_TEXT : AI_TEXT.slice(0, SHORT_LIMIT).trimEnd() + '…';
+
+  if (isPending) {
+    return (
+      <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--c-accent-glass)', border: '1px solid var(--c-accent-border)', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted)' }}>
+        Generating this week's summary…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--c-accent-glass)', border: '1px solid var(--c-accent-border)', fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>
+        {formatError(error)}
+      </div>
+    );
+  }
+
+  const text = summary ?? '';
+  const isLong = text.length > SHORT_LIMIT;
+  const displayed = expanded || !isLong ? text : text.slice(0, SHORT_LIMIT).trimEnd() + '…';
 
   return (
     <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--c-accent-glass)', border: '1px solid var(--c-accent-border)' }}>
@@ -63,8 +81,16 @@ function StatBar({ stat, user }: { stat: Stat; user: UserProfile }) {
 
 export default function WebStatus({ darkMode }: Props) {
   const { user } = useEiyu();
+  const { session } = useSession();
+  const userId = session?.user.id;
   const [tab, setTab] = useState<'stats' | 'weekly'>('stats');
   const rankCfg = RANK_CONFIG[user.rank];
+
+  const weeklyReviewQuery = useQuery({
+    queryKey: ['weeklyReview', userId],
+    queryFn: () => fetchWeeklyReview(userId!),
+    enabled: !!userId && tab === 'weekly',
+  });
 
   const radarData = STATS.map(stat => ({
     subject: stat,
@@ -145,36 +171,42 @@ export default function WebStatus({ darkMode }: Props) {
         {tab === 'weekly' && (
           <>
             <div className="glass" style={{ padding: '18px 20px' }}>
-              <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 14 }}>THIS WEEK</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {STATS.map(stat => (
-                  <div key={stat}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-                      <StatIcon stat={stat} size={12} />
-                      <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 5 }}>
-                      {DAYS.map((day, i) => {
-                        const val = WEEKLY_DATA[stat][i];
-                        const max = 3;
-                        const pct = (val / max) * 100;
-                        return (
-                          <div key={day} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                            <div style={{ width: '100%', height: 52, borderRadius: 4, background: 'var(--c-track)', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end' }}>
-                              <div style={{ width: '100%', height: `${pct}%`, background: STAT_COLORS[stat] + 'aa', borderRadius: 4, transition: 'height 0.3s' }} />
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 14 }}>LAST 7 DAYS</div>
+              {weeklyReviewQuery.isPending ? (
+                <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)', padding: '12px 0' }}>Loading…</div>
+              ) : weeklyReviewQuery.error ? (
+                <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn't load this week's data.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {STATS.map(stat => (
+                    <div key={stat}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                        <StatIcon stat={stat} size={12} />
+                        <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 5 }}>
+                        {(weeklyReviewQuery.data ?? []).map((day, i) => {
+                          const val = day[stat];
+                          const max = 3;
+                          const pct = (val / max) * 100;
+                          return (
+                            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                              <div style={{ width: '100%', height: 52, borderRadius: 4, background: 'var(--c-track)', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end' }}>
+                                <div style={{ width: '100%', height: `${pct}%`, background: STAT_COLORS[stat] + 'aa', borderRadius: 4, transition: 'height 0.3s' }} />
+                              </div>
+                              <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 600, color: 'var(--c-dim)', letterSpacing: '0.06em' }}>{day.day[0]}</span>
                             </div>
-                            <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 600, color: 'var(--c-dim)', letterSpacing: '0.06em' }}>{day[0]}</span>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* AI summary */}
-            <AiSummary />
+            {userId && <AiSummary userId={userId} />}
           </>
         )}
       </div>
