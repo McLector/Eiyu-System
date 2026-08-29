@@ -9,5 +9,8 @@
   "overrides": {
     "react": "19.1.0",
     "react-dom": "19.1.0"
+  },
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present"
   }
 }
