@@ -15,11 +15,16 @@ function dayStatus(completions: HistoryCompletion[] | undefined): 'full' | 'part
   return completions.some(c => c.kind === 'full') ? 'full' : 'partial';
 }
 
+export function deriveUtcToday(now: Date): { year: number; month: number; day: number } {
+  const [year, month, day] = toDateKey(now).split('-').map(Number);
+  return { year, month: month - 1, day };
+}
+
 export default function WebHistory({ userId, onClose }: Props) {
   const now = new Date();
-  const [nowUtcYear, nowUtcMonth, nowUtcDay] = toDateKey(now).split('-').map(Number);
+  const { year: nowUtcYear, month: nowUtcMonth, day: nowUtcDay } = deriveUtcToday(now);
   const [year, setYear] = useState(nowUtcYear);
-  const [month, setMonth] = useState(nowUtcMonth - 1); // toDateKey is 1-indexed month; this component's month state is 0-indexed
+  const [month, setMonth] = useState(nowUtcMonth);
 
   const historyQuery = useQuery({
     queryKey: ['monthHistory', userId, year, month],
@@ -29,7 +34,7 @@ export default function WebHistory({ userId, onClose }: Props) {
 
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const today = nowUtcDay;
-  const isCurrentMonth = year === nowUtcYear && month === nowUtcMonth - 1;
+  const isCurrentMonth = year === nowUtcYear && month === nowUtcMonth;
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
