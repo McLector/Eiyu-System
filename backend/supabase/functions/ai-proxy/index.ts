@@ -25,11 +25,16 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5173',
 ];
 
-// Exact-match today; extended once the web app has a real deploy target
-// (a fixed production origin, plus a suffix check for that project's
-// unpredictable-per-PR preview URLs).
+const PRODUCTION_ORIGIN = 'https://eiyu-system.vercel.app';
+
+// Vercel preview URLs for this project are shaped
+// eiyu-system-<branch-or-hash>-myres-projects.vercel.app — unpredictable
+// per PR, so this is a pattern match scoped to this project's own preview
+// deployments, not a bare *.vercel.app wildcard.
+const PREVIEW_ORIGIN_RE = /^https:\/\/eiyu-system-[a-z0-9-]+-myres-projects\.vercel\.app$/;
+
 function isAllowedOrigin(origin: string): boolean {
-  return ALLOWED_ORIGINS.includes(origin);
+  return ALLOWED_ORIGINS.includes(origin) || origin === PRODUCTION_ORIGIN || PREVIEW_ORIGIN_RE.test(origin);
 }
 
 function corsHeaders(origin: string | null): Record<string, string> {
