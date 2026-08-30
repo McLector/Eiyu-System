@@ -9,15 +9,28 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const GEMINI_MODEL = 'gemini-3.6-flash';
 
-// No web deployment exists yet (mobile-only app) — only the local Expo web
-// dev server is allowlisted. Add the production origin here once a web
-// build is deployed. Native mobile requests never send an Origin header, so
-// this has no effect on iOS/Android.
-const ALLOWED_ORIGINS = new Set([
+// Native mobile requests never send an Origin header, so this list has no
+// effect on iOS/Android — it only gates browser fetch() calls from web.
+//
+// This is NOT the security boundary: every request still needs a valid
+// Authorization bearer token, and RLS governs the data underneath it. CORS
+// only controls which origins a *browser* will let read the response, not
+// who can call the endpoint — an unlisted origin can still hit this function
+// directly (curl, server-to-server), it just can't read the reply via
+// fetch(). Keep that in mind before tightening this list for "security" —
+// it isn't one, and over-tightening just breaks legitimate preview deploys.
+const ALLOWED_ORIGINS = [
   'http://localhost:8081',
   'http://localhost:19006',
   'http://localhost:5173',
-]);
+];
+
+// Exact-match today; extended once the web app has a real deploy target
+// (a fixed production origin, plus a suffix check for that project's
+// unpredictable-per-PR preview URLs).
+function isAllowedOrigin(origin: string): boolean {
+  return ALLOWED_ORIGINS.includes(origin);
+}
 
 function corsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = {
@@ -26,7 +39,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
     // but stating it explicitly removes the "is that actually fine?" question.
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
   };
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     headers['Access-Control-Allow-Origin'] = origin;
   }
   return headers;
