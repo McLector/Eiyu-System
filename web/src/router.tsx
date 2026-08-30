@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 
-import RootRedirect from './RootRedirect';
+import RootPage from './RootPage';
 import RequireAuth from './RequireAuth';
 import ProtectedLayout from './ProtectedLayout';
 import AuthPage from './pages/AuthPage';
@@ -12,7 +12,7 @@ import HistoryPage from './pages/HistoryPage';
 import QuestEditorPage from './pages/QuestEditorPage';
 
 export const router = createBrowserRouter([
-  { path: '/', element: <RootRedirect /> },
+  { path: '/', element: <RootPage /> },
   { path: '/auth', element: <AuthPage /> },
   {
     element: <RequireAuth />,
