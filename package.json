@@ -1,6 +1,9 @@
 {
   "name": "eiyu-system",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "workspaces": [
     "mobile",
     "web",
