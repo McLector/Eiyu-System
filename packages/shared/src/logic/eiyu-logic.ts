@@ -1,6 +1,6 @@
 import { STATS } from '../constants/eiyu-data';
 import { addUtcDays, startOfUtcDay, toDateKey } from './date-utils';
-import { Rank, Stat, StatData } from '../types/eiyu';
+import { Quest, Rank, Stat, StatData } from '../types/eiyu';
 
 // R-21: full completion = 100% of the base award, easy/recovery = ~20%.
 export const FULL_XP = 20;
@@ -184,4 +184,14 @@ export function streakState(
   }
 
   return { current: 0, state: 'broken' };
+}
+
+/**
+ * Every quest currently in a frozen (not-yet-recovered) streak state.
+ * A board can have more than one at once — each habit computes its own
+ * streakState independently (see habits.ts's toQuest) — so this must
+ * return all of them, not `.find()` the first.
+ */
+export function frozenQuests(quests: Quest[]): Quest[] {
+  return quests.filter(q => q.frozen && !q.completed);
 }

@@ -16,7 +16,7 @@ import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
+import { frozenQuests, RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
@@ -200,7 +200,7 @@ export default function BoardScreen() {
     useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
-  const frozenQuest = user.quests.find(q => q.frozen && !q.completed);
+  const frozen = frozenQuests(user.quests);
   const completed = user.quests.filter(q => q.completed).length;
   const total = user.quests.length;
   const initials = user.name.split(' ').map(n => n[0]).join('');
@@ -287,8 +287,9 @@ export default function BoardScreen() {
           </View>
         </GlassView>
 
-        {frozenQuest && (
+        {frozen.map(fq => (
           <View
+            key={fq.id}
             style={[
               styles.recoveryBanner,
               { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(96,165,250,0.3)' },
@@ -300,23 +301,23 @@ export default function BoardScreen() {
                   STREAK FROZEN — RECOVERY QUEST
                 </Text>
               </View>
-              <Text style={[styles.mono, { color: '#93c5fd' }]}>{frozenQuest.frozenHoursLeft}h left</Text>
+              <Text style={[styles.mono, { color: '#93c5fd' }]}>{fq.frozenHoursLeft}h left</Text>
             </View>
             <Text style={[styles.recoveryName, { color: theme.text, fontFamily: fonts.body }]}>
-              {frozenQuest.name}
+              {fq.name}
             </Text>
             <Text style={[styles.recoveryEasy, { color: theme.muted, fontFamily: fonts.body }]}>
-              Easy version: {frozenQuest.easyVersion}
+              Easy version: {fq.easyVersion}
             </Text>
             <GhostButton
               label="Mark Recovery Complete"
               onPress={() => {
-                flashXp(frozenQuest.id, EASY_XP);
-                completeRecovery(frozenQuest.id);
+                flashXp(fq.id, EASY_XP);
+                completeRecovery(fq.id);
               }}
             />
           </View>
-        )}
+        ))}
 
         <View style={styles.questsHeader}>
           <View>
