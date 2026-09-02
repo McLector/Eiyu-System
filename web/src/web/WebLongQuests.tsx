@@ -383,7 +383,8 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
 function LongQuestCard({ lq, expanded, onToggleExpand }: {
   lq: LongQuest; expanded: boolean; onToggleExpand: () => void;
 }) {
-  const { toggleStage: toggleStageAction } = useEiyu();
+  const { toggleStage: toggleStageAction, removeLongQuest } = useEiyu();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const color = STAT_COLORS[lq.stat];
 
   const toggleStage = (stageId: string) => {
@@ -454,6 +455,23 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => {
+              if (!confirmDelete) { setConfirmDelete(true); return; }
+              removeLongQuest(lq.id);
+            }}
+            onMouseLeave={() => setConfirmDelete(false)}
+            style={{
+              marginTop: 12, width: '100%', padding: '10px', borderRadius: 10,
+              cursor: 'pointer', transition: 'all 0.15s',
+              background: confirmDelete ? 'rgba(248,113,113,0.12)' : 'transparent',
+              border: `1px solid ${confirmDelete ? 'rgba(248,113,113,0.45)' : 'rgba(248,113,113,0.2)'}`,
+              fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700,
+              color: '#f87171', letterSpacing: '0.08em',
+            }}
+          >
+            {confirmDelete ? 'CONFIRM DELETE' : 'DELETE LONG QUEST'}
+          </button>
         </div>
       )}
     </div>
