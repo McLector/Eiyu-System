@@ -25,3 +25,16 @@ export function mondayOfWeek(date: Date): Date {
   const diff = dow === 0 ? -6 : 1 - dow;
   return addUtcDays(d, diff);
 }
+
+/**
+ * Short human-readable LOCAL-calendar date for display only (e.g. the
+ * dashboard header) — deliberately not `toDateKey`'s UTC day, which is a
+ * scheduling boundary, not display copy.
+ */
+export function formatDisplayDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}

@@ -16,7 +16,7 @@ import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { frozenQuests, RANK_CONFIG, splitQuestsByType, STATS, STAT_COLORS } from '@eiyu/shared';
+import { formatDisplayDate, frozenQuests, RANK_CONFIG, splitQuestsByType, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
@@ -253,6 +253,9 @@ export default function BoardScreen() {
               </Text>
               <Text style={[styles.userClass, { color: theme.muted, fontFamily: fonts.body }]}>
                 {user.userClass}
+              </Text>
+              <Text style={[styles.dateText, { color: theme.dim, fontFamily: fonts.body }]}>
+                {formatDisplayDate(new Date())}
               </Text>
             </View>
           </View>
@@ -523,6 +526,10 @@ const styles = StyleSheet.create({
   },
   userClass: {
     fontSize: 12,
+    marginTop: 2,
+  },
+  dateText: {
+    fontSize: 11,
     marginTop: 2,
   },
   rankBadge: {

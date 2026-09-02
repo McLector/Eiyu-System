@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType } from '@eiyu/shared';
+import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType, formatDisplayDate } from '@eiyu/shared';
 import { StatIcon, CheckIcon, PlusIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
@@ -190,6 +190,9 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
         <div className="glass-sm" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 4 }}>TODAY</div>
+            <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim)', marginBottom: 4 }}>
+              {formatDisplayDate(new Date())}
+            </div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)' }}>
               {completedToday} <span style={{ color: 'var(--c-dim)', fontWeight: 500 }}>/ {totalToday} quests</span>
             </div>
