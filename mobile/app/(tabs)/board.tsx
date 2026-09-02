@@ -16,7 +16,7 @@ import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { frozenQuests, RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
+import { frozenQuests, RANK_CONFIG, splitQuestsByType, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
@@ -201,6 +201,7 @@ export default function BoardScreen() {
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
   const frozen = frozenQuests(user.quests);
+  const { habitQuests, oneTimeQuests } = splitQuestsByType(user.quests);
   const completed = user.quests.filter(q => q.completed).length;
   const total = user.quests.length;
   const initials = user.name.split(' ').map(n => n[0]).join('');
@@ -354,16 +355,42 @@ export default function BoardScreen() {
               No quests scheduled for today. Tap &quot;Add a Quest&quot; below to create one.
             </Text>
           ) : (
-            user.quests.map(quest => (
-              <QuestRow
-                key={quest.id}
-                quest={quest}
-                onToggle={() => handleToggle(quest)}
-                onCompleteEasy={() => handleCompleteEasy(quest)}
-                onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-                xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
-              />
-            ))
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display }]}>
+                TODAY&apos;S HABITS
+              </Text>
+              {habitQuests.length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.muted }]}>No habits scheduled for today.</Text>
+              ) : (
+                habitQuests.map(quest => (
+                  <QuestRow
+                    key={quest.id}
+                    quest={quest}
+                    onToggle={() => handleToggle(quest)}
+                    onCompleteEasy={() => handleCompleteEasy(quest)}
+                    onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                    xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+                  />
+                ))
+              )}
+              {oneTimeQuests.length > 0 && (
+                <>
+                  <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display, marginTop: 16 }]}>
+                    ONE-TIME QUESTS
+                  </Text>
+                  {oneTimeQuests.map(quest => (
+                    <QuestRow
+                      key={quest.id}
+                      quest={quest}
+                      onToggle={() => handleToggle(quest)}
+                      onCompleteEasy={() => handleCompleteEasy(quest)}
+                      onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                      xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+                    />
+                  ))}
+                </>
+              )}
+            </>
           )}
         </GlassView>
 
@@ -626,6 +653,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
   errorBlock: {
     alignItems: 'center',

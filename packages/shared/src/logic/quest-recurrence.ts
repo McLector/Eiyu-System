@@ -1,4 +1,5 @@
 import { addUtcDays, toDateKey } from './date-utils';
+import { Quest } from '../types/eiyu';
 
 /**
  * PostgREST filter selecting what appears on TODAY's board (UTC-day math,
@@ -27,4 +28,12 @@ export function todayQuestsFilter(now: Date): string {
     `and(quest_type.eq.habit,days.cs.{${dayOfWeek}}),` +
     `and(quest_type.eq.one_time,created_at.gte.${todayStr},created_at.lt.${tomorrowStr})`
   );
+}
+
+/** Splits a fetched quest list into habit-quests and one-time-quests for the board's two-section layout. */
+export function splitQuestsByType(quests: Quest[]): { habitQuests: Quest[]; oneTimeQuests: Quest[] } {
+  return {
+    habitQuests: quests.filter(q => q.questType === 'habit'),
+    oneTimeQuests: quests.filter(q => q.questType === 'one_time'),
+  };
 }
