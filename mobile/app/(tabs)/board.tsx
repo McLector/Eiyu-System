@@ -16,7 +16,7 @@ import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
+import { formatDisplayDate, frozenQuests, RANK_CONFIG, splitQuestsByType, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
@@ -200,7 +200,8 @@ export default function BoardScreen() {
     useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
-  const frozenQuest = user.quests.find(q => q.frozen && !q.completed);
+  const frozen = frozenQuests(user.quests);
+  const { habitQuests, oneTimeQuests } = splitQuestsByType(user.quests);
   const completed = user.quests.filter(q => q.completed).length;
   const total = user.quests.length;
   const initials = user.name.split(' ').map(n => n[0]).join('');
@@ -253,6 +254,9 @@ export default function BoardScreen() {
               <Text style={[styles.userClass, { color: theme.muted, fontFamily: fonts.body }]}>
                 {user.userClass}
               </Text>
+              <Text style={[styles.dateText, { color: theme.dim, fontFamily: fonts.body }]}>
+                {formatDisplayDate(new Date())}
+              </Text>
             </View>
           </View>
           <RankBadge rank={user.rank} />
@@ -287,8 +291,9 @@ export default function BoardScreen() {
           </View>
         </GlassView>
 
-        {frozenQuest && (
+        {frozen.map(fq => (
           <View
+            key={fq.id}
             style={[
               styles.recoveryBanner,
               { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(96,165,250,0.3)' },
@@ -300,23 +305,23 @@ export default function BoardScreen() {
                   STREAK FROZEN — RECOVERY QUEST
                 </Text>
               </View>
-              <Text style={[styles.mono, { color: '#93c5fd' }]}>{frozenQuest.frozenHoursLeft}h left</Text>
+              <Text style={[styles.mono, { color: '#93c5fd' }]}>{fq.frozenHoursLeft}h left</Text>
             </View>
             <Text style={[styles.recoveryName, { color: theme.text, fontFamily: fonts.body }]}>
-              {frozenQuest.name}
+              {fq.name}
             </Text>
             <Text style={[styles.recoveryEasy, { color: theme.muted, fontFamily: fonts.body }]}>
-              Easy version: {frozenQuest.easyVersion}
+              Easy version: {fq.easyVersion}
             </Text>
             <GhostButton
               label="Mark Recovery Complete"
               onPress={() => {
-                flashXp(frozenQuest.id, EASY_XP);
-                completeRecovery(frozenQuest.id);
+                flashXp(fq.id, EASY_XP);
+                completeRecovery(fq.id);
               }}
             />
           </View>
-        )}
+        ))}
 
         <View style={styles.questsHeader}>
           <View>
@@ -353,16 +358,42 @@ export default function BoardScreen() {
               No quests scheduled for today. Tap &quot;Add a Quest&quot; below to create one.
             </Text>
           ) : (
-            user.quests.map(quest => (
-              <QuestRow
-                key={quest.id}
-                quest={quest}
-                onToggle={() => handleToggle(quest)}
-                onCompleteEasy={() => handleCompleteEasy(quest)}
-                onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-                xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
-              />
-            ))
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display }]}>
+                TODAY&apos;S HABITS
+              </Text>
+              {habitQuests.length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.muted }]}>No habits scheduled for today.</Text>
+              ) : (
+                habitQuests.map(quest => (
+                  <QuestRow
+                    key={quest.id}
+                    quest={quest}
+                    onToggle={() => handleToggle(quest)}
+                    onCompleteEasy={() => handleCompleteEasy(quest)}
+                    onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                    xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+                  />
+                ))
+              )}
+              {oneTimeQuests.length > 0 && (
+                <>
+                  <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display, marginTop: 16 }]}>
+                    ONE-TIME QUESTS
+                  </Text>
+                  {oneTimeQuests.map(quest => (
+                    <QuestRow
+                      key={quest.id}
+                      quest={quest}
+                      onToggle={() => handleToggle(quest)}
+                      onCompleteEasy={() => handleCompleteEasy(quest)}
+                      onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                      xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+                    />
+                  ))}
+                </>
+              )}
+            </>
           )}
         </GlassView>
 
@@ -497,6 +528,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  dateText: {
+    fontSize: 11,
+    marginTop: 2,
+  },
   rankBadge: {
     width: 52,
     height: 52,
@@ -625,6 +660,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     paddingVertical: 20,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
   errorBlock: {
     alignItems: 'center',

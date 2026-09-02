@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS } from '@eiyu/shared';
+import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType, formatDisplayDate } from '@eiyu/shared';
 import { StatIcon, CheckIcon, PlusIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
@@ -94,6 +94,7 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
   const rankCfg = RANK_CONFIG[user.rank];
   const completedToday = user.quests.filter(q => q.completed).length;
   const totalToday = user.quests.filter(q => q.days.includes(new Date().getDay())).length;
+  const { habitQuests, oneTimeQuests } = splitQuestsByType(user.quests);
   const [xpToast, setXpToast] = useState<string | null>(null);
 
   const toggleQuest = (id: string) => {
@@ -189,6 +190,9 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
         <div className="glass-sm" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 4 }}>TODAY</div>
+            <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim)', marginBottom: 4 }}>
+              {formatDisplayDate(new Date())}
+            </div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)' }}>
               {completedToday} <span style={{ color: 'var(--c-dim)', fontWeight: 500 }}>/ {totalToday} quests</span>
             </div>
@@ -213,14 +217,24 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
             {user.quests.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>No quests yet — add your first quest above</div>
             ) : (
-              user.quests.map(q => (
-                <QuestRow
-                  key={q.id} quest={q}
-                  onToggle={() => toggleQuest(q.id)}
-                  onRecover={() => completeRecovery(q.id)}
-                  onEdit={() => onEditQuest(q.id)}
-                />
-              ))
+              <>
+                <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim)' }}>TODAY&apos;S HABITS</div>
+                {habitQuests.length === 0 ? (
+                  <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', padding: '4px 0 8px' }}>No habits scheduled for today.</div>
+                ) : (
+                  habitQuests.map(q => (
+                    <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} />
+                  ))
+                )}
+                {oneTimeQuests.length > 0 && (
+                  <>
+                    <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim)', marginTop: 8 }}>ONE-TIME QUESTS</div>
+                    {oneTimeQuests.map(q => (
+                      <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} />
+                    ))}
+                  </>
+                )}
+              </>
             )}
           </div>
         </div>

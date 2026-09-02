@@ -90,7 +90,7 @@ export default function HistoryScreen() {
           </Pressable>
         </View>
 
-        <Screen edges={[]} fill={false}>
+        <Screen edges={['bottom']} fill={false}>
           <View style={styles.monthRow}>
             <Pressable
               testID="history-prev-month"

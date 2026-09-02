@@ -2,6 +2,7 @@ import {
   currentStreak,
   EASY_XP,
   FULL_XP,
+  frozenQuests,
   levelFromXp,
   levelProgress,
   rankFromAverageLevel,
@@ -10,7 +11,7 @@ import {
   weakestStat,
 } from '../eiyu-logic';
 import { mondayOfWeek } from '../date-utils';
-import { StatData } from '../../types/eiyu';
+import { Quest, StatData } from '../../types/eiyu';
 
 describe('levelProgress', () => {
   it('starts at level 1 with 0 xp', () => {
@@ -241,5 +242,40 @@ describe('mondayOfWeek', () => {
   it('rolls Sunday back to the Monday that started its own week', () => {
     const sunday = new Date('2026-08-23T12:00:00Z');
     expect(mondayOfWeek(sunday).toISOString().slice(0, 10)).toBe('2026-08-17');
+  });
+});
+
+describe('frozenQuests', () => {
+  const base: Quest = {
+    id: '1',
+    name: 'Test',
+    stat: 'STR',
+    difficulty: 'Medium',
+    easyVersion: 'Do a lighter version',
+    description: null,
+    questType: 'habit',
+    time: '08:00',
+    days: [0, 1, 2, 3, 4, 5, 6],
+    streak: 0,
+    frozen: false,
+    completed: false,
+  };
+
+  it('returns every frozen, uncompleted quest, not just one — the bug this fixes', () => {
+    const quests: Quest[] = [
+      { ...base, id: 'a', frozen: true },
+      { ...base, id: 'b', frozen: false },
+      { ...base, id: 'c', frozen: true },
+    ];
+    expect(frozenQuests(quests).map(q => q.id)).toEqual(['a', 'c']);
+  });
+
+  it('excludes a frozen quest that was already recovered', () => {
+    const quests: Quest[] = [{ ...base, id: 'a', frozen: true, completed: true }];
+    expect(frozenQuests(quests)).toEqual([]);
+  });
+
+  it('returns an empty array when nothing is frozen', () => {
+    expect(frozenQuests([{ ...base, id: 'a' }])).toEqual([]);
   });
 });
