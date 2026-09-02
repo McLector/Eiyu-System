@@ -218,7 +218,7 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
               <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>No quests yet — add your first quest above</div>
             ) : (
               <>
-                <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim)' }}>TODAY'S HABITS</div>
+                <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim)' }}>TODAY&apos;S HABITS</div>
                 {habitQuests.length === 0 ? (
                   <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', padding: '4px 0 8px' }}>No habits scheduled for today.</div>
                 ) : (
