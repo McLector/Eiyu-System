@@ -83,7 +83,7 @@ export default function LongQuestEditorScreen() {
           </Pressable>
         </View>
 
-        <Screen edges={[]} fill={false} contentContainerStyle={{ gap: 16 }}>
+        <Screen edges={['bottom']} fill={false} contentContainerStyle={{ gap: 16 }}>
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME</Text>
             <TextInput
