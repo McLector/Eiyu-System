@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -13,12 +13,25 @@ import { Stat } from '@eiyu/shared';
 const MIN_STAGES = 2;
 const MAX_STAGES = 8;
 
+type StageField = { id: string | null; name: string; description: string | null };
+
 export default function LongQuestEditorScreen() {
-  const { theme, saveLongQuest } = useEiyu();
-  const [name, setName] = useState('');
-  const [stat, setStat] = useState<Stat>('INT');
-  const [description, setDescription] = useState('');
-  const [stages, setStages] = useState<string[]>(['', '', '']);
+  const { theme, user, saveLongQuest } = useEiyu();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const quest = id ? user.longQuests.find(q => q.id === id) ?? null : null;
+
+  const [name, setName] = useState(quest?.name ?? '');
+  const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
+  const [description, setDescription] = useState(quest?.description ?? '');
+  const [stages, setStages] = useState<StageField[]>(
+    quest
+      ? quest.stages.map(s => ({ id: s.id, name: s.name, description: s.description }))
+      : [
+          { id: null, name: '', description: null },
+          { id: null, name: '', description: null },
+          { id: null, name: '', description: null },
+        ]
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestingStages, setSuggestingStages] = useState(false);
@@ -30,7 +43,7 @@ export default function LongQuestEditorScreen() {
     setSuggestStagesError(null);
     try {
       const result = await suggestStages(name.trim(), stat);
-      setStages(result);
+      setStages(result.map(stageName => ({ id: null, name: stageName, description: null })));
     } catch (err) {
       setSuggestStagesError(formatError(err));
     } finally {
@@ -38,13 +51,13 @@ export default function LongQuestEditorScreen() {
     }
   };
 
-  const setStageAt = (i: number, value: string) => {
-    setStages(prev => prev.map((s, idx) => (idx === i ? value : s)));
+  const setStageNameAt = (i: number, value: string) => {
+    setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, name: value } : s)));
   };
 
   const addStage = () => {
     if (stages.length >= MAX_STAGES) return;
-    setStages(prev => [...prev, '']);
+    setStages(prev => [...prev, { id: null, name: '', description: null }]);
   };
 
   const removeStage = (i: number) => {
@@ -52,7 +65,9 @@ export default function LongQuestEditorScreen() {
     setStages(prev => prev.filter((_, idx) => idx !== i));
   };
 
-  const filledStages = stages.map(s => s.trim()).filter(s => s.length > 0);
+  const filledStages = stages
+    .map(s => ({ ...s, name: s.name.trim() }))
+    .filter(s => s.name.length > 0);
   const valid = name.trim().length > 0 && filledStages.length >= MIN_STAGES;
 
   const handleSave = async () => {
@@ -60,12 +75,15 @@ export default function LongQuestEditorScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      await saveLongQuest({
-        name: name.trim(),
-        stat,
-        description: description.trim() || undefined,
-        stages: filledStages.map(stageName => ({ name: stageName })),
-      });
+      await saveLongQuest(
+        {
+          name: name.trim(),
+          stat,
+          description: description.trim() || undefined,
+          stages: filledStages.map(s => ({ id: s.id, name: s.name, description: s.description })),
+        },
+        quest?.id
+      );
       router.back();
     } catch (err) {
       setError(formatError(err));
@@ -82,7 +100,7 @@ export default function LongQuestEditorScreen() {
         <View style={[styles.handle, { backgroundColor: theme.accentBorder }]} />
         <View style={styles.headerRow}>
           <Text style={[styles.headerTitle, { color: theme.text, fontFamily: fonts.display }]}>
-            NEW LONG QUEST
+            {quest ? 'EDIT LONG QUEST' : 'NEW LONG QUEST'}
           </Text>
           <Pressable onPress={() => router.back()}>
             <Text style={[styles.closeX, { color: theme.dim }]}>×</Text>
@@ -165,7 +183,7 @@ export default function LongQuestEditorScreen() {
             </View>
             {suggestStagesError && <Text style={[styles.errorText, { marginBottom: 8 }]}>{suggestStagesError}</Text>}
             <View style={{ gap: 8 }}>
-              {stages.map((value, i) => (
+              {stages.map((s, i) => (
                 <View key={i} style={styles.stageInputRow}>
                   <Text style={[styles.stageIndex, { color: theme.dim, fontFamily: fonts.mono }]}>
                     {i + 1}
@@ -174,8 +192,8 @@ export default function LongQuestEditorScreen() {
                     style={[styles.field, fieldStyle, { flex: 1 }]}
                     placeholder={`Stage ${i + 1}`}
                     placeholderTextColor={theme.dim}
-                    value={value}
-                    onChangeText={v => setStageAt(i, v)}
+                    value={s.name}
+                    onChangeText={v => setStageNameAt(i, v)}
                   />
                   {stages.length > MIN_STAGES && (
                     <Pressable onPress={() => removeStage(i)} style={styles.stageRemove}>
@@ -212,7 +230,7 @@ export default function LongQuestEditorScreen() {
                 styles.saveButtonText,
                 { color: valid ? theme.accent : theme.dim, fontFamily: fonts.display },
               ]}>
-              {submitting ? 'CREATING…' : 'CREATE LONG QUEST'}
+              {submitting ? (quest ? 'SAVING…' : 'CREATING…') : quest ? 'SAVE CHANGES' : 'CREATE LONG QUEST'}
             </Text>
           </Pressable>
         </Screen>

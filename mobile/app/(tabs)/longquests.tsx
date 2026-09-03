@@ -63,14 +63,17 @@ export default function LongQuestsScreen() {
                 <GlassView key={lq.id} style={{ overflow: 'hidden' }}>
                   <Pressable style={styles.cardHeader} onPress={() => setExpanded(isExpanded ? null : lq.id)}>
                     <View style={styles.cardTopRow}>
-                      <View style={styles.cardTitleRow}>
+                      <Pressable
+                        testID="long-quest-edit-trigger"
+                        style={styles.cardTitleRow}
+                        onPress={() => router.push({ pathname: '/long-quest-editor', params: { id: lq.id } })}>
                         <StatIcon stat={lq.stat} size={16} />
                         <Text
                           numberOfLines={1}
                           style={[styles.cardTitle, { color: theme.text, fontFamily: fonts.display }]}>
                           {lq.name}
                         </Text>
-                      </View>
+                      </Pressable>
                       <View style={styles.cardMetaRow}>
                         <Text style={[styles.mono, { color }]}>
                           {done}/{total}

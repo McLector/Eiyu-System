@@ -61,7 +61,9 @@ import {
   deleteLongQuest,
   fetchLongQuests,
   LongQuestInput,
+  reconcileLongQuestStages,
   setStageDone,
+  updateLongQuest,
 } from '@eiyu/shared';
 import { fetchProfile } from '@eiyu/shared';
 import { fetchStats } from '@eiyu/shared';
@@ -111,8 +113,8 @@ interface EiyuStore {
   longQuestsError: string | null;
   /** Re-fetch Long Quests after a load failure. */
   retryLongQuests: () => Promise<void>;
-  /** R-32: create a Long Quest with ordered stages. */
-  saveLongQuest: (input: LongQuestInput) => Promise<void>;
+  /** R-32: create or edit a Long Quest with ordered stages. */
+  saveLongQuest: (input: LongQuestInput, existingId?: string) => Promise<void>;
   removeLongQuest: (id: string) => Promise<void>;
   /** R-42: global reminder toggle. */
   notificationsEnabled: boolean;
@@ -408,9 +410,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   );
 
   const saveLongQuest = useCallback(
-    async (input: LongQuestInput) => {
+    async (input: LongQuestInput, existingId?: string) => {
       if (!userId) return;
-      await createLongQuest(userId, input);
+      if (existingId) {
+        await updateLongQuest(existingId, { name: input.name, stat: input.stat, description: input.description });
+        await reconcileLongQuestStages(existingId, input.stages);
+      } else {
+        await createLongQuest(userId, input);
+      }
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
