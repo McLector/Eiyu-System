@@ -66,10 +66,19 @@ describe('regenerateWeeklySummary', () => {
   it('throws and never calls generateWeeklySummary when the reservation is rejected', async () => {
     (supabase.rpc as jest.Mock).mockResolvedValue({
       data: null,
-      error: { message: 'regen cap reached for week 2026-08-31', code: 'P0001' },
+      // Real supabase-js rejects with a PostgrestError, which extends Error.
+      // Jest's `.rejects.toThrow(string)` only recognizes rejections that
+      // pass `isError()` (see @jest/expect-utils) - a plain
+      // `{ message, code }` object does not, and the assertion below would
+      // report "did not throw" even though regenerateWeeklySummary rethrows
+      // it correctly. Object.assign onto a real Error keeps both the
+      // message-based matcher and the .code property realistic.
+      error: Object.assign(new Error('regen cap reached for week 2026-08-31'), { code: 'P0001' }),
     });
 
     await expect(regenerateWeeklySummary('user-1', now)).rejects.toThrow('regen cap reached');
+    await expect(regenerateWeeklySummary('user-1', now)).rejects.toMatchObject({ code: 'P0001' });
+    expect(supabase.rpc).toHaveBeenCalledTimes(2);
     expect(generateWeeklySummary).not.toHaveBeenCalled();
     expect(supabase.from).not.toHaveBeenCalled();
   });

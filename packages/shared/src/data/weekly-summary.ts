@@ -106,7 +106,7 @@ export async function regenerateWeeklySummary(userId: string, now: Date = new Da
   const { error: reserveError } = await supabase.rpc('reserve_weekly_summary_regen', {
     p_week_start: weekStart,
   });
-  if (reserveError) throw new Error((reserveError as any).message);
+  if (reserveError) throw reserveError;
 
   const { habits, statTotals } = await gatherWeekData(userId, weekStart, weekEnd);
   const summary = await generateWeeklySummary(weekStart, habits, statTotals);
@@ -116,7 +116,7 @@ export async function regenerateWeeklySummary(userId: string, now: Date = new Da
     .update({ summary })
     .eq('user_id', userId)
     .eq('week_start', weekStart);
-  if (updateError) throw new Error((updateError as any).message);
+  if (updateError) throw updateError;
 
   return summary;
 }
