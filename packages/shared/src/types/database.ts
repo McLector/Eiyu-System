@@ -161,6 +161,8 @@ export interface Database {
           user_id: string;
           week_start: string;
           summary: string;
+          regenerate_count: number;
+          last_regenerated_date: string | null;
           created_at: string;
         };
         Insert: Partial<Database['public']['Tables']['weekly_summaries']['Row']> & {
