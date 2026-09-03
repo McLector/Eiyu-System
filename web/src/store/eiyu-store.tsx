@@ -21,9 +21,11 @@ import {
   formatError,
   initialUser,
   rankFromStats,
+  reconcileLongQuestStages,
   setStageDone,
   undoCompletion,
   updateHabit,
+  updateLongQuest,
   type HabitInput,
   type LongQuest,
   type LongQuestInput,
@@ -60,7 +62,7 @@ interface EiyuStore {
   longQuestsLoading: boolean;
   longQuestsError: string | null;
   retryLongQuests: () => Promise<void>;
-  saveLongQuest: (input: LongQuestInput) => Promise<void>;
+  saveLongQuest: (input: LongQuestInput, existingId?: string) => Promise<void>;
   removeLongQuest: (id: string) => Promise<void>;
 }
 
@@ -244,9 +246,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   );
 
   const saveLongQuest = useCallback(
-    async (input: LongQuestInput) => {
+    async (input: LongQuestInput, existingId?: string) => {
       if (!userId) return;
-      await createLongQuest(userId, input);
+      if (existingId) {
+        await updateLongQuest(existingId, { name: input.name, stat: input.stat, description: input.description });
+        await reconcileLongQuestStages(existingId, input.stages);
+      } else {
+        await createLongQuest(userId, input);
+      }
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },

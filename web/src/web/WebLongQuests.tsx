@@ -383,12 +383,68 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
 function LongQuestCard({ lq, expanded, onToggleExpand }: {
   lq: LongQuest; expanded: boolean; onToggleExpand: () => void;
 }) {
-  const { toggleStage: toggleStageAction, removeLongQuest } = useEiyu();
+  const { toggleStage: toggleStageAction, removeLongQuest, saveLongQuest } = useEiyu();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(lq.name);
+  const [editStat, setEditStat] = useState<Stat>(lq.stat);
+  const [editDescription, setEditDescription] = useState(lq.description ?? '');
+  const [editStages, setEditStages] = useState<{ id: string | null; name: string; description: string | null }[]>(
+    lq.stages.map(s => ({ id: s.id, name: s.name, description: s.description }))
+  );
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const color = STAT_COLORS[lq.stat];
 
   const toggleStage = (stageId: string) => {
     toggleStageAction(lq.id, stageId);
+  };
+
+  const startEditing = () => {
+    setEditName(lq.name);
+    setEditStat(lq.stat);
+    setEditDescription(lq.description ?? '');
+    setEditStages(lq.stages.map(s => ({ id: s.id, name: s.name, description: s.description })));
+    setSaveError(null);
+    setEditing(true);
+  };
+
+  const MIN_STAGES = 2;
+
+  const setEditStageNameAt = (i: number, value: string) => {
+    setEditStages(prev => prev.map((s, idx) => (idx === i ? { ...s, name: value } : s)));
+  };
+
+  const removeEditStage = (i: number) => {
+    if (editStages.length <= MIN_STAGES) return;
+    setEditStages(prev => prev.filter((_, idx) => idx !== i));
+  };
+
+  const filledEditStages = editStages
+    .map(s => ({ ...s, name: s.name.trim() }))
+    .filter(s => s.name.length > 0);
+  const editValid = editName.trim().length > 0 && filledEditStages.length >= MIN_STAGES;
+
+  const saveEdit = async () => {
+    if (!editValid || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveLongQuest(
+        {
+          name: editName.trim(),
+          stat: editStat,
+          description: editDescription.trim() || undefined,
+          stages: filledEditStages.map(s => ({ id: s.id, name: s.name, description: s.description })),
+        },
+        lq.id
+      );
+      setEditing(false);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -428,8 +484,8 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
         <MilestoneTrack lq={lq} />
       </div>
 
-      {/* Stage checklist — expanded */}
-      {expanded && (
+      {/* Stage checklist — expanded, hidden while editing */}
+      {expanded && !editing && (
         <div style={{ borderTop: '1px solid var(--c-glass-border)', padding: '16px 36px 24px' }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--c-dim)', marginBottom: 12 }}>
             STAGES
@@ -465,23 +521,94 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
               </button>
             ))}
           </div>
-          <button
-            onClick={() => {
-              if (!confirmDelete) { setConfirmDelete(true); return; }
-              removeLongQuest(lq.id);
-            }}
-            onMouseLeave={() => setConfirmDelete(false)}
-            style={{
-              marginTop: 12, width: '100%', padding: '10px', borderRadius: 10,
-              cursor: 'pointer', transition: 'all 0.15s',
-              background: confirmDelete ? 'rgba(248,113,113,0.12)' : 'transparent',
-              border: `1px solid ${confirmDelete ? 'rgba(248,113,113,0.45)' : 'rgba(248,113,113,0.2)'}`,
-              fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700,
-              color: '#f87171', letterSpacing: '0.08em',
-            }}
-          >
-            {confirmDelete ? 'CONFIRM DELETE' : 'DELETE LONG QUEST'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button
+              onClick={startEditing}
+              className="btn-ghost"
+              style={{
+                flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700,
+                color: 'var(--c-accent)', letterSpacing: '0.08em',
+              }}
+            >
+              EDIT
+            </button>
+            <button
+              onClick={() => {
+                if (!confirmDelete) { setConfirmDelete(true); return; }
+                removeLongQuest(lq.id);
+              }}
+              onMouseLeave={() => setConfirmDelete(false)}
+              style={{
+                flex: 1, padding: '10px', borderRadius: 10,
+                cursor: 'pointer', transition: 'all 0.15s',
+                background: confirmDelete ? 'rgba(248,113,113,0.12)' : 'transparent',
+                border: `1px solid ${confirmDelete ? 'rgba(248,113,113,0.45)' : 'rgba(248,113,113,0.2)'}`,
+                fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700,
+                color: '#f87171', letterSpacing: '0.08em',
+              }}
+            >
+              {confirmDelete ? 'CONFIRM DELETE' : 'DELETE LONG QUEST'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit form — replaces the stage checklist while editing */}
+      {expanded && editing && (
+        <div style={{ borderTop: '1px solid var(--c-glass-border)', padding: '16px 36px 24px' }}>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>EDIT LONG QUEST</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input className="field" placeholder="Quest name..." value={editName} onChange={e => setEditName(e.target.value)} />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {(['STR','INT','DEX','WIS','CHA'] as const).map(s => (
+                <button key={s} onClick={() => setEditStat(s)} className="btn-ghost" style={{ padding: '5px 12px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: editStat === s ? STAT_COLORS[s] : 'var(--c-muted)', borderColor: editStat === s ? STAT_COLORS[s] + '55' : 'var(--c-accent-border)' }}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <textarea
+              className="field"
+              placeholder="Note (optional) — context, why it matters..."
+              value={editDescription}
+              onChange={e => setEditDescription(e.target.value)}
+              rows={2}
+            />
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)' }}>STAGES</div>
+            {editStages.map((st, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="field"
+                  style={{ flex: 1 }}
+                  placeholder={`Stage ${i + 1}...`}
+                  value={st.name}
+                  onChange={e => setEditStageNameAt(i, e.target.value)}
+                />
+                {editStages.length > MIN_STAGES && (
+                  <button
+                    onClick={() => removeEditStage(i)}
+                    style={{ background: 'none', border: 'none', color: 'var(--c-dim)', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            <button onClick={() => setEditStages([...editStages, { id: null, name: '', description: null }])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', cursor: 'pointer' }}>
+              + Add stage
+            </button>
+            {saveError && <p style={{ color: '#f87171', fontSize: 12 }}>{saveError}</p>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button
+                onClick={() => void saveEdit()}
+                disabled={!editValid || saving}
+                className="btn-ghost"
+                style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: !editValid || saving ? 0.5 : 1 }}
+              >
+                {saving ? 'SAVING…' : 'SAVE CHANGES'}
+              </button>
+              <button onClick={() => setEditing(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
