@@ -1,7 +1,11 @@
 # Eiyu System — Feature Batch Design (Quest Model Extensions + Fixes)
 
-Status: draft — Slice 1 (expanded) has an implementation plan; slices 2-6 still need plan docs
-Date: 2026-08-30, updated 2026-09-02
+Status: draft — Slice 1 shipped (merged to main). Slice 2 has an implementation
+plan (`docs/superpowers/plans/2026-09-03-slice-2-weekly-regen-and-quest-descriptions.md`)
+and is next to execute. Slices 3-6 still need plan docs, written one at a
+time after the slice ahead of them lands (see "Open decisions — resolved
+2026-09-03", item 4).
+Date: 2026-08-30, updated 2026-09-03
 
 ## Update 2026-09-02 — batch restated + two new items + one bug
 
@@ -35,11 +39,11 @@ design (2.1, including the `UPDATE` RLS policy fix), quantity habits as a
   with Slice 1's bug fix (1.4) going out first since it affects a real
   account today.
 
-**Still open** (unchanged from the original doc, not re-asked): unit field
-for quantity habits (recommend: skip, reuse `description`), streak-recovery
-limitation for quantity habits (recommend: accept as documented v1 gap), XP
-curve for quantity habits (recommend: flat 20 XP on crossing target, matching
-`complete_habit`, unchanged).
+**Slice 5's three remaining open items — resolved 2026-09-03**: unit field
+(skip, reuse `description`), streak-recovery limitation (accept as
+documented v1 gap), XP curve (flat 20 XP on crossing target, matching
+`complete_habit`, unchanged). See "Open decisions — resolved 2026-09-03"
+near the end of this doc.
 
 ### Bug root cause — 1.4, recovery banner shows only one frozen habit (mobile)
 
@@ -855,28 +859,15 @@ Recommend landing 1 → 2 → 3 → 4 → 5 → 6, each as its own branch and it
 plan doc, with a working, on-device-verified app after every slice. Slice 1
 ships first regardless since 1.4 is an active bug on a real account.
 
-## Open decisions needing your sign-off before implementation plans are written
+## Open decisions — resolved 2026-09-03
 
-1. **Slice 4:** future-dated one-time quests only, no backdating — agree, or
-   do you want backdating supported (and if so, where does a backdated,
-   never-completed quest surface, since the board only shows "today")?
-2. **Slice 5:** skip a dedicated "unit" field (reuse `description` for
-   context like "glasses") — agree, or add one?
-3. **Slice 5:** accept the documented streak-recovery limitation (a
-   recovered quantity habit shows complete without its progress bar
-   reconciling) as a known v1 edge case, or should recovery be extended to
-   set `habit_progress.count = target_count` at the same time — a small
-   addition to `completeRecovery` in both stores plus a corresponding
-   RPC-side change, deferred from this doc's RPC design above if wanted.
-4. Confirm slice ordering (1→2→3→4→5) matches your priority, or reorder —
-   e.g. if quantity habits are the most-wanted feature, Slice 5 could move
-   earlier at the cost of being the riskiest thing landing first.
-5. **Slice 5:** crossing the target count awards the same flat 20 XP as a
-   one-tap "Hard/Medium/Easy" habit completion (`complete_habit`'s existing
-   `v_xp := case p_kind when 'full' then 20 else 4 end`, unchanged by this
-   design) — reaching 8/8 glasses of water is worth exactly as much as
-   completing a single-tap habit, none of the intermediate taps award
-   anything on their own. That's implicit in reusing `complete_habit`
-   as-is; flagging it explicitly in case a different XP curve is wanted for
-   multi-step habits (e.g. partial XP per increment, which would need its
-   own design — not built here).
+1. **Slice 4:** future-dated one-time quests only, no backdating. **Resolved: confirmed, future-only.**
+2. **Slice 5:** unit field. **Resolved: skip — reuse `description`.**
+3. **Slice 5:** streak-recovery limitation. **Resolved: accept as documented v1 gap.**
+4. Slice ordering. **Resolved: 1→2→3→4→5, Slice 6 appended after** (see
+   Sequencing summary above). Slice 2 executes one slice at a time — its own
+   worktree, plan, implementation, and merge — before Slice 3's plan is
+   written, so each plan is written against the tree its predecessor
+   actually left behind rather than against this doc's pre-Slice-1 state.
+5. **Slice 5:** XP curve. **Resolved: flat 20 XP on crossing target,
+   unchanged from `complete_habit`.**
