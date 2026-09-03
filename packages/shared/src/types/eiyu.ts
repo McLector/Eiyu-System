@@ -34,12 +34,14 @@ export interface QuestStage {
   id: string;
   name: string;
   done: boolean;
+  description: string | null;
 }
 
 export interface LongQuest {
   id: string;
   name: string;
   stat: Stat;
+  description: string | null;
   stages: QuestStage[];
 }
 

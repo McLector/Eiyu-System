@@ -105,6 +105,7 @@ export interface Database {
           user_id: string;
           name: string;
           stat: StatKey;
+          description: string | null;
           deadline: string | null;
           created_at: string;
         };
@@ -124,6 +125,7 @@ export interface Database {
           name: string;
           position: number;
           done: boolean;
+          description: string | null;
         };
         Insert: Partial<Database['public']['Tables']['long_quest_stages']['Row']> & {
           long_quest_id: string;
