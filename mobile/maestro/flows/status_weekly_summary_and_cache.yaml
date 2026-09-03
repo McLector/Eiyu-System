@@ -17,3 +17,15 @@ appId: com.anonymous.eiyusystem
 - tapOn: "STATS"
 - tapOn: "WEEKLY REVIEW"
 - assertNotVisible: "Thinking…"
+
+# Regenerate button (Slice 2.1) - this flow runs against the shared,
+# persistent Maestro test account, whose daily regen count carries over
+# between runs. So this does NOT assert which outcome follows a tap (a new
+# paragraph vs. the "used both regenerations" cap message) - only that
+# tapping regenerate always resolves out of its in-flight state, never
+# leaves the button stuck on "REGENERATING…".
+- assertVisible: ".*REGENERATE.*"
+- tapOn: ".*REGENERATE.*"
+- extendedWaitUntil:
+    notVisible: "REGENERATING…"
+    timeout: 15000

@@ -13,7 +13,7 @@ import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { formatError } from '@eiyu/shared';
 import { fetchWeeklyReview, weeklyDayTotal, weeklyStatTotal, WeeklyDayDatum } from '@eiyu/shared';
-import { fetchOrCreateWeeklySummary, Stat } from '@eiyu/shared';
+import { fetchOrCreateWeeklySummary, regenerateWeeklySummary, Stat } from '@eiyu/shared';
 
 type StatusTab = 'stats' | 'weekly';
 
@@ -27,6 +27,8 @@ export default function StatusScreen() {
   const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
   const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
   const [weeklySummaryError, setWeeklySummaryError] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const cfg = RANK_CONFIG[user.rank];
 
   useEffect(() => {
@@ -91,6 +93,26 @@ export default function StatusScreen() {
       cancelled = true;
     };
   }, [session?.user.id]);
+
+  const handleRegenerate = async () => {
+    const userId = session?.user.id;
+    if (!userId || regenerating || weeklySummary === null) return;
+    setRegenerating(true);
+    setRegenerateError(null);
+    try {
+      const text = await regenerateWeeklySummary(userId);
+      setWeeklySummary(text);
+    } catch (err) {
+      const message = formatError(err);
+      setRegenerateError(
+        message.includes('regen cap reached')
+          ? "You've used both regenerations for today — more tomorrow"
+          : message
+      );
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   const radarValues = STATS.reduce((acc, stat) => {
     acc[stat] = user.stats[stat].level;
@@ -241,9 +263,32 @@ export default function StatusScreen() {
         ) : (
           <>
             <GlassView style={styles.summaryCard}>
-              <Text style={[styles.summaryTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                ✨ WEEKLY SUMMARY
-              </Text>
+              <View style={styles.summaryTitleRow}>
+                <Text style={[styles.summaryTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                  ✨ WEEKLY SUMMARY
+                </Text>
+                <Pressable
+                  onPress={handleRegenerate}
+                  disabled={regenerating || weeklySummary === null}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel="Regenerate weekly summary">
+                  <Text
+                    style={[
+                      styles.regenerateText,
+                      {
+                        color: theme.accent,
+                        fontFamily: fonts.display,
+                        opacity: regenerating || weeklySummary === null ? 0.5 : 1,
+                      },
+                    ]}>
+                    {regenerating ? 'REGENERATING…' : '↻ REGENERATE'}
+                  </Text>
+                </Pressable>
+              </View>
+              {regenerateError && (
+                <Text style={[styles.regenerateErrorText, { color: '#f87171' }]}>{regenerateError}</Text>
+              )}
               {weeklySummaryError ? (
                 <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>
                   Couldn&apos;t load summary: {weeklySummaryError}
@@ -463,6 +508,18 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 11,
     letterSpacing: 1.5,
+  },
+  summaryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  regenerateText: {
+    fontSize: 10,
+    letterSpacing: 1,
+  },
+  regenerateErrorText: {
+    fontSize: 12,
   },
   summaryBody: {
     fontSize: 14,
