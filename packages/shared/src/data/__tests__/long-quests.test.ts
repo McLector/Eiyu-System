@@ -1,4 +1,4 @@
-import { createLongQuest, fetchLongQuests } from '../long-quests';
+import { createLongQuest, fetchLongQuests, updateLongQuest, reconcileLongQuestStages } from '../long-quests';
 import { supabase } from '../../supabase/client';
 
 function chainable(result: { data?: unknown; error: unknown }) {
@@ -8,6 +8,7 @@ function chainable(result: { data?: unknown; error: unknown }) {
     in: jest.fn(() => builder),
     order: jest.fn(() => builder),
     insert: jest.fn(() => builder),
+    update: jest.fn(() => builder),
     single: jest.fn(() => Promise.resolve(result)),
     then: (resolve: (v: typeof result) => void) => Promise.resolve(result).then(resolve),
   };
@@ -15,7 +16,7 @@ function chainable(result: { data?: unknown; error: unknown }) {
 }
 
 jest.mock('../../supabase/client', () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
 
 describe('createLongQuest', () => {
@@ -107,5 +108,99 @@ describe('fetchLongQuests', () => {
         ],
       },
     ]);
+  });
+});
+
+describe('updateLongQuest', () => {
+  beforeEach(() => {
+    (supabase.from as jest.Mock).mockReset();
+  });
+
+  it('updates name, stat, and trimmed description, filtered by id', async () => {
+    const updated = jest.fn(() => chainable({ error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return { update: updated };
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await updateLongQuest('lq-1', { name: 'New Name', stat: 'DEX', description: '  refined note  ' });
+
+    expect(updated).toHaveBeenCalledWith({ name: 'New Name', stat: 'DEX', description: 'refined note' });
+  });
+
+  it('stores a null description when omitted or blank', async () => {
+    const updated = jest.fn(() => chainable({ error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return { update: updated };
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await updateLongQuest('lq-1', { name: 'Q', stat: 'STR', description: '   ' });
+
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ description: null }));
+  });
+
+  it('throws when the update fails', async () => {
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return { update: jest.fn(() => chainable({ error: new Error('boom') })) };
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await expect(updateLongQuest('lq-1', { name: 'Q', stat: 'STR' })).rejects.toThrow('boom');
+  });
+});
+
+describe('reconcileLongQuestStages', () => {
+  beforeEach(() => {
+    (supabase.rpc as jest.Mock).mockReset();
+  });
+
+  it('sends existing-id stages with their id and passes description through unchanged', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+
+    await reconcileLongQuestStages('lq-1', [
+      { id: 's1', name: 'Plan', description: 'scope it out' },
+      { id: 's2', name: 'Build', description: null },
+    ]);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('reconcile_long_quest_stages', {
+      p_long_quest_id: 'lq-1',
+      p_stages: [
+        { id: 's1', name: 'Plan', description: 'scope it out' },
+        { id: 's2', name: 'Build', description: null },
+      ],
+    });
+  });
+
+  it('sends null id for a new stage (no id field / undefined id) and null description when omitted', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+
+    await reconcileLongQuestStages('lq-1', [{ id: null, name: 'New Stage' }]);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('reconcile_long_quest_stages', {
+      p_long_quest_id: 'lq-1',
+      p_stages: [{ id: null, name: 'New Stage', description: null }],
+    });
+  });
+
+  it('preserves array order (the order the RPC uses to assign final positions)', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+
+    await reconcileLongQuestStages('lq-1', [
+      { id: 's2', name: 'Build', description: null },
+      { id: 's1', name: 'Plan', description: 'scope it out' },
+    ]);
+
+    const [, payload] = (supabase.rpc as jest.Mock).mock.calls[0];
+    expect(payload.p_stages.map((s: { id: string | null }) => s.id)).toEqual(['s2', 's1']);
+  });
+
+  it('throws when the RPC returns an error', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: null,
+      error: Object.assign(new Error('long quest lq-1 not found for calling user'), { code: 'P0001' }),
+    });
+
+    await expect(reconcileLongQuestStages('lq-1', [{ id: 's1', name: 'Plan' }])).rejects.toThrow('not found for calling user');
   });
 });

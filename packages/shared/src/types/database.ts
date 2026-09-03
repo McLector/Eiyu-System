@@ -199,6 +199,11 @@ export interface Database {
         Args: { p_week_start: string };
         Returns: number;
       };
+      /** Slice 3: reconcile long quest stages (insert new, update existing, delete absent). */
+      reconcile_long_quest_stages: {
+        Args: { p_long_quest_id: string; p_stages: unknown };
+        Returns: undefined;
+      };
     };
   };
 }

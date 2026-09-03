@@ -37,6 +37,7 @@ export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
 }
 
 export interface LongQuestStageInput {
+  id?: string | null;
   name: string;
   description?: string | null;
 }
@@ -72,6 +73,36 @@ export async function createLongQuest(userId: string, input: LongQuestInput): Pr
   if (stagesError) throw stagesError;
 
   return quest.id;
+}
+
+export async function updateLongQuest(
+  id: string,
+  input: { name: string; stat: Stat; description?: string | null }
+): Promise<void> {
+  const { error } = await supabase
+    .from('long_quests')
+    .update({
+      name: input.name,
+      stat: input.stat,
+      description: input.description?.trim() ? input.description.trim() : null,
+    })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function reconcileLongQuestStages(
+  longQuestId: string,
+  stages: LongQuestStageInput[]
+): Promise<void> {
+  const { error } = await supabase.rpc('reconcile_long_quest_stages', {
+    p_long_quest_id: longQuestId,
+    p_stages: stages.map(s => ({
+      id: s.id ?? null,
+      name: s.name,
+      description: s.description ?? null,
+    })),
+  });
+  if (error) throw error;
 }
 
 export async function setStageDone(stageId: string, done: boolean) {
