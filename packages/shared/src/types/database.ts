@@ -190,6 +190,11 @@ export interface Database {
         Args: { p_habit_id: string; p_completed_on: string };
         Returns: undefined;
       };
+      /** Slice 2: reserve a weekly summary regeneration slot (capped 2/day per week). */
+      reserve_weekly_summary_regen: {
+        Args: { p_week_start: string };
+        Returns: number;
+      };
     };
   };
 }

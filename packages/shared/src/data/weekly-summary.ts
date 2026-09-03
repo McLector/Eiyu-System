@@ -4,7 +4,7 @@ import { STATS } from '../constants/eiyu-data';
 import { addUtcDays, mondayOfWeek, toDateKey } from '../logic/date-utils';
 import { Stat } from '../types/eiyu';
 
-async function gatherWeekData(
+export async function gatherWeekData(
   userId: string,
   weekStart: string,
   weekEndExclusive: string
@@ -87,6 +87,36 @@ export async function fetchOrCreateWeeklySummary(userId: string, now: Date = new
     if (refetchError) throw refetchError;
     return winner.summary;
   }
+
+  return summary;
+}
+
+/**
+ * Slice 2.1: user-triggered regeneration, capped server-side at 2/day.
+ * Reserves a regen slot via the atomic RPC BEFORE calling the AI proxy, so a
+ * rejected reservation (cap already spent) never burns a Gemini call. Only
+ * writes the new summary back once both the reservation and the generation
+ * succeed.
+ */
+export async function regenerateWeeklySummary(userId: string, now: Date = new Date()): Promise<string> {
+  const weekStartDate = mondayOfWeek(now);
+  const weekStart = toDateKey(weekStartDate);
+  const weekEnd = toDateKey(addUtcDays(weekStartDate, 7));
+
+  const { error: reserveError } = await supabase.rpc('reserve_weekly_summary_regen', {
+    p_week_start: weekStart,
+  });
+  if (reserveError) throw new Error((reserveError as any).message);
+
+  const { habits, statTotals } = await gatherWeekData(userId, weekStart, weekEnd);
+  const summary = await generateWeeklySummary(weekStart, habits, statTotals);
+
+  const { error: updateError } = await supabase
+    .from('weekly_summaries')
+    .update({ summary })
+    .eq('user_id', userId)
+    .eq('week_start', weekStart);
+  if (updateError) throw new Error((updateError as any).message);
 
   return summary;
 }
