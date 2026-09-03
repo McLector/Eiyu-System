@@ -412,6 +412,11 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
           <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, color, letterSpacing: '0.1em', marginTop: 2 }}>
             {lq.stat}
           </div>
+          {lq.description && (
+            <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>
+              📝 {lq.description}
+            </div>
+          )}
         </div>
         <div style={{ transform: `rotate(${expanded ? 180 : 0}deg)`, transition: 'transform 0.2s', color: 'var(--c-dim)', flexShrink: 0 }}>
           <ChevronIcon />
@@ -452,6 +457,11 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
                 }}>
                   {stage.name}
                 </span>
+                {stage.description && (
+                  <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim)', marginLeft: 8 }}>
+                    {stage.description}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -487,19 +497,26 @@ export default function WebLongQuests() {
   const [newName, setNewName] = useState('');
   const [newStat, setNewStat] = useState<Stat>('INT');
   const [newStages, setNewStages] = useState(['', '']);
+  const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const addLongQuest = async () => {
     if (!newName.trim() || creating) return;
-    const stageNames = newStages.map(s => s.trim()).filter(Boolean);
-    if (stageNames.length === 0) return;
+    const stages = newStages.map(s => s.trim()).filter(Boolean).map(name => ({ name }));
+    if (stages.length === 0) return;
     setCreating(true);
     setCreateError(null);
     try {
-      await saveLongQuest({ name: newName.trim(), stat: newStat, stageNames });
+      await saveLongQuest({
+        name: newName.trim(),
+        stat: newStat,
+        description: newDescription.trim() || undefined,
+        stages,
+      });
       setShowNew(false);
       setNewName('');
+      setNewDescription('');
       setNewStages(['', '']);
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : String(err));
@@ -533,6 +550,13 @@ export default function WebLongQuests() {
                 </button>
               ))}
             </div>
+            <textarea
+              className="field"
+              placeholder="Note (optional) — context, why it matters..."
+              value={newDescription}
+              onChange={e => setNewDescription(e.target.value)}
+              rows={2}
+            />
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)' }}>STAGES</div>
             {newStages.map((st, i) => (
               <input key={i} className="field" placeholder={`Stage ${i + 1}...`} value={st} onChange={e => setNewStages(newStages.map((s, j) => j === i ? e.target.value : s))} />
