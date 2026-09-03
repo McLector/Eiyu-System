@@ -460,6 +460,16 @@ begin
     set position = position + 10000
     where long_quest_id = p_long_quest_id;
 
+  -- delete stages that dropped out of the incoming list entirely. Must run
+  -- before the insert below: the keep-set here is only the incoming
+  -- non-null ids, which can never include a not-yet-created new stage's
+  -- real id — running this after the insert would delete every stage just
+  -- inserted for this call (id: null in the payload has no matching entry
+  -- in "incoming non-null ids", however fresh its assigned id is).
+  delete from public.long_quest_stages
+    where long_quest_id = p_long_quest_id
+      and id not in (select (elem->>'id')::uuid from jsonb_array_elements(p_stages) elem where elem->>'id' is not null);
+
   -- phase 2: upsert by id (preserves `done` for existing stages), insert new
   -- ones (id is null), at their final 0-based position from p_stages' order.
   with incoming as (
@@ -482,11 +492,6 @@ begin
       from jsonb_array_elements(p_stages) with ordinality as t(elem, ord)
       where (elem->>'id') is null
     ) i;
-
-  -- delete stages that dropped out of the incoming list entirely
-  delete from public.long_quest_stages
-    where long_quest_id = p_long_quest_id
-      and id not in (select (elem->>'id')::uuid from jsonb_array_elements(p_stages) elem where elem->>'id' is not null);
 end;
 $$;
 
@@ -497,6 +502,14 @@ Reconciling **by stage id** (not delete-and-recreate) is the load-bearing
 choice here — a delete-and-recreate approach would silently wipe every
 stage's `done` state on every edit, since a fresh row always starts
 `done = false`.
+
+**Note (added after implementation):** the DELETE must run before the
+phase-2 UPDATE/INSERT, as shown above — an earlier draft of this SQL placed
+it last, which deletes every newly-inserted stage in the same call (a new
+stage's `id: null` payload entry is never in the DELETE's keep-set of
+incoming non-null ids, however fresh its just-assigned real id is). Found
+and fixed via live verification during Slice 3's implementation; the
+ordering above is the corrected, verified version.
 
 **Decision on the quest row itself (name/stat):** a plain `UPDATE
 long_quests set name = $1, stat = $2, description = $3 where id = $4 and

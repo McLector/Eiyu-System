@@ -18,7 +18,10 @@ appId: com.anonymous.eiyusystem
 - assertVisible: "0/2"
 
 # Cleanup: keep the shared test account's board empty between flow runs.
-- tapOn: "Maestro Long Quest Happy Path"
+# Tap the "0/2" progress text to expand, not the quest title - the title
+# row is now its own edit-trigger Pressable (Slice 3) and would open the
+# editor instead of expanding the card.
+- tapOn: "0/2"
 - tapOn: "Delete Long Quest"
 - assertVisible: ".*will be removed permanently.*"
 - tapOn: "Delete"

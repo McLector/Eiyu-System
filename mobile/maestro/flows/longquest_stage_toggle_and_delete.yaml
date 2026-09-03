@@ -15,12 +15,17 @@ appId: com.anonymous.eiyusystem
 - tapOn: "CREATE LONG QUEST"
 - assertVisible: "Long Quest To Delete"
 
-# Expand the card and toggle the first stage complete. The card-header tap
-# is unreliable immediately after CREATE (the sheet's close transition is
-# still animating right as the tap fires) - confirmed manually the app
-# itself behaves correctly, it's a timing race with the automated tap.
+# Expand the card and toggle the first stage complete. Tap the "0/2"
+# progress text, not the quest title - the title row is now its own
+# edit-trigger Pressable (Slice 3) and would open the editor instead of
+# expanding the card (and "First stage" would still assert visible there,
+# since the editor prefills it - a deceptive false pass). The card-header
+# tap is also unreliable immediately after CREATE (the sheet's close
+# transition is still animating right as the tap fires) - confirmed
+# manually the app itself behaves correctly, it's a timing race with the
+# automated tap.
 - waitForAnimationToEnd
-- tapOn: "Long Quest To Delete"
+- tapOn: "0/2"
 - assertVisible: "First stage"
 - tapOn:
     id: "stage-checkbox"

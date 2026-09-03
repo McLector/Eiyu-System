@@ -73,6 +73,11 @@ visible text can't reach (all inert - no behavior change):
   content-desc for the row - `"<name>, <time>"` - that doesn't exact-match
   the plain name but still perturbs which element an index lands on).
 - `longquests.tsx` — the per-stage checkbox `Pressable` (`testID="stage-checkbox"`)
+- `longquests.tsx` — the per-quest edit-trigger `Pressable` around the card's
+  title row (`testID="long-quest-edit-trigger"`, Slice 3). Nested inside the
+  card-header `Pressable` that toggles expand/collapse - tapping the title
+  now opens the editor instead; flows must tap elsewhere in the header
+  (e.g. the `"<done>/<total>"` progress text) to expand a card.
 - `auth.tsx` — the terms-acceptance checkbox `View` (`testID="terms-checkbox"`,
   on the checkbox glyph itself, not the row - the row's accessible tap
   target overlaps the nested "Privacy Policy & Terms" link)
@@ -82,6 +87,15 @@ visible text can't reach (all inert - no behavior change):
 - `longquest_stage_toggle_and_delete.yaml`: the delete row's label
   ("Delete Long Quest") is identical to the `Alert.alert` title, so flows
   anchor on the alert's body text instead once the dialog is open.
+- Long Quest cards (Slice 3): the title row is its own edit-trigger
+  `Pressable` (`long-quest-edit-trigger`), nested inside the card-header
+  `Pressable` that expands/collapses the card. Tapping the quest name now
+  opens the editor, not expand/collapse - flows must tap a different part
+  of the header (e.g. the `"<done>/<total>"` progress text) to expand a
+  card. Worth noting: the edit sheet prefills stage name inputs, so an
+  `assertVisible` on a known stage name can deceptively pass even if a tap
+  landed on the title by mistake - the next step (an action only present
+  in the expanded checklist, like `stage-checkbox`) is what actually fails.
 - Secure-text fields (password/confirm-password) both report as the same
   masked placeholder text in the accessibility tree, and - unlike a plain
   placeholder - this does NOT clear once the field has a value. Two such
