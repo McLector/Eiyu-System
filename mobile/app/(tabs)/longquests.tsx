@@ -79,6 +79,14 @@ export default function LongQuestsScreen() {
                       </View>
                     </View>
 
+                    {lq.description && (
+                      <Text
+                        numberOfLines={2}
+                        style={[styles.questNote, { color: theme.muted, fontFamily: fonts.body }]}>
+                        📝 {lq.description}
+                      </Text>
+                    )}
+
                     <View style={[styles.track, { backgroundColor: theme.track }]}>
                       <View style={[styles.trackFill, { width: `${pct}%`, backgroundColor: color }]} />
                     </View>
@@ -129,6 +137,13 @@ export default function LongQuestsScreen() {
                               ]}>
                               {stage.name}
                             </Text>
+                            {stage.description && (
+                              <Text
+                                numberOfLines={1}
+                                style={[styles.stageDescription, { color: theme.dim, fontFamily: fonts.body }]}>
+                                {stage.description}
+                              </Text>
+                            )}
                             {i === done && !stage.done && (
                               <View
                                 style={[
@@ -301,6 +316,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
     flexShrink: 1,
   },
+  questNote: {
+    fontSize: 12,
+    marginTop: 2,
+    marginBottom: 10,
+  },
   cardMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -355,6 +375,10 @@ const styles = StyleSheet.create({
   stageName: {
     fontSize: 13,
     fontWeight: '500',
+    flexShrink: 1,
+  },
+  stageDescription: {
+    fontSize: 11,
     flexShrink: 1,
   },
   nextBadge: {

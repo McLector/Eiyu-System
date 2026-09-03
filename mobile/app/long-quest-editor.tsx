@@ -17,6 +17,7 @@ export default function LongQuestEditorScreen() {
   const { theme, saveLongQuest } = useEiyu();
   const [name, setName] = useState('');
   const [stat, setStat] = useState<Stat>('INT');
+  const [description, setDescription] = useState('');
   const [stages, setStages] = useState<string[]>(['', '', '']);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,12 @@ export default function LongQuestEditorScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      await saveLongQuest({ name: name.trim(), stat, stageNames: filledStages });
+      await saveLongQuest({
+        name: name.trim(),
+        stat,
+        description: description.trim() || undefined,
+        stages: filledStages.map(stageName => ({ name: stageName })),
+      });
       router.back();
     } catch (err) {
       setError(formatError(err));
@@ -124,6 +130,22 @@ export default function LongQuestEditorScreen() {
                 );
               })}
             </View>
+          </View>
+
+          <View>
+            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
+              NOTE <Text style={{ color: theme.dim, fontSize: 10 }}>(optional)</Text>
+            </Text>
+            <TextInput
+              style={[styles.field, styles.descriptionField, fieldStyle]}
+              placeholder="Context, why it matters…"
+              placeholderTextColor={theme.dim}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
           </View>
 
           <View>
@@ -246,6 +268,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     paddingVertical: 11,
     paddingHorizontal: 14,
+  },
+  descriptionField: {
+    minHeight: 76,
   },
   statRow: {
     flexDirection: 'row',
