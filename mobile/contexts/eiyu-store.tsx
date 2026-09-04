@@ -31,9 +31,10 @@ import {
 import { initialUser } from '@eiyu/shared';
 import { darkTheme, lightTheme, type EiyuTheme } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
-import { completeHabit, undoCompletion } from '@eiyu/shared';
+import { completeHabit, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
 import { rankFromStats } from '@eiyu/shared';
 import { formatError } from '@eiyu/shared';
+import { toDateKey } from '@eiyu/shared';
 import {
   archiveHabit,
   createHabit,
@@ -103,6 +104,8 @@ interface EiyuStore {
   toggleQuest: (id: string) => void;
   /** Easy/recovery-version completion (R-06). */
   completeEasy: (id: string) => void;
+  /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
+  adjustProgress: (id: string, delta: number) => void;
   /** R-13: complete the frozen recovery quest, backdated to the missed day. */
   completeRecovery: (id: string) => void;
   saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
@@ -307,6 +310,46 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     [quests, userId, runCompletion]
   );
 
+  /**
+   * Slice 5: bump a quantity habit's today progress by `delta`, clamped
+   * server-side. Optimistic locally, then reconciled to the RPC's returned
+   * count — a rapid string of taps produces overlapping in-flight calls,
+   * and whichever response lands last should win, not whichever request
+   * was issued last.
+   */
+  const adjustProgress = useCallback(
+    (id: string, delta: number) => {
+      const quest = quests.find(q => q.id === id);
+      if (!quest || !userId || quest.targetCount == null) return;
+      const target = quest.targetCount;
+      const key = habitsTodayKey(userId);
+      const prevProgress = quest.progressCount;
+      const prevCompleted = quest.completed;
+      const optimisticNew = Math.max(0, Math.min(target, prevProgress + delta));
+      qc.setQueryData<Quest[]>(key, qs =>
+        qs?.map(q => (q.id === id ? { ...q, progressCount: optimisticNew, completed: optimisticNew >= target } : q))
+      );
+      incrementHabitProgress(id, toDateKey(new Date()), delta)
+        .then(async serverCount => {
+          qc.setQueryData<Quest[]>(key, qs =>
+            qs?.map(q => (q.id === id ? { ...q, progressCount: serverCount, completed: serverCount >= target } : q))
+          );
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: ['stats', userId] }),
+            qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
+          ]);
+          setQuestActionError(null);
+        })
+        .catch(err => {
+          qc.setQueryData<Quest[]>(key, qs =>
+            qs?.map(q => (q.id === id ? { ...q, progressCount: prevProgress, completed: prevCompleted } : q))
+          );
+          setQuestActionError(formatError(err));
+        });
+    },
+    [quests, userId, qc]
+  );
+
   const completeRecovery = useCallback(
     async (id: string) => {
       const quest = quests.find(q => q.id === id);
@@ -473,6 +516,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       retryQuests,
       toggleQuest,
       completeEasy,
+      adjustProgress,
       completeRecovery,
       saveHabit,
       archiveQuest,
@@ -499,6 +543,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       retryQuests,
       toggleQuest,
       completeEasy,
+      adjustProgress,
       completeRecovery,
       saveHabit,
       archiveQuest,

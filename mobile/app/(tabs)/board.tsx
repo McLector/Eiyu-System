@@ -78,12 +78,14 @@ function QuestRow({
   onToggle,
   onCompleteEasy,
   onEdit,
+  onAdjustProgress,
   xpToast,
 }: {
   quest: Quest;
   onToggle: () => void;
   onCompleteEasy: () => void;
   onEdit: () => void;
+  onAdjustProgress: (delta: number) => void;
   xpToast: number | null;
 }) {
   const { theme } = useEiyu();
@@ -98,31 +100,66 @@ function QuestRow({
     <View style={{ opacity: isCompleted ? 0.55 : 1 }}>
       <View style={styles.questRow}>
         <View>
-          <Pressable
-            testID="quest-checkbox"
-            onPress={onToggle}
-            onLongPress={onCompleteEasy}
-            hitSlop={8}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: isCompleted }}
-            accessibilityLabel={`${quest.name}${isCompleted ? ' (completed)' : ''}`}
-            accessibilityActions={[{ name: 'longpress', label: 'Complete easy version' }]}
-            onAccessibilityAction={event => {
-              if (event.nativeEvent.actionName === 'longpress') onCompleteEasy();
-            }}
-            style={[
-              styles.checkbox,
-              {
-                borderColor: isCompleted
-                  ? 'rgba(74,222,128,0.5)'
-                  : isFrozen
-                    ? 'rgba(96,165,250,0.4)'
-                    : theme.accentBorder,
-                backgroundColor: isCompleted ? 'rgba(74,222,128,0.15)' : 'transparent',
-              },
-            ]}>
-            {isCompleted && <CheckIcon size={14} color="#4ade80" />}
-          </Pressable>
+          {quest.targetCount == null ? (
+            <Pressable
+              testID="quest-checkbox"
+              onPress={onToggle}
+              onLongPress={onCompleteEasy}
+              hitSlop={8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: isCompleted }}
+              accessibilityLabel={`${quest.name}${isCompleted ? ' (completed)' : ''}`}
+              accessibilityActions={[{ name: 'longpress', label: 'Complete easy version' }]}
+              onAccessibilityAction={event => {
+                if (event.nativeEvent.actionName === 'longpress') onCompleteEasy();
+              }}
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: isCompleted
+                    ? 'rgba(74,222,128,0.5)'
+                    : isFrozen
+                      ? 'rgba(96,165,250,0.4)'
+                      : theme.accentBorder,
+                  backgroundColor: isCompleted ? 'rgba(74,222,128,0.15)' : 'transparent',
+                },
+              ]}>
+              {isCompleted && <CheckIcon size={14} color="#4ade80" />}
+            </Pressable>
+          ) : (
+            <View
+              style={styles.progressStepper}
+              accessibilityRole="adjustable"
+              accessibilityLabel={`${quest.name}, ${quest.progressCount} of ${quest.targetCount}`}>
+              <Pressable
+                onPress={() => onAdjustProgress(-1)}
+                disabled={quest.progressCount <= 0}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease progress"
+                style={[
+                  styles.stepperButton,
+                  { opacity: quest.progressCount <= 0 ? 0.4 : 1, borderColor: theme.accentBorder },
+                ]}>
+                <Text style={[styles.stepperButtonText, { color: theme.text }]}>−</Text>
+              </Pressable>
+              <Text style={[styles.mono, { color: isCompleted ? '#4ade80' : theme.text, minWidth: 34, textAlign: 'center' }]}>
+                {quest.progressCount}/{quest.targetCount}
+              </Text>
+              <Pressable
+                onPress={() => onAdjustProgress(1)}
+                disabled={quest.progressCount >= quest.targetCount}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Increase progress"
+                style={[
+                  styles.stepperButton,
+                  { opacity: quest.progressCount >= quest.targetCount ? 0.4 : 1, borderColor: theme.accentBorder },
+                ]}>
+                <Text style={[styles.stepperButtonText, { color: theme.text }]}>+</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
 
         <Pressable testID="quest-edit-trigger" style={styles.questInfo} onPress={onEdit}>
@@ -196,8 +233,17 @@ function QuestRow({
 }
 
 export default function BoardScreen() {
-  const { user, theme, toggleQuest, completeEasy, completeRecovery, questsLoading, questsError, retryQuests } =
-    useEiyu();
+  const {
+    user,
+    theme,
+    toggleQuest,
+    completeEasy,
+    adjustProgress,
+    completeRecovery,
+    questsLoading,
+    questsError,
+    retryQuests,
+  } = useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
   const frozen = frozenQuests(user.quests);
@@ -372,6 +418,7 @@ export default function BoardScreen() {
                     onToggle={() => handleToggle(quest)}
                     onCompleteEasy={() => handleCompleteEasy(quest)}
                     onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                    onAdjustProgress={delta => adjustProgress(quest.id, delta)}
                     xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
                   />
                 ))
@@ -388,6 +435,7 @@ export default function BoardScreen() {
                       onToggle={() => handleToggle(quest)}
                       onCompleteEasy={() => handleCompleteEasy(quest)}
                       onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                      onAdjustProgress={delta => adjustProgress(quest.id, delta)}
                       xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
                     />
                   ))}
@@ -696,6 +744,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  progressStepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  stepperButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperButtonText: { fontSize: 16, fontWeight: '600', lineHeight: 18 },
   /**
    * Anchored to the quest ROW, bottom-left, so it always sits INSIDE the
    * row's bounds - the quest list's GlassView clips (overflow: 'hidden'),

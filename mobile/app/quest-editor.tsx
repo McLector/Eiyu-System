@@ -78,6 +78,7 @@ export default function QuestEditorScreen() {
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [scheduledDate, setScheduledDate] = useState(dateToDateKey(new Date()));
   const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [targetCount, setTargetCount] = useState<string>(quest?.targetCount != null ? String(quest.targetCount) : '');
   const [days, setDays] = useState<number[]>(quest?.days ?? [0, 1, 2, 3, 4, 5, 6]);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
@@ -106,7 +107,14 @@ export default function QuestEditorScreen() {
   };
 
   // One-time quests have no easy version — the name alone validates them.
-  const valid = name.trim().length > 0 && (isOneTime || easyVersion.trim().length > 0);
+  // A quantity habit (target count set) has no easy version either — target
+  // count and easy version are alternative ways to satisfy a habit's
+  // "how do I complete this" requirement, not both required at once.
+  const targetCountValid = !targetCount || Number(targetCount) > 1;
+  const valid =
+    name.trim().length > 0 &&
+    (isOneTime || easyVersion.trim().length > 0 || !!targetCount) &&
+    targetCountValid;
 
   const handleSave = async () => {
     if (!valid || submitting) return;
@@ -120,6 +128,7 @@ export default function QuestEditorScreen() {
       stat,
       difficulty,
       scheduledDate: isOneTime ? scheduledDate : null,
+      targetCount: !isOneTime && targetCount ? Number(targetCount) : null,
     };
     setSubmitting(true);
     setError(null);
@@ -191,7 +200,7 @@ export default function QuestEditorScreen() {
             />
           </View>
 
-          {!isOneTime && (
+          {!isOneTime && !targetCount && (
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
               EASY VERSION <Text style={{ color: theme.dim, fontSize: 10 }}>(recovery fallback)</Text>
@@ -229,6 +238,22 @@ export default function QuestEditorScreen() {
                 ))}
               </View>
             )}
+          </View>
+          )}
+
+          {!isOneTime && (
+          <View>
+            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
+              TARGET COUNT <Text style={{ color: theme.dim, fontSize: 10 }}>(optional — e.g. 8x a day)</Text>
+            </Text>
+            <TextInput
+              style={[styles.field, fieldStyle]}
+              placeholder="Leave blank for a normal habit"
+              placeholderTextColor={theme.dim}
+              value={targetCount}
+              onChangeText={t => setTargetCount(t.replace(/[^0-9]/g, ''))}
+              keyboardType="number-pad"
+            />
           </View>
           )}
 
