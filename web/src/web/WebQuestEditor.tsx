@@ -22,6 +22,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   });
+  const [targetCount, setTargetCount] = useState(editingQuest?.targetCount != null ? String(editingQuest.targetCount) : '');
   const [days, setDays] = useState<number[]>(editingQuest?.days ?? [1, 2, 3, 4, 5]);
   const [stat, setStat] = useState<Stat>(editingQuest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(editingQuest?.difficulty ?? 'Medium');
@@ -37,9 +38,14 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
 
   const toggleDay = (d: number) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
-  // One-time quests have no easy version — habit-type quests require one
-  // (the DB enforces this with the habits_easy_version_present CHECK constraint).
-  const valid = name.trim().length > 0 && (questType === 'onetime' || easyVer.trim().length > 0);
+  // One-time quests and quantity habits (target count set) have no easy
+  // version — every other habit requires one (the DB enforces this with the
+  // habits_easy_version_present CHECK constraint, which exempts both cases).
+  const targetCountValid = !targetCount || Number(targetCount) > 1;
+  const valid =
+    name.trim().length > 0 &&
+    (questType === 'onetime' || easyVer.trim().length > 0 || !!targetCount) &&
+    targetCountValid;
 
   const handleSave = async () => {
     if (!valid || saving) return;
@@ -56,6 +62,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
         questType: questType === 'onetime' ? 'one_time' : 'habit',
         description: note.trim() || null,
         scheduledDate: questType === 'onetime' ? scheduledDate : null,
+        targetCount: questType === 'habit' && targetCount ? Number(targetCount) : null,
       };
       await saveHabit(input, editingQuest?.id);
       onClose();
@@ -158,7 +165,8 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
             />
           </div>
 
-          {/* Easy version */}
+          {/* Easy version — hidden for quantity habits, which have no easy-version concept */}
+          {!targetCount && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
               <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)' }}>EASY VERSION <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim)' }}> (required for habits)</span></label>
@@ -189,6 +197,24 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
               </div>
             )}
           </div>
+          )}
+
+          {/* Target count — habit type only */}
+          {questType === 'habit' && (
+            <div>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>
+                TARGET COUNT <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim)' }}>(optional — e.g. 8x a day)</span>
+              </label>
+              <input
+                className="field"
+                type="number"
+                min={2}
+                placeholder="Leave blank for a normal habit"
+                value={targetCount}
+                onChange={e => setTargetCount(e.target.value.replace(/[^0-9]/g, ''))}
+              />
+            </div>
+          )}
 
           {/* Time + Days */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

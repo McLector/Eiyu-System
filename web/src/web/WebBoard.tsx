@@ -17,8 +17,8 @@ function XpBar({ value, max, color }: { value: number; max: number; color: strin
   );
 }
 
-function QuestRow({ quest, onToggle, onRecover, onEdit }: {
-  quest: Quest; onToggle: () => void; onRecover: () => void; onEdit: () => void;
+function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress }: {
+  quest: Quest; onToggle: () => void; onRecover: () => void; onEdit: () => void; onAdjustProgress: (delta: number) => void;
 }) {
   const color = STAT_COLORS[quest.stat];
 
@@ -31,16 +31,34 @@ function QuestRow({ quest, onToggle, onRecover, onEdit }: {
       opacity: quest.frozen ? 0.6 : 1,
       transition: 'all 0.2s',
     }}>
-      {/* Checkbox */}
-      <button onClick={onToggle} disabled={quest.frozen} style={{
-        width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-        background: quest.completed ? 'rgba(74,222,128,0.18)' : 'transparent',
-        border: `1.5px solid ${quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: quest.frozen ? 'default' : 'pointer',
-      }}>
-        {quest.completed && <CheckIcon />}
-      </button>
+      {/* Checkbox, or a +/- stepper for quantity habits (Slice 5) */}
+      {quest.targetCount == null ? (
+        <button onClick={onToggle} disabled={quest.frozen} style={{
+          width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+          background: quest.completed ? 'rgba(74,222,128,0.18)' : 'transparent',
+          border: `1.5px solid ${quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: quest.frozen ? 'default' : 'pointer',
+        }}>
+          {quest.completed && <CheckIcon />}
+        </button>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <button onClick={() => onAdjustProgress(-1)} disabled={quest.progressCount <= 0} style={{
+            width: 24, height: 24, borderRadius: 6, border: `1px solid ${color}55`, background: 'transparent',
+            cursor: quest.progressCount <= 0 ? 'default' : 'pointer', opacity: quest.progressCount <= 0 ? 0.4 : 1,
+            fontFamily: 'Inter', fontSize: 15, lineHeight: 1, color: 'var(--c-text)',
+          }}>−</button>
+          <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: quest.completed ? '#4ade80' : 'var(--c-text)', minWidth: 32, textAlign: 'center' }}>
+            {quest.progressCount}/{quest.targetCount}
+          </span>
+          <button onClick={() => onAdjustProgress(1)} disabled={quest.progressCount >= quest.targetCount} style={{
+            width: 24, height: 24, borderRadius: 6, border: `1px solid ${color}55`, background: 'transparent',
+            cursor: quest.progressCount >= quest.targetCount ? 'default' : 'pointer', opacity: quest.progressCount >= quest.targetCount ? 0.4 : 1,
+            fontFamily: 'Inter', fontSize: 15, lineHeight: 1, color: 'var(--c-text)',
+          }}>+</button>
+        </div>
+      )}
 
       {/* Info — clicking name area opens editor */}
       <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={onEdit}>
@@ -90,7 +108,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit }: {
 }
 
 export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
-  const { user, questsLoading, questsError, retryQuests, toggleQuest: toggleQuestAction, completeRecovery } = useEiyu();
+  const { user, questsLoading, questsError, retryQuests, toggleQuest: toggleQuestAction, adjustProgress, completeRecovery } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
   const completedToday = user.quests.filter(q => q.completed).length;
   const totalToday = user.quests.filter(q => q.days.includes(new Date().getDay())).length;
@@ -223,14 +241,14 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
                   <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', padding: '4px 0 8px' }}>No habits scheduled for today.</div>
                 ) : (
                   habitQuests.map(q => (
-                    <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} />
+                    <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
                   ))
                 )}
                 {oneTimeQuests.length > 0 && (
                   <>
                     <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim)', marginTop: 8 }}>ONE-TIME QUESTS</div>
                     {oneTimeQuests.map(q => (
-                      <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} />
+                      <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
                     ))}
                   </>
                 )}
