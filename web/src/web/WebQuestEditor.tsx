@@ -17,6 +17,11 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
   const [note, setNote] = useState(editingQuest?.description ?? '');
   const [easyVer, setEasyVer] = useState(editingQuest?.easyVersion ?? '');
   const [time, setTime] = useState(editingQuest?.time ?? '07:00');
+  const [scheduledDate, setScheduledDate] = useState(() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  });
   const [days, setDays] = useState<number[]>(editingQuest?.days ?? [1, 2, 3, 4, 5]);
   const [stat, setStat] = useState<Stat>(editingQuest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(editingQuest?.difficulty ?? 'Medium');
@@ -50,6 +55,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
         days,
         questType: questType === 'onetime' ? 'one_time' : 'habit',
         description: note.trim() || null,
+        scheduledDate: questType === 'onetime' ? scheduledDate : null,
       };
       await saveHabit(input, editingQuest?.id);
       onClose();
@@ -206,6 +212,24 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
               </div>
             </div>
           </div>
+
+          {/* Date — one-time quests only */}
+          {questType === 'onetime' && (
+            <div>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>DATE</label>
+              <input
+                className="field"
+                type="date"
+                value={scheduledDate}
+                min={(() => {
+                  const d = new Date();
+                  const pad = (n: number) => String(n).padStart(2, '0');
+                  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+                })()}
+                onChange={e => setScheduledDate(e.target.value)}
+              />
+            </div>
+          )}
 
           {/* Stat */}
           <div>
