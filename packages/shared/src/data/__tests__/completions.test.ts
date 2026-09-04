@@ -1,4 +1,4 @@
-import { completeHabit, undoCompletion } from '../completions';
+import { completeHabit, undoCompletion, incrementHabitProgress } from '../completions';
 import { supabase } from '../../supabase/client';
 
 jest.mock('../../supabase/client', () => ({
@@ -43,5 +43,30 @@ describe('undoCompletion', () => {
       p_habit_id: 'habit-1',
       p_completed_on: expect.any(String),
     });
+  });
+});
+
+describe('incrementHabitProgress', () => {
+  beforeEach(() => {
+    (supabase.rpc as jest.Mock).mockReset();
+  });
+
+  it('calls the RPC with habit id, date, and delta, returning the server count', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: 3, error: null });
+
+    const result = await incrementHabitProgress('h1', '2026-09-04', 1);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('increment_habit_progress', {
+      p_habit_id: 'h1',
+      p_date: '2026-09-04',
+      p_delta: 1,
+    });
+    expect(result).toBe(3);
+  });
+
+  it('throws on RPC error', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: new Error('boom') });
+
+    await expect(incrementHabitProgress('h1', '2026-09-04', 1)).rejects.toThrow('boom');
   });
 });

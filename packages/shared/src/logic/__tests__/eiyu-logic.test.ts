@@ -259,6 +259,8 @@ describe('frozenQuests', () => {
     streak: 0,
     frozen: false,
     completed: false,
+    targetCount: null,
+    progressCount: 0,
   };
 
   it('returns every frozen, uncompleted quest, not just one — the bug this fixes', () => {

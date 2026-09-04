@@ -58,6 +58,7 @@ export interface Database {
           created_at: string;
           updated_at: string;
           scheduled_date: string | null;
+          target_count: number | null;
         };
         Insert: Partial<Omit<Database['public']['Tables']['habits']['Row'], 'user_id'>> & {
           user_id: string;
@@ -65,6 +66,22 @@ export interface Database {
           stat: StatKey;
         };
         Update: Partial<Database['public']['Tables']['habits']['Row']>;
+        Relationships: [];
+      };
+      habit_progress: {
+        Row: {
+          id: string;
+          user_id: string;
+          habit_id: string;
+          progress_date: string;
+          progress_count: number;
+        };
+        Insert: Partial<Database['public']['Tables']['habit_progress']['Row']> & {
+          user_id: string;
+          habit_id: string;
+          progress_date: string;
+        };
+        Update: Partial<Database['public']['Tables']['habit_progress']['Row']>;
         Relationships: [];
       };
       habit_completions: {
@@ -204,6 +221,11 @@ export interface Database {
       reconcile_long_quest_stages: {
         Args: { p_long_quest_id: string; p_stages: unknown };
         Returns: undefined;
+      };
+      /** Slice 5: atomically adjust a quantity habit's today progress; auto-crosses complete_habit/undo_habit_completion. */
+      increment_habit_progress: {
+        Args: { p_habit_id: string; p_date: string; p_delta: number };
+        Returns: number;
       };
     };
   };

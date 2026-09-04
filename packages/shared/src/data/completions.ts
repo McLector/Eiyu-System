@@ -53,3 +53,23 @@ export async function undoCompletion(userId: string, habitId: string, stat: Stat
   });
   if (error) throw error;
 }
+
+/**
+ * Slice 5: atomically adjust a quantity habit's today progress by `delta`,
+ * clamped to [0, target_count] server-side, auto-crossing complete_habit/
+ * undo_habit_completion when progress crosses the target (see
+ * increment_habit_progress, 019_habit_progress.sql). Returns the
+ * server-computed new count — the authoritative value once the RPC's row
+ * lock resolves; overlapping in-flight calls from rapid tapping mean
+ * whichever response lands last should win, not whichever request was
+ * issued last.
+ */
+export async function incrementHabitProgress(habitId: string, date: string, delta: number): Promise<number> {
+  const { data, error } = await supabase.rpc('increment_habit_progress', {
+    p_habit_id: habitId,
+    p_date: date,
+    p_delta: delta,
+  });
+  if (error) throw error;
+  return data as number;
+}

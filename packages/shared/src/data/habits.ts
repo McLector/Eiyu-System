@@ -7,7 +7,13 @@ import { Difficulty, Quest, QuestType, Stat } from '../types/eiyu';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
 
-function toQuest(row: HabitRow, completedToday: boolean, completedDates: Set<string>, now: Date): Quest {
+function toQuest(
+  row: HabitRow,
+  completedToday: boolean,
+  completedDates: Set<string>,
+  now: Date,
+  progressCount: number
+): Quest {
   // One-time quests have no streak/freeze mechanics (binary done/not-done) —
   // skip the streak computation entirely so a missed day can never freeze one.
   const state =
@@ -29,6 +35,8 @@ function toQuest(row: HabitRow, completedToday: boolean, completedDates: Set<str
     frozenHoursLeft: state?.frozenHoursLeft,
     frozenDate: state?.frozenDate,
     completed: completedToday,
+    targetCount: row.target_count,
+    progressCount: row.target_count != null ? progressCount : 0,
   };
 }
 
@@ -79,7 +87,23 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
     datesByHabit.get(c.habit_id)!.add(c.completed_on);
   }
 
-  return habits.map(h => toQuest(h, completedToday.has(h.id), datesByHabit.get(h.id) ?? new Set(), today));
+  // Slice 5: today's running count for any quantity habit in this batch.
+  const { data: progress, error: progressError } = await supabase
+    .from('habit_progress')
+    .select('habit_id, progress_count')
+    .eq('user_id', userId)
+    .eq('progress_date', todayStr)
+    .in(
+      'habit_id',
+      habits.map(h => h.id)
+    );
+  if (progressError) throw progressError;
+  const progressByHabit = new Map<string, number>();
+  for (const p of progress ?? []) progressByHabit.set(p.habit_id, p.progress_count);
+
+  return habits.map(h =>
+    toQuest(h, completedToday.has(h.id), datesByHabit.get(h.id) ?? new Set(), today, progressByHabit.get(h.id) ?? 0)
+  );
 }
 
 export interface HabitInput {
@@ -95,6 +119,8 @@ export interface HabitInput {
   description?: string | null;
   /** One-time quests only; "YYYY-MM-DD" local calendar date. Ignored/null for recurring habits (Slice 4). */
   scheduledDate?: string | null;
+  /** Quantity-habit target (>1); habit-type only, ignored/null for one-time (Slice 5). */
+  targetCount?: number | null;
 }
 
 /** Shared insert/update column mapping so both write paths stay in lockstep. */
@@ -110,6 +136,7 @@ function habitColumns(input: HabitInput) {
     reminder_time: input.time,
     days: input.days,
     scheduled_date: input.questType === 'one_time' ? (input.scheduledDate ?? null) : null,
+    target_count: input.questType === 'one_time' ? null : (input.targetCount ?? null),
   };
 }
 

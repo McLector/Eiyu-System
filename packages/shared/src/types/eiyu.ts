@@ -28,6 +28,10 @@ export interface Quest {
   /** the missed date to backdate a recovery completion to (R-13); set iff frozen */
   frozenDate?: string;
   completed: boolean;
+  /** Quantity-habit target; null = ordinary binary habit (Slice 5). */
+  targetCount: number | null;
+  /** Today's progress toward targetCount; 0 when not a quantity habit or no progress yet (Slice 5). */
+  progressCount: number;
 }
 
 export interface QuestStage {

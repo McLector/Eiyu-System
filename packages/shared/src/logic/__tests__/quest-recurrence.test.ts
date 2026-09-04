@@ -32,6 +32,7 @@ describe('splitQuestsByType', () => {
     id: '1', name: 'Test', stat: 'STR', difficulty: 'Medium',
     easyVersion: null, description: null, questType: 'habit', time: '08:00',
     days: [0, 1, 2, 3, 4, 5, 6], streak: 0, frozen: false, completed: false,
+    targetCount: null, progressCount: 0,
   };
 
   it('splits habits and one-time quests into separate groups, preserving order', () => {
