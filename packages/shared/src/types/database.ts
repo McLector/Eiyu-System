@@ -57,6 +57,7 @@ export interface Database {
           archived: boolean;
           created_at: string;
           updated_at: string;
+          scheduled_date: string | null;
         };
         Insert: Partial<Omit<Database['public']['Tables']['habits']['Row'], 'user_id'>> & {
           user_id: string;

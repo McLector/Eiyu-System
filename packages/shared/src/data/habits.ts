@@ -93,6 +93,8 @@ export interface HabitInput {
   questType?: QuestType;
   /** Optional note attached to the quest. */
   description?: string | null;
+  /** One-time quests only; "YYYY-MM-DD" local calendar date. Ignored/null for recurring habits (Slice 4). */
+  scheduledDate?: string | null;
 }
 
 /** Shared insert/update column mapping so both write paths stay in lockstep. */
@@ -107,6 +109,7 @@ function habitColumns(input: HabitInput) {
     difficulty: input.difficulty,
     reminder_time: input.time,
     days: input.days,
+    scheduled_date: input.questType === 'one_time' ? (input.scheduledDate ?? null) : null,
   };
 }
 
@@ -146,11 +149,12 @@ export async function fetchAllActiveHabits(userId: string): Promise<ActiveHabitR
 }
 
 /**
- * One-time quests created TODAY (UTC) — for re-arming their one-shot
+ * One-time quests SCHEDULED for TODAY (UTC) — for re-arming their one-shot
  * reminders after cancelAllHabitReminders wipes the shared id map
- * (notifications toggle off/on). The created-today window matters: older
- * one-time quests are already off the board, so their reminders must not
- * come back.
+ * (notifications toggle off/on). scheduled_date is the source of truth
+ * (Slice 4) — a quest scheduled for a future day is correctly excluded
+ * here; its reminder gets armed on its own scheduled day instead, when
+ * this function next runs against that day's "today".
  */
 export async function fetchTodayOneTimeHabits(
   userId: string
@@ -162,8 +166,7 @@ export async function fetchTodayOneTimeHabits(
     .eq('user_id', userId)
     .eq('archived', false)
     .eq('quest_type', 'one_time')
-    .gte('created_at', toDateKey(today))
-    .lt('created_at', toDateKey(addUtcDays(today, 1)));
+    .eq('scheduled_date', toDateKey(today));
   if (error) throw error;
   return (data ?? []).map(h => ({ id: h.id, name: h.name, time: h.reminder_time.slice(0, 5) }));
 }

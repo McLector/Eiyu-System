@@ -1,14 +1,13 @@
-import { addUtcDays, toDateKey } from './date-utils';
+import { toDateKey } from './date-utils';
 import { Quest } from '../types/eiyu';
 
 /**
  * PostgREST filter selecting what appears on TODAY's board (UTC-day math,
  * consistent with completed_on and streakState):
  * - recurring habits whose days array contains today's UTC weekday;
- * - one-time quests created today.
+ * - one-time quests scheduled for today (an explicit, user-set date, not
+ *   just "created today" — Slice 4).
  *
- * The explicit created_at window is the recurrence guard - without it a
- * one-time row carrying the default days = [0..6] would reappear every day.
  * Extracted as a pure function so the day-boundary logic stays unit-tested
  * (see __tests__/quest-recurrence.test.ts).
  *
@@ -23,10 +22,9 @@ import { Quest } from '../types/eiyu';
 export function todayQuestsFilter(now: Date): string {
   const dayOfWeek = now.getUTCDay();
   const todayStr = toDateKey(now);
-  const tomorrowStr = toDateKey(addUtcDays(now, 1));
   return (
     `and(quest_type.eq.habit,days.cs.{${dayOfWeek}}),` +
-    `and(quest_type.eq.one_time,created_at.gte.${todayStr},created_at.lt.${tomorrowStr})`
+    `and(quest_type.eq.one_time,scheduled_date.eq.${todayStr})`
   );
 }
 

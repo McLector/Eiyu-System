@@ -9,10 +9,10 @@ describe('todayQuestsFilter', () => {
     expect(todayQuestsFilter(sundayNoon)).toContain('and(quest_type.eq.habit,days.cs.{0})');
   });
 
-  it('bounds one-time quests to the UTC creation day', () => {
+  it('matches one-time quests by scheduled_date equality, not a created_at range', () => {
     const filter = todayQuestsFilter(sundayNoon);
-    expect(filter).toContain('created_at.gte.2026-08-23');
-    expect(filter).toContain('created_at.lt.2026-08-24');
+    expect(filter).toContain('and(quest_type.eq.one_time,scheduled_date.eq.2026-08-23)');
+    expect(filter).not.toContain('created_at');
   });
 
   it('rolls the whole window over exactly at UTC midnight', () => {
@@ -20,12 +20,10 @@ describe('todayQuestsFilter', () => {
     const justAfter = todayQuestsFilter(new Date('2026-08-24T00:00:00.000Z'));
 
     expect(justBefore).toContain('days.cs.{0}');
-    expect(justBefore).toContain('gte.2026-08-23');
-    expect(justBefore).toContain('lt.2026-08-24');
+    expect(justBefore).toContain('scheduled_date.eq.2026-08-23');
 
     expect(justAfter).toContain('days.cs.{1}');
-    expect(justAfter).toContain('gte.2026-08-24');
-    expect(justAfter).toContain('lt.2026-08-25');
+    expect(justAfter).toContain('scheduled_date.eq.2026-08-24');
   });
 });
 
