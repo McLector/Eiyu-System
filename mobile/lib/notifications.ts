@@ -131,16 +131,19 @@ export async function scheduleHabitReminders(habitId: string, input: ReminderSch
 }
 
 /**
- * One-time quests (#7): a single DATE trigger at today's HH:mm (local clock,
- * matching how WEEKLY triggers interpret hour/minute). If that moment has
- * already passed, nothing is scheduled — the quest is today-only and silently
- * reminding about a missed todo would violate the app's no-shame principle
- * (R-15). IDs land in the same map, so cancelHabitReminders/edit/archive
- * clean these up exactly like weekly ones.
+ * One-time quests (#7): a single DATE trigger at the quest's scheduled date
+ * and HH:mm (local clock, matching how WEEKLY triggers interpret
+ * hour/minute). If that moment has already passed, nothing is scheduled —
+ * a past-due one-time quest silently reminding about a missed todo would
+ * violate the app's no-shame principle (R-15). IDs land in the same map,
+ * so cancelHabitReminders/edit/archive clean these up exactly like weekly
+ * ones. `date` is "YYYY-MM-DD" (Slice 4) — previously this always
+ * scheduled for today; a future-scheduled quest's reminder now correctly
+ * fires on its own day, not the day it was created.
  */
 export async function scheduleOneTimeReminder(
   habitId: string,
-  input: { name: string; time: string }
+  input: { name: string; time: string; date: string }
 ) {
   if (!SUPPORTED) return;
   await serializeMapOp(async () => {
@@ -149,8 +152,8 @@ export async function scheduleOneTimeReminder(
     await cancelHabitRemindersLocked(map, habitId);
 
     const [hour, minute] = input.time.split(':').map(Number);
-    const at = new Date();
-    at.setHours(hour, minute, 0, 0);
+    const [year, month, day] = input.date.split('-').map(Number);
+    const at = new Date(year, month - 1, day, hour, minute, 0, 0);
     if (at.getTime() <= Date.now()) {
       await writeIdMap(map); // persist the cancel even when nothing is scheduled
       return;

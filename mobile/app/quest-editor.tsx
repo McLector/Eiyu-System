@@ -35,6 +35,23 @@ function dateToTimeString(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/** Local calendar date -> "YYYY-MM-DD", matching how the picker itself reports dates (never UTC — see Slice 4's global constraint on this). */
+function dateToDateKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** "YYYY-MM-DD" -> local Date at midnight, for handing to DateTimePicker's `value` prop. */
+function dateKeyToDate(key: string): Date {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Short display form, e.g. "Sep 10, 2026". */
+function formatDateShort(key: string): string {
+  return dateKeyToDate(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 const difficultyColor: Record<Difficulty, string> = {
   Hard: '#f87171',
   Medium: '#fbbf24',
@@ -59,6 +76,8 @@ export default function QuestEditorScreen() {
   const [description, setDescription] = useState(quest?.description ?? '');
   const [time, setTime] = useState(quest?.time ?? '08:00');
   const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(dateToDateKey(new Date()));
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [days, setDays] = useState<number[]>(quest?.days ?? [0, 1, 2, 3, 4, 5, 6]);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
@@ -100,6 +119,7 @@ export default function QuestEditorScreen() {
       days,
       stat,
       difficulty,
+      scheduledDate: isOneTime ? scheduledDate : null,
     };
     setSubmitting(true);
     setError(null);
@@ -214,7 +234,7 @@ export default function QuestEditorScreen() {
 
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              {isOneTime ? 'REMINDER TIME (TODAY)' : 'REMINDER TIME'}
+              REMINDER TIME
             </Text>
             {/* Themed trigger -> native platform dialog (#9). Always 12h AM/PM
                 BY DESIGN per the original request ("users shouldn't have to
@@ -258,6 +278,44 @@ export default function QuestEditorScreen() {
               </View>
             )}
           </View>
+
+          {isOneTime && (
+          <View>
+            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>DATE</Text>
+            <Pressable
+              style={[styles.field, styles.timeTrigger, fieldStyle]}
+              onPress={() => setDatePickerVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Choose quest date">
+              <Text style={{ color: theme.text, fontFamily: fonts.body }}>{formatDateShort(scheduledDate)}</Text>
+            </Pressable>
+            {datePickerVisible && (
+              <View>
+                <DateTimePicker
+                  value={dateKeyToDate(scheduledDate)}
+                  mode="date"
+                  minimumDate={new Date()}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(event, date) => {
+                    if (Platform.OS === 'android') {
+                      setDatePickerVisible(false);
+                      if (event.type === 'set' && date) {
+                        setScheduledDate(dateToDateKey(date));
+                      }
+                    } else {
+                      if (date) {
+                        setScheduledDate(dateToDateKey(date));
+                      }
+                    }
+                  }}
+                />
+                {Platform.OS === 'ios' && (
+                  <GhostButton label="DONE" onPress={() => setDatePickerVisible(false)} />
+                )}
+              </View>
+            )}
+          </View>
+          )}
 
           {!isOneTime && (
           <View>

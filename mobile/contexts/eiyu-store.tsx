@@ -234,8 +234,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       // Re-arm today's one-time reminders too - cancelAllHabitReminders wiped
       // their ids from the shared map, and the recurring resync above excludes
       // them by design. scheduleOneTimeReminder no-ops for past times.
+      // fetchTodayOneTimeHabits already filters to scheduled_date = today
+      // (Slice 4), so "today" is the correct date for every item it returns.
+      const todayKey = new Date().toISOString().slice(0, 10);
       const oneTimeToday = await fetchTodayOneTimeHabits(userId);
-      await Promise.all(oneTimeToday.map(h => scheduleOneTimeReminder(h.id, h)));
+      await Promise.all(oneTimeToday.map(h => scheduleOneTimeReminder(h.id, { ...h, date: todayKey })));
     },
     [userId]
   );
@@ -337,8 +340,13 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       setQuestActionError(null);
       if (!notificationsEnabled) return;
       if (input.questType === 'one_time') {
-        // True one-shot DATE trigger for today; no-ops if the time passed.
-        scheduleOneTimeReminder(id, { name: input.name, time: input.time }).catch(() => {});
+        // One-shot DATE trigger on the quest's scheduled date; no-ops if that
+        // moment has already passed.
+        scheduleOneTimeReminder(id, {
+          name: input.name,
+          time: input.time,
+          date: input.scheduledDate ?? new Date().toISOString().slice(0, 10),
+        }).catch(() => {});
       } else {
         scheduleHabitReminders(id, input).catch(() => {});
       }
