@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { useFocusEffect } from 'expo-router';
 
 import { GlassView } from '@/components/eiyu/glass-view';
 import { StarIcon } from '@/components/eiyu/icons';
@@ -43,8 +44,13 @@ export default function HabitHeatmap({ userId }: Props) {
   const month = now.getUTCMonth();
   const todayKey = toDateKey(now);
 
-  useEffect(() => {
-    if (!userId) return;
+  // Fetches history for the current userId/year/month. Re-created only when one of
+  // those three changes, so both the mount effect below and the focus-triggered
+  // refetch (which re-runs this same fetch whenever the Status tab regains focus,
+  // since Expo Router keeps this screen mounted across tab switches) stay in sync
+  // with a single implementation.
+  const fetchHistory = useCallback(() => {
+    if (!userId) return undefined;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -61,9 +67,15 @@ export default function HabitHeatmap({ userId }: Props) {
     return () => {
       cancelled = true;
     };
-    // Re-fetch only when the user or the calendar month changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, year, month]);
+
+  useEffect(() => {
+    return fetchHistory();
+  }, [fetchHistory]);
+
+  // Re-fetch whenever the Status tab regains focus, so a habit completed on
+  // another tab is reflected here without waiting for year/month to change.
+  useFocusEffect(fetchHistory);
 
   const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
