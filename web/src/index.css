@@ -154,3 +154,8 @@ select.field option {
   70% { opacity: 1; transform: translateY(-4px); }
   100% { opacity: 0; transform: translateY(-10px); }
 }
+
+@keyframes heatmapGlow {
+  0% { opacity: 0.6; transform: scale(0.88); }
+  100% { opacity: 1; transform: scale(1.06); }
+}
