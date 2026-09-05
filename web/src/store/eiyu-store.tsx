@@ -132,6 +132,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: key }),
+          qc.invalidateQueries({ queryKey: ['monthHistory', userId] }),
         ]);
         setQuestActionError(null);
       } catch (err) {
@@ -181,7 +182,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.setQueryData<Quest[]>(key, qs =>
             qs?.map(q => (q.id === id ? { ...q, progressCount: serverCount, completed: serverCount >= target } : q))
           );
-          await qc.invalidateQueries({ queryKey: ['stats', userId] });
+          await Promise.all([
+            qc.invalidateQueries({ queryKey: ['stats', userId] }),
+            qc.invalidateQueries({ queryKey: ['monthHistory', userId] }),
+          ]);
           setQuestActionError(null);
         })
         .catch(err => {
@@ -203,6 +207,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
+          qc.invalidateQueries({ queryKey: ['monthHistory', userId] }),
         ]);
         setQuestActionError(null);
       } catch (err) {
