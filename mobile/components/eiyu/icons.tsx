@@ -36,6 +36,20 @@ export function StatIcon({ stat, size = 16 }: { stat: Stat; size?: number }) {
   );
 }
 
+export function StarIcon({ color, size = 14 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Polygon
+        points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"
+        fill={color}
+        stroke={color}
+        strokeWidth={1}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 export function BoardIcon({ color, size = 22 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
