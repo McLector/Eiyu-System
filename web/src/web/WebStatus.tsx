@@ -8,6 +8,7 @@ import {
 import { StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import { useSession } from '../store/session-context';
+import WebHeatmap from './WebHeatmap';
 
 interface Props { darkMode: boolean; }
 
@@ -167,6 +168,8 @@ export default function WebStatus({ darkMode }: Props) {
             </div>
           </div>
         )}
+
+        {tab === 'stats' && <WebHeatmap userId={userId} />}
 
         {tab === 'weekly' && (
           <>
