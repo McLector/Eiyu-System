@@ -111,7 +111,7 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
   const { user, questsLoading, questsError, retryQuests, toggleQuest: toggleQuestAction, adjustProgress, completeRecovery } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
   const completedToday = user.quests.filter(q => q.completed).length;
-  const totalToday = user.quests.filter(q => q.days.includes(new Date().getDay())).length;
+  const totalToday = user.quests.length;
   const { habitQuests, oneTimeQuests } = splitQuestsByType(user.quests);
   const [xpToast, setXpToast] = useState<string | null>(null);
 
