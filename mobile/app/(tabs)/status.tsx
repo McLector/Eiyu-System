@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Divider } from '@/components/eiyu/divider';
 import { GlassView } from '@/components/eiyu/glass-view';
+import HabitHeatmap from '@/components/eiyu/habit-heatmap';
 import { StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { RadarChart } from '@/components/eiyu/radar-chart';
@@ -259,6 +260,8 @@ export default function StatusScreen() {
                 );
               })}
             </GlassView>
+
+            <HabitHeatmap userId={session?.user.id} />
           </>
         ) : (
           <>
