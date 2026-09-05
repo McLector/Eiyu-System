@@ -46,7 +46,7 @@ export default function WebHistory({ userId, onClose }: Props) {
   while (cells.length % 7 !== 0) cells.push(null);
 
   const data = historyQuery.data ?? {};
-  const todayCompletions = isCurrentMonth ? data[dateKey(year, month, today)] ?? [] : [];
+  const todayCompletions = isCurrentMonth ? (data[dateKey(year, month, today)]?.completions ?? []) : [];
 
   return (
     <div style={{
@@ -95,7 +95,7 @@ export default function WebHistory({ userId, onClose }: Props) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
               {cells.map((day, i) => {
                 if (!day) return <div key={i} />;
-                const completion = dayStatus(data[dateKey(year, month, day)]);
+                const completion = dayStatus(data[dateKey(year, month, day)]?.completions);
                 const isToday = isCurrentMonth && day === today;
                 return (
                   <div key={i} style={{

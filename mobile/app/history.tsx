@@ -77,7 +77,7 @@ export default function HistoryScreen() {
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const selectedCompletions = data[selectedDate] ?? [];
+  const selectedCompletions = data[selectedDate]?.completions ?? [];
 
   return (
     <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
@@ -124,7 +124,7 @@ export default function HistoryScreen() {
               {cells.map((day, i) => {
                 if (day === null) return <View key={i} style={styles.dayCell} />;
                 const dateKey = toDateKey(new Date(Date.UTC(year, month, day)));
-                const hasCompletions = (data[dateKey]?.length ?? 0) > 0;
+                const hasCompletions = (data[dateKey]?.completions.length ?? 0) > 0;
                 const isSelected = dateKey === selectedDate;
                 const isToday = dateKey === todayKey;
                 return (
