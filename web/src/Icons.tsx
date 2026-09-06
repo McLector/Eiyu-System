@@ -112,6 +112,32 @@ export function SnowflakeIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+export function MailIcon({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" fill={color} fillOpacity="0.15" />
+      <path d="M2 6l10 7 10-7" />
+    </svg>
+  );
+}
+
+export function NoteIcon({ size = 14, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 3h9l3 3v15H6z" fill={color} fillOpacity="0.12" />
+      <path d="M9 9h6M9 13h6M9 17h4" />
+    </svg>
+  );
+}
+
+export function SparkleIcon({ size = 15, color = 'var(--c-accent)' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} fillOpacity="0.2" stroke={color} strokeWidth="1.5" strokeLinejoin="round">
+      <path d="M12 2l2.5 6.5L21 10l-5 4.5L17.5 21 12 17.5 6.5 21 8 14.5 3 10l6.5-1.5z" />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ direction = 'right', size = 16 }: { direction?: 'right' | 'down' | 'up' | 'left'; size?: number }) {
   const rotate = { right: 0, down: 90, left: 180, up: 270 }[direction];
   return (
