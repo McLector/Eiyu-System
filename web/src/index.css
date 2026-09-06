@@ -34,6 +34,14 @@
             radial-gradient(ellipse 40% 35% at 85% 70%, rgba(74,222,128,0.06) 0%, transparent 50%),
             linear-gradient(180deg, #040f1e 0%, #030c18 50%, #040e1c 100%);
   --c-body: #030d1a;
+  /* ── Redesign: flat-surface tokens (additive, Slice 9) ─────────── */
+  --c-page-flat: #050b14;
+  --c-scanline: rgba(255, 255, 255, 0.012);
+  --c-vignette: rgba(0, 0, 0, 0.65);
+  --c-panel-flat: rgba(5, 11, 20, 0.94);
+  --c-panel-border: rgba(103, 232, 249, 0.4);
+  --c-divider-flat: rgba(103, 232, 249, 0.12);
+  --c-muted-flat: rgba(163, 210, 230, 0.62);
 }
 
 /* ── Light theme ─────────────────────────────────── */
@@ -59,6 +67,14 @@
             radial-gradient(ellipse 50% 40% at 85% 80%, rgba(20,180,130,0.07) 0%, transparent 50%),
             linear-gradient(180deg, #d6ebf8 0%, #e5f4ff 50%, #d4e9f6 100%);
   --c-body: #d6ebf8;
+  /* ── Redesign: flat-surface tokens (additive, Slice 9) ─────────── */
+  --c-page-flat: #e8f4fb;
+  --c-scanline: transparent;
+  --c-vignette: rgba(255, 255, 255, 0.4);
+  --c-panel-flat: rgba(255, 255, 255, 0.78);
+  --c-panel-border: rgba(8, 145, 178, 0.22);
+  --c-divider-flat: rgba(8, 145, 178, 0.15);
+  --c-muted-flat: rgba(14, 52, 80, 0.72);
 }
 
 * {
@@ -119,6 +135,42 @@ body {
 .divider {
   border: none;
   border-top: 1px solid var(--c-glass-border);
+  margin: 0;
+}
+
+.surface-flat {
+  background-color: var(--c-page-flat);
+  background-image: repeating-linear-gradient(
+    0deg,
+    var(--c-scanline) 0px,
+    var(--c-scanline) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  box-shadow: inset 0 0 140px var(--c-vignette);
+}
+
+.panel-flat {
+  background: var(--c-panel-flat);
+  border: 1px solid var(--c-panel-border);
+  border-radius: 4px;
+}
+
+.panel-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--c-accent);
+}
+
+.panel-corner-tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.panel-corner-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+.panel-corner-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+.panel-corner-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+.divider-flat {
+  border: none;
+  border-top: 1px solid var(--c-divider-flat);
   margin: 0;
 }
 
