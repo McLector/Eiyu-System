@@ -112,7 +112,7 @@ export function PlusIcon({ size = 20 }: { size?: number }) {
 
 export function SnowflakeIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#93c5fd" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--c-ice)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="2" x2="12" y2="22" />
       <line x1="2" y1="12" x2="22" y2="12" />
       <path d="M8 6l4-4 4 4" />

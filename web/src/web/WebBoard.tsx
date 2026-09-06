@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType, formatDisplayDate, tintSecondaryText } from '@eiyu/shared';
+import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType, formatDisplayDate, tintSecondaryText, boardSummaryLine } from '@eiyu/shared';
 import { StatIcon, CheckIcon, PlusIcon, SnowflakeIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import SignaturePanel from '../SignaturePanel';
@@ -8,14 +8,6 @@ import FireStreak from '../FireStreak';
 interface Props {
   onNewQuest: () => void;
   onEditQuest: (id: string) => void;
-}
-
-/** Hunter-voice line for the daily completion count — replaces a flat "N / M quests" readout with in-world framing (redesign spec §5). */
-export function boardSummaryLine(completed: number, total: number): string {
-  if (total === 0) return 'No quests scheduled today.';
-  if (completed === 0) return 'The board is quiet — no answers yet.';
-  if (completed === total) return 'The board answered in full.';
-  return `${completed} of ${total} have answered the call.`;
 }
 
 function XpBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -44,7 +36,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
         <button onClick={onToggle} disabled={quest.frozen} style={{
           width: 26, height: 26, borderRadius: 7, flexShrink: 0,
           background: quest.completed ? 'rgba(74,222,128,0.18)' : 'transparent',
-          border: `1.5px solid ${quest.frozen ? 'rgba(147,197,253,0.4)' : quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
+          border: `1.5px solid ${quest.frozen ? 'var(--c-ice-border)' : quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: quest.frozen ? 'default' : 'pointer',
         }}>
@@ -83,7 +75,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
             </span>
           )}
           {quest.frozen && (
-            <span style={{ display: 'flex', filter: 'drop-shadow(0 0 4px rgba(147,197,253,0.6))' }}>
+            <span role="img" aria-label="Streak frozen" style={{ display: 'flex', filter: 'drop-shadow(0 0 4px var(--c-ice-glow))' }}>
               <SnowflakeIcon size={12} />
             </span>
           )}

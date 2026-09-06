@@ -18,6 +18,7 @@ export default function FireStreak({ size = 14 }: Props) {
   return (
     <span
       className="fire-flame"
+      aria-hidden="true"
       style={{
         position: 'relative', display: 'inline-block', width: size, height,
         verticalAlign: 'middle', animation: 'fireGlow 1.3s ease-in-out infinite',
@@ -25,15 +26,15 @@ export default function FireStreak({ size = 14 }: Props) {
     >
       <svg width={size} height={height} viewBox="0 0 26 30" className="fire-flame"
         style={{ position: 'absolute', inset: 0, animation: 'lick-outer 1.1s ease-in-out infinite', transformOrigin: '50% 100%' }}>
-        <path d={OUTER_PATH} fill="#f87171" />
+        <path d={OUTER_PATH} fill="var(--c-fire-outer)" />
       </svg>
       <svg width={size} height={height} viewBox="0 0 26 30" className="fire-flame"
         style={{ position: 'absolute', inset: 0, animation: 'lick-inner 0.8s ease-in-out infinite', transformOrigin: '50% 100%' }}>
-        <path d={INNER_PATH} fill="#fb923c" />
+        <path d={INNER_PATH} fill="var(--c-fire-inner)" />
       </svg>
       <svg width={size} height={height} viewBox="0 0 26 30" className="fire-flame"
         style={{ position: 'absolute', inset: 0, animation: 'lick-core 0.65s ease-in-out infinite', transformOrigin: '50% 100%' }}>
-        <path d={CORE_PATH} fill="#fde68a" />
+        <path d={CORE_PATH} fill="var(--c-fire-core)" />
       </svg>
     </span>
   );

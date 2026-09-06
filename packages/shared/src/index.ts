@@ -6,6 +6,7 @@ export * from './logic/format-error';
 export * from './logic/heatmap';
 export * from './logic/contrast';
 export * from './logic/color-tint';
+export * from './logic/board-summary';
 export * from './data/habits';
 export * from './data/completions';
 export * from './data/stats';

@@ -1,5 +1,4 @@
-import { describe, expect, it } from 'vitest';
-import { boardSummaryLine } from '../WebBoard';
+import { boardSummaryLine } from '../board-summary';
 
 describe('boardSummaryLine', () => {
   it('says nothing is scheduled when there are no quests at all', () => {
