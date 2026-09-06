@@ -1,11 +1,21 @@
 import { useState } from 'react';
-import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType, formatDisplayDate } from '@eiyu/shared';
-import { StatIcon, CheckIcon, PlusIcon } from '../Icons';
+import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType, formatDisplayDate, tintSecondaryText } from '@eiyu/shared';
+import { StatIcon, CheckIcon, PlusIcon, SnowflakeIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
+import SignaturePanel from '../SignaturePanel';
+import FireStreak from '../FireStreak';
 
 interface Props {
   onNewQuest: () => void;
   onEditQuest: (id: string) => void;
+}
+
+/** Hunter-voice line for the daily completion count — replaces a flat "N / M quests" readout with in-world framing (redesign spec §5). */
+export function boardSummaryLine(completed: number, total: number): string {
+  if (total === 0) return 'No quests scheduled today.';
+  if (completed === 0) return 'The board is quiet — no answers yet.';
+  if (completed === total) return 'The board answered in full.';
+  return `${completed} of ${total} have answered the call.`;
 }
 
 function XpBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -17,26 +27,24 @@ function XpBar({ value, max, color }: { value: number; max: number; color: strin
   );
 }
 
-function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress }: {
-  quest: Quest; onToggle: () => void; onRecover: () => void; onEdit: () => void; onAdjustProgress: (delta: number) => void;
+function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirst }: {
+  quest: Quest; onToggle: () => void; onRecover: () => void; onEdit: () => void; onAdjustProgress: (delta: number) => void; isFirst: boolean;
 }) {
   const color = STAT_COLORS[quest.stat];
 
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-      borderRadius: 12,
-      background: quest.completed ? 'rgba(74,222,128,0.05)' : 'var(--c-accent-glass)',
-      border: `1px solid ${quest.completed ? 'rgba(74,222,128,0.18)' : 'var(--c-glass-border)'}`,
-      opacity: quest.frozen ? 0.6 : 1,
-      transition: 'all 0.2s',
+      display: 'flex', alignItems: 'center', gap: 12, padding: '13px 0',
+      borderTop: isFirst ? 'none' : '1px solid var(--c-divider-flat)',
+      opacity: quest.frozen ? 0.85 : 1,
+      transition: 'opacity 0.2s',
     }}>
       {/* Checkbox, or a +/- stepper for quantity habits (Slice 5) */}
       {quest.targetCount == null ? (
         <button onClick={onToggle} disabled={quest.frozen} style={{
           width: 26, height: 26, borderRadius: 7, flexShrink: 0,
           background: quest.completed ? 'rgba(74,222,128,0.18)' : 'transparent',
-          border: `1.5px solid ${quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
+          border: `1.5px solid ${quest.frozen ? 'rgba(147,197,253,0.4)' : quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: quest.frozen ? 'default' : 'pointer',
         }}>
@@ -62,20 +70,22 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress }: {
 
       {/* Info — clicking name area opens editor */}
       <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={onEdit}>
-        <div style={{ fontFamily: 'Inter', fontSize: 14, color: quest.completed ? 'var(--c-muted)' : 'var(--c-text)', textDecoration: quest.completed ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontFamily: 'Inter', fontSize: 14, color: quest.completed ? 'var(--c-muted-flat)' : 'var(--c-text)', textDecoration: quest.completed ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {quest.name}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
           <StatIcon stat={quest.stat} size={12} />
           <span style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, color, letterSpacing: '0.08em' }}>{quest.stat}</span>
-          <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim)' }}>{quest.difficulty}</span>
+          <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)' }}>{quest.difficulty}</span>
           {quest.streak > 0 && (
-            <span style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 4, padding: '1px 5px' }}>
-              🔥 {quest.streak}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'JetBrains Mono', fontSize: 10, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 4, padding: '1px 5px' }}>
+              <FireStreak size={11} /> {quest.streak}
             </span>
           )}
           {quest.frozen && (
-            <span style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: '#67e8f9', letterSpacing: '0.08em' }}>FROZEN</span>
+            <span style={{ display: 'flex', filter: 'drop-shadow(0 0 4px rgba(147,197,253,0.6))' }}>
+              <SnowflakeIcon size={12} />
+            </span>
           )}
         </div>
       </div>
@@ -90,7 +100,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress }: {
               border: `1px solid ${quest.days.includes(i) ? color + '55' : 'var(--c-glass-border)'}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <span style={{ fontFamily: 'Rajdhani', fontSize: 8, fontWeight: 700, color: quest.days.includes(i) ? color : 'var(--c-dim)' }}>{d[0]}</span>
+              <span style={{ fontFamily: 'Rajdhani', fontSize: 8, fontWeight: 700, color: quest.days.includes(i) ? color : 'var(--c-dim-flat)' }}>{d[0]}</span>
             </div>
           ))}
         </div>
@@ -99,7 +109,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress }: {
             background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
             fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, color: '#67e8f9', letterSpacing: '0.06em',
           }}>
-            RECOVER
+            RECLAIM
           </button>
         )}
       </div>
@@ -126,7 +136,7 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
   };
 
   if (questsLoading) {
-    return <div style={{ padding: 40, textAlign: 'center', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>;
+    return <div style={{ padding: 40, textAlign: 'center', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Reading the board…</div>;
   }
   if (questsError) {
     return (
@@ -141,8 +151,8 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 24, alignItems: 'start' }}>
       {/* Left panel */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Profile card */}
-        <div className="glass" style={{ padding: '20px' }}>
+        {/* Profile card — signature panel (redesign spec sections 3, 8.1) */}
+        <SignaturePanel style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{
               width: 52, height: 52, borderRadius: 14,
@@ -154,7 +164,7 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--c-text)', lineHeight: 1.1 }}>{user.name}</div>
-              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', marginTop: 2 }}>{user.userClass}</div>
+              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', marginTop: 2 }}>{user.userClass}</div>
             </div>
             <div style={{
               width: 42, height: 42, borderRadius: 11,
@@ -164,21 +174,21 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
               boxShadow: `0 0 16px ${rankCfg.glow}`,
             }}>{user.rank}</div>
           </div>
-        </div>
+        </SignaturePanel>
 
-        {/* Stats card */}
-        <div className="glass" style={{ padding: '16px 20px' }}>
-          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 12 }}>ATTRIBUTES</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {STATS.map(stat => {
+        {/* Stats — plain/grouping (redesign spec section 3) */}
+        <div>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 12 }}>ATTRIBUTES</div>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {STATS.map((stat, i) => {
               const s = user.stats[stat];
               return (
-                <div key={stat}>
+                <div key={stat} style={{ padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid var(--c-divider-flat)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                     <StatIcon stat={stat} size={13} />
                     <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
                     <span style={{ fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 600, color: STAT_COLORS[stat] }}>Lv.{s.level}</span>
-                    <span style={{ fontFamily: 'Inter', fontSize: 10, color: 'var(--c-dim)' }}>{s.xp}/{s.xpMax}</span>
+                    <span style={{ fontFamily: 'Inter', fontSize: 10, color: tintSecondaryText(STAT_COLORS[stat]) }}>{s.xp}/{s.xpMax}</span>
                   </div>
                   <XpBar value={s.xp} max={s.xpMax} color={STAT_COLORS[stat]} />
                 </div>
@@ -204,15 +214,18 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
           </div>
         )}
 
-        {/* Daily summary */}
-        <div className="glass-sm" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Daily summary — plain/grouping */}
+        <div style={{ padding: '0 0 14px', borderBottom: '1px solid var(--c-divider-flat)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 4 }}>TODAY</div>
-            <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim)', marginBottom: 4 }}>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 4 }}>TODAY</div>
+            <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)', marginBottom: 4 }}>
               {formatDisplayDate(new Date())}
             </div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)' }}>
-              {completedToday} <span style={{ color: 'var(--c-dim)', fontWeight: 500 }}>/ {totalToday} quests</span>
+              {completedToday} <span style={{ color: 'var(--c-dim-flat)', fontWeight: 500 }}>/ {totalToday} quests</span>
+            </div>
+            <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', marginTop: 4 }}>
+              {boardSummaryLine(completedToday, totalToday)}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 3 }}>
@@ -222,8 +235,8 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
           </div>
         </div>
 
-        {/* Quest list */}
-        <div className="glass" style={{ padding: '18px 18px 14px' }}>
+        {/* Quest list — plain/grouping */}
+        <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 14, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em' }}>DAILY QUESTS</div>
             <button onClick={onNewQuest} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
@@ -231,30 +244,28 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
               ADD QUEST
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {user.quests.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>No quests yet — add your first quest above</div>
-            ) : (
-              <>
-                <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim)' }}>TODAY&apos;S HABITS</div>
-                {habitQuests.length === 0 ? (
-                  <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', padding: '4px 0 8px' }}>No habits scheduled for today.</div>
-                ) : (
-                  habitQuests.map(q => (
-                    <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
-                  ))
-                )}
-                {oneTimeQuests.length > 0 && (
-                  <>
-                    <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim)', marginTop: 8 }}>ONE-TIME QUESTS</div>
-                    {oneTimeQuests.map(q => (
-                      <QuestRow key={q.id} quest={q} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
-                    ))}
-                  </>
-                )}
-              </>
-            )}
-          </div>
+          {user.quests.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>The board is quiet. Set your first one.</div>
+          ) : (
+            <>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim-flat)' }}>TODAY&apos;S HABITS</div>
+              {habitQuests.length === 0 ? (
+                <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', padding: '4px 0 8px' }}>No habits scheduled for today.</div>
+              ) : (
+                habitQuests.map((q, i) => (
+                  <QuestRow key={q.id} quest={q} isFirst={i === 0} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
+                ))
+              )}
+              {oneTimeQuests.length > 0 && (
+                <>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim-flat)', marginTop: 8 }}>ONE-TIME QUESTS</div>
+                  {oneTimeQuests.map((q, i) => (
+                    <QuestRow key={q.id} quest={q} isFirst={i === 0} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
+                  ))}
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
