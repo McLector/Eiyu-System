@@ -42,6 +42,7 @@
   --c-panel-border: rgba(103, 232, 249, 0.4);
   --c-divider-flat: rgba(103, 232, 249, 0.12);
   --c-muted-flat: rgba(163, 210, 230, 0.62);
+  --c-dim-flat: rgba(163, 210, 230, 0.58);
 }
 
 /* ── Light theme ─────────────────────────────────── */
@@ -75,6 +76,7 @@
   --c-panel-border: rgba(8, 145, 178, 0.22);
   --c-divider-flat: rgba(8, 145, 178, 0.15);
   --c-muted-flat: rgba(14, 52, 80, 0.72);
+  --c-dim-flat: rgba(14, 52, 80, 0.68);
 }
 
 * {
