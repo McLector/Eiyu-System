@@ -213,3 +213,34 @@ select.field option {
   0% { opacity: 0.6; transform: scale(0.88); }
   100% { opacity: 1; transform: scale(1.06); }
 }
+
+@keyframes lick-outer {
+  0% { transform: scaleY(1) scaleX(1) skewX(0deg); }
+  22% { transform: scaleY(1.08) scaleX(0.94) skewX(-3deg); }
+  48% { transform: scaleY(0.93) scaleX(1.05) skewX(2deg); }
+  70% { transform: scaleY(1.1) scaleX(0.97) skewX(-2deg); }
+  100% { transform: scaleY(1) scaleX(1) skewX(0deg); }
+}
+
+@keyframes lick-inner {
+  0% { transform: scaleY(1) skewX(1deg); }
+  30% { transform: scaleY(0.9) skewX(-3deg); }
+  55% { transform: scaleY(1.12) skewX(3deg); }
+  80% { transform: scaleY(0.95) skewX(-1deg); }
+  100% { transform: scaleY(1) skewX(1deg); }
+}
+
+@keyframes lick-core {
+  0%, 100% { transform: scaleY(1) translateY(0); }
+  40% { transform: scaleY(0.85) translateY(1px); }
+  65% { transform: scaleY(1.15) translateY(-1px); }
+}
+
+@keyframes fireGlow {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(248,113,113,0.55)) drop-shadow(0 0 7px rgba(251,146,60,0.35)); }
+  50% { filter: drop-shadow(0 0 6px rgba(248,113,113,0.8)) drop-shadow(0 0 12px rgba(251,191,36,0.55)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fire-flame { animation: none !important; }
+}
