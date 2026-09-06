@@ -14,3 +14,17 @@ describe('redesign flat-surface tokens — dark theme (must match web/src/index.
     expect(contrastRatio(newMutedFlat, pageFlat)).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+describe('redesign flat-surface tokens — light theme (must match web/src/index.css [data-theme="light"])', () => {
+  const pageFlat = '#e8f4fb';
+  const oldMuted = 'rgba(14,52,80,0.55)'; // existing light --c-muted, tuned for the old gradient bg
+  const newMutedFlat = 'rgba(14,52,80,0.72)'; // light --c-muted-flat
+
+  it('documents that the existing light --c-muted token also fails AA contrast against the new flat light background', () => {
+    expect(contrastRatio(oldMuted, pageFlat)).toBeLessThan(4.5);
+  });
+
+  it('light --c-muted-flat passes AA body-text contrast (>=4.5:1) against the light --c-page-flat', () => {
+    expect(contrastRatio(newMutedFlat, pageFlat)).toBeGreaterThanOrEqual(4.5);
+  });
+});

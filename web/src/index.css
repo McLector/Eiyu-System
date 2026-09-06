@@ -67,6 +67,14 @@
             radial-gradient(ellipse 50% 40% at 85% 80%, rgba(20,180,130,0.07) 0%, transparent 50%),
             linear-gradient(180deg, #d6ebf8 0%, #e5f4ff 50%, #d4e9f6 100%);
   --c-body: #d6ebf8;
+  /* ── Redesign: flat-surface tokens (additive, Slice 9) ─────────── */
+  --c-page-flat: #e8f4fb;
+  --c-scanline: transparent;
+  --c-vignette: rgba(255, 255, 255, 0.4);
+  --c-panel-flat: rgba(255, 255, 255, 0.78);
+  --c-panel-border: rgba(8, 145, 178, 0.22);
+  --c-divider-flat: rgba(8, 145, 178, 0.15);
+  --c-muted-flat: rgba(14, 52, 80, 0.72);
 }
 
 * {
