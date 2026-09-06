@@ -30,8 +30,8 @@ export default function WebHeatmap({ userId }: Props) {
   const selected = selectedDate ? data[selectedDate] : undefined;
 
   return (
-    <div className="glass" style={{ padding: '18px 20px' }}>
-      <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 16 }}>
+    <div>
+      <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 16 }}>
         THIS MONTH
       </div>
       {historyQuery.error ? (
@@ -40,7 +40,7 @@ export default function WebHeatmap({ userId }: Props) {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
             {WEEKDAY_LABELS.map((label, i) => (
-              <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: 'var(--c-dim)', letterSpacing: '0.06em' }}>
+              <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.06em' }}>
                 {label}
               </div>
             ))}
@@ -89,18 +89,18 @@ export default function WebHeatmap({ userId }: Props) {
               })}
             </div>
           ))}
-          <div style={{ borderTop: '1px solid var(--c-glass-border)', marginTop: 12, paddingTop: 12 }}>
+          <div style={{ borderTop: '1px solid var(--c-divider-flat)', marginTop: 12, paddingTop: 12 }}>
             {historyQuery.isPending ? (
-              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Loading…</div>
+              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Loading…</div>
             ) : !selected ? (
-              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Click a day to see details.</div>
+              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Click a day to see details.</div>
             ) : (
               <>
-                <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c-muted)', marginBottom: 6 }}>
+                <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c-muted-flat)', marginBottom: 6 }}>
                   {selectedDate === todayKey ? 'TODAY' : selectedDate} · {selected.completedCount}/{selected.scheduledCount}
                 </div>
                 {selected.completions.length === 0 ? (
-                  <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Nothing completed this day.</div>
+                  <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Nothing completed this day.</div>
                 ) : (
                   selected.completions.map((c, i) => (
                     <div key={i} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)', padding: '2px 0' }}>
