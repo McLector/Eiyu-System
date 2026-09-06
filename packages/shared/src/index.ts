@@ -4,6 +4,7 @@ export * from './logic/validation';
 export * from './logic/quest-recurrence';
 export * from './logic/format-error';
 export * from './logic/contrast';
+export * from './logic/color-tint';
 export * from './data/habits';
 export * from './data/completions';
 export * from './data/stats';
