@@ -19,8 +19,6 @@ export default function Sidebar() {
       width: 220, minHeight: '100svh',
       position: 'fixed', top: 0, left: 0, zIndex: 30,
       background: 'var(--c-nav)',
-      backdropFilter: 'blur(24px)',
-      WebkitBackdropFilter: 'blur(24px)',
       borderRight: '1px solid var(--c-nav-border)',
       display: 'flex', flexDirection: 'column',
     }}>
@@ -40,7 +38,7 @@ export default function Sidebar() {
             <div style={{ fontFamily: 'Rajdhani', fontSize: 17, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.1em', lineHeight: 1 }}>
               EIYU
             </div>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: 'var(--c-muted)', letterSpacing: '0.18em' }}>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: 'var(--c-muted-flat)', letterSpacing: '0.18em' }}>
               SYSTEM
             </div>
           </div>
@@ -54,10 +52,11 @@ export default function Sidebar() {
             key={to}
             to={to}
             style={({ isActive }) => ({
-              width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-              padding: '12px 20px', textDecoration: 'none', boxSizing: 'border-box',
+              width: 'calc(100% - 20px)', display: 'flex', alignItems: 'center', gap: 12,
+              margin: '0 10px 4px', padding: '11px 14px', textDecoration: 'none', boxSizing: 'border-box',
+              borderRadius: 4,
               background: isActive ? 'var(--c-accent-glass)' : 'transparent',
-              borderLeft: `3px solid ${isActive ? 'var(--c-accent)' : 'transparent'}`,
+              border: `1px solid ${isActive ? 'var(--c-accent-border)' : 'transparent'}`,
               cursor: 'pointer', transition: 'all 0.15s',
             })}
             onMouseEnter={e => {
@@ -103,7 +102,7 @@ export default function Sidebar() {
             <div style={{ fontFamily: 'Rajdhani', fontSize: 14, fontWeight: 700, color: 'var(--c-text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user.name}
             </div>
-            <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted)' }}>
+            <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>
               {user.userClass}
             </div>
           </div>

@@ -19,10 +19,11 @@ export default function ProtectedLayout() {
   return (
     <div
       data-theme={darkMode ? 'dark' : 'light'}
-      style={{ background: 'var(--c-page)', minHeight: '100svh', position: 'relative' }}
+      className="surface-flat"
+      style={{ minHeight: '100svh', position: 'relative' }}
     >
-      {/* Fixed gradient background */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: -1, background: 'var(--c-page)' }} />
+      {/* Fixed flat background (redesign spec §3 — replaces the old gradient) */}
+      <div className="surface-flat" style={{ position: 'fixed', inset: 0, zIndex: -1 }} />
 
       <Sidebar />
 
