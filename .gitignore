@@ -80,6 +80,7 @@ CLAUDE.md
 CHANGELOG.md
 AGENTS.md
 docs/superpowers/
+.superpowers/
 
 # Supabase CLI local state/cache
 .temp/
