@@ -38,7 +38,7 @@ export default function WebHeatmap({ userId }: Props) {
         <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn&apos;t load heatmap.</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 22px)', gap: 3, marginBottom: 4 }}>
             {WEEKDAY_LABELS.map((label, i) => (
               <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.06em' }}>
                 {label}
@@ -46,7 +46,7 @@ export default function WebHeatmap({ userId }: Props) {
             ))}
           </div>
           {weeks.map((week, wi) => (
-            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
+            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 22px)', gap: 3, marginBottom: 4 }}>
               {week.map((dateKey, di) => {
                 if (dateKey === null) return <div key={di} />;
                 const day = data[dateKey];
