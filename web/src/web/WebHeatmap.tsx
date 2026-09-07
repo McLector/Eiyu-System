@@ -8,6 +8,7 @@ interface Props {
 }
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const CELL_SIZE = 22;
 
 /** GitHub-commit-style weekly heatmap for the current UTC month (Slice 8, web parity for Slice 6). */
 export default function WebHeatmap({ userId }: Props) {
@@ -35,10 +36,10 @@ export default function WebHeatmap({ userId }: Props) {
         THIS MONTH
       </div>
       {historyQuery.error ? (
-        <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn&apos;t load heatmap.</div>
+        <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>The archive didn&apos;t respond.</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 22px)', gap: 3, marginBottom: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${CELL_SIZE}px)`, gap: 3, marginBottom: 4 }}>
             {WEEKDAY_LABELS.map((label, i) => (
               <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.06em' }}>
                 {label}
@@ -46,7 +47,7 @@ export default function WebHeatmap({ userId }: Props) {
             ))}
           </div>
           {weeks.map((week, wi) => (
-            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 22px)', gap: 3, marginBottom: 4 }}>
+            <div key={wi} style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${CELL_SIZE}px)`, gap: 3, marginBottom: 3 }}>
               {week.map((dateKey, di) => {
                 if (dateKey === null) return <div key={di} />;
                 const day = data[dateKey];
@@ -70,7 +71,7 @@ export default function WebHeatmap({ userId }: Props) {
                       justifyContent: 'center',
                     }}>
                     {state.isStar ? (
-                      <span style={{ display: 'flex', animation: 'heatmapGlow 0.9s ease-in-out infinite alternate' }}>
+                      <span className="heatmap-glow" style={{ display: 'flex' }}>
                         <StarIcon color="var(--c-accent)" size={14} />
                       </span>
                     ) : (
@@ -91,7 +92,7 @@ export default function WebHeatmap({ userId }: Props) {
           ))}
           <div style={{ borderTop: '1px solid var(--c-divider-flat)', marginTop: 12, paddingTop: 12 }}>
             {historyQuery.isPending ? (
-              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Loading…</div>
+              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Reading the archive…</div>
             ) : !selected ? (
               <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Click a day to see details.</div>
             ) : (

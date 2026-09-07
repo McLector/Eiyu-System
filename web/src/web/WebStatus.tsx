@@ -38,7 +38,7 @@ function AiSummary({ userId }: { userId: string }) {
       {isPending ? (
         <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>Reading the week&apos;s signs…</p>
       ) : error ? (
-        <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', lineHeight: 1.6, margin: 0 }}>{formatError(error)}</p>
+        <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', lineHeight: 1.6, margin: 0 }}>The System couldn&apos;t reach the archive — {formatError(error)}</p>
       ) : (
         <>
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>
@@ -58,7 +58,7 @@ function AiSummary({ userId }: { userId: string }) {
   );
 }
 
-function StatBar({ stat, user, isFirst }: { stat: Stat; user: UserProfile; isFirst: boolean }) {
+function StatBar({ stat, user, isFirst, darkMode }: { stat: Stat; user: UserProfile; isFirst: boolean; darkMode: boolean }) {
   const s = user.stats[stat];
   const pct = Math.min(100, (s.xp / s.xpMax) * 100);
   return (
@@ -67,7 +67,7 @@ function StatBar({ stat, user, isFirst }: { stat: Stat; user: UserProfile; isFir
         <StatIcon stat={stat} size={13} />
         <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
         <span style={{ fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>Lv.{s.level}</span>
-        <span style={{ fontFamily: 'Inter', fontSize: 10, color: tintSecondaryText(STAT_COLORS[stat]) }}>{s.xp}/{s.xpMax} XP</span>
+        <span style={{ fontFamily: 'Inter', fontSize: 10, color: tintSecondaryText(STAT_COLORS[stat], darkMode) }}>{s.xp}/{s.xpMax} XP</span>
       </div>
       <div style={{ height: 6, borderRadius: 4, background: 'var(--c-track)', overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: STAT_COLORS[stat], borderRadius: 4, transition: 'width 0.4s ease', boxShadow: `0 0 6px ${STAT_COLORS[stat]}55` }} />
@@ -160,7 +160,7 @@ export default function WebStatus({ darkMode }: Props) {
           <div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 6 }}>ATTRIBUTE PROGRESS</div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {STATS.map((stat, i) => <StatBar key={stat} stat={stat} user={user} isFirst={i === 0} />)}
+              {STATS.map((stat, i) => <StatBar key={stat} stat={stat} user={user} isFirst={i === 0} darkMode={darkMode} />)}
             </div>
           </div>
         )}

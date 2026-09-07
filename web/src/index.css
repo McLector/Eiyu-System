@@ -233,6 +233,10 @@ select.field option {
   100% { opacity: 1; transform: scale(1.06); }
 }
 
+.heatmap-glow {
+  animation: heatmapGlow 0.9s ease-in-out infinite alternate;
+}
+
 @keyframes lick-outer {
   0% { transform: scaleY(1) scaleX(1) skewX(0deg); }
   22% { transform: scaleY(1.08) scaleX(0.94) skewX(-3deg); }
@@ -262,4 +266,5 @@ select.field option {
 
 @media (prefers-reduced-motion: reduce) {
   .fire-flame { animation: none !important; }
+  .heatmap-glow { animation: none !important; }
 }

@@ -8,6 +8,7 @@ import FireStreak from '../FireStreak';
 interface Props {
   onNewQuest: () => void;
   onEditQuest: (id: string) => void;
+  darkMode: boolean;
 }
 
 function XpBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -109,7 +110,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
   );
 }
 
-export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
+export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
   const { user, questsLoading, questsError, retryQuests, toggleQuest: toggleQuestAction, adjustProgress, completeRecovery } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
   const completedToday = user.quests.filter(q => q.completed).length;
@@ -180,7 +181,7 @@ export default function WebBoard({ onNewQuest, onEditQuest }: Props) {
                     <StatIcon stat={stat} size={13} />
                     <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
                     <span style={{ fontFamily: 'JetBrains Mono', fontSize: 14, fontWeight: 600, color: STAT_COLORS[stat] }}>Lv.{s.level}</span>
-                    <span style={{ fontFamily: 'Inter', fontSize: 10, color: tintSecondaryText(STAT_COLORS[stat]) }}>{s.xp}/{s.xpMax}</span>
+                    <span style={{ fontFamily: 'Inter', fontSize: 10, color: tintSecondaryText(STAT_COLORS[stat], darkMode) }}>{s.xp}/{s.xpMax}</span>
                   </div>
                   <XpBar value={s.xp} max={s.xpMax} color={STAT_COLORS[stat]} />
                 </div>
