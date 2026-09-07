@@ -3,6 +3,7 @@ export * from './logic/date-utils';
 export * from './logic/validation';
 export * from './logic/quest-recurrence';
 export * from './logic/format-error';
+export * from './logic/auth-copy';
 export * from './logic/heatmap';
 export * from './logic/contrast';
 export * from './logic/color-tint';
