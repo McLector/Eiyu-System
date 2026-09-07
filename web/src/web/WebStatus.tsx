@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import {
-  STAT_COLORS, STATS, RANK_CONFIG, type Stat, type UserProfile,
+  STAT_COLORS, STATS, RANK_CONFIG, tintSecondaryText, type Stat, type UserProfile,
   fetchWeeklyReview, fetchOrCreateWeeklySummary, formatError,
 } from '@eiyu/shared';
-import { StatIcon } from '../Icons';
+import { StatIcon, SparkleIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import { useSession } from '../store/session-context';
+import SignaturePanel from '../SignaturePanel';
 import WebHeatmap from './WebHeatmap';
 
 interface Props { darkMode: boolean; }
@@ -22,56 +23,51 @@ function AiSummary({ userId }: { userId: string }) {
   });
   const SHORT_LIMIT = 160;
 
-  if (isPending) {
-    return (
-      <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--c-accent-glass)', border: '1px solid var(--c-accent-border)', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted)' }}>
-        Generating this week&apos;s summary…
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--c-accent-glass)', border: '1px solid var(--c-accent-border)', fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>
-        {formatError(error)}
-      </div>
-    );
-  }
-
   const text = summary ?? '';
   const isLong = text.length > SHORT_LIMIT;
   const displayed = expanded || !isLong ? text : text.slice(0, SHORT_LIMIT).trimEnd() + '…';
 
   return (
-    <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--c-accent-glass)', border: '1px solid var(--c-accent-border)' }}>
+    <SignaturePanel style={{ padding: '14px 18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 14 }}>✦</span>
-        <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>AI ANALYSIS</span>
+        <span aria-hidden="true" style={{ display: 'flex' }}>
+          <SparkleIcon size={15} />
+        </span>
+        <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>WEEKLY DEBRIEF</span>
       </div>
-      <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted)', lineHeight: 1.6, margin: 0 }}>
-        {displayed}
-      </p>
-      {isLong && (
-        <button onClick={() => setExpanded(e => !e)} style={{
-          marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-          fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c-accent)',
-        }}>
-          {expanded ? 'SHOW LESS ↑' : 'READ MORE ↓'}
-        </button>
+      {isPending ? (
+        <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>Reading the week&apos;s signs…</p>
+      ) : error ? (
+        <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', lineHeight: 1.6, margin: 0 }}>{formatError(error)}</p>
+      ) : (
+        <>
+          <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>
+            {displayed}
+          </p>
+          {isLong && (
+            <button onClick={() => setExpanded(e => !e)} style={{
+              marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+              fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c-accent)',
+            }}>
+              {expanded ? 'SHOW LESS ↑' : 'READ MORE ↓'}
+            </button>
+          )}
+        </>
       )}
-    </div>
+    </SignaturePanel>
   );
 }
 
-function StatBar({ stat, user }: { stat: Stat; user: UserProfile }) {
+function StatBar({ stat, user, isFirst }: { stat: Stat; user: UserProfile; isFirst: boolean }) {
   const s = user.stats[stat];
   const pct = Math.min(100, (s.xp / s.xpMax) * 100);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 0', borderTop: isFirst ? 'none' : '1px solid var(--c-divider-flat)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <StatIcon stat={stat} size={13} />
         <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
         <span style={{ fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>Lv.{s.level}</span>
-        <span style={{ fontFamily: 'Inter', fontSize: 10, color: 'var(--c-dim)' }}>{s.xp}/{s.xpMax} XP</span>
+        <span style={{ fontFamily: 'Inter', fontSize: 10, color: tintSecondaryText(STAT_COLORS[stat]) }}>{s.xp}/{s.xpMax} XP</span>
       </div>
       <div style={{ height: 6, borderRadius: 4, background: 'var(--c-track)', overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: STAT_COLORS[stat], borderRadius: 4, transition: 'width 0.4s ease', boxShadow: `0 0 6px ${STAT_COLORS[stat]}55` }} />
@@ -107,9 +103,9 @@ export default function WebStatus({ darkMode }: Props) {
     <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 24, alignItems: 'start' }}>
       {/* Left panel */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Rank badge */}
-        <div className="glass" style={{ padding: '20px', textAlign: 'center' }}>
-          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--c-dim)', marginBottom: 12 }}>HUNTER RANK</div>
+        {/* Rank badge — signature panel (redesign spec sections 3, 8.2) */}
+        <SignaturePanel style={{ padding: '20px', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--c-dim-flat)', marginBottom: 12 }}>HUNTER RANK</div>
           <div style={{
             width: 72, height: 72, borderRadius: 18, margin: '0 auto 12px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -118,12 +114,12 @@ export default function WebStatus({ darkMode }: Props) {
             boxShadow: `0 0 28px ${rankCfg.glow}`,
           }}>{user.rank}</div>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.08em' }}>{user.name}</div>
-          <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', marginTop: 3 }}>{user.userClass}</div>
-        </div>
+          <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', marginTop: 3 }}>{user.userClass}</div>
+        </SignaturePanel>
 
-        {/* Radar chart */}
-        <div className="glass" style={{ padding: '16px 20px' }}>
-          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 8 }}>STAT OVERVIEW</div>
+        {/* Radar chart — plain/grouping (redesign spec section 8.2: chart carries its own visual weight, no border) */}
+        <div>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 8 }}>STAT OVERVIEW</div>
           <ResponsiveContainer width="100%" height={260}>
             <RadarChart cx="50%" cy="50%" outerRadius="72%" data={radarData}>
               <PolarGrid stroke={gridStroke} strokeDasharray="3 3" />
@@ -143,16 +139,16 @@ export default function WebStatus({ darkMode }: Props) {
 
       {/* Right panel */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Tab toggle */}
-        <div className="glass-sm" style={{ display: 'flex', padding: 4, gap: 4 }}>
+        {/* Tab toggle — crisp bordered segmented control */}
+        <div style={{ display: 'flex', padding: 3, border: '1px solid var(--c-divider-flat)', borderRadius: 6 }}>
           {(['stats', 'weekly'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex: 1, padding: '9px 16px',
-              borderRadius: 10,
+              borderRadius: 4,
               background: tab === t ? 'var(--c-accent-glass)' : 'transparent',
               border: `1px solid ${tab === t ? 'var(--c-accent-border)' : 'transparent'}`,
               fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700,
-              color: tab === t ? 'var(--c-accent)' : 'var(--c-muted)',
+              color: tab === t ? 'var(--c-accent)' : 'var(--c-muted-flat)',
               letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.15s',
             }}>
               {t === 'stats' ? 'STATS' : 'WEEKLY REVIEW'}
@@ -161,10 +157,10 @@ export default function WebStatus({ darkMode }: Props) {
         </div>
 
         {tab === 'stats' && (
-          <div className="glass" style={{ padding: '18px 20px' }}>
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 16 }}>ATTRIBUTE PROGRESS</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {STATS.map(stat => <StatBar key={stat} stat={stat} user={user} />)}
+          <div>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 6 }}>ATTRIBUTE PROGRESS</div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {STATS.map((stat, i) => <StatBar key={stat} stat={stat} user={user} isFirst={i === 0} />)}
             </div>
           </div>
         )}
@@ -173,10 +169,10 @@ export default function WebStatus({ darkMode }: Props) {
 
         {tab === 'weekly' && (
           <>
-            <div className="glass" style={{ padding: '18px 20px' }}>
-              <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)', marginBottom: 14 }}>LAST 7 DAYS</div>
+            <div>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 14 }}>LAST 7 DAYS</div>
               {weeklyReviewQuery.isLoading ? (
-                <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)', padding: '12px 0' }}>Loading…</div>
+                <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)', padding: '12px 0' }}>Reading the week…</div>
               ) : weeklyReviewQuery.error ? (
                 <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn&apos;t load this week&apos;s data.</div>
               ) : (
@@ -197,7 +193,7 @@ export default function WebStatus({ darkMode }: Props) {
                               <div style={{ width: '100%', height: 52, borderRadius: 4, background: 'var(--c-track)', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end' }}>
                                 <div style={{ width: '100%', height: `${pct}%`, background: STAT_COLORS[stat] + 'aa', borderRadius: 4, transition: 'height 0.3s' }} />
                               </div>
-                              <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 600, color: 'var(--c-dim)', letterSpacing: '0.06em' }}>{day.day[0]}</span>
+                              <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.06em' }}>{day.day[0]}</span>
                             </div>
                           );
                         })}
@@ -208,7 +204,7 @@ export default function WebStatus({ darkMode }: Props) {
               )}
             </div>
 
-            {/* AI summary */}
+            {/* AI summary — signature panel (redesign spec section 8.3) */}
             {userId && <AiSummary userId={userId} />}
           </>
         )}
