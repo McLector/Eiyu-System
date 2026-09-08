@@ -268,7 +268,7 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
   const fillPct = fillW;
 
   return (
-    <div style={{ padding: '20px 36px 0', position: 'relative' }}>
+    <div style={{ padding: '20px 0 0', position: 'relative' }}>
       <div style={{ position: 'relative', height: ROAD_Y + DUNGEON_H / 2 + 36, overflow: 'visible' }}>
 
         {/* Road base line */}
@@ -459,7 +459,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
     <div style={{ borderTop: isFirst ? 'none' : '1px solid var(--c-divider-flat)', paddingTop: isFirst ? 0 : 8 }}>
       {/* Header */}
       <button onClick={onToggleExpand} style={{
-        width: '100%', padding: '22px 36px 16px', display: 'flex', alignItems: 'center', gap: 16,
+        width: '100%', padding: '22px 0 16px', display: 'flex', alignItems: 'center', gap: 16,
         background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
       }}>
         <div style={{
@@ -494,7 +494,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
 
       {/* Stage checklist — expanded, hidden while editing */}
       {expanded && !editing && (
-        <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 36px 24px' }}>
+        <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 0 24px' }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--c-dim-flat)', marginBottom: 12 }}>
             STAGES
           </div>
@@ -563,7 +563,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
 
       {/* Edit form — replaces the stage checklist while editing */}
       {expanded && editing && (
-        <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 36px 24px' }}>
+        <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 0 24px' }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>EDIT LONG QUEST</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <input className="field" placeholder="Quest name..." value={editName} onChange={e => setEditName(e.target.value)} />
@@ -716,9 +716,9 @@ export default function WebLongQuests() {
           <button onClick={() => void retryLongQuests()} className="btn-ghost" style={{ padding: '8px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700 }}>RETRY</button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {user.longQuests.length === 0 ? (
-            <div style={{ padding: '48px', textAlign: 'center' }}>
+            <div style={{ padding: '32px 0', textAlign: 'center' }}>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-dim-flat)', letterSpacing: '0.06em', marginBottom: 6 }}>NO LONG QUESTS</div>
               <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Create a multi-stage quest to track your big goals</div>
             </div>
