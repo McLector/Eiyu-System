@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
 import { STAT_COLORS } from '@eiyu/shared';
-import { StatIcon } from '../Icons';
+import { CheckIcon, ChevronIcon, SparkleIcon, StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
 interface Props {
@@ -94,7 +94,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
       const results = await suggestEasyVersions(name.trim(), stat);
       setSuggestions(results);
     } catch (err) {
-      setSuggestError(formatError(err));
+      setSuggestError(`The System couldn't summon a suggestion — ${formatError(err)}`);
     } finally {
       setSuggesting(false);
     }
@@ -111,9 +111,8 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 24,
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: 'var(--c-modal)', border: '1px solid var(--c-glass-border)',
-        borderRadius: 20, width: '100%', maxWidth: 480,
+      <div className="panel-flat" style={{
+        width: '100%', maxWidth: 480,
         boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
         overflow: 'hidden',
       }}>
@@ -122,14 +121,14 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>
             {editingQuest ? 'EDIT QUEST' : 'NEW QUEST'}
           </h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim)', fontSize: 22, lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
         <div style={{ height: 2, background: 'var(--c-accent)', margin: '16px 24px 0', borderRadius: 1, opacity: 0.7 }} />
 
         <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '75vh', overflowY: 'auto' }}>
           {/* Quest type */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 8 }}>TYPE</label>
+            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 8 }}>TYPE</label>
             <div style={{ display: 'flex', gap: 6 }}>
               {(['habit', 'onetime'] as const).map(t => (
                 <button key={t} onClick={() => setQuestType(t)} style={{
@@ -137,7 +136,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
                   background: questType === t ? 'var(--c-accent-glass)' : 'transparent',
                   border: `1px solid ${questType === t ? 'var(--c-accent-border)' : 'var(--c-glass-border)'}`,
                   fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, letterSpacing: '0.08em',
-                  color: questType === t ? 'var(--c-accent)' : 'var(--c-muted)',
+                  color: questType === t ? 'var(--c-accent)' : 'var(--c-muted-flat)',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}>
                   {t === 'habit' ? 'HABIT' : 'ONE-TIME'}
@@ -148,13 +147,13 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
 
           {/* Name */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>QUEST NAME</label>
+            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>QUEST NAME</label>
             <input className="field" placeholder="e.g. Morning run for 30 min" value={name} onChange={e => setName(e.target.value)} />
           </div>
 
           {/* Note */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>NOTE <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim)' }}>(optional)</span></label>
+            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>NOTE <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}>(optional)</span></label>
             <textarea
               className="field"
               placeholder="Add a note, reminder, or motivation..."
@@ -169,14 +168,14 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           {!targetCount && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)' }}>EASY VERSION <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim)' }}> (required for habits)</span></label>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)' }}>EASY VERSION <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}> (required for habits)</span></label>
               <button
                 type="button"
                 onClick={() => void handleAiSuggest()}
                 disabled={suggesting || !name.trim()}
                 style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, opacity: suggesting || !name.trim() ? 0.5 : 1 }}
               >
-                <span>✦</span> {suggesting ? 'Thinking…' : 'AI Suggest'}
+                <SparkleIcon size={12} /> {suggesting ? 'Reading the possibilities…' : 'AI Suggest'}
               </button>
             </div>
             <input className="field" placeholder="e.g. Walk for 10 min instead" value={easyVer} onChange={e => setEasyVer(e.target.value)} />
@@ -202,8 +201,8 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           {/* Target count — habit type only */}
           {questType === 'habit' && (
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>
-                TARGET COUNT <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim)' }}>(optional — e.g. 8x a day)</span>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>
+                TARGET COUNT <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}>(optional — e.g. 8x a day)</span>
               </label>
               <input
                 className="field"
@@ -219,11 +218,11 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           {/* Time + Days */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>TIME</label>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>TIME</label>
               <input className="field" type="time" value={time} onChange={e => setTime(e.target.value)} />
             </div>
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>DAYS</label>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DAYS</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {['S','M','T','W','T','F','S'].map((d, i) => (
                   <button key={i} onClick={() => toggleDay(i)} style={{
@@ -242,7 +241,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           {/* Date — one-time quests only */}
           {questType === 'onetime' && (
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 7 }}>DATE</label>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DATE</label>
               <input
                 className="field"
                 type="date"
@@ -259,7 +258,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
 
           {/* Stat */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 8 }}>ATTRIBUTE</label>
+            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 8 }}>ATTRIBUTE</label>
             <div style={{ display: 'flex', gap: 6 }}>
               {STATS.map(s => (
                 <button key={s} onClick={() => setStat(s)} style={{
@@ -278,7 +277,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
 
           {/* Difficulty */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted)', display: 'block', marginBottom: 8 }}>DIFFICULTY</label>
+            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 8 }}>DIFFICULTY</label>
             <div style={{ display: 'flex', gap: 6 }}>
               {DIFFICULTIES.map(d => (
                 <button key={d} onClick={() => setDifficulty(d)} style={{
@@ -287,7 +286,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
                   background: difficulty === d ? diffColors[d] + '18' : 'transparent',
                   border: `1px solid ${difficulty === d ? diffColors[d] + '55' : 'var(--c-glass-border)'}`,
                   fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em',
-                  color: difficulty === d ? diffColors[d] : 'var(--c-muted)',
+                  color: difficulty === d ? diffColors[d] : 'var(--c-muted-flat)',
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}>{d.toUpperCase()}</button>
               ))}
@@ -301,7 +300,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
             <button onClick={() => void handleSave()} disabled={saving || !valid} className="btn-ghost" style={{ flex: 1, padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: saving || !valid ? 0.6 : 1 }}>
               {saving ? 'SAVING…' : editingQuest ? 'SAVE CHANGES' : 'CREATE QUEST'}
             </button>
-            <button onClick={onClose} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted)', cursor: 'pointer' }}>
+            <button onClick={onClose} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
