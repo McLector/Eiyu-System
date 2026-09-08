@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchMonthHistory, toDateKey, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
 
+import { CheckIcon, ChevronIcon, CompletionDotIcon } from '../Icons';
+
 interface Props { userId: string; onClose: () => void; }
 
 const DAYS_HEADER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -57,40 +59,43 @@ export default function WebHistory({ userId, onClose }: Props) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 24,
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: 'var(--c-modal)', border: '1px solid var(--c-glass-border)',
-        borderRadius: 20, width: '100%', maxWidth: 440,
+      <div className="panel-flat" style={{
+        width: '100%', maxWidth: 440,
         boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
         overflow: 'hidden',
       }}>
         {/* Header */}
         <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>HISTORY</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim)', fontSize: 22, lineHeight: 1 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ padding: '16px 24px 24px' }}>
           {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted)', fontSize: 18, padding: '4px 8px' }}>‹</button>
+            <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted-flat)', padding: '4px 8px', display: 'flex' }}>
+              <ChevronIcon direction="left" size={16} />
+            </button>
             <span style={{ fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.08em' }}>
               {monthNames[month].toUpperCase()} {year}
             </span>
-            <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted)', fontSize: 18, padding: '4px 8px' }}>›</button>
+            <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted-flat)', padding: '4px 8px', display: 'flex' }}>
+              <ChevronIcon direction="right" size={16} />
+            </button>
           </div>
 
           {/* Day headers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
             {DAYS_HEADER.map((d, i) => (
-              <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, color: 'var(--c-dim)', letterSpacing: '0.08em', padding: '4px 0' }}>{d}</div>
+              <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.08em', padding: '4px 0' }}>{d}</div>
             ))}
           </div>
 
           {/* Calendar grid */}
           {historyQuery.isPending ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>
+            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Reading the record…</div>
           ) : historyQuery.error ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn&apos;t load this month&apos;s history.</div>
+            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>The System couldn&apos;t pull this month&apos;s record. Try again in a moment.</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
               {cells.map((day, i) => {
@@ -106,14 +111,11 @@ export default function WebHistory({ userId, onClose }: Props) {
                     border: isToday ? '1px solid var(--c-accent-border)' : '1px solid transparent',
                   }}>
                     <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: isToday ? 'var(--c-accent)' : 'var(--c-text)' }}>{day}</span>
-                    {completion && (
-                      <div style={{
-                        width: 6, height: 6, borderRadius: '50%',
-                        background: completion === 'full' ? '#4ade80' : '#fbbf24',
-                        boxShadow: `0 0 4px ${completion === 'full' ? '#4ade8080' : '#fbbf2480'}`,
-                      }} />
+                    {completion ? (
+                      <CompletionDotIcon color={completion === 'full' ? '#4ade80' : '#fbbf24'} size={8} />
+                    ) : (
+                      <div style={{ width: 8, height: 8 }} />
                     )}
-                    {!completion && <div style={{ width: 6, height: 6 }} />}
                   </div>
                 );
               })}
@@ -124,24 +126,24 @@ export default function WebHistory({ userId, onClose }: Props) {
           <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
             {[['#4ade80', 'Full completion'], ['#fbbf24', 'Partial / easy']].map(([color, label]) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: color as string }} />
-                <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted)' }}>{label}</span>
+                <CompletionDotIcon color={color as string} size={8} />
+                <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>{label}</span>
               </div>
             ))}
           </div>
 
           {/* Today's completions */}
-          <div style={{ borderTop: '1px solid var(--c-glass-border)', paddingTop: 16 }}>
-            <p style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.14em', color: 'var(--c-dim)', marginBottom: 10 }}>TODAY</p>
+          <div style={{ borderTop: '1px solid var(--c-divider-flat)', paddingTop: 16 }}>
+            <p style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.14em', color: 'var(--c-dim-flat)', marginBottom: 10 }}>TODAY</p>
             {!isCurrentMonth ? (
-              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Navigate to the current month to see today&apos;s completions.</p>
+              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Step back to the current month to see today&apos;s completions.</p>
             ) : todayCompletions.length === 0 ? (
-              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>Nothing completed yet today.</p>
+              <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Nothing completed yet today.</p>
             ) : (
               todayCompletions.map((q, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? '1px solid var(--c-glass-border)' : 'none' }}>
-                  <div style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(74,222,128,0.15)', border: '1.5px solid rgba(74,222,128,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? '1px solid var(--c-divider-flat)' : 'none' }}>
+                  <div style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(74,222,128,0.15)', border: '1.5px solid rgba(74,222,128,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#4ade80' }}>
+                    <CheckIcon size={11} />
                   </div>
                   <span style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)', flex: 1 }}>{q.habitName}</span>
                   <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 5, padding: '2px 6px' }}>

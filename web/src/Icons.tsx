@@ -149,6 +149,15 @@ export function SparkleIcon({ size = 15, color = 'var(--c-accent)' }: { size?: n
   );
 }
 
+export function CompletionDotIcon({ color, size = 8 }: { color: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill={color} fillOpacity="0.25" />
+      <circle cx="12" cy="12" r="6" fill={color} />
+    </svg>
+  );
+}
+
 export function ChevronIcon({ direction = 'right', size = 16 }: { direction?: 'right' | 'down' | 'up' | 'left'; size?: number }) {
   const rotate = { right: 0, down: 90, left: 180, up: 270 }[direction];
   return (
