@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
 import { STAT_COLORS } from '@eiyu/shared';
-import { CheckIcon, ChevronIcon, SparkleIcon, StatIcon } from '../Icons';
+import { SparkleIcon, StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
 interface Props {
@@ -230,7 +230,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
                     background: days.includes(i) ? 'var(--c-accent-glass)' : 'transparent',
                     border: `1px solid ${days.includes(i) ? 'var(--c-accent-border)' : 'var(--c-glass-border)'}`,
                     fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700,
-                    color: days.includes(i) ? 'var(--c-accent)' : 'var(--c-dim)',
+                    color: days.includes(i) ? 'var(--c-accent)' : 'var(--c-dim-flat)',
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}>{d}</button>
                 ))}
@@ -269,7 +269,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
                   cursor: 'pointer', transition: 'all 0.15s',
                 }}>
                   <StatIcon stat={s} size={13} />
-                  <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 700, color: stat === s ? STAT_COLORS[s] : 'var(--c-dim)', letterSpacing: '0.08em' }}>{s}</span>
+                  <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 700, color: stat === s ? STAT_COLORS[s] : 'var(--c-dim-flat)', letterSpacing: '0.08em' }}>{s}</span>
                 </button>
               ))}
             </div>
