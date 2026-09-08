@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { LongQuest, STAT_COLORS, type Stat } from '@eiyu/shared';
-import { StatIcon, PlusIcon, CheckIcon, ChevronIcon } from '../Icons';
+import { LongQuest, STAT_COLORS, formatError, type Stat } from '@eiyu/shared';
+import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, NoteIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
 // ── SVG assets ──────────────────────────────────────────
@@ -279,7 +279,7 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
           right: `${TRACK_R}%`,
           height: 3,
           borderRadius: 2,
-          background: 'var(--c-glass-border)',
+          background: 'var(--c-divider-flat)',
         }}>
           {/* Progress fill */}
           <div style={{
@@ -300,7 +300,7 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
             left: `${TRACK_L + (i + 0.5) * (100 - TRACK_L - TRACK_R) / 12}%`,
             width: 3, height: 3,
             borderRadius: '50%',
-            background: 'var(--c-glass-border)',
+            background: 'var(--c-divider-flat)',
             opacity: 0.4,
             transform: 'translateY(-0.5px)',
           }} />
@@ -352,7 +352,7 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
                 fontFamily: 'Inter',
                 fontSize: 10.5,
                 fontWeight: isNext ? 600 : 400,
-                color: isDone ? 'var(--c-dim)' : isNext ? 'var(--c-text)' : 'var(--c-dim)',
+                color: isDone ? 'var(--c-dim-flat)' : isNext ? 'var(--c-text)' : 'var(--c-dim-flat)',
                 textDecoration: isDone ? 'line-through' : 'none',
                 textAlign: labelAlign,
                 transition: 'color 0.3s',
@@ -367,8 +367,16 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
 
       {/* Progress footer */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0 20px' }}>
-        <span style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)' }}>
-          {done === 0 ? 'Not started' : done === total ? '✦ Complete' : `${done} of ${total} stages cleared`}
+        <span style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>
+          {done === 0
+            ? 'Not started'
+            : done === total
+              ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color, fontWeight: 600 }}>
+                  <CheckIcon size={12} /> Complete
+                </span>
+              )
+              : `${done} of ${total} stages cleared`}
         </span>
         <span style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color, fontWeight: 600 }}>
           {Math.round((done / total) * 100)}%
@@ -380,8 +388,8 @@ function MilestoneTrack({ lq }: { lq: LongQuest }) {
 
 // ── Quest card ───────────────────────────────────────────
 
-function LongQuestCard({ lq, expanded, onToggleExpand }: {
-  lq: LongQuest; expanded: boolean; onToggleExpand: () => void;
+function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
+  lq: LongQuest; isFirst: boolean; expanded: boolean; onToggleExpand: () => void;
 }) {
   const { toggleStage: toggleStageAction, removeLongQuest, saveLongQuest } = useEiyu();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -441,14 +449,14 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
       );
       setEditing(false);
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(`The System couldn't save that change — ${formatError(err)}`);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="glass" style={{ overflow: 'hidden' }}>
+    <div style={{ borderTop: isFirst ? 'none' : '1px solid var(--c-divider-flat)', paddingTop: isFirst ? 0 : 8 }}>
       {/* Header */}
       <button onClick={onToggleExpand} style={{
         width: '100%', padding: '22px 36px 16px', display: 'flex', alignItems: 'center', gap: 16,
@@ -469,25 +477,25 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
             {lq.stat}
           </div>
           {lq.description && (
-            <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>
-              📝 {lq.description}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', marginTop: 4 }}>
+              <NoteIcon size={12} color="var(--c-muted-flat)" /> {lq.description}
             </div>
           )}
         </div>
-        <div style={{ transform: `rotate(${expanded ? 180 : 0}deg)`, transition: 'transform 0.2s', color: 'var(--c-dim)', flexShrink: 0 }}>
+        <div style={{ transform: `rotate(${expanded ? 180 : 0}deg)`, transition: 'transform 0.2s', color: 'var(--c-dim-flat)', flexShrink: 0 }}>
           <ChevronIcon />
         </div>
       </button>
 
       {/* Milestone track — always visible */}
-      <div style={{ borderTop: '1px solid var(--c-glass-border)' }}>
+      <div style={{ borderTop: '1px solid var(--c-divider-flat)' }}>
         <MilestoneTrack lq={lq} />
       </div>
 
       {/* Stage checklist — expanded, hidden while editing */}
       {expanded && !editing && (
-        <div style={{ borderTop: '1px solid var(--c-glass-border)', padding: '16px 36px 24px' }}>
-          <div style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--c-dim)', marginBottom: 12 }}>
+        <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 36px 24px' }}>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--c-dim-flat)', marginBottom: 12 }}>
             STAGES
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -508,13 +516,13 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
                 </div>
                 <span style={{
                   fontFamily: 'Inter', fontSize: 13,
-                  color: stage.done ? 'var(--c-muted)' : 'var(--c-text)',
+                  color: stage.done ? 'var(--c-muted-flat)' : 'var(--c-text)',
                   textDecoration: stage.done ? 'line-through' : 'none',
                 }}>
                   {stage.name}
                 </span>
                 {stage.description && (
-                  <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim)', marginLeft: 8 }}>
+                  <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)', marginLeft: 8 }}>
                     {stage.description}
                   </span>
                 )}
@@ -555,13 +563,13 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
 
       {/* Edit form — replaces the stage checklist while editing */}
       {expanded && editing && (
-        <div style={{ borderTop: '1px solid var(--c-glass-border)', padding: '16px 36px 24px' }}>
+        <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 36px 24px' }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>EDIT LONG QUEST</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <input className="field" placeholder="Quest name..." value={editName} onChange={e => setEditName(e.target.value)} />
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(['STR','INT','DEX','WIS','CHA'] as const).map(s => (
-                <button key={s} onClick={() => setEditStat(s)} className="btn-ghost" style={{ padding: '5px 12px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: editStat === s ? STAT_COLORS[s] : 'var(--c-muted)', borderColor: editStat === s ? STAT_COLORS[s] + '55' : 'var(--c-accent-border)' }}>
+                <button key={s} onClick={() => setEditStat(s)} className="btn-ghost" style={{ padding: '5px 12px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: editStat === s ? STAT_COLORS[s] : 'var(--c-muted-flat)', borderColor: editStat === s ? STAT_COLORS[s] + '55' : 'var(--c-accent-border)' }}>
                   {s}
                 </button>
               ))}
@@ -573,7 +581,7 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
               onChange={e => setEditDescription(e.target.value)}
               rows={2}
             />
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)' }}>STAGES</div>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)' }}>STAGES</div>
             {editStages.map((st, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
@@ -586,14 +594,14 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
                 {editStages.length > MIN_STAGES && (
                   <button
                     onClick={() => removeEditStage(i)}
-                    style={{ background: 'none', border: 'none', color: 'var(--c-dim)', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
+                    style={{ background: 'none', border: 'none', color: 'var(--c-dim-flat)', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
                   >
                     ×
                   </button>
                 )}
               </div>
             ))}
-            <button onClick={() => setEditStages([...editStages, { id: null, name: '', description: null }])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', cursor: 'pointer' }}>
+            <button onClick={() => setEditStages([...editStages, { id: null, name: '', description: null }])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', cursor: 'pointer' }}>
               + Add stage
             </button>
             {saveError && <p style={{ color: '#f87171', fontSize: 12 }}>{saveError}</p>}
@@ -606,7 +614,7 @@ function LongQuestCard({ lq, expanded, onToggleExpand }: {
               >
                 {saving ? 'SAVING…' : 'SAVE CHANGES'}
               </button>
-              <button onClick={() => setEditing(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => setEditing(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         </div>
@@ -657,7 +665,7 @@ export default function WebLongQuests() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>LONG QUESTS</h2>
-          <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>Multi-stage journeys tracked over time</p>
+          <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginTop: 4 }}>Multi-stage journeys tracked over time</p>
         </div>
         <button onClick={() => setShowNew(!showNew)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
           <PlusIcon />
@@ -666,13 +674,13 @@ export default function WebLongQuests() {
       </div>
 
       {showNew && (
-        <div className="glass" style={{ padding: '20px', marginBottom: 20 }}>
+        <div style={{ padding: '16px 0 20px', borderTop: '1px solid var(--c-divider-flat)', borderBottom: '1px solid var(--c-divider-flat)', marginBottom: 20 }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>NEW LONG QUEST</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <input className="field" placeholder="Quest name..." value={newName} onChange={e => setNewName(e.target.value)} />
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(['STR','INT','DEX','WIS','CHA'] as const).map(s => (
-                <button key={s} onClick={() => setNewStat(s)} className="btn-ghost" style={{ padding: '5px 12px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: newStat === s ? STAT_COLORS[s] : 'var(--c-muted)', borderColor: newStat === s ? STAT_COLORS[s] + '55' : 'var(--c-accent-border)' }}>
+                <button key={s} onClick={() => setNewStat(s)} className="btn-ghost" style={{ padding: '5px 12px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: newStat === s ? STAT_COLORS[s] : 'var(--c-muted-flat)', borderColor: newStat === s ? STAT_COLORS[s] + '55' : 'var(--c-accent-border)' }}>
                   {s}
                 </button>
               ))}
@@ -684,24 +692,24 @@ export default function WebLongQuests() {
               onChange={e => setNewDescription(e.target.value)}
               rows={2}
             />
-            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim)' }}>STAGES</div>
+            <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)' }}>STAGES</div>
             {newStages.map((st, i) => (
               <input key={i} className="field" placeholder={`Stage ${i + 1}...`} value={st} onChange={e => setNewStages(newStages.map((s, j) => j === i ? e.target.value : s))} />
             ))}
-            <button onClick={() => setNewStages([...newStages, ''])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim)', cursor: 'pointer' }}>
+            <button onClick={() => setNewStages([...newStages, ''])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', cursor: 'pointer' }}>
               + Add stage
             </button>
             {createError && <p style={{ color: '#f87171', fontSize: 12 }}>{createError}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               <button onClick={() => void addLongQuest()} className="btn-ghost" style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>CREATE</button>
-              <button onClick={() => setShowNew(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted)', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => setShowNew(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
       {longQuestsLoading ? (
-        <div style={{ padding: 40, textAlign: 'center', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Loading…</div>
+        <div style={{ padding: 40, textAlign: 'center', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Reading your quest log…</div>
       ) : longQuestsError ? (
         <div style={{ padding: 40, textAlign: 'center' }}>
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', marginBottom: 12 }}>{longQuestsError}</p>
@@ -710,14 +718,14 @@ export default function WebLongQuests() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {user.longQuests.length === 0 ? (
-            <div className="glass" style={{ padding: '48px', textAlign: 'center' }}>
-              <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-dim)', letterSpacing: '0.06em', marginBottom: 6 }}>NO LONG QUESTS</div>
-              <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim)' }}>Create a multi-stage quest to track your big goals</div>
+            <div style={{ padding: '48px', textAlign: 'center' }}>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-dim-flat)', letterSpacing: '0.06em', marginBottom: 6 }}>NO LONG QUESTS</div>
+              <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Create a multi-stage quest to track your big goals</div>
             </div>
           ) : (
-            user.longQuests.map(lq => (
+            user.longQuests.map((lq, i) => (
               <LongQuestCard
-                key={lq.id} lq={lq}
+                key={lq.id} lq={lq} isFirst={i === 0}
                 expanded={expanded === lq.id}
                 onToggleExpand={() => setExpanded(expanded === lq.id ? null : lq.id)}
               />
