@@ -195,24 +195,28 @@ export default function WebAuth({ onLogin }: Props) {
                 </div>
               )}
               {mode === 'signup' && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                  <div
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={terms}
+                    aria-label="I agree to the Privacy Policy & Terms"
                     onClick={() => setTerms(!terms)}
                     style={{
-                      width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                      width: 18, height: 18, borderRadius: 5, flexShrink: 0, padding: 0,
                       border: `1.5px solid ${terms ? 'rgba(74,222,128,0.5)' : 'var(--c-accent-border)'}`,
                       background: terms ? 'rgba(74,222,128,0.15)' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'all 0.15s', color: '#4ade80',
+                      transition: 'all 0.15s', color: '#4ade80', cursor: 'pointer',
                     }}
                   >
                     {terms && <CheckIcon size={11} />}
-                  </div>
-                  <span style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)' }}>
+                  </button>
+                  <span onClick={() => setTerms(!terms)} style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
                     I agree to the{' '}
-                    <span style={{ color: 'var(--c-accent)', textDecoration: 'underline', cursor: 'pointer' }}>Privacy Policy & Terms</span>
+                    <span style={{ color: 'var(--c-accent)', textDecoration: 'underline' }}>Privacy Policy & Terms</span>
                   </span>
-                </label>
+                </div>
               )}
               {mode === 'login' && (
                 <div style={{ textAlign: 'right', marginTop: -4 }}>
