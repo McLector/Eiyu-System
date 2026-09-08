@@ -10,12 +10,11 @@ import {
   validateDisplayName,
   validateEmail,
   validatePassword,
+  type AuthMode,
 } from '@eiyu/shared';
 
 import { CheckIcon, MailIcon } from '../Icons';
 import SignaturePanel from '../SignaturePanel';
-
-type Mode = 'login' | 'signup' | 'forgot';
 
 interface Props { onLogin: () => void; }
 
@@ -59,7 +58,7 @@ function NoticeBadge({ icon }: { icon: Notice['icon'] }) {
 }
 
 export default function WebAuth({ onLogin }: Props) {
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
@@ -77,7 +76,7 @@ export default function WebAuth({ onLogin }: Props) {
    * happened. Email is kept on purpose — it's the same person registering.
    * Mirrors mobile/app/auth.tsx's switchMode, which documents the same bug
    * found live on-device. */
-  const switchMode = (next: Mode) => {
+  const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
     setPassword('');

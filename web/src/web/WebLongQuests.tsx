@@ -654,7 +654,7 @@ export default function WebLongQuests() {
       setNewDescription('');
       setNewStages(['', '']);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err));
+      setCreateError(`The System couldn't create that quest — ${formatError(err)}`);
     } finally {
       setCreating(false);
     }
