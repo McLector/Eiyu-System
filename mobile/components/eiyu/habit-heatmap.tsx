@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
 
@@ -7,15 +7,30 @@ import { GlassView } from '@/components/eiyu/glass-view';
 import { StarIcon } from '@/components/eiyu/icons';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { addUtcDays, fetchMonthHistory, formatError, HistoryByDate, toDateKey } from '@eiyu/shared';
+import {
+  addUtcDays,
+  fetchHistoryRange,
+  formatError,
+  heatmapCellState,
+  heatmapMonthLabels,
+  heatmapWeekColumns,
+  heatmapWindowStart,
+  HistoryByDate,
+  startOfUtcDay,
+  toDateKey,
+} from '@eiyu/shared';
 
-const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTHS_BACK = 6;
+const CELL_SIZE = 13;
+const CELL_GAP = 3;
+const MONTH_LABEL_HEIGHT = 16;
+const WEEKDAY_ROW_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 
 interface Props {
   userId: string | undefined;
 }
 
-function GlowingStar({ color }: { color: string }) {
+function GlowingStar({ color, size = 10 }: { color: string; size?: number }) {
   const pulse = useSharedValue(0);
   useEffect(() => {
     pulse.value = withRepeat(withTiming(1, { duration: 900 }), -1, true);
@@ -26,12 +41,12 @@ function GlowingStar({ color }: { color: string }) {
   }));
   return (
     <Animated.View style={style}>
-      <StarIcon color={color} size={14} />
+      <StarIcon color={color} size={size} />
     </Animated.View>
   );
 }
 
-/** GitHub-commit-style weekly heatmap for the current UTC month (Slice 6). Self-contained: fetches its own data. */
+/** GitHub-style 6-month contribution graph for the Status tab. Self-contained: fetches its own data. */
 export default function HabitHeatmap({ userId }: Props) {
   const { theme } = useEiyu();
   const [data, setData] = useState<HistoryByDate>({});
@@ -40,21 +55,26 @@ export default function HabitHeatmap({ userId }: Props) {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
+  const start = heatmapWindowStart(MONTHS_BACK, now);
+  const end = addUtcDays(startOfUtcDay(now), 1);
+  const startKey = toDateKey(start);
+  const endKey = toDateKey(end);
   const todayKey = toDateKey(now);
 
-  // Fetches history for the current userId/year/month. Re-created only when one of
-  // those three changes, so both the mount effect below and the focus-triggered
-  // refetch (which re-runs this same fetch whenever the Status tab regains focus,
-  // since Expo Router keeps this screen mounted across tab switches) stay in sync
-  // with a single implementation.
+  // Fetches history for the current userId/window. Re-created only when the
+  // userId or the (string, stable-across-renders) window keys change, so both
+  // the mount effect below and the focus-triggered refetch (which re-runs this
+  // same fetch whenever the Status tab regains focus, since Expo Router keeps
+  // this screen mounted across tab switches) stay in sync with a single
+  // implementation. Depending on the primitive date keys rather than the Date
+  // objects themselves avoids recreating this callback (and refetching) on
+  // every render just because `new Date()` produces a new object identity.
   const fetchHistory = useCallback(() => {
     if (!userId) return undefined;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchMonthHistory(userId, year, month)
+    fetchHistoryRange(userId, start, end)
       .then(d => {
         if (!cancelled) setData(d);
       })
@@ -67,76 +87,85 @@ export default function HabitHeatmap({ userId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [userId, year, month]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, startKey, endKey]);
 
   useEffect(() => {
     return fetchHistory();
   }, [fetchHistory]);
 
   // Re-fetch whenever the Status tab regains focus, so a habit completed on
-  // another tab is reflected here without waiting for year/month to change.
+  // another tab is reflected here without waiting for the window to change.
   useFocusEffect(fetchHistory);
 
-  const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
-  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const cells: (string | null)[] = [
-    ...Array(firstWeekday).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => toDateKey(addUtcDays(new Date(Date.UTC(year, month, 1)), i))),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const weeks: (string | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-
+  const columns = heatmapWeekColumns(start, end);
+  const monthLabels = heatmapMonthLabels(columns);
+  const gridWidth = columns.length * (CELL_SIZE + CELL_GAP);
   const selected = selectedDate ? data[selectedDate] : undefined;
 
   return (
     <GlassView style={styles.card}>
-      <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>THIS MONTH</Text>
+      <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>LAST 6 MONTHS</Text>
       {error ? (
         <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load heatmap: {error}</Text>
       ) : (
         <>
-          <View style={styles.weekdayRow}>
-            {WEEKDAY_LABELS.map((label, i) => (
-              <Text key={i} style={[styles.weekdayLabel, { color: theme.dim, fontFamily: fonts.display }]}>
-                {label}
-              </Text>
-            ))}
-          </View>
-          {weeks.map((week, wi) => (
-            <View key={wi} style={styles.weekRow}>
-              {week.map((dateKey, di) => {
-                if (dateKey === null) return <View key={di} style={styles.cell} />;
-                const isFuture = dateKey > todayKey;
-                const day = data[dateKey];
-                const scheduledCount = day?.scheduledCount ?? 0;
-                const completedCount = day?.completedCount ?? 0;
-                const ratio = scheduledCount > 0 ? completedCount / scheduledCount : 0;
-                const isStar = !isFuture && scheduledCount > 0 && completedCount === scheduledCount;
-                const isSelected = dateKey === selectedDate;
-                return (
-                  <Pressable
-                    key={di}
-                    disabled={isFuture || loading}
-                    onPress={() => setSelectedDate(dateKey)}
-                    style={styles.cell}>
-                    <View
-                      style={[
-                        styles.dot,
-                        isSelected && { borderColor: theme.accentStrong, borderWidth: 1.5 },
-                        !isStar && {
-                          backgroundColor: theme.accent,
-                          opacity: isFuture ? 0 : 0.12 + ratio * 0.88,
-                        },
-                      ]}>
-                      {isStar && <GlowingStar color={theme.accent} />}
-                    </View>
-                  </Pressable>
-                );
-              })}
+          <View style={styles.gridRow}>
+            <View style={[styles.weekdayColumn, { paddingTop: MONTH_LABEL_HEIGHT }]}>
+              {WEEKDAY_ROW_LABELS.map((label, i) => (
+                <View key={i} style={styles.weekdayCell}>
+                  <Text style={[styles.weekdayLabel, { color: theme.dim, fontFamily: fonts.display }]}>{label}</Text>
+                </View>
+              ))}
             </View>
-          ))}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View>
+                <View style={[styles.monthLabelRow, { width: gridWidth }]}>
+                  {monthLabels.map(({ columnIndex, label }) => (
+                    <Text
+                      key={columnIndex}
+                      style={[
+                        styles.monthLabel,
+                        { left: columnIndex * (CELL_SIZE + CELL_GAP), color: theme.dim, fontFamily: fonts.display },
+                      ]}>
+                      {label}
+                    </Text>
+                  ))}
+                </View>
+                <View style={styles.columnsRow}>
+                  {columns.map((column, ci) => (
+                    <View key={ci} style={styles.weekColumn}>
+                      {column.map((dateKey, ri) => {
+                        if (dateKey === null) return <View key={ri} style={styles.cell} />;
+                        const day = data[dateKey];
+                        const state = heatmapCellState(dateKey, todayKey, day);
+                        const isSelected = dateKey === selectedDate;
+                        return (
+                          <Pressable
+                            key={ri}
+                            disabled={state.isFuture || loading}
+                            onPress={() => setSelectedDate(dateKey)}
+                            style={styles.cell}>
+                            <View
+                              style={[
+                                styles.dot,
+                                isSelected && { borderColor: theme.accentStrong, borderWidth: 1.5 },
+                                !state.isStar && {
+                                  backgroundColor: theme.accent,
+                                  opacity: state.isFuture ? 0 : 0.12 + state.ratio * 0.88,
+                                },
+                              ]}>
+                              {state.isStar && <GlowingStar color={theme.accent} />}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
           <View style={[styles.detail, { borderTopColor: theme.glassBorder }]}>
             {loading ? (
               <Text style={[styles.emptyText, { color: theme.muted }]}>Loading…</Text>
@@ -175,28 +204,46 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 4,
   },
-  weekdayRow: {
+  gridRow: {
     flexDirection: 'row',
+  },
+  weekdayColumn: {
+    marginRight: 6,
+  },
+  weekdayCell: {
+    height: CELL_SIZE + CELL_GAP,
+    justifyContent: 'center',
   },
   weekdayLabel: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 10,
-    letterSpacing: 1,
+    fontSize: 9,
+    letterSpacing: 0.5,
   },
-  weekRow: {
+  monthLabelRow: {
+    height: MONTH_LABEL_HEIGHT,
+    position: 'relative',
+  },
+  monthLabel: {
+    position: 'absolute',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  columnsRow: {
     flexDirection: 'row',
   },
+  weekColumn: {
+    marginRight: CELL_GAP,
+  },
   cell: {
-    flex: 1,
-    aspectRatio: 1,
+    width: CELL_SIZE,
+    height: CELL_SIZE,
+    marginBottom: CELL_GAP,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dot: {
-    width: 16,
-    height: 16,
-    borderRadius: 4,
+    width: CELL_SIZE - 2,
+    height: CELL_SIZE - 2,
+    borderRadius: 3,
     alignItems: 'center',
     justifyContent: 'center',
   },
