@@ -1,4 +1,4 @@
-import { fetchMonthHistory } from '../history';
+import { fetchHistoryRange, fetchMonthHistory } from '../history';
 import { supabase } from '../../supabase/client';
 
 jest.mock('../../supabase/client', () => ({
@@ -90,5 +90,48 @@ describe('fetchMonthHistory', () => {
     const key = `2026-09-${String(day).padStart(2, '0')}`;
     expect(result[key].scheduledCount).toBe(0);
     expect(result[key].completedCount).toBe(0);
+  });
+});
+
+describe('fetchHistoryRange', () => {
+  beforeEach(() => {
+    (supabase.from as jest.Mock).mockReset();
+  });
+
+  it('returns a dense entry for every day across a multi-month span, honoring the exclusive end date', async () => {
+    mockTables([], []);
+    const start = new Date(Date.UTC(2026, 7, 28)); // Aug 28, 2026
+    const end = new Date(Date.UTC(2026, 8, 3)); // Sep 3, 2026 (exclusive)
+    const result = await fetchHistoryRange('user-1', start, end);
+    expect(Object.keys(result).sort()).toEqual([
+      '2026-08-28',
+      '2026-08-29',
+      '2026-08-30',
+      '2026-08-31',
+      '2026-09-01',
+      '2026-09-02',
+    ]);
+  });
+
+  it('computes scheduledCount correctly on both sides of the month boundary', async () => {
+    mockTables([{ id: 'h1', name: 'Every day', quest_type: 'habit', days: [0, 1, 2, 3, 4, 5, 6], archived: false }], []);
+    const start = new Date(Date.UTC(2026, 7, 28));
+    const end = new Date(Date.UTC(2026, 8, 3));
+    const result = await fetchHistoryRange('user-1', start, end);
+    expect(result['2026-08-28'].scheduledCount).toBe(1);
+    expect(result['2026-09-01'].scheduledCount).toBe(1);
+    expect(result['2026-09-02'].scheduledCount).toBe(1);
+  });
+
+  it('places a completion on the correct side of the month boundary', async () => {
+    mockTables(
+      [{ id: 'h1', name: 'Every day', quest_type: 'habit', days: [0, 1, 2, 3, 4, 5, 6], archived: false }],
+      [{ habit_id: 'h1', completed_on: '2026-09-01', kind: 'full' }]
+    );
+    const start = new Date(Date.UTC(2026, 7, 28));
+    const end = new Date(Date.UTC(2026, 8, 3));
+    const result = await fetchHistoryRange('user-1', start, end);
+    expect(result['2026-08-31'].completedCount).toBe(0);
+    expect(result['2026-09-01'].completedCount).toBe(1);
   });
 });

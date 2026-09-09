@@ -25,12 +25,10 @@ export interface DayHistory {
 
 export type HistoryByDate = Record<string, DayHistory>;
 
-/** Completions + heatmap ratio for a given UTC month, grouped by date key (R-08, Slice 6). */
-export async function fetchMonthHistory(userId: string, year: number, month: number): Promise<HistoryByDate> {
-  const start = new Date(Date.UTC(year, month, 1));
-  const end = new Date(Date.UTC(year, month + 1, 1));
-  const startStr = toDateKey(start);
-  const endStr = toDateKey(end);
+/** Completions + heatmap ratio for every day in `[startDate, endDate)`, grouped by date key. */
+export async function fetchHistoryRange(userId: string, startDate: Date, endDate: Date): Promise<HistoryByDate> {
+  const startStr = toDateKey(startDate);
+  const endStr = toDateKey(endDate);
 
   const { data: habits, error: habitsError } = await supabase
     .from('habits')
@@ -60,7 +58,7 @@ export async function fetchMonthHistory(userId: string, year: number, month: num
   }
 
   const result: HistoryByDate = {};
-  for (let d = start; d < end; d = addUtcDays(d, 1)) {
+  for (let d = startDate; d < endDate; d = addUtcDays(d, 1)) {
     const dateKey = toDateKey(d);
     const weekday = d.getUTCDay();
     const scheduledIds = new Set(scheduledHabits.filter(h => h.days.includes(weekday)).map(h => h.id));
@@ -79,4 +77,9 @@ export async function fetchMonthHistory(userId: string, year: number, month: num
     };
   }
   return result;
+}
+
+/** Completions + heatmap ratio for a given UTC month, grouped by date key. Thin wrapper over `fetchHistoryRange`. */
+export function fetchMonthHistory(userId: string, year: number, month: number): Promise<HistoryByDate> {
+  return fetchHistoryRange(userId, new Date(Date.UTC(year, month, 1)), new Date(Date.UTC(year, month + 1, 1)));
 }
