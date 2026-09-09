@@ -38,24 +38,3 @@ export function formatDisplayDate(date: Date): string {
     day: 'numeric',
   }).format(date);
 }
-
-/**
- * UTC calendar grid for a month, as an array of date keys padded to a
- * multiple of 7 (leading nulls before day 1, trailing nulls after the
- * last day) — one row per week for a GitHub-style or calendar UI, oldest
- * at the top-left. Shared by any month-grid consumer (Slice 8's web
- * heatmap); mobile's own grid math (Slice 6) is not migrated to this
- * helper — see this slice's plan notes on why.
- */
-export function monthCells(year: number, month: number): (string | null)[] {
-  const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
-  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-  const cells: (string | null)[] = [
-    ...Array(firstWeekday).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) =>
-      toDateKey(addUtcDays(new Date(Date.UTC(year, month, 1)), i))
-    ),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
-}
