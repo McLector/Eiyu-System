@@ -133,6 +133,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: key }),
           qc.invalidateQueries({ queryKey: ['monthHistory', userId] }),
+          qc.invalidateQueries({ queryKey: ['historyRange', userId] }),
         ]);
         setQuestActionError(null);
       } catch (err) {
@@ -185,6 +186,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           await Promise.all([
             qc.invalidateQueries({ queryKey: ['stats', userId] }),
             qc.invalidateQueries({ queryKey: ['monthHistory', userId] }),
+            qc.invalidateQueries({ queryKey: ['historyRange', userId] }),
           ]);
           setQuestActionError(null);
         })
@@ -208,6 +210,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
           qc.invalidateQueries({ queryKey: ['monthHistory', userId] }),
+          qc.invalidateQueries({ queryKey: ['historyRange', userId] }),
         ]);
         setQuestActionError(null);
       } catch (err) {
