@@ -1,95 +1,146 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchMonthHistory, heatmapCellState, monthCells, toDateKey } from '@eiyu/shared';
+import {
+  addUtcDays,
+  fetchHistoryRange,
+  heatmapCellState,
+  heatmapMonthLabels,
+  heatmapWeekColumns,
+  heatmapWindowStart,
+  startOfUtcDay,
+  toDateKey,
+} from '@eiyu/shared';
 import { StarIcon } from '../Icons';
 
 interface Props {
   userId: string | undefined;
 }
 
-const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const CELL_SIZE = 22;
+const MONTHS_BACK = 6;
+const CELL_SIZE = 13;
+const CELL_GAP = 3;
+const MONTH_LABEL_HEIGHT = 16;
+const WEEKDAY_ROW_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 
-/** GitHub-commit-style weekly heatmap for the current UTC month (Slice 8, web parity for Slice 6). */
+/** GitHub-style 6-month contribution graph for the Status screen. */
 export default function WebHeatmap({ userId }: Props) {
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
+  const todayUtcMidnight = startOfUtcDay(now);
+  const start = heatmapWindowStart(MONTHS_BACK, now);
+  const end = addUtcDays(todayUtcMidnight, 1);
   const todayKey = toDateKey(now);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const historyQuery = useQuery({
-    queryKey: ['monthHistory', userId, year, month],
-    queryFn: () => fetchMonthHistory(userId!, year, month),
+    queryKey: ['historyRange', userId, toDateKey(start), toDateKey(end)],
+    queryFn: () => fetchHistoryRange(userId!, start, end),
     enabled: !!userId,
   });
 
   const data = historyQuery.data ?? {};
-  const cells = monthCells(year, month);
-  const weeks: (string | null)[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  const columns = heatmapWeekColumns(start, end);
+  const monthLabels = heatmapMonthLabels(columns);
   const selected = selectedDate ? data[selectedDate] : undefined;
+  const gridWidth = columns.length * (CELL_SIZE + CELL_GAP);
 
   return (
     <div>
       <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 16 }}>
-        THIS MONTH
+        LAST 6 MONTHS
       </div>
       {historyQuery.error ? (
         <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>The archive didn&apos;t respond.</div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${CELL_SIZE}px)`, gap: 3, marginBottom: 4 }}>
-            {WEEKDAY_LABELS.map((label, i) => (
-              <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.06em' }}>
-                {label}
-              </div>
-            ))}
-          </div>
-          {weeks.map((week, wi) => (
-            <div key={wi} style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${CELL_SIZE}px)`, gap: 3, marginBottom: 3 }}>
-              {week.map((dateKey, di) => {
-                if (dateKey === null) return <div key={di} />;
-                const day = data[dateKey];
-                const state = heatmapCellState(dateKey, todayKey, day);
-                const isSelected = dateKey === selectedDate;
-                return (
-                  <button
-                    key={di}
-                    type="button"
-                    onClick={() => setSelectedDate(dateKey)}
-                    disabled={state.isFuture || historyQuery.isPending}
-                    style={{
-                      aspectRatio: '1',
-                      border: isSelected ? '1.5px solid var(--c-accent-strong)' : '1px solid transparent',
-                      borderRadius: 4,
-                      background: 'none',
-                      padding: 0,
-                      cursor: state.isFuture ? 'default' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                    {state.isStar ? (
-                      <span className="heatmap-glow" style={{ display: 'flex' }}>
-                        <StarIcon color="var(--c-accent)" size={14} />
-                      </span>
-                    ) : (
-                      <div
-                        style={{
-                          width: '70%',
-                          height: '70%',
-                          borderRadius: 3,
-                          background: 'var(--c-accent)',
-                          opacity: state.isFuture ? 0 : 0.12 + state.ratio * 0.88,
-                        }}
-                      />
-                    )}
-                  </button>
-                );
-              })}
+          <div style={{ display: 'flex' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', paddingTop: MONTH_LABEL_HEIGHT, marginRight: 6 }}>
+              {WEEKDAY_ROW_LABELS.map((label, i) => (
+                <div
+                  key={i}
+                  style={{
+                    height: CELL_SIZE + CELL_GAP,
+                    display: 'flex',
+                    alignItems: 'center',
+                    fontFamily: 'Rajdhani',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    color: 'var(--c-dim-flat)',
+                  }}>
+                  {label}
+                </div>
+              ))}
             </div>
-          ))}
+            <div style={{ overflowX: 'auto', flex: 1, minWidth: 0 }}>
+              <div style={{ position: 'relative', height: MONTH_LABEL_HEIGHT, width: gridWidth }}>
+                {monthLabels.map(({ columnIndex, label }) => (
+                  <div
+                    key={columnIndex}
+                    style={{
+                      position: 'absolute',
+                      left: columnIndex * (CELL_SIZE + CELL_GAP),
+                      fontFamily: 'Rajdhani',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: 'var(--c-dim-flat)',
+                    }}>
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridAutoFlow: 'column',
+                  gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`,
+                  gridAutoColumns: `${CELL_SIZE}px`,
+                  gap: CELL_GAP,
+                }}>
+                {columns.map((column, ci) =>
+                  column.map((dateKey, ri) => {
+                    if (dateKey === null) return <div key={`${ci}-${ri}`} />;
+                    const day = data[dateKey];
+                    const state = heatmapCellState(dateKey, todayKey, day);
+                    const isSelected = dateKey === selectedDate;
+                    return (
+                      <button
+                        key={`${ci}-${ri}`}
+                        type="button"
+                        onClick={() => setSelectedDate(dateKey)}
+                        disabled={state.isFuture || historyQuery.isPending}
+                        style={{
+                          width: CELL_SIZE,
+                          height: CELL_SIZE,
+                          border: isSelected ? '1.5px solid var(--c-accent-strong)' : '1px solid transparent',
+                          borderRadius: 3,
+                          background: 'none',
+                          padding: 0,
+                          cursor: state.isFuture ? 'default' : 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}>
+                        {state.isStar ? (
+                          <span className="heatmap-glow" style={{ display: 'flex' }}>
+                            <StarIcon color="var(--c-accent)" size={9} />
+                          </span>
+                        ) : (
+                          <div
+                            style={{
+                              width: '80%',
+                              height: '80%',
+                              borderRadius: 2,
+                              background: 'var(--c-accent)',
+                              opacity: state.isFuture ? 0 : 0.12 + state.ratio * 0.88,
+                            }}
+                          />
+                        )}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
           <div style={{ borderTop: '1px solid var(--c-divider-flat)', marginTop: 12, paddingTop: 12 }}>
             {historyQuery.isPending ? (
               <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Reading the archive…</div>
