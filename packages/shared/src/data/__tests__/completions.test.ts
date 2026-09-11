@@ -1,4 +1,9 @@
-import { completeHabit, undoCompletion, incrementHabitProgress } from '../completions';
+import {
+  completeHabit,
+  completeHabitRecovery,
+  undoCompletion,
+  incrementHabitProgress,
+} from '../completions';
 import { supabase } from '../../supabase/client';
 
 jest.mock('../../supabase/client', () => ({
@@ -43,6 +48,35 @@ describe('undoCompletion', () => {
       p_habit_id: 'habit-1',
       p_completed_on: expect.any(String),
     });
+  });
+});
+
+describe('completeHabitRecovery', () => {
+  beforeEach(() => {
+    (supabase.rpc as jest.Mock).mockReset();
+  });
+
+  it('uses the authoritative recovery operation without a client date or clock', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { status: 'recovered' },
+      error: null,
+    });
+
+    await expect(completeHabitRecovery('habit-1')).resolves.toBe('recovered');
+    expect(supabase.rpc).toHaveBeenCalledWith('complete_habit_recovery', {
+      p_habit_id: 'habit-1',
+    });
+  });
+
+  it('surfaces an authoritative expired result as an error', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: { status: 'expired' },
+      error: null,
+    });
+
+    await expect(completeHabitRecovery('habit-1')).rejects.toThrow(
+      'Recovery window has expired'
+    );
   });
 });
 

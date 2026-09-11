@@ -6,6 +6,7 @@ import { Difficulty, Quest, QuestType, Stat } from '../types/eiyu';
 import { initializeAccountTimeZone } from './profile';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
+type RecoveryRow = Database['public']['Functions']['get_open_habit_recoveries']['Returns'][number];
 
 function toQuest(
   row: HabitRow,
@@ -14,12 +15,14 @@ function toQuest(
   occurrenceDates: Set<string>,
   now: Date,
   progressCount: number,
-  timeZone: string
+  timeZone: string,
+  dailyEligible: boolean,
+  recovery?: RecoveryRow
 ): Quest {
   // One-time quests have no streak/freeze mechanics (binary done/not-done) —
   // skip the streak computation entirely so a missed day can never freeze one.
   const state =
-    row.quest_type === 'one_time'
+    recovery || row.quest_type === 'one_time'
       ? undefined
       : streakStateFromOccurrences(
           occurrenceDates,
@@ -37,10 +40,15 @@ function toQuest(
     questType: row.quest_type,
     time: row.reminder_time.slice(0, 5),
     days: row.days,
-    streak: state?.current ?? 0,
-    frozen: state?.state === 'frozen',
-    frozenHoursLeft: state?.frozenHoursLeft,
-    frozenDate: state?.frozenDate,
+    streak: recovery?.preserved_streak ?? state?.current ?? 0,
+    frozen: Boolean(recovery) || state?.state === 'frozen',
+    frozenHoursLeft: recovery
+      ? Math.max(0, Math.ceil((Date.parse(recovery.deadline_at) - now.getTime()) / 3_600_000))
+      : state?.frozenHoursLeft,
+    frozenDate: recovery?.missed_on ?? state?.frozenDate,
+    dailyEligible,
+    recoveryDeadline: recovery?.deadline_at,
+    recoveryTimeZone: recovery?.time_zone,
     completed: completedToday,
     targetCount: row.target_count,
     progressCount: row.target_count != null ? progressCount : 0,
@@ -65,7 +73,34 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
     p_date: todayStr,
   });
   if (error) throw error;
-  if (!habits || habits.length === 0) return [];
+
+  const { data: recoveries, error: recoveriesError } = await supabase.rpc(
+    'get_open_habit_recoveries',
+    {}
+  );
+  if (recoveriesError) throw recoveriesError;
+
+  const dailyHabits = habits ?? [];
+  const openRecoveries = recoveries ?? [];
+  const dailyIds = new Set(dailyHabits.map(habit => habit.id));
+  const recoveryOnlyIds = openRecoveries
+    .map(recovery => recovery.habit_id)
+    .filter(habitId => !dailyIds.has(habitId));
+
+  let recoveryOnlyHabits: HabitRow[] = [];
+  if (recoveryOnlyIds.length > 0) {
+    const { data, error: recoveryHabitsError } = await supabase
+      .from('habits')
+      .select('*')
+      .in('id', recoveryOnlyIds);
+    if (recoveryHabitsError) throw recoveryHabitsError;
+    recoveryOnlyHabits = data ?? [];
+  }
+
+  const allHabits = [...dailyHabits, ...recoveryOnlyHabits];
+  if (allHabits.length === 0) return [];
+  const allHabitIds = allHabits.map(habit => habit.id);
+  const recoveryByHabit = new Map(openRecoveries.map(recovery => [recovery.habit_id, recovery]));
 
   const { data: completions, error: completionsError } = await supabase
     .from('habit_completions')
@@ -73,7 +108,7 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
     .eq('user_id', userId)
     .in(
       'habit_id',
-      habits.map(h => h.id)
+      allHabitIds
     );
   if (completionsError) throw completionsError;
 
@@ -91,7 +126,7 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
     .eq('user_id', userId)
     .in(
       'habit_id',
-      habits.map(h => h.id)
+      allHabitIds
     )
     .lte('occurrence_date', todayStr);
   if (occurrencesError) throw occurrencesError;
@@ -111,13 +146,13 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
     .eq('progress_date', todayStr)
     .in(
       'habit_id',
-      habits.map(h => h.id)
+      allHabitIds
     );
   if (progressError) throw progressError;
   const progressByHabit = new Map<string, number>();
   for (const p of progress ?? []) progressByHabit.set(p.habit_id, p.progress_count);
 
-  return habits.map(h =>
+  return allHabits.map(h =>
     toQuest(
       h,
       completedToday.has(h.id),
@@ -125,7 +160,9 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
       occurrencesByHabit.get(h.id) ?? new Set(),
       today,
       progressByHabit.get(h.id) ?? 0,
-      timeZone
+      timeZone,
+      dailyIds.has(h.id),
+      recoveryByHabit.get(h.id)
     )
   );
 }

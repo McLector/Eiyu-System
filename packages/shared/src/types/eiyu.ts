@@ -25,8 +25,14 @@ export interface Quest {
   streak: number;
   frozen: boolean;
   frozenHoursLeft?: number;
-  /** the missed date to backdate a recovery completion to (R-13); set iff frozen */
+  /** Missed product date owned by the authoritative recovery window. */
   frozenDate?: string;
+  /** False when this quest is present only because recovery is open today. */
+  dailyEligible?: boolean;
+  /** Absolute persisted recovery deadline. */
+  recoveryDeadline?: string;
+  /** IANA timezone in which the missed occurrence and deadline were created. */
+  recoveryTimeZone?: string;
   completed: boolean;
   /** Quantity-habit target; null = ordinary binary habit (Slice 5). */
   targetCount: number | null;

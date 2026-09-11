@@ -12,6 +12,7 @@ import {
 import {
   archiveHabit,
   completeHabit,
+  completeHabitRecovery,
   createHabit,
   createLongQuest,
   deleteLongQuest,
@@ -61,7 +62,7 @@ interface EiyuStore {
   toggleQuest: (id: string) => void;
   /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
   adjustProgress: (id: string, delta: number) => void;
-  /** Complete a frozen habit's recovery quest, backdated to the missed day. */
+  /** Ask the server to resolve the authoritative open recovery window. */
   completeRecovery: (id: string) => void;
   saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
@@ -236,9 +237,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const completeRecovery = useCallback(
     async (id: string) => {
       const quest = quests.find(q => q.id === id);
-      if (!quest || !userId || !quest.frozen || !quest.frozenDate) return;
+      if (!quest || !userId || !quest.frozen) return;
       try {
-        await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate, profile?.timeZone);
+        await completeHabitRecovery(id);
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
@@ -250,7 +251,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setQuestActionError(formatError(err));
       }
     },
-    [quests, userId, qc, profile?.timeZone]
+    [quests, userId, qc]
   );
 
   const saveHabit = useCallback(

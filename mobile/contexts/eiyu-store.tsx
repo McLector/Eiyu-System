@@ -31,7 +31,7 @@ import {
 import { initialUser } from '@eiyu/shared';
 import { darkTheme, lightTheme, type EiyuTheme } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
-import { completeHabit, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
+import { completeHabit, completeHabitRecovery, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
 import { rankFromStats } from '@eiyu/shared';
 import { formatError } from '@eiyu/shared';
 import { accountDateKey, deviceTimeZone, millisecondsUntilNextAccountDay } from '@eiyu/shared';
@@ -106,7 +106,7 @@ interface EiyuStore {
   completeEasy: (id: string) => void;
   /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
   adjustProgress: (id: string, delta: number) => void;
-  /** R-13: complete the frozen recovery quest, backdated to the missed day. */
+  /** R-13: ask the server to resolve the authoritative open recovery window. */
   completeRecovery: (id: string) => void;
   saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
@@ -403,9 +403,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const completeRecovery = useCallback(
     async (id: string) => {
       const quest = quests.find(q => q.id === id);
-      if (!quest || !userId || !quest.frozen || !quest.frozenDate) return;
+      if (!quest || !userId || !quest.frozen) return;
       try {
-        await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate, profile?.timeZone);
+        await completeHabitRecovery(id);
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
@@ -416,7 +416,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setQuestActionError(formatError(err));
       }
     },
-    [quests, userId, qc, profile?.timeZone]
+    [quests, userId, qc]
   );
 
   const saveHabit = useCallback(

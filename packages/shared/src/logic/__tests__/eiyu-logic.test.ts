@@ -263,7 +263,7 @@ describe('frozenQuests', () => {
     progressCount: 0,
   };
 
-  it('returns every frozen, uncompleted quest, not just one — the bug this fixes', () => {
+  it('returns every frozen quest, not just one', () => {
     const quests: Quest[] = [
       { ...base, id: 'a', frozen: true },
       { ...base, id: 'b', frozen: false },
@@ -272,9 +272,9 @@ describe('frozenQuests', () => {
     expect(frozenQuests(quests).map(q => q.id)).toEqual(['a', 'c']);
   });
 
-  it('excludes a frozen quest that was already recovered', () => {
+  it('keeps recovery visible after an independent same-day normal completion', () => {
     const quests: Quest[] = [{ ...base, id: 'a', frozen: true, completed: true }];
-    expect(frozenQuests(quests)).toEqual([]);
+    expect(frozenQuests(quests).map(q => q.id)).toEqual(['a']);
   });
 
   it('returns an empty array when nothing is frozen', () => {

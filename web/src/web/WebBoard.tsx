@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, splitQuestsByType, formatDisplayDate, tintSecondaryText, boardSummaryLine } from '@eiyu/shared';
+import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, frozenQuests, splitQuestsByType, formatDisplayDate, tintSecondaryText, boardSummaryLine } from '@eiyu/shared';
 import { StatIcon, CheckIcon, PlusIcon, SnowflakeIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import SignaturePanel from '../SignaturePanel';
@@ -34,12 +34,12 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
     }}>
       {/* Checkbox, or a +/- stepper for quantity habits (Slice 5) */}
       {quest.targetCount == null ? (
-        <button onClick={onToggle} disabled={quest.frozen} style={{
+        <button onClick={onToggle} style={{
           width: 26, height: 26, borderRadius: 7, flexShrink: 0,
           background: quest.completed ? 'rgba(74,222,128,0.18)' : 'transparent',
           border: `1.5px solid ${quest.frozen ? 'var(--c-ice-border)' : quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: quest.frozen ? 'default' : 'pointer',
+          cursor: 'pointer',
         }}>
           {quest.completed && <CheckIcon />}
         </button>
@@ -110,17 +110,31 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
   );
 }
 
+function recoveryDeadlineLabel(quest: Quest) {
+  if (!quest.recoveryDeadline) return `${quest.frozenHoursLeft ?? 0}h left`;
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone: quest.recoveryTimeZone,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date(quest.recoveryDeadline));
+}
+
 export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
   const { user, questsLoading, questsError, retryQuests, toggleQuest: toggleQuestAction, adjustProgress, completeRecovery } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
-  const completedToday = user.quests.filter(q => q.completed).length;
-  const totalToday = user.quests.length;
-  const { habitQuests, oneTimeQuests } = splitQuestsByType(user.quests);
+  const recoveryQuests = frozenQuests(user.quests);
+  const dailyQuests = user.quests.filter(q => q.dailyEligible !== false);
+  const completedToday = dailyQuests.filter(q => q.completed).length;
+  const totalToday = dailyQuests.length;
+  const { habitQuests, oneTimeQuests } = splitQuestsByType(dailyQuests);
   const [xpToast, setXpToast] = useState<string | null>(null);
 
   const toggleQuest = (id: string) => {
     const q = user.quests.find(q => q.id === id);
-    if (!q || q.frozen) return;
+    if (!q) return;
     if (!q.completed) {
       setXpToast(`+${FULL_XP} ${q.stat} XP`);
       setTimeout(() => setXpToast(null), 2000);
@@ -228,6 +242,30 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
           </div>
         </div>
 
+        {recoveryQuests.map(quest => (
+          <div key={`recovery-${quest.id}`} style={{
+            padding: '14px 16px', borderRadius: 12,
+            background: 'rgba(59,130,246,0.1)', border: '1px solid var(--c-ice-border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <SnowflakeIcon size={14} />
+              <strong style={{ fontFamily: 'Rajdhani', fontSize: 12, letterSpacing: '0.08em', color: '#67e8f9' }}>
+                STREAK FROZEN — RECOVERY QUEST
+              </strong>
+              <span style={{ marginLeft: 'auto', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#93c5fd' }}>
+                Until {recoveryDeadlineLabel(quest)}
+              </span>
+            </div>
+            <div style={{ marginTop: 8, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)' }}>{quest.name}</div>
+            <div style={{ marginTop: 3, fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>
+              Easy version: {quest.easyVersion}
+            </div>
+            <button onClick={() => completeRecovery(quest.id)} className="btn-ghost" style={{ marginTop: 10, padding: '6px 12px', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, color: '#67e8f9' }}>
+              MARK RECOVERY COMPLETE
+            </button>
+          </div>
+        ))}
+
         {/* Quest list — plain/grouping */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -237,7 +275,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
               ADD QUEST
             </button>
           </div>
-          {user.quests.length === 0 ? (
+          {dailyQuests.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>The board is quiet. Set your first one.</div>
           ) : (
             <>

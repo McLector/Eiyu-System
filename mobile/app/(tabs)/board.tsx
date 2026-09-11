@@ -73,6 +73,18 @@ function RankBadge({ rank }: { rank: Rank }) {
   );
 }
 
+function recoveryDeadlineLabel(quest: Quest) {
+  if (!quest.recoveryDeadline) return `${quest.frozenHoursLeft ?? 0}h left`;
+  return `Until ${new Intl.DateTimeFormat(undefined, {
+    timeZone: quest.recoveryTimeZone,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date(quest.recoveryDeadline))}`;
+}
+
 function QuestRow({
   quest,
   onToggle,
@@ -247,9 +259,10 @@ export default function BoardScreen() {
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
   const frozen = frozenQuests(user.quests);
-  const { habitQuests, oneTimeQuests } = splitQuestsByType(user.quests);
-  const completed = user.quests.filter(q => q.completed).length;
-  const total = user.quests.length;
+  const dailyQuests = user.quests.filter(q => q.dailyEligible !== false);
+  const { habitQuests, oneTimeQuests } = splitQuestsByType(dailyQuests);
+  const completed = dailyQuests.filter(q => q.completed).length;
+  const total = dailyQuests.length;
   const initials = user.name.split(' ').map(n => n[0]).join('');
 
   const flashXp = (id: string, xp: number) => {
@@ -351,7 +364,7 @@ export default function BoardScreen() {
                   STREAK FROZEN — RECOVERY QUEST
                 </Text>
               </View>
-              <Text style={[styles.mono, { color: '#93c5fd' }]}>{fq.frozenHoursLeft}h left</Text>
+              <Text style={[styles.mono, { color: '#93c5fd' }]}>{recoveryDeadlineLabel(fq)}</Text>
             </View>
             <Text style={[styles.recoveryName, { color: theme.text, fontFamily: fonts.body }]}>
               {fq.name}
@@ -399,7 +412,7 @@ export default function BoardScreen() {
             </View>
           ) : questsLoading ? (
             <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
-          ) : user.quests.length === 0 ? (
+          ) : dailyQuests.length === 0 ? (
             <Text style={[styles.emptyText, { color: theme.muted }]}>
               No quests scheduled for today. Tap &quot;Add a Quest&quot; below to create one.
             </Text>

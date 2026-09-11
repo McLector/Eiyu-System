@@ -12,8 +12,8 @@ function todayKey(timeZone: string) {
  * complete_habit RPC (migration 012, XP made server-side in 014). Previously
  * this was an insert followed by a separate increment_stat_xp call - two
  * network round-trips where a crash between them desynced history vs stats.
- * `completedOn` defaults to today; the recovery-quest flow (R-13) backdates
- * it to the missed date so completing it retroactively fills that gap.
+ * `completedOn` defaults to today. Migration 022 restricts this operation to
+ * the account's current product date; missed-day recovery has its own RPC.
  */
 export async function completeHabit(
   userId: string,
@@ -35,6 +35,31 @@ export async function completeHabit(
     p_kind: kind,
   });
   if (error) throw error;
+}
+
+export type RecoveryCompletionStatus = 'recovered' | 'already_recovered';
+
+/**
+ * Resolve the caller's open recovery window. The server owns the missed date,
+ * deadline, XP, and clock so the client cannot forge or extend the window.
+ */
+export async function completeHabitRecovery(
+  habitId: string
+): Promise<RecoveryCompletionStatus> {
+  const { data, error } = await supabase.rpc('complete_habit_recovery', {
+    p_habit_id: habitId,
+  });
+  if (error) throw error;
+
+  const status = (data as { status?: string } | null)?.status;
+  if (status === 'expired') throw new Error('Recovery window has expired');
+  if (status === 'no_open_recovery') {
+    throw new Error('No recovery window is available');
+  }
+  if (status !== 'recovered' && status !== 'already_recovered') {
+    throw new Error('Unexpected recovery result');
+  }
+  return status;
 }
 
 /**

@@ -104,6 +104,8 @@ export interface Database {
           habit_id: string;
           user_id: string;
           occurrence_date: string;
+          time_zone: string;
+          day_ends_at: string;
           created_at: string;
         };
         Insert: Database['public']['Tables']['habit_occurrences']['Row'];
@@ -134,6 +136,10 @@ export interface Database {
           habit_id: string;
           user_id: string;
           best: number;
+          current_streak: number;
+          recovery_armed: boolean;
+          last_processed_on: string | null;
+          active_recovery_id: string | null;
           updated_at: string;
         };
         Insert: Partial<Database['public']['Tables']['streaks']['Row']> & {
@@ -141,6 +147,30 @@ export interface Database {
           user_id: string;
         };
         Update: Partial<Database['public']['Tables']['streaks']['Row']>;
+        Relationships: [];
+      };
+      habit_recovery_windows: {
+        Row: {
+          id: string;
+          habit_id: string;
+          user_id: string;
+          missed_on: string;
+          preserved_streak: number;
+          opened_at: string;
+          deadline_at: string;
+          status: 'open' | 'recovered' | 'expired';
+          resolved_at: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Omit<Database['public']['Tables']['habit_recovery_windows']['Row'], 'habit_id' | 'user_id' | 'missed_on' | 'preserved_streak' | 'opened_at' | 'deadline_at'>> & {
+          habit_id: string;
+          user_id: string;
+          missed_on: string;
+          preserved_streak: number;
+          opened_at: string;
+          deadline_at: string;
+        };
+        Update: Partial<Database['public']['Tables']['habit_recovery_windows']['Row']>;
         Relationships: [];
       };
       long_quests: {
@@ -268,6 +298,27 @@ export interface Database {
       get_habits_for_date: {
         Args: { p_date: string };
         Returns: Database['public']['Tables']['habits']['Row'][];
+      };
+      reconcile_habit_recoveries: {
+        Args: Record<string, never>;
+        Returns: { open_count: number };
+      };
+      get_open_habit_recoveries: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          habit_id: string;
+          missed_on: string;
+          preserved_streak: number;
+          opened_at: string;
+          deadline_at: string;
+          time_zone: string;
+        }>;
+      };
+      complete_habit_recovery: {
+        Args: { p_habit_id: string };
+        Returns: {
+          status: 'recovered' | 'already_recovered' | 'expired' | 'no_open_recovery';
+        };
       };
     };
   };

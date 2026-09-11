@@ -133,6 +133,7 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
     (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
       if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
       if (name === 'get_habits_for_date') return { data: habitRows, error: null };
+      if (name === 'get_open_habit_recoveries') return { data: [], error: null };
       throw new Error(`unexpected RPC ${name}`);
     });
     const completionsBuilder: any = {
@@ -191,10 +192,65 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
         expect(args).toEqual({ p_date: '2026-09-10' });
         return { data: [], error: null };
       }
+      if (name === 'get_open_habit_recoveries') return { data: [], error: null };
       throw new Error(`unexpected RPC ${name}`);
     });
 
     await expect(fetchTodayHabits('user-1')).resolves.toEqual([]);
+  });
+
+  it('returns an off-day open recovery without placing it in the daily set', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-11T08:00:00.000Z'));
+    const recoveryHabit = {
+      id: 'h-recovery', user_id: 'user-1', name: 'Read', easy_version: 'Read 1 page',
+      description: null, quest_type: 'habit', stat: 'WIS', difficulty: 'Easy',
+      reminder_time: '20:00:00', days: [1, 3, 5], archived: false,
+      created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+      scheduled_date: null, target_count: null, schedule_start_on: '2026-09-01',
+    };
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+      if (name === 'initialize_account_time_zone') return { data: 'Asia/Manila', error: null };
+      if (name === 'get_habits_for_date') return { data: [], error: null };
+      if (name === 'get_open_habit_recoveries') {
+        return {
+          data: [{
+            habit_id: 'h-recovery', missed_on: '2026-09-10', preserved_streak: 7,
+            opened_at: '2026-09-11T00:00:00Z', deadline_at: '2026-09-12T00:00:00Z',
+            time_zone: 'Asia/Manila',
+          }],
+          error: null,
+        };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    });
+
+    const habitsBuilder: any = {
+      select: jest.fn(() => habitsBuilder),
+      in: jest.fn(() => Promise.resolve({ data: [recoveryHabit], error: null })),
+    };
+    const emptyBuilder: any = {
+      select: jest.fn(() => emptyBuilder),
+      eq: jest.fn(() => emptyBuilder),
+      in: jest.fn(() => emptyBuilder),
+      lte: jest.fn(() => Promise.resolve({ data: [], error: null })),
+      then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
+        Promise.resolve({ data: [], error: null }).then(resolve),
+    };
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return habitsBuilder;
+      if (table === 'habit_completions') return emptyBuilder;
+      if (table === 'habit_occurrences') return emptyBuilder;
+      if (table === 'habit_progress') return emptyBuilder;
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await expect(fetchTodayHabits('user-1')).resolves.toEqual([
+      expect.objectContaining({
+        id: 'h-recovery', dailyEligible: false, frozen: true, frozenDate: '2026-09-10',
+        streak: 7, recoveryDeadline: '2026-09-12T00:00:00Z',
+        recoveryTimeZone: 'Asia/Manila',
+      }),
+    ]);
   });
 });
 

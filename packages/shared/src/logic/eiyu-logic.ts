@@ -283,5 +283,8 @@ export function streakState(
  * return all of them, not `.find()` the first.
  */
 export function frozenQuests(quests: Quest[]): Quest[] {
-  return quests.filter(q => q.frozen && !q.completed);
+  // `completed` describes today's normal occurrence. A persisted recovery can
+  // remain open independently, so it disappears only when reconciliation
+  // clears `frozen` after recovery or expiry.
+  return quests.filter(q => q.frozen);
 }

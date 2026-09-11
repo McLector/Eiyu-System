@@ -112,14 +112,14 @@ select is_empty(
 select throws_ok(
   $$select public.complete_habit('abababab-abab-4bab-8bab-abababababab', '2026-09-10', 'full')$$,
   'P0001',
-  'habit abababab-abab-4bab-8bab-abababababab is not eligible on 2026-09-10',
+  'normal completion date must be the current account date',
   'an off-day direct RPC completion is rejected'
 );
 
 select throws_ok(
   $$select public.complete_habit('abababab-abab-4bab-8bab-abababababab', '2099-01-01', 'full')$$,
   'P0001',
-  'habit abababab-abab-4bab-8bab-abababababab is not eligible on 2099-01-01',
+  'normal completion date must be the current account date',
   'a future direct completion is rejected using authoritative server time'
 );
 
