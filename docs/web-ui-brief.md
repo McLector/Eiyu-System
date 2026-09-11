@@ -18,7 +18,7 @@ grounded in James Clear's *Atomic Habits*:
 3. Stats level up; a 5-axis radar chart grows; the user's overall Hunter Rank (E→S) rises.
 4. Missing a day **freezes** the streak and generates a 24-hour "Recovery Quest" instead of
    resetting to zero (never-miss-twice recovery).
-5. Every habit has an "easy version" (two-minute rule) — completing it awards partial XP (~20%).
+5. Every habit has a "Penalty" (two-minute rule) — completing it awards partial XP (~20%).
 6. "Long Quests" are multi-stage personal projects with AI-suggested stage breakdowns.
 7. An AI generates a weekly summary of the user's performance (Gemini via a Supabase Edge Function).
 
@@ -209,7 +209,7 @@ Order of content, top to bottom:
    thin animated XP bar` for all 5 stats.
 3. **Recovery banner (conditional):** ice-blue card (colors above), radius 16 —
    snowflake icon + title "STREAK FROZEN — RECOVERY QUEST" (Rajdhani, #93c5fd),
-   countdown "{n}h left" in mono on the right, habit name, "Easy version: …" line,
+   persisted deadline in the original timezone on the right, habit name, "Penalty: …" line,
    then GhostButton "Mark Recovery Complete" (awards +4 XP toast).
 4. **Weekly Quest card:** auto-generated weekly target for the user's weakest stat,
    e.g. "Complete 5 INT quests this week" + progress pill.
@@ -224,7 +224,7 @@ Order of content, top to bottom:
    - Completed rows: whole row opacity 0.55, name line-through + muted.
    - XP toast: appears anchored to the row on completion, mono "+{n} XP" in green.
    - Interactions: tap checkbox = complete (+20 XP); long-press (web: hover menu /
-     secondary button) = complete easy version (+4 XP); tap row body = edit.
+     secondary button) = complete Penalty (+4 XP); tap row body = edit.
    - Empty state text; error state: message in red + "RETRY" text button.
 7. FAB / plus button → quest-editor modal.
 
@@ -270,7 +270,7 @@ Fields:
 - **Difficulty:** Easy / Medium / Hard pills (green/amber/red)
 - Reminder **time picker** ("HH:mm", displayed 12h with AM/PM)
 - **Days-of-week selector:** Sun–Sat toggle chips
-- "Easy version" field with **✨ AI SUGGEST** button (Gemini suggests a 2-minute
+- "Penalty" field with **✨ SUGGEST PENALTIES** button (Gemini suggests a 2-minute
   fallback; 20s timeout, cached 24h; show inline error on failure)
 - Save (GhostButton) / Cancel
 
@@ -332,7 +332,7 @@ increment_stat_xp. Row-Level Security throughout.
 - **Weekly Quest:** auto-generated weekly target for the **weakest stat** (lowest level,
   tie → lowest XP → alphabetical), roughly one completion per weekday; one-time quests
   excluded from the count.
-- **AI features:** easy-version suggestions, long-quest stage breakdown, weekly narrative
+- **AI features:** Penalty suggestions, long-quest stage breakdown, weekly narrative
   summary — all proxied through a Supabase Edge Function (Gemini), 20s client timeout,
   24h TTL client cache.
 - **Optimistic UI:** completions/stage toggles update instantly and roll back with an

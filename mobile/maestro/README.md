@@ -49,7 +49,7 @@ which only needs to run once ever).
 - `auth_*` — signup/login/forgot-password happy paths, validation errors,
   wrong password, mode-switching state leaks
 - `habit_*`, `board_*` — quest CRUD, save-button validation, AI
-  easy-version suggestions, complete/un-complete toggling, a rapid
+  Penalty suggestions, complete/un-complete toggling, a rapid
   double-tap race-condition probe
 - `longquest_*` — Long Quest CRUD, stage list min/max bounds, AI stage
   breakdown, stage toggling, delete (native `Alert.alert` confirm/cancel)

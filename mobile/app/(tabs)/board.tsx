@@ -121,7 +121,7 @@ function QuestRow({
               accessibilityRole="checkbox"
               accessibilityState={{ checked: isCompleted }}
               accessibilityLabel={`${quest.name}${isCompleted ? ' (completed)' : ''}`}
-              accessibilityActions={[{ name: 'longpress', label: 'Complete easy version' }]}
+              accessibilityActions={[{ name: 'longpress', label: 'Complete penalty' }]}
               onAccessibilityAction={event => {
                 if (event.nativeEvent.actionName === 'longpress') onCompleteEasy();
               }}
@@ -282,7 +282,7 @@ export default function BoardScreen() {
   };
 
   const handleCompleteEasy = (quest: Quest) => {
-    // One-time quests have no easy version — completeEasy no-ops in the store,
+    // One-time quests have no Penalty — the legacy completeEasy action no-ops in the store,
     // so the toast must not claim XP nothing received.
     if (!quest.completed && quest.easyVersion) {
       hapticLight();
@@ -370,7 +370,7 @@ export default function BoardScreen() {
               {fq.name}
             </Text>
             <Text style={[styles.recoveryEasy, { color: theme.muted, fontFamily: fonts.body }]}>
-              Easy version: {fq.easyVersion}
+              Penalty: {fq.easyVersion}
             </Text>
             <GhostButton
               label="Mark Recovery Complete"

@@ -7,13 +7,13 @@ appId: com.anonymous.eiyusystem
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Learn Spanish"
 - hideKeyboard
-- tapOn: ".*SUGGEST EASY VERSIONS.*"
+- tapOn: ".*SUGGEST PENALTIES.*"
 - assertVisible: "THINKING.*"
 - extendedWaitUntil:
     notVisible: "THINKING.*"
     timeout: 20000
 # Either real suggestion chips appear, or a readable error - never a
-# silent no-op. Whichever happens, the easy-version field must remain
+# silent no-op. Whichever happens, the Penalty field must remain
 # editable by hand regardless (R-64: AI output is never auto-saved).
 - tapOn: "e.g. Code for 20 minutes"
 - inputText: "Manually typed override"

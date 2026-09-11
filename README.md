@@ -7,14 +7,14 @@ A habit tracker built with React Native/Expo (mobile) and React/Vite (web) that 
 
 ## Overview
 
-The Eiyu System replaces manual habit tracking with a rewarding, gamified loop. It implements core *Atomic Habits* mechanics — like implementation intentions, the two-minute rule (easy versions), and a never-miss-twice recovery system — while wrapping the experience in a sleek RPG interface inspired by *Solo Leveling*.
+The Eiyu System replaces manual habit tracking with a rewarding, gamified loop. It implements core *Atomic Habits* mechanics — like implementation intentions, the two-minute rule (called a Penalty in the app), and a never-miss-twice recovery system — while wrapping the experience in a sleek RPG interface inspired by *Solo Leveling*.
 
 Your real-life habits translate directly into XP for your character's stats (STR, INT, DEX, WIS, CHA), affecting your overall hunter Rank (E → S).
 
 ### Key Features
 
 * **Core Habit Tracking**: Schedule daily habits and assign them to specific RPG stats.
-* **Two-Minute Rule Fallbacks**: Define an "easy version" for every habit (e.g., 2 minutes of stretching instead of a 1-hour gym session) to maintain your streak for partial XP.
+* **Penalty Fallbacks**: Define a small two-minute-rule Penalty for every habit (e.g., 2 minutes of stretching instead of a 1-hour gym session) to maintain your streak for partial XP.
 * **Streak Freeze & Recovery**: Missing a day doesn't immediately reset your streak to zero. Instead, your streak freezes and generates a 24-hour "Recovery Quest." Complete it to save your streak!
 * **RPG Progression**: Complete habits to earn XP. Level up your stats and watch your radar chart grow in real-time.
 * **Long Quests**: Multi-stage goals that track progress across weeks, separate from daily habits.

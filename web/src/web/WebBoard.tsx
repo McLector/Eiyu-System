@@ -258,7 +258,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
             </div>
             <div style={{ marginTop: 8, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)' }}>{quest.name}</div>
             <div style={{ marginTop: 3, fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>
-              Easy version: {quest.easyVersion}
+              Penalty: {quest.easyVersion}
             </div>
             <button onClick={() => completeRecovery(quest.id)} className="btn-ghost" style={{ marginTop: 10, padding: '6px 12px', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, color: '#67e8f9' }}>
               MARK RECOVERY COMPLETE

@@ -11,7 +11,7 @@ appId: com.anonymous.eiyusystem
 - tapOn: "CREATE QUEST"
 - assertVisible: "NEW QUEST"
 
-# Only the name filled in - easy version is also required (R- recovery
+# Only the name filled in - a Penalty is also required (recovery fallback).
 # fallback always needs a value), save should still be blocked.
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Only Name Filled In"

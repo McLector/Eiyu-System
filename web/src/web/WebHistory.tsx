@@ -124,7 +124,7 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
 
           {/* Legend */}
           <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-            {[['#4ade80', 'Full completion'], ['#fbbf24', 'Partial / easy']].map(([color, label]) => (
+            {[['#4ade80', 'Full completion'], ['#fbbf24', 'Penalty']].map(([color, label]) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <CompletionDotIcon color={color as string} size={8} />
                 <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>{label}</span>

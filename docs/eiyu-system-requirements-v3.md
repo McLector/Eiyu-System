@@ -54,8 +54,8 @@ No copyrighted names/art/text used from Solo Leveling or Atomic Habits — mecha
 - Local notifications at scheduled time
 
 ### Atomic Habits mechanics
-- **Easy version** per habit — a scaled-down ~2-minute fallback, worth partial XP, keeps the streak alive
-- **Streak freeze + Recovery Quest** — miss a day → streak pauses (doesn't reset) → 24h window to complete the easy version and restore it → if the window lapses, streak resets
+- **Penalty** per habit — a scaled-down ~2-minute fallback, worth partial XP, keeps the streak alive
+- **Streak freeze + Recovery Quest** — miss a day → streak pauses (doesn't reset) → one-calendar-day window to complete the Penalty and restore it → if the window lapses, streak resets
 
 ### Gamification (Solo Leveling skin)
 - **5 stats** — STR, INT, DEX, WIS, CHA — every habit tagged to one
@@ -75,7 +75,7 @@ No copyrighted names/art/text used from Solo Leveling or Atomic Habits — mecha
 
 ### AI (small, deliberately scoped)
 - **Weekly summary** — short paragraph on the Status screen, once a week, one real pattern + one thing going well
-- **Easy-version suggester** — 3 AI-suggested easy versions when creating a habit, optional to use
+- **Penalty suggester** — 3 AI-suggested Penalties when creating a habit, optional to use
 - **Long Quest breakdown** — turns a goal name into 3–6 editable stages
 
 **Explicitly excluded:** AI auto-generating daily habits (removes the point of choosing them yourself), AI chatbot companion, in-app currency/shop, class/skill trees, social features, streak "shields."
@@ -90,11 +90,11 @@ Flat, prioritized. **M**ust = Core wave · **S**hould = Core if time allows · *
 | ID | Requirement | Pri |
 |---|---|---|
 | R-01 | Create a habit with name, schedule, time, and stat | M |
-| R-02 | Every habit must have both a full version and an easy version defined at creation | M |
+| R-02 | Every habit must have both a full version and a Penalty defined at creation | M |
 | R-03 | Edit or archive an existing habit | M |
 | R-04 | Today's list shows only habits scheduled for the current day, sorted by time | M |
 | R-05 | Complete a habit (full) in one tap | M |
-| R-06 | Complete the easy version in one additional tap/action | M |
+| R-06 | Complete the Penalty in one additional tap/action | M |
 | R-07 | Undo a completion within the same day | S |
 | R-08 | View a calendar/history of past completions | M |
 
@@ -103,7 +103,7 @@ Flat, prioritized. **M**ust = Core wave · **S**hould = Core if time allows · *
 |---|---|---|
 | R-10 | Track a consecutive-day streak per habit | M |
 | R-11 | One missed day freezes the streak instead of resetting it | M |
-| R-12 | A frozen streak generates a 24-hour Recovery Quest (easy version) | M |
+| R-12 | A frozen streak generates a one-calendar-day Recovery Quest (Penalty) | M |
 | R-13 | Completing the Recovery Quest restores the streak count | M |
 | R-14 | Missing the recovery window resets the streak to 0 | M |
 | R-15 | Recovery/reminder copy is neutral, never guilt-based | M |
@@ -147,7 +147,7 @@ Flat, prioritized. **M**ust = Core wave · **S**hould = Core if time allows · *
 | ID | Requirement | Pri |
 |---|---|---|
 | R-60 | Generate a weekly summary paragraph from the past 7 days of data | C |
-| R-61 | Suggest 3 easy-version options during habit creation | C |
+| R-61 | Suggest 3 Penalty options during habit creation | C |
 | R-62 | Break a Long Quest name into 3–6 suggested stages | C |
 | R-63 | AI calls run through a backend proxy — no API key ever ships in the app | M *(once any AI feature is built)* |
 | R-64 | Every AI output is a suggestion the user can edit or ignore, never auto-saved | M *(once any AI feature is built)* |
@@ -170,7 +170,7 @@ Flat, prioritized. **M**ust = Core wave · **S**hould = Core if time allows · *
 - **user** — from Supabase auth (id, email)
 - **profile** — display name, class, target role, theme; belongs to a user
 - **stat** — the 5 fixed stats, each with current XP and level; belongs to a user
-- **habit** — name, easy version, schedule, time, stat, archived flag; belongs to a user
+- **habit** — name, Penalty (stored in the legacy `easy_version` field), schedule, time, stat, archived flag; belongs to a user
 - **habit_completion** — one record per completion (date, full or easy, XP awarded); belongs to a habit
 - **streak** — current count, best count, state (active/frozen/broken); one per habit
 - **long_quest** — name, target stat, deadline; belongs to a user

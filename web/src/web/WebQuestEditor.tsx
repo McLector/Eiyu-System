@@ -160,18 +160,18 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
             />
           </div>
 
-          {/* Easy version — hidden for quantity habits, which have no easy-version concept */}
+          {/* Penalty — hidden for quantity habits; legacy easyVer state preserves storage compatibility. */}
           {!targetCount && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)' }}>EASY VERSION <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}> (required for habits)</span></label>
+              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)' }}>PENALTY <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}> (required for habits)</span></label>
               <button
                 type="button"
                 onClick={() => void handleAiSuggest()}
                 disabled={suggesting || !name.trim()}
                 style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, opacity: suggesting || !name.trim() ? 0.5 : 1 }}
               >
-                <SparkleIcon size={12} /> {suggesting ? 'Reading the possibilities…' : 'AI Suggest'}
+                <SparkleIcon size={12} /> {suggesting ? 'Reading the possibilities…' : 'SUGGEST PENALTIES'}
               </button>
             </div>
             <input className="field" placeholder="e.g. Walk for 10 min instead" value={easyVer} onChange={e => setEasyVer(e.target.value)} />

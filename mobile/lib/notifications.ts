@@ -226,7 +226,7 @@ export async function notifyRecoveryQuestGenerated(habitName: string) {
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Recovery Quest available',
-      body: `"${habitName}" has a one-day recovery window — complete the easy version to keep your streak.`,
+      body: `"${habitName}" has a one-day recovery window — complete the penalty to keep your streak.`,
       sound: true,
     },
     trigger: null, // fire immediately

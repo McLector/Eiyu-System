@@ -64,6 +64,7 @@ describe('WebBoard recovery state', () => {
 
     expect(container).toHaveTextContent('1 / 1 quests');
     expect(container).toHaveTextContent('STREAK FROZEN — RECOVERY QUEST');
+    expect(container).toHaveTextContent('Penalty: Walk for one minute');
     const recover = screen.getByRole('button', { name: 'MARK RECOVERY COMPLETE' });
     await user.click(recover);
     expect(store.completeRecovery).toHaveBeenCalledWith('habit-1');

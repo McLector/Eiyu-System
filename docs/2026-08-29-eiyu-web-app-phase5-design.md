@@ -35,7 +35,7 @@ export** (fileKey `tg0GAV59vmqCxeJkjsCWMD`), not assumed:
 - **Both AI surfaces are real and present**, confirmed by reading the actual
   components: `WebStatus.tsx` has a full `AiSummary` component (mocked
   narrative text) under its "Weekly Review" tab, and `WebQuestEditor.tsx` has
-  an "✦ AI Suggest" button next to the easy-version field. Both currently
+  a "✦ Suggest Penalties" button next to the Penalty field. Both currently
   stubbed/non-functional.
 - **Known bug in the export**, to fix during type reconciliation, not
   before: `WebQuestEditor.tsx`'s `handleSave` tracks `questType` in local

@@ -158,7 +158,7 @@ async function callGeminiForText(system: string, user: string): Promise<string> 
 
 async function suggestEasyVersions(habitName: string, stat: string): Promise<string[]> {
   const suggestions = await callGeminiForStringArray(
-    'You suggest scaled-down "easy version" fallbacks for daily habits — something that takes ' +
+    'You suggest scaled-down "Penalty" fallbacks for daily habits — something that takes ' +
       'about 2 minutes, keeps a streak alive on a bad day, and is clearly a smaller version of the ' +
       'same habit. Return exactly 3 short strings (under 8 words each). No prose, no explanation.',
     `Habit: "${habitName}" (stat: ${stat})`,

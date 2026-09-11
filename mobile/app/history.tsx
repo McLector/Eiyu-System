@@ -172,7 +172,7 @@ export default function HistoryScreen() {
                     {c.habitName}
                   </Text>
                   {c.kind === 'easy' && (
-                    <Text style={[styles.completionKind, { color: theme.dim, fontFamily: fonts.body }]}>easy</Text>
+                    <Text style={[styles.completionKind, { color: theme.dim, fontFamily: fonts.body }]}>Penalty</Text>
                   )}
                 </View>
               ))

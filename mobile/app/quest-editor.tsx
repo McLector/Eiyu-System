@@ -106,9 +106,9 @@ export default function QuestEditorScreen() {
     setDays(prev => (prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()));
   };
 
-  // One-time quests have no easy version — the name alone validates them.
-  // A quantity habit (target count set) has no easy version either — target
-  // count and easy version are alternative ways to satisfy a habit's
+  // One-time quests have no Penalty — the name alone validates them.
+  // A quantity habit (target count set) has no Penalty either — target count
+  // and the legacy `easyVersion` field are alternative ways to satisfy a habit's
   // "how do I complete this" requirement, not both required at once.
   const targetCountValid = !targetCount || Number(targetCount) > 1;
   const valid =
@@ -203,7 +203,7 @@ export default function QuestEditorScreen() {
           {!isOneTime && !targetCount && (
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              EASY VERSION <Text style={{ color: theme.dim, fontSize: 10 }}>(recovery fallback)</Text>
+                  PENALTY <Text style={{ color: theme.dim, fontSize: 10 }}>(recovery fallback)</Text>
             </Text>
             <TextInput
               style={[styles.field, fieldStyle]}
@@ -217,7 +217,7 @@ export default function QuestEditorScreen() {
               disabled={!name.trim() || suggesting}
               style={{ marginTop: 8, opacity: !name.trim() || suggesting ? 0.5 : 1 }}>
               <Text style={[styles.suggestText, { color: theme.accent, fontFamily: fonts.display }]}>
-                {suggesting ? 'THINKING…' : '✨ SUGGEST EASY VERSIONS'}
+                {suggesting ? 'THINKING…' : '✨ SUGGEST PENALTIES'}
               </Text>
             </Pressable>
             {suggestError && <Text style={[styles.errorText, { marginTop: 6 }]}>{suggestError}</Text>}

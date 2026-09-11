@@ -1,13 +1,13 @@
 appId: com.anonymous.eiyusystem
 ---
 # Phase 4 (#7): the board's "+" opens a quest-type chooser; a ONE-TIME quest
-# is today-only, has no easy version or day-picker, and validates on name alone.
+# is today-only, has no Penalty or day-picker, and validates on name alone.
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
 - assertVisible: "NEW QUEST"
 - tapOn: "ONE-TIME QUEST"
 - assertVisible: "NEW ONE-TIME QUEST"
-- assertNotVisible: "EASY VERSION"
+- assertNotVisible: "PENALTY"
 - assertNotVisible: "DAYS"
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Maestro One-Time Quest"
