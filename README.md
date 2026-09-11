@@ -45,7 +45,7 @@ eiyu-system/
 │       └── lib/                  # Web-specific Supabase client, cache adapter
 ├── packages/shared/             # @eiyu/shared — XP/level/rank/streak logic and DB types,
 │                                 # consumed by both mobile and web
-├── backend/supabase/            # SQL migrations (001–014, run in order) + Edge Functions
+├── backend/supabase/            # SQL migrations (001–020, run in order) + Edge Functions
 │   ├── README.md                 # How to apply migrations + verify what's applied
 │   └── functions/ai-proxy/       # Gemini-backed weekly-summary Edge Function
 └── docs/                        # Requirements doc, design/migration plans
@@ -69,8 +69,8 @@ eiyu-system/
    npm install
    ```
 
-2. Run the Supabase migrations in order from `backend/supabase/`:
-   `001_profiles.sql` → `014_server_side_xp.sql`
+2. Run every Supabase migration in filename order from `backend/supabase/`:
+   `001_profiles.sql` → `020_habit_easy_version_exempt_quantity.sql`
    See [`backend/supabase/README.md`](./backend/supabase/README.md) for how to apply them and verify they landed.
 
 3. Copy the environment file for whichever client you're running and fill in your Supabase credentials:

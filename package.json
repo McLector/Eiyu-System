@@ -14,6 +14,15 @@
     "react-dom": "19.1.0"
   },
   "scripts": {
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "db:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 start",
+    "db:reset": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 reset",
+    "db:lint": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 lint",
+    "db:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 test",
+    "db:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 verify",
+    "db:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-db.ps1 stop"
+  },
+  "devDependencies": {
+    "supabase": "2.117.0"
   }
 }

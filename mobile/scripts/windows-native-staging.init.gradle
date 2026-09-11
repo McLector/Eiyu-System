@@ -1,0 +1,15 @@
+// Opt-in workaround for native codegen paths that exceed Ninja's Windows limit.
+// Usage:
+//   gradlew.bat assembleDebug --init-script ..\scripts\windows-native-staging.init.gradle \
+//     -Pandroid.cxxBuildStagingDirectory=C:\Temp\eiyu-cxx
+gradle.beforeProject { project ->
+    project.plugins.withId('com.android.application') {
+        def stagingDirectory = project.findProperty('android.cxxBuildStagingDirectory')
+
+        if (stagingDirectory) {
+            project.android.externalNativeBuild.cmake.buildStagingDirectory(
+                project.file(stagingDirectory)
+            )
+        }
+    }
+}
