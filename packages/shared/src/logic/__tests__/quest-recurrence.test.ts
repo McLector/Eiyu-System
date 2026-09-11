@@ -1,4 +1,4 @@
-import { splitQuestsByType, todayQuestsFilter } from '../quest-recurrence';
+import { partitionBoardQuests, splitQuestsByType, todayQuestsFilter } from '../quest-recurrence';
 import { Quest } from '../../types/eiyu';
 
 describe('todayQuestsFilter', () => {
@@ -32,6 +32,52 @@ describe('todayQuestsFilter', () => {
 
     expect(beforeManilaMidnight).toContain('scheduled_date.eq.2026-08-23');
     expect(afterManilaMidnight).toContain('scheduled_date.eq.2026-08-24');
+  });
+});
+
+describe('partitionBoardQuests', () => {
+  const base: Quest = {
+    id: '1', name: 'Test', stat: 'STR', difficulty: 'Medium',
+    easyVersion: 'Do one minute', description: null, questType: 'habit', time: '08:00',
+    days: [1, 3, 5], streak: 0, frozen: false, completed: false,
+    targetCount: null, progressCount: 0,
+  };
+
+  it('routes one mixed dataset into distinct board sections without duplicating state', () => {
+    const daily = { ...base, id: 'daily', dailyEligible: true };
+    const offDay = { ...base, id: 'off-day', dailyEligible: false };
+    const recovery = { ...base, id: 'recovery', dailyEligible: false, frozen: true };
+    const oneTime = {
+      ...base, id: 'one-time', questType: 'one_time' as const,
+      dailyEligible: true, easyVersion: null,
+    };
+    const archived = { ...base, id: 'archived', dailyEligible: false, archived: true } as Quest;
+
+    const sections = partitionBoardQuests([daily, offDay, recovery, oneTime, archived]);
+
+    expect(sections.dailyQuests.map(q => q.id)).toEqual(['daily']);
+    expect(sections.recoveryRequired.map(q => q.id)).toEqual(['recovery']);
+    expect(sections.oneTimeQuests.map(q => q.id)).toEqual(['one-time']);
+    expect(sections.allHabits.map(q => q.id)).toEqual(['daily', 'off-day', 'recovery', 'archived']);
+    expect(sections.allHabits[0]).toBe(sections.dailyQuests[0]);
+  });
+
+  it('keeps an off-day M/W/F habit in All Habits but out of Daily Quests', () => {
+    const offDay = { ...base, id: 'mwf-tuesday', dailyEligible: false };
+    const sections = partitionBoardQuests([offDay]);
+    expect(sections.dailyQuests).toEqual([]);
+    expect(sections.allHabits).toEqual([offDay]);
+  });
+
+  it('never includes a one-time quest in Daily Quests or All Habits', () => {
+    const oneTime = {
+      ...base, id: 'one-time', questType: 'one_time' as const,
+      dailyEligible: true, easyVersion: null,
+    };
+    const sections = partitionBoardQuests([oneTime]);
+    expect(sections.dailyQuests).toEqual([]);
+    expect(sections.allHabits).toEqual([]);
+    expect(sections.oneTimeQuests).toEqual([oneTime]);
   });
 });
 

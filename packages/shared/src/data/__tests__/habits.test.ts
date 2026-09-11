@@ -162,6 +162,7 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       ),
     };
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return chainable({ data: habitRows, error: null });
       if (table === 'habit_completions') return completionsBuilder;
       if (table === 'habit_occurrences') return occurrencesBuilder;
       if (table === 'habit_progress') return progressBuilder;
@@ -195,6 +196,10 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       if (name === 'get_open_habit_recoveries') return { data: [], error: null };
       throw new Error(`unexpected RPC ${name}`);
     });
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return chainable({ data: [], error: null });
+      throw new Error(`unexpected table ${table}`);
+    });
 
     await expect(fetchTodayHabits('user-1')).resolves.toEqual([]);
   });
@@ -226,7 +231,10 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
 
     const habitsBuilder: any = {
       select: jest.fn(() => habitsBuilder),
+      eq: jest.fn(() => habitsBuilder),
       in: jest.fn(() => Promise.resolve({ data: [recoveryHabit], error: null })),
+      then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
+        Promise.resolve({ data: [recoveryHabit], error: null }).then(resolve),
     };
     const emptyBuilder: any = {
       select: jest.fn(() => emptyBuilder),
@@ -251,6 +259,49 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
         recoveryTimeZone: 'Asia/Manila',
       }),
     ]);
+  });
+
+  it('returns the full habit catalog plus today one-time items with separate eligibility', async () => {
+    const recurring = {
+      id: 'h-off-day', user_id: 'user-1', name: 'MWF habit', easy_version: 'One minute',
+      description: null, quest_type: 'habit', stat: 'STR', difficulty: 'Medium',
+      reminder_time: '08:00:00', days: [1, 3, 5], archived: false,
+      created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+      scheduled_date: null, target_count: null, schedule_start_on: '2026-09-01',
+    };
+    const archived = { ...recurring, id: 'h-archived', name: 'Archived habit', archived: true };
+    const oneTime = {
+      ...recurring, id: 'one-today', name: 'One-time today', easy_version: null,
+      quest_type: 'one_time', days: [], scheduled_date: '2026-09-11',
+    };
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+      if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
+      if (name === 'get_habits_for_date') return { data: [oneTime], error: null };
+      if (name === 'get_open_habit_recoveries') return { data: [], error: null };
+      throw new Error(`unexpected RPC ${name}`);
+    });
+    const catalogBuilder = chainable({ data: [recurring, archived], error: null });
+    const emptyBuilder: any = {
+      select: jest.fn(() => emptyBuilder),
+      eq: jest.fn(() => emptyBuilder),
+      in: jest.fn(() => emptyBuilder),
+      lte: jest.fn(() => Promise.resolve({ data: [], error: null })),
+      then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
+        Promise.resolve({ data: [], error: null }).then(resolve),
+    };
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return catalogBuilder;
+      if (table === 'habit_completions') return emptyBuilder;
+      if (table === 'habit_occurrences') return emptyBuilder;
+      if (table === 'habit_progress') return emptyBuilder;
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const quests = await fetchTodayHabits('user-1');
+    expect(quests.map(quest => quest.id)).toEqual(['h-off-day', 'h-archived', 'one-today']);
+    expect(quests.find(quest => quest.id === 'h-off-day')).toMatchObject({ dailyEligible: false, archived: false });
+    expect(quests.find(quest => quest.id === 'h-archived')).toMatchObject({ dailyEligible: false, archived: true });
+    expect(quests.find(quest => quest.id === 'one-today')).toMatchObject({ questType: 'one_time' });
   });
 });
 

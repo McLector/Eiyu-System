@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, frozenQuests, splitQuestsByType, formatDisplayDate, tintSecondaryText, boardSummaryLine } from '@eiyu/shared';
+import { Quest, FULL_XP, STAT_COLORS, RANK_CONFIG, STATS, DAYS, partitionBoardQuests, formatDisplayDate, tintSecondaryText, boardSummaryLine } from '@eiyu/shared';
 import { StatIcon, CheckIcon, PlusIcon, SnowflakeIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import SignaturePanel from '../SignaturePanel';
@@ -20,8 +20,8 @@ function XpBar({ value, max, color }: { value: number; max: number; color: strin
   );
 }
 
-function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirst }: {
-  quest: Quest; onToggle: () => void; onRecover: () => void; onEdit: () => void; onAdjustProgress: (delta: number) => void; isFirst: boolean;
+function QuestRow({ quest, onToggle, onEdit, onAdjustProgress, isFirst }: {
+  quest: Quest; onToggle: () => void; onEdit: () => void; onAdjustProgress: (delta: number) => void; isFirst: boolean;
 }) {
   const color = STAT_COLORS[quest.stat];
 
@@ -34,7 +34,11 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
     }}>
       {/* Checkbox, or a +/- stepper for quantity habits (Slice 5) */}
       {quest.targetCount == null ? (
-        <button onClick={onToggle} style={{
+        <button
+          onClick={onToggle}
+          aria-label={`${quest.completed ? 'Undo' : 'Complete'} ${quest.name}`}
+          aria-pressed={quest.completed}
+          style={{
           width: 26, height: 26, borderRadius: 7, flexShrink: 0,
           background: quest.completed ? 'rgba(74,222,128,0.18)' : 'transparent',
           border: `1.5px solid ${quest.frozen ? 'var(--c-ice-border)' : quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
@@ -45,7 +49,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
         </button>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <button onClick={() => onAdjustProgress(-1)} disabled={quest.progressCount <= 0} style={{
+          <button aria-label={`Decrease progress for ${quest.name}`} onClick={() => onAdjustProgress(-1)} disabled={quest.progressCount <= 0} style={{
             width: 24, height: 24, borderRadius: 6, border: `1px solid ${color}55`, background: 'transparent',
             cursor: quest.progressCount <= 0 ? 'default' : 'pointer', opacity: quest.progressCount <= 0 ? 0.4 : 1,
             fontFamily: 'Inter', fontSize: 15, lineHeight: 1, color: 'var(--c-text)',
@@ -53,7 +57,7 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
           <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: quest.completed ? '#4ade80' : 'var(--c-text)', minWidth: 32, textAlign: 'center' }}>
             {quest.progressCount}/{quest.targetCount}
           </span>
-          <button onClick={() => onAdjustProgress(1)} disabled={quest.progressCount >= quest.targetCount} style={{
+          <button aria-label={`Increase progress for ${quest.name}`} onClick={() => onAdjustProgress(1)} disabled={quest.progressCount >= quest.targetCount} style={{
             width: 24, height: 24, borderRadius: 6, border: `1px solid ${color}55`, background: 'transparent',
             cursor: quest.progressCount >= quest.targetCount ? 'default' : 'pointer', opacity: quest.progressCount >= quest.targetCount ? 0.4 : 1,
             fontFamily: 'Inter', fontSize: 15, lineHeight: 1, color: 'var(--c-text)',
@@ -62,7 +66,11 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
       )}
 
       {/* Info — clicking name area opens editor */}
-      <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={onEdit}>
+      <button
+        type="button"
+        aria-label={`Edit ${quest.name}`}
+        style={{ flex: 1, minWidth: 0, cursor: 'pointer', padding: 0, border: 0, background: 'none', textAlign: 'left' }}
+        onClick={onEdit}>
         <div style={{ fontFamily: 'Inter', fontSize: 14, color: quest.completed ? 'var(--c-muted-flat)' : 'var(--c-text)', textDecoration: quest.completed ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {quest.name}
         </div>
@@ -81,9 +89,9 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
             </span>
           )}
         </div>
-      </div>
+      </button>
 
-      {/* Days + recover */}
+      {/* Scheduled days. Recovery remains a separate, explicit action above. */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
         <div style={{ display: 'flex', gap: 2 }}>
           {DAYS.map((d, i) => (
@@ -97,16 +105,42 @@ function QuestRow({ quest, onToggle, onRecover, onEdit, onAdjustProgress, isFirs
             </div>
           ))}
         </div>
-        {quest.frozen && (
-          <button onClick={onRecover} title="Complete the missed day to restore your streak" style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-            fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, color: '#67e8f9', letterSpacing: '0.06em',
-          }}>
-            RECLAIM
-          </button>
-        )}
       </div>
     </div>
+  );
+}
+
+function HabitCatalogRow({ quest, onEdit, isFirst }: { quest: Quest; onEdit: () => void; isFirst: boolean }) {
+  const schedule = quest.days.length === 7 ? 'Every day' : quest.days.map(day => DAYS[day]).join(', ');
+  const status = quest.archived ? 'ARCHIVED' : quest.dailyEligible ? 'TODAY' : 'OFF DAY';
+
+  return (
+    <button
+      type="button"
+      aria-label={`Edit ${quest.name}`}
+      onClick={onEdit}
+      style={{
+        display: 'flex', width: '100%', alignItems: 'center', gap: 12, padding: '12px 0',
+        border: 0, borderTop: isFirst ? 'none' : '1px solid var(--c-divider-flat)',
+        background: 'none', color: 'inherit', textAlign: 'left', cursor: 'pointer',
+      }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: 'Inter', fontSize: 14, color: 'var(--c-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {quest.name}
+        </div>
+        <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)', marginTop: 3 }}>
+          {schedule || 'No scheduled days'}
+        </div>
+      </div>
+      <span style={{
+        flexShrink: 0, padding: '2px 7px', borderRadius: 5,
+        border: '1px solid var(--c-accent-border)', background: 'var(--c-accent-glass)',
+        fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700,
+        letterSpacing: '0.07em', color: quest.archived ? 'var(--c-muted-flat)' : 'var(--c-accent)',
+      }}>
+        {status}
+      </span>
+    </button>
   );
 }
 
@@ -125,11 +159,11 @@ function recoveryDeadlineLabel(quest: Quest) {
 export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
   const { user, questsLoading, questsError, retryQuests, toggleQuest: toggleQuestAction, adjustProgress, completeRecovery } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
-  const recoveryQuests = frozenQuests(user.quests);
-  const dailyQuests = user.quests.filter(q => q.dailyEligible !== false);
+  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
+  const activeHabits = allHabits.filter(quest => !quest.archived);
+  const archivedHabits = allHabits.filter(quest => quest.archived);
   const completedToday = dailyQuests.filter(q => q.completed).length;
   const totalToday = dailyQuests.length;
-  const { habitQuests, oneTimeQuests } = splitQuestsByType(dailyQuests);
   const [xpToast, setXpToast] = useState<string | null>(null);
 
   const toggleQuest = (id: string) => {
@@ -155,7 +189,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 24, alignItems: 'start' }}>
+    <div className="web-board-grid">
       {/* Left panel */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Profile card — signature panel (redesign spec sections 3, 8.1) */}
@@ -242,29 +276,38 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
           </div>
         </div>
 
-        {recoveryQuests.map(quest => (
-          <div key={`recovery-${quest.id}`} style={{
-            padding: '14px 16px', borderRadius: 12,
-            background: 'rgba(59,130,246,0.1)', border: '1px solid var(--c-ice-border)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <SnowflakeIcon size={14} />
-              <strong style={{ fontFamily: 'Rajdhani', fontSize: 12, letterSpacing: '0.08em', color: '#67e8f9' }}>
-                STREAK FROZEN — RECOVERY QUEST
-              </strong>
-              <span style={{ marginLeft: 'auto', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#93c5fd' }}>
-                Until {recoveryDeadlineLabel(quest)}
-              </span>
+        {recoveryRequired.length > 0 && (
+          <section aria-labelledby="recovery-required-heading">
+            <h2 id="recovery-required-heading" style={{ margin: '0 0 10px', fontFamily: 'Rajdhani', fontSize: 14, color: 'var(--c-text)', letterSpacing: '0.08em' }}>
+              RECOVERY REQUIRED
+            </h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {recoveryRequired.map(quest => (
+                <div key={`recovery-${quest.id}`} style={{
+                  padding: '14px 16px', borderRadius: 12,
+                  background: 'rgba(59,130,246,0.1)', border: '1px solid var(--c-ice-border)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <SnowflakeIcon size={14} />
+                    <strong style={{ fontFamily: 'Rajdhani', fontSize: 12, letterSpacing: '0.08em', color: '#67e8f9' }}>
+                      STREAK FROZEN — RECOVERY QUEST
+                    </strong>
+                    <span style={{ marginLeft: 'auto', fontFamily: 'JetBrains Mono', fontSize: 10, color: '#93c5fd' }}>
+                      Until {recoveryDeadlineLabel(quest)}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 8, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)' }}>{quest.name}</div>
+                  <div style={{ marginTop: 3, fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>
+                    Penalty: {quest.easyVersion}
+                  </div>
+                  <button onClick={() => completeRecovery(quest.id)} className="btn-ghost" style={{ marginTop: 10, padding: '6px 12px', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, color: '#67e8f9' }}>
+                    MARK RECOVERY COMPLETE
+                  </button>
+                </div>
+              ))}
             </div>
-            <div style={{ marginTop: 8, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)' }}>{quest.name}</div>
-            <div style={{ marginTop: 3, fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>
-              Penalty: {quest.easyVersion}
-            </div>
-            <button onClick={() => completeRecovery(quest.id)} className="btn-ghost" style={{ marginTop: 10, padding: '6px 12px', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, color: '#67e8f9' }}>
-              MARK RECOVERY COMPLETE
-            </button>
-          </div>
-        ))}
+          </section>
+        )}
 
         {/* Quest list — plain/grouping */}
         <div>
@@ -276,28 +319,47 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
             </button>
           </div>
           {dailyQuests.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>The board is quiet. Set your first one.</div>
+            <div style={{ textAlign: 'center', padding: '32px 0', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>
+              No habits are scheduled for today. Your saved habits are still available under All Habits.
+            </div>
+          ) : dailyQuests.map((q, i) => (
+            <QuestRow key={q.id} quest={q} isFirst={i === 0} onToggle={() => toggleQuest(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
+          ))}
+        </div>
+
+        <section aria-labelledby="one-time-heading">
+          <h2 id="one-time-heading" style={{ margin: '0 0 10px', fontFamily: 'Rajdhani', fontSize: 14, color: 'var(--c-text)', letterSpacing: '0.06em' }}>
+            ONE-TIME QUESTS
+          </h2>
+          {oneTimeQuests.length === 0 ? (
+            <div style={{ padding: '16px 0', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>No one-time quests scheduled for today.</div>
+          ) : oneTimeQuests.map((q, i) => (
+            <QuestRow key={q.id} quest={q} isFirst={i === 0} onToggle={() => toggleQuest(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
+          ))}
+        </section>
+
+        <section aria-labelledby="all-habits-heading">
+          <h2 id="all-habits-heading" style={{ margin: '0 0 10px', fontFamily: 'Rajdhani', fontSize: 14, color: 'var(--c-text)', letterSpacing: '0.06em' }}>
+            ALL HABITS
+          </h2>
+          {allHabits.length === 0 ? (
+            <div style={{ padding: '16px 0', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>No saved habits yet.</div>
           ) : (
             <>
-              <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim-flat)' }}>TODAY&apos;S HABITS</div>
-              {habitQuests.length === 0 ? (
-                <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', padding: '4px 0 8px' }}>No habits scheduled for today.</div>
-              ) : (
-                habitQuests.map((q, i) => (
-                  <QuestRow key={q.id} quest={q} isFirst={i === 0} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
-                ))
-              )}
-              {oneTimeQuests.length > 0 && (
-                <>
-                  <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim-flat)', marginTop: 8 }}>ONE-TIME QUESTS</div>
-                  {oneTimeQuests.map((q, i) => (
-                    <QuestRow key={q.id} quest={q} isFirst={i === 0} onToggle={() => toggleQuest(q.id)} onRecover={() => completeRecovery(q.id)} onEdit={() => onEditQuest(q.id)} onAdjustProgress={delta => adjustProgress(q.id, delta)} />
+              {activeHabits.map((q, i) => (
+                <HabitCatalogRow key={q.id} quest={q} isFirst={i === 0} onEdit={() => onEditQuest(q.id)} />
+              ))}
+              {archivedHabits.length > 0 && (
+                <div style={{ marginTop: activeHabits.length > 0 ? 14 : 0 }}>
+                  <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', color: 'var(--c-dim-flat)', marginBottom: 4 }}>ARCHIVED</div>
+                  {archivedHabits.map((q, i) => (
+                    <HabitCatalogRow key={q.id} quest={q} isFirst={i === 0} onEdit={() => onEditQuest(q.id)} />
                   ))}
-                </>
+                </div>
               )}
             </>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

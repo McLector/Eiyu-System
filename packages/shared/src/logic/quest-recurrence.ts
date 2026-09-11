@@ -30,3 +30,22 @@ export function splitQuestsByType(quests: Quest[]): { habitQuests: Quest[]; oneT
     oneTimeQuests: quests.filter(q => q.questType === 'one_time'),
   };
 }
+
+export interface BoardQuestSections {
+  dailyQuests: Quest[];
+  recoveryRequired: Quest[];
+  oneTimeQuests: Quest[];
+  allHabits: Quest[];
+}
+
+/** One shared routing contract for mobile and web board sections. */
+export function partitionBoardQuests(quests: Quest[]): BoardQuestSections {
+  return {
+    dailyQuests: quests.filter(
+      quest => quest.questType === 'habit' && quest.dailyEligible === true && !quest.archived
+    ),
+    recoveryRequired: quests.filter(quest => quest.questType === 'habit' && quest.frozen),
+    oneTimeQuests: quests.filter(quest => quest.questType === 'one_time'),
+    allHabits: quests.filter(quest => quest.questType === 'habit'),
+  };
+}

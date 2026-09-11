@@ -16,7 +16,7 @@ import { GhostButton } from '@/components/eiyu/ghost-button';
 import { GlassView } from '@/components/eiyu/glass-view';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { formatDisplayDate, frozenQuests, RANK_CONFIG, splitQuestsByType, STATS, STAT_COLORS } from '@eiyu/shared';
+import { DAYS, formatDisplayDate, partitionBoardQuests, RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
@@ -244,6 +244,35 @@ function QuestRow({
   );
 }
 
+function HabitCatalogRow({ quest, onEdit }: { quest: Quest; onEdit: () => void }) {
+  const { theme } = useEiyu();
+  const schedule = quest.days.length === 7 ? 'Every day' : quest.days.map(day => DAYS[day]).join(', ');
+
+  return (
+    <Pressable
+      onPress={onEdit}
+      accessibilityRole="button"
+      accessibilityLabel={`Edit ${quest.name}`}
+      style={styles.catalogRow}>
+      <View style={styles.questInfo}>
+        <Text style={[styles.questName, { color: theme.text, fontFamily: fonts.body }]}>{quest.name}</Text>
+        <Text style={[styles.catalogSchedule, { color: theme.muted, fontFamily: fonts.body }]}>
+          {schedule || 'No scheduled days'}
+        </Text>
+      </View>
+      <View
+        style={[
+          styles.catalogStatus,
+          { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder },
+        ]}>
+        <Text style={[styles.catalogStatusText, { color: quest.archived ? theme.muted : theme.accent }]}>
+          {quest.archived ? 'ARCHIVED' : quest.dailyEligible ? 'TODAY' : 'OFF DAY'}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function BoardScreen() {
   const {
     user,
@@ -258,9 +287,9 @@ export default function BoardScreen() {
   } = useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
-  const frozen = frozenQuests(user.quests);
-  const dailyQuests = user.quests.filter(q => q.dailyEligible !== false);
-  const { habitQuests, oneTimeQuests } = splitQuestsByType(dailyQuests);
+  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
+  const activeHabits = allHabits.filter(quest => !quest.archived);
+  const archivedHabits = allHabits.filter(quest => quest.archived);
   const completed = dailyQuests.filter(q => q.completed).length;
   const total = dailyQuests.length;
   const initials = user.name.split(' ').map(n => n[0]).join('');
@@ -350,42 +379,49 @@ export default function BoardScreen() {
           </View>
         </GlassView>
 
-        {frozen.map(fq => (
-          <View
-            key={fq.id}
-            style={[
-              styles.recoveryBanner,
-              { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(96,165,250,0.3)' },
-            ]}>
-            <View style={styles.recoveryHeader}>
-              <View style={styles.recoveryTitleRow}>
-                <SnowflakeIcon size={15} />
-                <Text style={[styles.recoveryTitle, { fontFamily: fonts.display }]}>
-                  STREAK FROZEN — RECOVERY QUEST
+        {recoveryRequired.length > 0 && (
+          <View style={styles.sectionGroup}>
+            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>
+              RECOVERY REQUIRED
+            </Text>
+            {recoveryRequired.map(fq => (
+              <View
+                key={fq.id}
+                style={[
+                  styles.recoveryBanner,
+                  { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(96,165,250,0.3)' },
+                ]}>
+                <View style={styles.recoveryHeader}>
+                  <View style={styles.recoveryTitleRow}>
+                    <SnowflakeIcon size={15} />
+                    <Text style={[styles.recoveryTitle, { fontFamily: fonts.display }]}>
+                      STREAK FROZEN — RECOVERY QUEST
+                    </Text>
+                  </View>
+                  <Text style={[styles.mono, { color: '#93c5fd' }]}>{recoveryDeadlineLabel(fq)}</Text>
+                </View>
+                <Text style={[styles.recoveryName, { color: theme.text, fontFamily: fonts.body }]}>
+                  {fq.name}
                 </Text>
+                <Text style={[styles.recoveryEasy, { color: theme.muted, fontFamily: fonts.body }]}>
+                  Penalty: {fq.easyVersion}
+                </Text>
+                <GhostButton
+                  label="Mark Recovery Complete"
+                  onPress={() => {
+                    flashXp(fq.id, EASY_XP);
+                    completeRecovery(fq.id);
+                  }}
+                />
               </View>
-              <Text style={[styles.mono, { color: '#93c5fd' }]}>{recoveryDeadlineLabel(fq)}</Text>
-            </View>
-            <Text style={[styles.recoveryName, { color: theme.text, fontFamily: fonts.body }]}>
-              {fq.name}
-            </Text>
-            <Text style={[styles.recoveryEasy, { color: theme.muted, fontFamily: fonts.body }]}>
-              Penalty: {fq.easyVersion}
-            </Text>
-            <GhostButton
-              label="Mark Recovery Complete"
-              onPress={() => {
-                flashXp(fq.id, EASY_XP);
-                completeRecovery(fq.id);
-              }}
-            />
+            ))}
           </View>
-        ))}
+        )}
 
         <View style={styles.questsHeader}>
           <View>
             <Text style={[styles.questsTitle, { color: theme.text, fontFamily: fonts.display }]}>
-              Today&apos;s Quests
+              DAILY QUESTS
             </Text>
             <Text style={[styles.questsSub, { color: theme.muted, fontFamily: fonts.body }]}>
               {completed} of {total} completed
@@ -414,34 +450,34 @@ export default function BoardScreen() {
             <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
           ) : dailyQuests.length === 0 ? (
             <Text style={[styles.emptyText, { color: theme.muted }]}>
-              No quests scheduled for today. Tap &quot;Add a Quest&quot; below to create one.
+              No habits are scheduled for today. Your saved habits are still available under All Habits.
             </Text>
           ) : (
-            <>
-              <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display }]}>
-                TODAY&apos;S HABITS
+            dailyQuests.map(quest => (
+              <QuestRow
+                key={quest.id}
+                quest={quest}
+                onToggle={() => handleToggle(quest)}
+                onCompleteEasy={() => handleCompleteEasy(quest)}
+                onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                onAdjustProgress={delta => adjustProgress(quest.id, delta)}
+                xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+              />
+            ))
+          )}
+        </GlassView>
+
+        {!questsLoading && !questsError && (
+          <>
+            <View style={styles.sectionGroup}>
+              <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>
+                ONE-TIME QUESTS
               </Text>
-              {habitQuests.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.muted }]}>No habits scheduled for today.</Text>
-              ) : (
-                habitQuests.map(quest => (
-                  <QuestRow
-                    key={quest.id}
-                    quest={quest}
-                    onToggle={() => handleToggle(quest)}
-                    onCompleteEasy={() => handleCompleteEasy(quest)}
-                    onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-                    onAdjustProgress={delta => adjustProgress(quest.id, delta)}
-                    xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
-                  />
-                ))
-              )}
-              {oneTimeQuests.length > 0 && (
-                <>
-                  <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display, marginTop: 16 }]}>
-                    ONE-TIME QUESTS
-                  </Text>
-                  {oneTimeQuests.map(quest => (
+              <GlassView style={styles.questList}>
+                {oneTimeQuests.length === 0 ? (
+                  <Text style={[styles.emptyText, { color: theme.muted }]}>No one-time quests scheduled for today.</Text>
+                ) : (
+                  oneTimeQuests.map(quest => (
                     <QuestRow
                       key={quest.id}
                       quest={quest}
@@ -451,12 +487,43 @@ export default function BoardScreen() {
                       onAdjustProgress={delta => adjustProgress(quest.id, delta)}
                       xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
                     />
-                  ))}
-                </>
-              )}
-            </>
-          )}
-        </GlassView>
+                  ))
+                )}
+              </GlassView>
+            </View>
+
+            <View style={styles.sectionGroup}>
+              <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ALL HABITS</Text>
+              <GlassView style={styles.questList}>
+                {allHabits.length === 0 ? (
+                  <Text style={[styles.emptyText, { color: theme.muted }]}>No saved habits yet.</Text>
+                ) : (
+                  <>
+                    {activeHabits.map(quest => (
+                      <HabitCatalogRow
+                        key={quest.id}
+                        quest={quest}
+                        onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                      />
+                    ))}
+                    {archivedHabits.length > 0 && (
+                      <>
+                        <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display }]}>ARCHIVED</Text>
+                        {archivedHabits.map(quest => (
+                          <HabitCatalogRow
+                            key={quest.id}
+                            quest={quest}
+                            onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </>
+                )}
+              </GlassView>
+            </View>
+          </>
+        )}
 
         <GhostButton
           label="ADD A QUEST"
@@ -672,6 +739,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   recoveryTitleRow: {
     flexDirection: 'row',
@@ -727,6 +796,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1.2,
     marginBottom: 8,
+  },
+  sectionGroup: {
+    gap: 8,
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  catalogRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(148,163,184,0.2)',
+  },
+  catalogSchedule: {
+    fontSize: 11,
+    marginTop: 3,
+  },
+  catalogStatus: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+  },
+  catalogStatusText: {
+    fontFamily: fonts.displaySemi,
+    fontSize: 9,
+    letterSpacing: 0.7,
   },
   errorBlock: {
     alignItems: 'center',

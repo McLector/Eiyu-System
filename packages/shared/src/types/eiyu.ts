@@ -20,6 +20,8 @@ export interface Quest {
   /** Optional note attached to the quest (improvement-pass #8). */
   description: string | null;
   questType: QuestType;
+  /** Catalog lifecycle state; archived habits remain visible in All Habits. */
+  archived?: boolean;
   time: string;
   days: number[];
   streak: number;

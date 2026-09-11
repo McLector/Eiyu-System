@@ -38,6 +38,7 @@ function toQuest(
     easyVersion: row.easy_version,
     description: row.description,
     questType: row.quest_type,
+    archived: row.archived,
     time: row.reminder_time.slice(0, 5),
     days: row.days,
     streak: recovery?.preserved_streak ?? state?.current ?? 0,
@@ -56,10 +57,10 @@ function toQuest(
 }
 
 /**
- * Habits scheduled for today, sorted by reminder time, with today's completion
- * state and streak (R-10). The authoritative RPC returns recurring habits
- * only when an immutable occurrence exists for the account-local date, plus
- * one-time quests whose scheduled date is that same canonical date.
+ * Board data: every recurring habit definition plus today's eligible one-time
+ * quests, with current completion, streak, recovery, and schedule eligibility.
+ * The authoritative RPC still determines which definitions have a dated
+ * occurrence for the account-local day; catalog rows never create eligibility.
  */
 export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   const today = new Date();
@@ -80,26 +81,28 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   );
   if (recoveriesError) throw recoveriesError;
 
-  const dailyHabits = habits ?? [];
+  const todayItems = habits ?? [];
   const openRecoveries = recoveries ?? [];
-  const dailyIds = new Set(dailyHabits.map(habit => habit.id));
-  const recoveryOnlyIds = openRecoveries
-    .map(recovery => recovery.habit_id)
-    .filter(habitId => !dailyIds.has(habitId));
+  const dailyIds = new Set(
+    todayItems.filter(item => item.quest_type === 'habit').map(habit => habit.id)
+  );
+  const oneTimeItems = todayItems.filter(item => item.quest_type === 'one_time');
 
-  let recoveryOnlyHabits: HabitRow[] = [];
-  if (recoveryOnlyIds.length > 0) {
-    const { data, error: recoveryHabitsError } = await supabase
-      .from('habits')
-      .select('*')
-      .in('id', recoveryOnlyIds);
-    if (recoveryHabitsError) throw recoveryHabitsError;
-    recoveryOnlyHabits = data ?? [];
-  }
+  // Phase 4: the board needs definitions independently of today's occurrence.
+  // Include archived rows so the catalog never makes saved habits unreachable.
+  const { data: catalog, error: catalogError } = await supabase
+    .from('habits')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('quest_type', 'habit');
+  if (catalogError) throw catalogError;
+  const catalogHabits = [...(catalog ?? [])].sort(
+    (a, b) => Number(a.archived) - Number(b.archived) || a.reminder_time.localeCompare(b.reminder_time)
+  );
 
-  const allHabits = [...dailyHabits, ...recoveryOnlyHabits];
-  if (allHabits.length === 0) return [];
-  const allHabitIds = allHabits.map(habit => habit.id);
+  const boardItems = [...catalogHabits, ...oneTimeItems];
+  if (boardItems.length === 0) return [];
+  const allHabitIds = boardItems.map(habit => habit.id);
   const recoveryByHabit = new Map(openRecoveries.map(recovery => [recovery.habit_id, recovery]));
 
   const { data: completions, error: completionsError } = await supabase
@@ -152,7 +155,7 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   const progressByHabit = new Map<string, number>();
   for (const p of progress ?? []) progressByHabit.set(p.habit_id, p.progress_count);
 
-  return allHabits.map(h =>
+  return boardItems.map(h =>
     toQuest(
       h,
       completedToday.has(h.id),

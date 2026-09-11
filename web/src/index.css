@@ -264,6 +264,19 @@ select.field option {
   50% { filter: drop-shadow(0 0 6px rgba(248,113,113,0.8)) drop-shadow(0 0 12px rgba(251,191,36,0.55)); }
 }
 
+.web-board-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .web-board-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fire-flame { animation: none !important; }
   .heatmap-glow { animation: none !important; }
