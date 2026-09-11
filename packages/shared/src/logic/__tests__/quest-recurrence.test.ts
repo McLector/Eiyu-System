@@ -5,25 +5,33 @@ describe('todayQuestsFilter', () => {
   /** 2026-08-23 is a Sunday (UTC weekday 0); 08-24 is Monday (1). */
   const sundayNoon = new Date('2026-08-23T12:00:00.000Z');
 
-  it('matches recurring habits by UTC weekday', () => {
-    expect(todayQuestsFilter(sundayNoon)).toContain('and(quest_type.eq.habit,days.cs.{0})');
+  it('matches recurring habits by the persisted account timezone weekday', () => {
+    expect(todayQuestsFilter(sundayNoon, 'UTC')).toContain('and(quest_type.eq.habit,days.cs.{0})');
   });
 
   it('matches one-time quests by scheduled_date equality, not a created_at range', () => {
-    const filter = todayQuestsFilter(sundayNoon);
+    const filter = todayQuestsFilter(sundayNoon, 'UTC');
     expect(filter).toContain('and(quest_type.eq.one_time,scheduled_date.eq.2026-08-23)');
     expect(filter).not.toContain('created_at');
   });
 
   it('rolls the whole window over exactly at UTC midnight', () => {
-    const justBefore = todayQuestsFilter(new Date('2026-08-23T23:59:59.999Z'));
-    const justAfter = todayQuestsFilter(new Date('2026-08-24T00:00:00.000Z'));
+    const justBefore = todayQuestsFilter(new Date('2026-08-23T23:59:59.999Z'), 'UTC');
+    const justAfter = todayQuestsFilter(new Date('2026-08-24T00:00:00.000Z'), 'UTC');
 
     expect(justBefore).toContain('days.cs.{0}');
     expect(justBefore).toContain('scheduled_date.eq.2026-08-23');
 
     expect(justAfter).toContain('days.cs.{1}');
     expect(justAfter).toContain('scheduled_date.eq.2026-08-24');
+  });
+
+  it('rolls over at local midnight in the persisted IANA timezone', () => {
+    const beforeManilaMidnight = todayQuestsFilter(new Date('2026-08-23T15:59:59.999Z'), 'Asia/Manila');
+    const afterManilaMidnight = todayQuestsFilter(new Date('2026-08-23T16:00:00.000Z'), 'Asia/Manila');
+
+    expect(beforeManilaMidnight).toContain('scheduled_date.eq.2026-08-23');
+    expect(afterManilaMidnight).toContain('scheduled_date.eq.2026-08-24');
   });
 });
 

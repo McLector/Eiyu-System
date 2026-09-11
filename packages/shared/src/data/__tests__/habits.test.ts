@@ -14,12 +14,20 @@ function chainable(result: { data?: unknown; error: unknown }) {
 }
 
 jest.mock('../../supabase/client', () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
+
+function mockTimeZoneInitialization() {
+  (supabase.rpc as jest.Mock).mockReset().mockImplementation(async (name: string) => {
+    if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
+    throw new Error(`unexpected RPC ${name}`);
+  });
+}
 
 describe('createHabit / updateHabit — scheduled_date column mapping', () => {
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();
+    mockTimeZoneInitialization();
   });
 
   it('writes scheduledDate to the scheduled_date column for a one-time quest', async () => {
@@ -102,35 +110,31 @@ describe('createHabit / updateHabit — scheduled_date column mapping', () => {
 describe('fetchTodayHabits — quantity-habit progress join', () => {
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();
+    mockTimeZoneInitialization();
   });
 
   it('joins progressCount from habit_progress, defaulting to 0 when no row exists', async () => {
-    const habitsBuilder: any = {
-      select: jest.fn(() => habitsBuilder),
-      eq: jest.fn(() => habitsBuilder),
-      or: jest.fn(() => habitsBuilder),
-      order: jest.fn(() =>
-        Promise.resolve({
-          data: [
-            {
-              id: 'h1', user_id: 'user-1', name: 'Water', easy_version: null, description: null,
-              quest_type: 'habit', stat: 'STR', difficulty: 'Easy', reminder_time: '09:00:00',
-              days: [0, 1, 2, 3, 4, 5, 6], archived: false,
-              created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
-              scheduled_date: null, target_count: 8,
-            },
-            {
-              id: 'h2', user_id: 'user-1', name: 'Read', easy_version: 'Read 1 page', description: null,
-              quest_type: 'habit', stat: 'WIS', difficulty: 'Easy', reminder_time: '20:00:00',
-              days: [0, 1, 2, 3, 4, 5, 6], archived: false,
-              created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
-              scheduled_date: null, target_count: null,
-            },
-          ],
-          error: null,
-        })
-      ),
-    };
+    const habitRows = [
+      {
+        id: 'h1', user_id: 'user-1', name: 'Water', easy_version: null, description: null,
+        quest_type: 'habit', stat: 'STR', difficulty: 'Easy', reminder_time: '09:00:00',
+        days: [0, 1, 2, 3, 4, 5, 6], archived: false,
+        created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+        scheduled_date: null, target_count: 8, schedule_start_on: '2026-09-01',
+      },
+      {
+        id: 'h2', user_id: 'user-1', name: 'Read', easy_version: 'Read 1 page', description: null,
+        quest_type: 'habit', stat: 'WIS', difficulty: 'Easy', reminder_time: '20:00:00',
+        days: [0, 1, 2, 3, 4, 5, 6], archived: false,
+        created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+        scheduled_date: null, target_count: null, schedule_start_on: '2026-09-01',
+      },
+    ];
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+      if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
+      if (name === 'get_habits_for_date') return { data: habitRows, error: null };
+      throw new Error(`unexpected RPC ${name}`);
+    });
     const completionsBuilder: any = {
       select: jest.fn(() => completionsBuilder),
       eq: jest.fn(() => completionsBuilder),
@@ -142,9 +146,23 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       eq: jest.fn(() => progressBuilder),
       in: jest.fn(() => Promise.resolve({ data: [{ habit_id: 'h1', progress_count: 3 }], error: null })),
     };
+    const occurrencesBuilder: any = {
+      select: jest.fn(() => occurrencesBuilder),
+      eq: jest.fn(() => occurrencesBuilder),
+      in: jest.fn(() => occurrencesBuilder),
+      lte: jest.fn(() =>
+        Promise.resolve({
+          data: [
+            { habit_id: 'h1', occurrence_date: '2026-09-01' },
+            { habit_id: 'h2', occurrence_date: '2026-09-01' },
+          ],
+          error: null,
+        })
+      ),
+    };
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'habits') return habitsBuilder;
       if (table === 'habit_completions') return completionsBuilder;
+      if (table === 'habit_occurrences') return occurrencesBuilder;
       if (table === 'habit_progress') return progressBuilder;
       throw new Error(`unexpected table ${table}`);
     });
@@ -158,11 +176,32 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
     expect(read.targetCount).toBeNull();
     expect(read.progressCount).toBe(0);
   });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('requests the account-local date returned by persisted timezone initialization', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-11T00:30:00.000Z'));
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string, args: unknown) => {
+      if (name === 'initialize_account_time_zone') {
+        return { data: 'America/Los_Angeles', error: null };
+      }
+      if (name === 'get_habits_for_date') {
+        expect(args).toEqual({ p_date: '2026-09-10' });
+        return { data: [], error: null };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    });
+
+    await expect(fetchTodayHabits('user-1')).resolves.toEqual([]);
+  });
 });
 
 describe('fetchTodayOneTimeHabits', () => {
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();
+    mockTimeZoneInitialization();
   });
 
   it('filters by scheduled_date equality to today, not a created_at range', async () => {

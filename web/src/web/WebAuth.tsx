@@ -10,6 +10,7 @@ import {
   validateDisplayName,
   validateEmail,
   validatePassword,
+  deviceTimeZone,
   type AuthMode,
 } from '@eiyu/shared';
 
@@ -112,7 +113,7 @@ export default function WebAuth({ onLogin }: Props) {
         const { data, error: authError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { display_name: name.trim() } },
+          options: { data: { display_name: name.trim(), time_zone: deviceTimeZone() } },
         });
         if (authError) throw authError;
         if (!data.session) {

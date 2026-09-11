@@ -7,7 +7,7 @@ import { Screen } from '@/components/eiyu/screen';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { toDateKey } from '@eiyu/shared';
+import { accountDateKey, toDateKey } from '@eiyu/shared';
 import { formatError } from '@eiyu/shared';
 import { fetchMonthHistory, HistoryByDate } from '@eiyu/shared';
 
@@ -22,12 +22,14 @@ function daysInMonth(year: number, month: number) {
 }
 
 export default function HistoryScreen() {
-  const { theme } = useEiyu();
+  const { theme, user } = useEiyu();
   const { session } = useAuth();
   const today = new Date();
-  const [year, setYear] = useState(today.getUTCFullYear());
-  const [month, setMonth] = useState(today.getUTCMonth());
-  const [selectedDate, setSelectedDate] = useState(toDateKey(today));
+  const accountTodayKey = accountDateKey(today, user.timeZone);
+  const [accountYear, accountMonth] = accountTodayKey.split('-').map(Number);
+  const [year, setYear] = useState(accountYear);
+  const [month, setMonth] = useState(accountMonth - 1);
+  const [selectedDate, setSelectedDate] = useState(accountTodayKey);
   const [data, setData] = useState<HistoryByDate>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export default function HistoryScreen() {
 
   const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
   const totalDays = daysInMonth(year, month);
-  const todayKey = toDateKey(today);
+  const todayKey = accountTodayKey;
 
   const cells: (number | null)[] = [
     ...Array(firstWeekday).fill(null),

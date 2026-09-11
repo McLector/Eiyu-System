@@ -9,6 +9,7 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import {
   addUtcDays,
+  accountDateKey,
   fetchHistoryRange,
   formatError,
   heatmapCellState,
@@ -16,7 +17,6 @@ import {
   heatmapWeekColumns,
   heatmapWindowStart,
   HistoryByDate,
-  startOfUtcDay,
   toDateKey,
 } from '@eiyu/shared';
 
@@ -48,18 +48,19 @@ function GlowingStar({ color, size = 10 }: { color: string; size?: number }) {
 
 /** GitHub-style 6-month contribution graph for the Status tab. Self-contained: fetches its own data. */
 export default function HabitHeatmap({ userId }: Props) {
-  const { theme } = useEiyu();
+  const { theme, user } = useEiyu();
   const [data, setData] = useState<HistoryByDate>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const now = new Date();
-  const start = heatmapWindowStart(MONTHS_BACK, now);
-  const end = addUtcDays(startOfUtcDay(now), 1);
+  const todayKey = accountDateKey(now, user.timeZone);
+  const calendarToday = new Date(`${todayKey}T00:00:00.000Z`);
+  const start = heatmapWindowStart(MONTHS_BACK, calendarToday);
+  const end = addUtcDays(calendarToday, 1);
   const startKey = toDateKey(start);
   const endKey = toDateKey(end);
-  const todayKey = toDateKey(now);
 
   // Fetches history for the current userId/window. Re-created only when the
   // userId or the (string, stable-across-renders) window keys change, so both

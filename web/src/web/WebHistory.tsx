@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchMonthHistory, toDateKey, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
+import { accountDateKey, fetchMonthHistory, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
 
 import { CheckIcon, ChevronIcon, CompletionDotIcon } from '../Icons';
 
-interface Props { userId: string; onClose: () => void; }
+interface Props { userId: string; timeZone: string; onClose: () => void; }
 
 const DAYS_HEADER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -17,16 +17,16 @@ function dayStatus(completions: HistoryCompletion[] | undefined): 'full' | 'part
   return completions.some(c => c.kind === 'full') ? 'full' : 'partial';
 }
 
-export function deriveUtcToday(now: Date): { year: number; month: number; day: number } {
-  const [year, month, day] = toDateKey(now).split('-').map(Number);
+export function deriveAccountToday(now: Date, timeZone: string): { year: number; month: number; day: number } {
+  const [year, month, day] = accountDateKey(now, timeZone).split('-').map(Number);
   return { year, month: month - 1, day };
 }
 
-export default function WebHistory({ userId, onClose }: Props) {
+export default function WebHistory({ userId, timeZone, onClose }: Props) {
   const now = new Date();
-  const { year: nowUtcYear, month: nowUtcMonth, day: nowUtcDay } = deriveUtcToday(now);
-  const [year, setYear] = useState(nowUtcYear);
-  const [month, setMonth] = useState(nowUtcMonth);
+  const { year: accountYear, month: accountMonth, day: accountDay } = deriveAccountToday(now, timeZone);
+  const [year, setYear] = useState(accountYear);
+  const [month, setMonth] = useState(accountMonth);
 
   const historyQuery = useQuery({
     queryKey: ['monthHistory', userId, year, month],
@@ -35,8 +35,8 @@ export default function WebHistory({ userId, onClose }: Props) {
   });
 
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const today = nowUtcDay;
-  const isCurrentMonth = year === nowUtcYear && month === nowUtcMonth;
+  const today = accountDay;
+  const isCurrentMonth = year === accountYear && month === accountMonth;
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();

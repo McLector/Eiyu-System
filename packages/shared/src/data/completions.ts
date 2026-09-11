@@ -1,9 +1,10 @@
 import { supabase } from '../supabase/client';
+import { accountDateKey, deviceTimeZone } from '../logic/date-utils';
 import { CompletionKind } from '../types/database';
 import { Stat } from '../types/eiyu';
 
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+function todayKey(timeZone: string) {
+  return accountDateKey(new Date(), timeZone);
 }
 
 /**
@@ -19,7 +20,8 @@ export async function completeHabit(
   habitId: string,
   stat: Stat,
   kind: CompletionKind,
-  completedOn: string = todayKey()
+  completedOn?: string,
+  timeZone: string = deviceTimeZone()
 ) {
   // userId/stat stay in the signature for API stability; both are resolved
   // server-side by the RPC (auth.uid(), habit lookup) so client and DB can't
@@ -29,7 +31,7 @@ export async function completeHabit(
 
   const { error } = await supabase.rpc('complete_habit', {
     p_habit_id: habitId,
-    p_completed_on: completedOn,
+    p_completed_on: completedOn ?? todayKey(timeZone),
     p_kind: kind,
   });
   if (error) throw error;
@@ -41,7 +43,12 @@ export async function completeHabit(
  * write side. The RPC is idempotent: a missing row (already undone) returns
  * success instead of erroring.
  */
-export async function undoCompletion(userId: string, habitId: string, stat: Stat) {
+export async function undoCompletion(
+  userId: string,
+  habitId: string,
+  stat: Stat,
+  timeZone: string = deviceTimeZone()
+) {
   // userId/stat remain in the signature for API stability; the RPC resolves
   // both server-side so client and DB can't disagree.
   void userId;
@@ -49,7 +56,7 @@ export async function undoCompletion(userId: string, habitId: string, stat: Stat
 
   const { error } = await supabase.rpc('undo_habit_completion', {
     p_habit_id: habitId,
-    p_completed_on: todayKey(),
+    p_completed_on: todayKey(timeZone),
   });
   if (error) throw error;
 }

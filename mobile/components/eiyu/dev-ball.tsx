@@ -26,7 +26,7 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { AI_SUGGESTIONS_STORAGE_KEY, completeHabit } from '@eiyu/shared';
-import { addUtcDays, mondayOfWeek, startOfUtcDay, toDateKey } from '@eiyu/shared';
+import { accountDateKey } from '@eiyu/shared';
 import { createHabit, HabitInput } from '@eiyu/shared';
 import { supabase } from '@/lib/supabase';
 import { CompletionKind } from '@eiyu/shared';
@@ -86,20 +86,6 @@ function seedOneTimeInput(): HabitInput {
     description: 'One-time todo seeded by the dev ball.',
     time: '23:50',
   };
-}
-
-/**
- * Every date key from this ISO week's Monday through today, inclusive - the
- * window a backfilled "already completed" quest should cover. Uses the same
- * UTC helpers as eiyu-logic so seeded keys line up with what the board and
- * history screens read back.
- */
-function weekToDateKeys(now: Date = new Date()): string[] {
-  const monday = mondayOfWeek(now);
-  const today = startOfUtcDay(now);
-  const keys: string[] = [];
-  for (let d = monday; d <= today; d = addUtcDays(d, 1)) keys.push(toDateKey(d));
-  return keys;
 }
 
 interface Tool {
@@ -188,7 +174,7 @@ function DevBallInner() {
       run: () => user.quests.filter(q => q.completed).forEach(q => toggleQuest(q.id)),
     },
     {
-      label: 'Seed quest completed this week',
+      label: 'Seed quest completed today',
       run: async () => {
         if (!userId) throw new Error('Not signed in.');
         const input = seedHabitInput();
@@ -196,18 +182,13 @@ function DevBallInner() {
         // Backdate through complete_habit rather than inserting rows directly:
         // the RPC awards the matching XP in the same transaction, so seeded
         // history and the stat bars agree instead of drifting apart.
-        const keys = weekToDateKeys();
-        let seeded = 0;
-        for (const key of keys) {
-          if (Math.random() < 0.25) continue; // leave some gaps to exercise streak breaks
-          const kind: CompletionKind = Math.random() < 0.75 ? 'full' : 'easy';
-          await completeHabit(userId, habitId, input.stat, kind, key);
-          seeded += 1;
-        }
+        const todayKey = accountDateKey(new Date(), user.timeZone);
+        const kind: CompletionKind = Math.random() < 0.75 ? 'full' : 'easy';
+        await completeHabit(userId, habitId, input.stat, kind, todayKey, user.timeZone);
         await qc.invalidateQueries();
         Alert.alert(
           'Seeded',
-          `"${input.name}" with ${seeded} of ${keys.length} day(s) this week completed.`
+          `"${input.name}" completed on ${todayKey}.`
         );
       },
     },

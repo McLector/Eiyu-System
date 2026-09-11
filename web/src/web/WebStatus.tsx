@@ -13,11 +13,11 @@ import WebHeatmap from './WebHeatmap';
 
 interface Props { darkMode: boolean; }
 
-function AiSummary({ userId }: { userId: string }) {
+function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
   const [expanded, setExpanded] = useState(false);
   const { data: summary, isPending, error } = useQuery({
     queryKey: ['weeklySummary', userId],
-    queryFn: () => fetchOrCreateWeeklySummary(userId),
+    queryFn: () => fetchOrCreateWeeklySummary(userId, timeZone),
     enabled: !!userId,
     staleTime: Infinity,
   });
@@ -85,7 +85,7 @@ export default function WebStatus({ darkMode }: Props) {
 
   const weeklyReviewQuery = useQuery({
     queryKey: ['weeklyReview', userId],
-    queryFn: () => fetchWeeklyReview(userId!),
+    queryFn: () => fetchWeeklyReview(userId!, user.timeZone),
     enabled: !!userId && tab === 'weekly',
   });
 
@@ -165,7 +165,7 @@ export default function WebStatus({ darkMode }: Props) {
           </div>
         )}
 
-        {tab === 'stats' && <WebHeatmap userId={userId} />}
+        {tab === 'stats' && <WebHeatmap userId={userId} timeZone={user.timeZone} />}
 
         {tab === 'weekly' && (
           <>
@@ -205,7 +205,7 @@ export default function WebStatus({ darkMode }: Props) {
             </div>
 
             {/* AI summary — signature panel (redesign spec section 8.3) */}
-            {userId && <AiSummary userId={userId} />}
+            {userId && <AiSummary userId={userId} timeZone={user.timeZone} />}
           </>
         )}
       </div>

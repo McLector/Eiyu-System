@@ -2,18 +2,19 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   addUtcDays,
+  accountDateKey,
   fetchHistoryRange,
   heatmapCellState,
   heatmapMonthLabels,
   heatmapWeekColumns,
   heatmapWindowStart,
-  startOfUtcDay,
   toDateKey,
 } from '@eiyu/shared';
 import { StarIcon } from '../Icons';
 
 interface Props {
   userId: string | undefined;
+  timeZone: string;
 }
 
 const MONTHS_BACK = 6;
@@ -23,12 +24,12 @@ const MONTH_LABEL_HEIGHT = 16;
 const WEEKDAY_ROW_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 
 /** GitHub-style 6-month contribution graph for the Status screen. */
-export default function WebHeatmap({ userId }: Props) {
+export default function WebHeatmap({ userId, timeZone }: Props) {
   const now = new Date();
-  const todayUtcMidnight = startOfUtcDay(now);
-  const start = heatmapWindowStart(MONTHS_BACK, now);
-  const end = addUtcDays(todayUtcMidnight, 1);
-  const todayKey = toDateKey(now);
+  const todayKey = accountDateKey(now, timeZone);
+  const calendarToday = new Date(`${todayKey}T00:00:00.000Z`);
+  const start = heatmapWindowStart(MONTHS_BACK, calendarToday);
+  const end = addUtcDays(calendarToday, 1);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const historyQuery = useQuery({

@@ -1,6 +1,7 @@
-import { addUtcDays, toDateKey } from '../logic/date-utils';
+import { addDateKeyDays, addUtcDays, toDateKey } from '../logic/date-utils';
 import { supabase } from '../supabase/client';
 import { CompletionKind } from '../types/database';
+import { initializeAccountTimeZone } from './profile';
 
 export interface HistoryCompletion {
   habitName: string;
@@ -11,11 +12,8 @@ export interface HistoryCompletion {
  * Per-date detail for the history calendar and the Slice 6 heatmap.
  * `completions` is unfiltered — every habit actually completed that day,
  * including ones since archived (matches the pre-Slice-6 tooltip behavior).
- * `completedCount`/`scheduledCount` are the heatmap ratio's numerator/
- * denominator, both recomputed against the CURRENT (non-archived, recurring)
- * habit set for every date — see the design doc's "no historical schema"
- * trade-off. completedCount only counts completions whose habit is in that
- * same current-schedule set, so the ratio never exceeds 1.
+ * `completedCount`/`scheduledCount` use immutable recurring-habit occurrence
+ * rows, so schedule edits and later archiving cannot rewrite historical days.
  */
 export interface DayHistory {
   completions: HistoryCompletion[];
@@ -29,19 +27,36 @@ export type HistoryByDate = Record<string, DayHistory>;
 export async function fetchHistoryRange(userId: string, startDate: Date, endDate: Date): Promise<HistoryByDate> {
   const startStr = toDateKey(startDate);
   const endStr = toDateKey(endDate);
+  await initializeAccountTimeZone();
+  const { error: ensureError } = await supabase.rpc('ensure_habit_occurrences', {
+    p_through_date: addDateKeyDays(endStr, -1),
+  });
+  if (ensureError) throw ensureError;
 
   const { data: habits, error: habitsError } = await supabase
     .from('habits')
-    .select('id, name, quest_type, days, archived')
+    .select('id, name, quest_type')
     .eq('user_id', userId);
   if (habitsError) throw habitsError;
 
   const nameByHabit = new Map((habits ?? []).map(h => [h.id, h.name]));
-  // Only recurring habits use day-of-week scheduling — one_time rows carry a
-  // meaningless default `days` and are scheduled by scheduled_date instead
-  // (see quest-recurrence.ts's todayQuestsFilter, which this reproduces the
-  // day-mask half of).
-  const scheduledHabits = (habits ?? []).filter(h => h.quest_type === 'habit' && !h.archived);
+  const recurringHabitIds = new Set((habits ?? []).filter(h => h.quest_type === 'habit').map(h => h.id));
+
+  const { data: occurrences, error: occurrencesError } = await supabase
+    .from('habit_occurrences')
+    .select('habit_id, occurrence_date')
+    .eq('user_id', userId)
+    .gte('occurrence_date', startStr)
+    .lt('occurrence_date', endStr);
+  if (occurrencesError) throw occurrencesError;
+  const scheduledByDate = new Map<string, Set<string>>();
+  for (const occurrence of occurrences ?? []) {
+    if (!recurringHabitIds.has(occurrence.habit_id)) continue;
+    if (!scheduledByDate.has(occurrence.occurrence_date)) {
+      scheduledByDate.set(occurrence.occurrence_date, new Set());
+    }
+    scheduledByDate.get(occurrence.occurrence_date)!.add(occurrence.habit_id);
+  }
 
   const { data: completions, error } = await supabase
     .from('habit_completions')
@@ -60,8 +75,7 @@ export async function fetchHistoryRange(userId: string, startDate: Date, endDate
   const result: HistoryByDate = {};
   for (let d = startDate; d < endDate; d = addUtcDays(d, 1)) {
     const dateKey = toDateKey(d);
-    const weekday = d.getUTCDay();
-    const scheduledIds = new Set(scheduledHabits.filter(h => h.days.includes(weekday)).map(h => h.id));
+    const scheduledIds = scheduledByDate.get(dateKey) ?? new Set<string>();
     const dayCompletions = completionsByDate.get(dateKey) ?? [];
 
     const completionDetails: HistoryCompletion[] = [];
@@ -79,7 +93,7 @@ export async function fetchHistoryRange(userId: string, startDate: Date, endDate
   return result;
 }
 
-/** Completions + heatmap ratio for a given UTC month, grouped by date key. Thin wrapper over `fetchHistoryRange`. */
+/** Completions + heatmap ratio for a calendar month, grouped by canonical date key. */
 export function fetchMonthHistory(userId: string, year: number, month: number): Promise<HistoryByDate> {
   return fetchHistoryRange(userId, new Date(Date.UTC(year, month, 1)), new Date(Date.UTC(year, month + 1, 1)));
 }

@@ -53,7 +53,7 @@ describe('regenerateWeeklySummary', () => {
       throw new Error(`unexpected table ${table}`);
     });
 
-    const result = await regenerateWeeklySummary('user-1', now);
+    const result = await regenerateWeeklySummary('user-1', 'UTC', now);
 
     expect(result).toBe('a fresh paragraph');
     expect(supabase.rpc).toHaveBeenCalledWith('reserve_weekly_summary_regen', {
@@ -76,8 +76,8 @@ describe('regenerateWeeklySummary', () => {
       error: Object.assign(new Error('regen cap reached for week 2026-08-31'), { code: 'P0001' }),
     });
 
-    await expect(regenerateWeeklySummary('user-1', now)).rejects.toThrow('regen cap reached');
-    await expect(regenerateWeeklySummary('user-1', now)).rejects.toMatchObject({ code: 'P0001' });
+    await expect(regenerateWeeklySummary('user-1', 'UTC', now)).rejects.toThrow('regen cap reached');
+    await expect(regenerateWeeklySummary('user-1', 'UTC', now)).rejects.toMatchObject({ code: 'P0001' });
     expect(supabase.rpc).toHaveBeenCalledTimes(2);
     expect(generateWeeklySummary).not.toHaveBeenCalled();
     expect(supabase.from).not.toHaveBeenCalled();
@@ -92,6 +92,6 @@ describe('regenerateWeeklySummary', () => {
       throw new Error(`unexpected table ${table}`);
     });
 
-    await expect(regenerateWeeklySummary('user-1', now)).rejects.toThrow('update failed');
+    await expect(regenerateWeeklySummary('user-1', 'UTC', now)).rejects.toThrow('update failed');
   });
 });

@@ -1,27 +1,22 @@
-import { toDateKey } from './date-utils';
+import { accountDateKey, weekdayForDateKey } from './date-utils';
 import { Quest } from '../types/eiyu';
 
 /**
- * PostgREST filter selecting what appears on TODAY's board (UTC-day math,
- * consistent with completed_on and streakState):
- * - recurring habits whose days array contains today's UTC weekday;
+ * PostgREST filter selecting what appears on TODAY's board in the persisted
+ * account timezone:
+ * - recurring habits whose days array contains today's account weekday;
  * - one-time quests scheduled for today (an explicit, user-set date, not
  *   just "created today" — Slice 4).
  *
  * Extracted as a pure function so the day-boundary logic stays unit-tested
  * (see __tests__/quest-recurrence.test.ts).
  *
- * Known tradeoff (Phase 4 review): "today" is a UTC day here, matching the
- * rest of the app (completed_on keys, streak day-of-week math). A non-UTC
- * user's one-time quest can therefore vanish a few hours before their local
- * midnight or linger past it. Kept UTC for consistency - switching one-time
- * quests alone to local-day while completions stay UTC-keyed would create
- * worse mismatches (visible quest whose completion lands on the wrong date).
- * Revisit only as part of a broader local-day refactor of completed_on.
+ * The timezone is an account value rather than a device-local setting, so
+ * mobile and web produce the same date key even when opened in different zones.
  */
-export function todayQuestsFilter(now: Date): string {
-  const dayOfWeek = now.getUTCDay();
-  const todayStr = toDateKey(now);
+export function todayQuestsFilter(now: Date, timeZone: string): string {
+  const todayStr = accountDateKey(now, timeZone);
+  const dayOfWeek = weekdayForDateKey(todayStr);
   return (
     `and(quest_type.eq.habit,days.cs.{${dayOfWeek}}),` +
     `and(quest_type.eq.one_time,scheduled_date.eq.${todayStr})`

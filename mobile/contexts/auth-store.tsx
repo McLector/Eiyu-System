@@ -1,5 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { deviceTimeZone } from '@eiyu/shared';
 
 import { supabase } from '@/lib/supabase';
 
@@ -49,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { display_name: displayName } },
+          options: { data: { display_name: displayName, time_zone: deviceTimeZone() } },
         });
         if (error) return { error: error.message };
         return { error: null, needsEmailConfirmation: !data.session };

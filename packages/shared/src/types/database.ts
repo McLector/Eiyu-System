@@ -19,6 +19,8 @@ export interface Database {
           user_class: string;
           target_role: string | null;
           theme: ThemeKey;
+          time_zone: string | null;
+          time_zone_changed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -59,6 +61,7 @@ export interface Database {
           updated_at: string;
           scheduled_date: string | null;
           target_count: number | null;
+          schedule_start_on: string;
         };
         Insert: Partial<Omit<Database['public']['Tables']['habits']['Row'], 'user_id'>> & {
           user_id: string;
@@ -82,6 +85,29 @@ export interface Database {
           progress_date: string;
         };
         Update: Partial<Database['public']['Tables']['habit_progress']['Row']>;
+        Relationships: [];
+      };
+      habit_schedule_versions: {
+        Row: {
+          habit_id: string;
+          user_id: string;
+          effective_from: string;
+          days: number[];
+          created_at: string;
+        };
+        Insert: Database['public']['Tables']['habit_schedule_versions']['Row'];
+        Update: Partial<Database['public']['Tables']['habit_schedule_versions']['Row']>;
+        Relationships: [];
+      };
+      habit_occurrences: {
+        Row: {
+          habit_id: string;
+          user_id: string;
+          occurrence_date: string;
+          created_at: string;
+        };
+        Insert: Database['public']['Tables']['habit_occurrences']['Row'];
+        Update: Partial<Database['public']['Tables']['habit_occurrences']['Row']>;
         Relationships: [];
       };
       habit_completions: {
@@ -226,6 +252,22 @@ export interface Database {
       increment_habit_progress: {
         Args: { p_habit_id: string; p_date: string; p_delta: number };
         Returns: number;
+      };
+      initialize_account_time_zone: {
+        Args: { p_time_zone: string };
+        Returns: string;
+      };
+      set_account_time_zone: {
+        Args: { p_time_zone: string };
+        Returns: string;
+      };
+      ensure_habit_occurrences: {
+        Args: { p_through_date: string };
+        Returns: undefined;
+      };
+      get_habits_for_date: {
+        Args: { p_date: string };
+        Returns: Database['public']['Tables']['habits']['Row'][];
       };
     };
   };

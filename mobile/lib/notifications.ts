@@ -1,4 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  accountDateKey,
+  deviceTimeZone,
+  nextAccountWeekdayInstant,
+  weekdayForDateKey,
+  zonedDateTimeInstant,
+} from '@eiyu/shared';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
@@ -94,11 +101,15 @@ export async function cancelHabitReminders(habitId: string) {
 }
 
 /**
- * R-40: one weekly-repeating trigger per scheduled day at the habit's
- * reminder time. JS day-of-week (0=Sun) -> expo-notifications weekday
- * (1=Sun), hence the +1.
+ * R-40: one weekly-repeating trigger per scheduled account weekday at the
+ * habit's reminder time. iOS retains the IANA timezone; Android is mapped to
+ * the device-local weekly trigger supported by Expo SDK 54.
  */
-export async function scheduleHabitReminders(habitId: string, input: ReminderSchedule) {
+export async function scheduleHabitReminders(
+  habitId: string,
+  input: ReminderSchedule,
+  timeZone: string
+) {
   if (!SUPPORTED) return;
   await serializeMapOp(async () => {
     const map = await readIdMap();
@@ -106,23 +117,50 @@ export async function scheduleHabitReminders(habitId: string, input: ReminderSch
     await cancelHabitRemindersLocked(map, habitId);
 
     const [hour, minute] = input.time.split(':').map(Number);
+    const localZone = deviceTimeZone();
     const ids = await Promise.all(
-      input.days.map(day =>
-        Notifications.scheduleNotificationAsync({
+      input.days.map(day => {
+        // iOS accepts an IANA timezone directly. Android's SDK 54 weekly
+        // trigger is device-local, so map the next account-zone occurrence
+        // to device-local weekday/time and re-arm during normal app sync.
+        const trigger: Notifications.NotificationTriggerInput = Platform.OS === 'ios'
+          ? {
+              type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+              weekday: day + 1,
+              hour,
+              minute,
+              second: 0,
+              repeats: true,
+              timezone: timeZone,
+            }
+          : (() => {
+              const next = nextAccountWeekdayInstant(new Date(), day, input.time, timeZone);
+              const localKey = accountDateKey(next, localZone);
+              const localClock = new Intl.DateTimeFormat('en-US', {
+                timeZone: localZone,
+                hour: '2-digit',
+                minute: '2-digit',
+                hourCycle: 'h23',
+              }).formatToParts(next);
+              const part = (type: Intl.DateTimeFormatPartTypes) =>
+                Number(localClock.find(value => value.type === type)?.value);
+              return {
+                type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+                weekday: weekdayForDateKey(localKey) + 1,
+                hour: part('hour'),
+                minute: part('minute'),
+                channelId: CHANNEL_ID,
+              };
+            })();
+        return Notifications.scheduleNotificationAsync({
           content: {
             title: input.name,
             body: 'Time for your quest — tap to open Eiyu System.',
             sound: true,
           },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-            weekday: day + 1,
-            hour,
-            minute,
-            channelId: CHANNEL_ID,
-          },
-        })
-      )
+          trigger,
+        });
+      })
     );
 
     map[habitId] = ids;
@@ -132,8 +170,8 @@ export async function scheduleHabitReminders(habitId: string, input: ReminderSch
 
 /**
  * One-time quests (#7): a single DATE trigger at the quest's scheduled date
- * and HH:mm (local clock, matching how WEEKLY triggers interpret
- * hour/minute). If that moment has already passed, nothing is scheduled —
+ * and HH:mm in the persisted account timezone. If that moment has already
+ * passed, nothing is scheduled —
  * a past-due one-time quest silently reminding about a missed todo would
  * violate the app's no-shame principle (R-15). IDs land in the same map,
  * so cancelHabitReminders/edit/archive clean these up exactly like weekly
@@ -143,7 +181,8 @@ export async function scheduleHabitReminders(habitId: string, input: ReminderSch
  */
 export async function scheduleOneTimeReminder(
   habitId: string,
-  input: { name: string; time: string; date: string }
+  input: { name: string; time: string; date: string },
+  timeZone: string
 ) {
   if (!SUPPORTED) return;
   await serializeMapOp(async () => {
@@ -151,9 +190,7 @@ export async function scheduleOneTimeReminder(
     // Unlocked variant — we already hold the map lock (see deadlock note above).
     await cancelHabitRemindersLocked(map, habitId);
 
-    const [hour, minute] = input.time.split(':').map(Number);
-    const [year, month, day] = input.date.split('-').map(Number);
-    const at = new Date(year, month - 1, day, hour, minute, 0, 0);
+    const at = zonedDateTimeInstant(input.date, input.time, timeZone);
     if (at.getTime() <= Date.now()) {
       await writeIdMap(map); // persist the cancel even when nothing is scheduled
       return;

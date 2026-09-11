@@ -1,5 +1,5 @@
 import { STATS } from '../constants/eiyu-data';
-import { addUtcDays, toDateKey } from '../logic/date-utils';
+import { accountDateKey, addDateKeyDays, weekdayForDateKey } from '../logic/date-utils';
 import { supabase } from '../supabase/client';
 import { Stat } from '../types/eiyu';
 
@@ -12,10 +12,13 @@ function emptyDayCounts(): Record<Stat, number> {
 }
 
 /** Completions per stat per day for the last 7 days (today inclusive), for the Weekly Review tab. */
-export async function fetchWeeklyReview(userId: string): Promise<WeeklyDayDatum[]> {
-  const today = new Date();
-  const start = addUtcDays(today, -6);
-  const startStr = toDateKey(start);
+export async function fetchWeeklyReview(
+  userId: string,
+  timeZone: string,
+  now: Date = new Date()
+): Promise<WeeklyDayDatum[]> {
+  const todayKey = accountDateKey(now, timeZone);
+  const startStr = addDateKeyDays(todayKey, -6);
 
   // includes archived habits: past completions still happened, even for
   // habits the user has since archived.
@@ -35,7 +38,7 @@ export async function fetchWeeklyReview(userId: string): Promise<WeeklyDayDatum[
 
   const buckets = new Map<string, Record<Stat, number>>();
   for (let i = 0; i < 7; i++) {
-    buckets.set(toDateKey(addUtcDays(start, i)), emptyDayCounts());
+    buckets.set(addDateKeyDays(startStr, i), emptyDayCounts());
   }
 
   for (const c of completions ?? []) {
@@ -46,7 +49,7 @@ export async function fetchWeeklyReview(userId: string): Promise<WeeklyDayDatum[
   }
 
   return Array.from(buckets.entries()).map(([dateKey, counts]) => ({
-    day: DAY_LABELS[new Date(`${dateKey}T00:00:00Z`).getUTCDay()],
+    day: DAY_LABELS[weekdayForDateKey(dateKey)],
     ...counts,
   }));
 }

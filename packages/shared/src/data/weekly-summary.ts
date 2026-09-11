@@ -1,7 +1,7 @@
 import { generateWeeklySummary, WeeklySummaryHabitDatum } from '../ai/suggestions';
 import { supabase } from '../supabase/client';
 import { STATS } from '../constants/eiyu-data';
-import { addUtcDays, mondayOfWeek, toDateKey } from '../logic/date-utils';
+import { accountDateKey, addDateKeyDays, mondayDateKey } from '../logic/date-utils';
 import { Stat } from '../types/eiyu';
 
 export async function gatherWeekData(
@@ -53,10 +53,13 @@ export async function gatherWeekData(
  * cached in weekly_summaries so the paragraph is stable and isn't
  * regenerated on every Status screen visit.
  */
-export async function fetchOrCreateWeeklySummary(userId: string, now: Date = new Date()): Promise<string> {
-  const weekStartDate = mondayOfWeek(now);
-  const weekStart = toDateKey(weekStartDate);
-  const weekEnd = toDateKey(addUtcDays(weekStartDate, 7));
+export async function fetchOrCreateWeeklySummary(
+  userId: string,
+  timeZone: string,
+  now: Date = new Date()
+): Promise<string> {
+  const weekStart = mondayDateKey(accountDateKey(now, timeZone));
+  const weekEnd = addDateKeyDays(weekStart, 7);
 
   const { data: existing, error: fetchError } = await supabase
     .from('weekly_summaries')
@@ -98,10 +101,13 @@ export async function fetchOrCreateWeeklySummary(userId: string, now: Date = new
  * writes the new summary back once both the reservation and the generation
  * succeed.
  */
-export async function regenerateWeeklySummary(userId: string, now: Date = new Date()): Promise<string> {
-  const weekStartDate = mondayOfWeek(now);
-  const weekStart = toDateKey(weekStartDate);
-  const weekEnd = toDateKey(addUtcDays(weekStartDate, 7));
+export async function regenerateWeeklySummary(
+  userId: string,
+  timeZone: string,
+  now: Date = new Date()
+): Promise<string> {
+  const weekStart = mondayDateKey(accountDateKey(now, timeZone));
+  const weekEnd = addDateKeyDays(weekStart, 7);
 
   const { error: reserveError } = await supabase.rpc('reserve_weekly_summary_regen', {
     p_week_start: weekStart,

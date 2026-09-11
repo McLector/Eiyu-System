@@ -38,7 +38,7 @@ export default function StatusScreen() {
     let cancelled = false;
     setWeeklyLoading(true);
     setWeeklyError(null);
-    fetchWeeklyReview(userId)
+    fetchWeeklyReview(userId, user.timeZone)
       .then(data => {
         if (!cancelled) setWeeklyData(data);
       })
@@ -52,7 +52,7 @@ export default function StatusScreen() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user.id, tab]);
+  }, [session?.user.id, tab, user.timeZone]);
 
   /**
    * R-60: the summary is PREFETCHED on mount rather than on the weekly tab
@@ -74,7 +74,7 @@ export default function StatusScreen() {
     let cancelled = false;
     setWeeklySummaryLoading(true);
     setWeeklySummaryError(null);
-    fetchOrCreateWeeklySummary(userId)
+    fetchOrCreateWeeklySummary(userId, user.timeZone)
       .then(text => {
         if (!cancelled) setWeeklySummary(text);
       })
@@ -93,7 +93,7 @@ export default function StatusScreen() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user.id]);
+  }, [session?.user.id, user.timeZone]);
 
   const handleRegenerate = async () => {
     const userId = session?.user.id;
@@ -101,7 +101,7 @@ export default function StatusScreen() {
     setRegenerating(true);
     setRegenerateError(null);
     try {
-      const text = await regenerateWeeklySummary(userId);
+      const text = await regenerateWeeklySummary(userId, user.timeZone);
       setWeeklySummary(text);
     } catch (err) {
       const message = formatError(err);

@@ -6,7 +6,7 @@ import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-na
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { StatIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
-import { DAYS, STATS, STAT_COLORS } from '@eiyu/shared';
+import { accountDateKey, DAYS, STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { formatError, suggestEasyVersions } from '@eiyu/shared';
@@ -76,7 +76,7 @@ export default function QuestEditorScreen() {
   const [description, setDescription] = useState(quest?.description ?? '');
   const [time, setTime] = useState(quest?.time ?? '08:00');
   const [timePickerVisible, setTimePickerVisible] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState(dateToDateKey(new Date()));
+  const [scheduledDate, setScheduledDate] = useState(accountDateKey(new Date(), user.timeZone));
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [targetCount, setTargetCount] = useState<string>(quest?.targetCount != null ? String(quest.targetCount) : '');
   const [days, setDays] = useState<number[]>(quest?.days ?? [0, 1, 2, 3, 4, 5, 6]);

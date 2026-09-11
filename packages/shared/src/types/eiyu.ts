@@ -52,6 +52,8 @@ export interface LongQuest {
 export interface UserProfile {
   name: string;
   userClass: string;
+  /** Persisted IANA timezone defining this account's product-day midnight. */
+  timeZone: string;
   rank: Rank;
   stats: Record<Stat, StatData>;
   quests: Quest[];

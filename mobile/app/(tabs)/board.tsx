@@ -301,7 +301,7 @@ export default function BoardScreen() {
                 {user.userClass}
               </Text>
               <Text style={[styles.dateText, { color: theme.dim, fontFamily: fonts.body }]}>
-                {formatDisplayDate(new Date())}
+                {formatDisplayDate(new Date(), user.timeZone)}
               </Text>
             </View>
           </View>

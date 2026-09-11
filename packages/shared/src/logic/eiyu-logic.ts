@@ -1,5 +1,13 @@
 import { STATS } from '../constants/eiyu-data';
-import { addUtcDays, startOfUtcDay, toDateKey } from './date-utils';
+import {
+  accountDateKey,
+  addDateKeyDays,
+  addUtcDays,
+  startOfUtcDay,
+  toDateKey,
+  weekdayForDateKey,
+  zonedDayBounds,
+} from './date-utils';
 import { Quest, Rank, Stat, StatData } from '../types/eiyu';
 
 // R-21: full completion = 100% of the base award, easy/recovery = ~20%.
@@ -86,25 +94,40 @@ export function weakestStat(stats: Record<Stat, StatData>): Stat {
 export function currentStreak(
   scheduledDays: number[],
   completedDates: Set<string>,
-  today: Date = new Date()
+  today: Date = new Date(),
+  timeZone = 'UTC',
+  scheduleStartOn?: string
+): number {
+  return currentStreakAtDateKey(
+    scheduledDays,
+    completedDates,
+    accountDateKey(today, timeZone),
+    scheduleStartOn
+  );
+}
+
+function currentStreakAtDateKey(
+  scheduledDays: number[],
+  completedDates: Set<string>,
+  todayKey: string,
+  scheduleStartOn?: string
 ): number {
   let streak = 0;
-  let cursor = today;
-  const todayKey = toDateKey(today);
+  let cursorKey = todayKey;
   const scheduled = new Set(scheduledDays);
 
   for (let i = 0; i < 3650; i++) {
-    const dow = cursor.getUTCDay();
+    if (scheduleStartOn && cursorKey < scheduleStartOn) break;
+    const dow = weekdayForDateKey(cursorKey);
     if (scheduled.has(dow)) {
-      const key = toDateKey(cursor);
-      if (completedDates.has(key)) {
+      if (completedDates.has(cursorKey)) {
         streak += 1;
-      } else if (key !== todayKey) {
+      } else if (cursorKey !== todayKey) {
         break;
       }
-      // key === todayKey and not completed: neutral, keep walking backward
+      // todayKey and not completed: neutral, keep walking backward
     }
-    cursor = addUtcDays(cursor, -1);
+    cursorKey = addDateKeyDays(cursorKey, -1);
   }
   return streak;
 }
@@ -118,19 +141,19 @@ export function currentStreak(
 function findFirstMiss(
   scheduledDays: number[],
   completedDates: Set<string>,
-  today: Date,
-  sinceDate: Date
-): Date | null {
+  todayKey: string,
+  sinceKey: string
+): string | null {
   const scheduled = new Set(scheduledDays);
-  let cursor = today;
-  let firstMiss: Date | null = null;
+  let cursorKey = todayKey;
+  let firstMiss: string | null = null;
 
   for (let i = 0; i < 366; i++) {
-    cursor = addUtcDays(cursor, -1);
-    if (cursor.getTime() < sinceDate.getTime()) break;
-    if (!scheduled.has(cursor.getUTCDay())) continue;
-    if (completedDates.has(toDateKey(cursor))) break;
-    firstMiss = cursor;
+    cursorKey = addDateKeyDays(cursorKey, -1);
+    if (cursorKey < sinceKey) break;
+    if (!scheduled.has(weekdayForDateKey(cursorKey))) continue;
+    if (completedDates.has(cursorKey)) break;
+    firstMiss = cursorKey;
   }
   return firstMiss;
 }
@@ -142,6 +165,65 @@ export interface StreakState {
   frozenDate?: string;
   /** hours left in the 24h recovery window, only set when frozen (R-12) */
   frozenHoursLeft?: number;
+}
+
+function currentStreakFromDateKeys(
+  occurrenceDates: Set<string>,
+  completedDates: Set<string>,
+  todayKey: string
+): number {
+  const eligible = [...occurrenceDates].filter(key => key <= todayKey).sort().reverse();
+  let current = 0;
+  for (const key of eligible) {
+    if (completedDates.has(key)) current += 1;
+    else if (key !== todayKey) break;
+  }
+  return current;
+}
+
+/**
+ * Streak state derived from immutable eligible occurrences. Unlike deriving
+ * from the habit's latest `days` array, this cannot rewrite history when a
+ * schedule changes prospectively.
+ */
+export function streakStateFromOccurrences(
+  occurrenceDates: Set<string>,
+  completedDates: Set<string>,
+  now: Date = new Date(),
+  timeZone = 'UTC'
+): StreakState {
+  const todayKey = accountDateKey(now, timeZone);
+  const pastEligible = [...occurrenceDates].filter(key => key < todayKey).sort().reverse();
+  let firstMiss: string | undefined;
+
+  for (const key of pastEligible) {
+    if (completedDates.has(key)) break;
+    firstMiss = key;
+  }
+
+  if (!firstMiss) {
+    return {
+      current: currentStreakFromDateKeys(occurrenceDates, completedDates, todayKey),
+      state: 'active',
+    };
+  }
+
+  const daysSinceMiss = Math.round(
+    (Date.parse(`${todayKey}T00:00:00Z`) - Date.parse(`${firstMiss}T00:00:00Z`)) / 86_400_000
+  );
+  if (daysSinceMiss === 1) {
+    const recoveryDate = addDateKeyDays(firstMiss, 1);
+    const deadline = zonedDayBounds(recoveryDate, timeZone).end;
+    const hoursLeft = Math.max(0, Math.ceil((deadline.getTime() - now.getTime()) / 3_600_000));
+    return {
+      current: currentStreakFromDateKeys(occurrenceDates, completedDates, firstMiss),
+      state: 'frozen',
+      frozenDate: firstMiss,
+      frozenHoursLeft: Math.min(24, hoursLeft),
+    };
+  }
+
+  return { current: 0, state: 'broken' };
 }
 
 /**
@@ -160,25 +242,33 @@ export function streakState(
   scheduledDays: number[],
   completedDates: Set<string>,
   now: Date = new Date(),
-  habitCreatedAt: Date = new Date(0)
+  habitCreatedAt: Date = new Date(0),
+  timeZone = 'UTC',
+  scheduleStartOn?: string
 ): StreakState {
-  const today = startOfUtcDay(now);
-  const sinceDate = startOfUtcDay(habitCreatedAt);
-  const firstMiss = findFirstMiss(scheduledDays, completedDates, today, sinceDate);
+  const todayKey = accountDateKey(now, timeZone);
+  const sinceKey = scheduleStartOn ?? accountDateKey(habitCreatedAt, timeZone);
+  const firstMiss = findFirstMiss(scheduledDays, completedDates, todayKey, sinceKey);
 
   if (!firstMiss) {
-    return { current: currentStreak(scheduledDays, completedDates, now), state: 'active' };
+    return {
+      current: currentStreakAtDateKey(scheduledDays, completedDates, todayKey, sinceKey),
+      state: 'active',
+    };
   }
 
-  const daysSinceMiss = Math.round((today.getTime() - firstMiss.getTime()) / 86_400_000);
+  const daysSinceMiss = Math.round(
+    (Date.parse(`${todayKey}T00:00:00Z`) - Date.parse(`${firstMiss}T00:00:00Z`)) / 86_400_000
+  );
 
   if (daysSinceMiss === 1) {
-    const deadline = addUtcDays(firstMiss, 2); // midnight ending the recovery day
+    const recoveryDate = addDateKeyDays(firstMiss, 1);
+    const deadline = zonedDayBounds(recoveryDate, timeZone).end;
     const hoursLeft = Math.max(0, Math.ceil((deadline.getTime() - now.getTime()) / 3_600_000));
     return {
-      current: currentStreak(scheduledDays, completedDates, firstMiss),
+      current: currentStreakAtDateKey(scheduledDays, completedDates, firstMiss, sinceKey),
       state: 'frozen',
-      frozenDate: toDateKey(firstMiss),
+      frozenDate: firstMiss,
       frozenHoursLeft: Math.min(24, hoursLeft),
     };
   }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
+import { accountDateKey, Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
 import { STAT_COLORS } from '@eiyu/shared';
 import { SparkleIcon, StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
@@ -12,16 +12,12 @@ interface Props {
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
 
 export default function WebQuestEditor({ editingQuest, onClose }: Props) {
-  const { saveHabit, archiveQuest } = useEiyu();
+  const { user, saveHabit, archiveQuest } = useEiyu();
   const [name, setName] = useState(editingQuest?.name ?? '');
   const [note, setNote] = useState(editingQuest?.description ?? '');
   const [easyVer, setEasyVer] = useState(editingQuest?.easyVersion ?? '');
   const [time, setTime] = useState(editingQuest?.time ?? '07:00');
-  const [scheduledDate, setScheduledDate] = useState(() => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  });
+  const [scheduledDate, setScheduledDate] = useState(() => accountDateKey(new Date(), user.timeZone));
   const [targetCount, setTargetCount] = useState(editingQuest?.targetCount != null ? String(editingQuest.targetCount) : '');
   const [days, setDays] = useState<number[]>(editingQuest?.days ?? [1, 2, 3, 4, 5]);
   const [stat, setStat] = useState<Stat>(editingQuest?.stat ?? 'INT');

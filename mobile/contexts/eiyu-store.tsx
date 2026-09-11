@@ -34,7 +34,7 @@ import { useAuth } from '@/contexts/auth-store';
 import { completeHabit, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
 import { rankFromStats } from '@eiyu/shared';
 import { formatError } from '@eiyu/shared';
-import { toDateKey } from '@eiyu/shared';
+import { accountDateKey, deviceTimeZone, millisecondsUntilNextAccountDay } from '@eiyu/shared';
 import {
   archiveHabit,
   createHabit,
@@ -139,6 +139,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
+  const [accountDayRevision, setAccountDayRevision] = useState(0);
 
   const habitsQuery = useQuery({
     queryKey: habitsTodayKey(userId),
@@ -160,8 +161,13 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     queryKey: ['weeklyQuest', userId ?? null],
     // Self-fetches stats so create-or-fetch can never seed against stale data
     // even when invalidations below are dispatched in parallel.
-    queryFn: async () => fetchOrCreateWeeklyQuest(userId!, await fetchStats(userId!)),
-    enabled: !!userId,
+    queryFn: async () =>
+      fetchOrCreateWeeklyQuest(
+        userId!,
+        await fetchStats(userId!),
+        profileQuery.data!.timeZone
+      ),
+    enabled: !!userId && !!profileQuery.data,
   });
   const longQuestsQuery = useQuery({
     queryKey: longQuestsKey(userId),
@@ -174,6 +180,30 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const stats = useMemo(() => statsQuery.data ?? initialUser.stats, [statsQuery.data]);
   const profile = profileQuery.data ?? null;
   const weeklyQuest = weeklyQuestQuery.data ?? null;
+
+  useEffect(() => {
+    if (!userId || !profile?.timeZone) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleNextRollover = () => {
+      const delay = millisecondsUntilNextAccountDay(new Date(), profile.timeZone) + 50;
+      timer = setTimeout(() => {
+        if (!active) return;
+        Promise.all([
+          qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
+          qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
+        ]).finally(() => {
+          setAccountDayRevision(revision => revision + 1);
+          scheduleNextRollover();
+        });
+      }, delay);
+    };
+    scheduleNextRollover();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [profile?.timeZone, qc, userId]);
 
   // A failure in ANY load query must reach the same error+retry UI - deriving
   // from habitsQuery alone silently dropped profile/stats/weekly failures.
@@ -232,18 +262,23 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const granted = await requestNotificationPermissions();
       if (!granted) return;
       await ensureNotificationSetup();
+      const accountTimeZone = profile?.timeZone ?? deviceTimeZone();
       const habits = await fetchAllActiveHabits(userId);
-      await Promise.all(habits.map(h => scheduleHabitReminders(h.id, h)));
+      await Promise.all(habits.map(h => scheduleHabitReminders(h.id, h, accountTimeZone)));
       // Re-arm today's one-time reminders too - cancelAllHabitReminders wiped
       // their ids from the shared map, and the recurring resync above excludes
       // them by design. scheduleOneTimeReminder no-ops for past times.
       // fetchTodayOneTimeHabits already filters to scheduled_date = today
       // (Slice 4), so "today" is the correct date for every item it returns.
-      const todayKey = new Date().toISOString().slice(0, 10);
+      const todayKey = accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone());
       const oneTimeToday = await fetchTodayOneTimeHabits(userId);
-      await Promise.all(oneTimeToday.map(h => scheduleOneTimeReminder(h.id, { ...h, date: todayKey })));
+      await Promise.all(
+        oneTimeToday.map(h =>
+          scheduleOneTimeReminder(h.id, { ...h, date: todayKey }, accountTimeZone)
+        )
+      );
     },
-    [userId]
+    [userId, profile?.timeZone]
   );
 
   useEffect(() => {
@@ -253,8 +288,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
     syncAllReminders(notificationsEnabled).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, notificationsEnabled]);
+  }, [userId, notificationsEnabled, syncAllReminders, accountDayRevision]);
 
   const setNotificationsEnabled = useCallback((enabled: boolean) => {
     setNotificationsEnabledState(enabled);
@@ -293,21 +327,33 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId) return;
       if (quest.completed) {
-        void runCompletion(id, () => undoCompletion(userId, id, quest.stat), false);
+        void runCompletion(
+          id,
+          () => undoCompletion(userId, id, quest.stat, profile?.timeZone),
+          false
+        );
       } else {
-        void runCompletion(id, () => completeHabit(userId, id, quest.stat, 'full'), true);
+        void runCompletion(
+          id,
+          () => completeHabit(userId, id, quest.stat, 'full', undefined, profile?.timeZone),
+          true
+        );
       }
     },
-    [quests, userId, runCompletion]
+    [quests, userId, runCompletion, profile?.timeZone]
   );
 
   const completeEasy = useCallback(
     (id: string) => {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId || quest.completed || !quest.easyVersion) return;
-      void runCompletion(id, () => completeHabit(userId, id, quest.stat, 'easy'), true);
+      void runCompletion(
+        id,
+        () => completeHabit(userId, id, quest.stat, 'easy', undefined, profile?.timeZone),
+        true
+      );
     },
-    [quests, userId, runCompletion]
+    [quests, userId, runCompletion, profile?.timeZone]
   );
 
   /**
@@ -329,7 +375,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       qc.setQueryData<Quest[]>(key, qs =>
         qs?.map(q => (q.id === id ? { ...q, progressCount: optimisticNew, completed: optimisticNew >= target } : q))
       );
-      incrementHabitProgress(id, toDateKey(new Date()), delta)
+      incrementHabitProgress(
+        id,
+        accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone()),
+        delta
+      )
         .then(async serverCount => {
           qc.setQueryData<Quest[]>(key, qs =>
             qs?.map(q => (q.id === id ? { ...q, progressCount: serverCount, completed: serverCount >= target } : q))
@@ -347,7 +397,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           setQuestActionError(formatError(err));
         });
     },
-    [quests, userId, qc]
+    [quests, userId, qc, profile?.timeZone]
   );
 
   const completeRecovery = useCallback(
@@ -355,7 +405,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId || !quest.frozen || !quest.frozenDate) return;
       try {
-        await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate);
+        await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate, profile?.timeZone);
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
@@ -366,7 +416,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setQuestActionError(formatError(err));
       }
     },
-    [quests, userId, qc]
+    [quests, userId, qc, profile?.timeZone]
   );
 
   const saveHabit = useCallback(
@@ -385,16 +435,26 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       if (input.questType === 'one_time') {
         // One-shot DATE trigger on the quest's scheduled date; no-ops if that
         // moment has already passed.
-        scheduleOneTimeReminder(id, {
-          name: input.name,
-          time: input.time,
-          date: input.scheduledDate ?? new Date().toISOString().slice(0, 10),
-        }).catch(() => {});
+        scheduleOneTimeReminder(
+          id,
+          {
+            name: input.name,
+            time: input.time,
+            date:
+              input.scheduledDate ??
+              accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone()),
+          },
+          profile?.timeZone ?? deviceTimeZone()
+        ).catch(() => {});
       } else {
-        scheduleHabitReminders(id, input).catch(() => {});
+        scheduleHabitReminders(
+          id,
+          input,
+          profile?.timeZone ?? deviceTimeZone()
+        ).catch(() => {});
       }
     },
-    [userId, qc, notificationsEnabled]
+    [userId, qc, notificationsEnabled, profile?.timeZone]
   );
 
   const archiveQuest = useCallback(
@@ -488,6 +548,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     () => ({
       name: profile?.displayName ?? initialUser.name,
       userClass: profile?.userClass ?? initialUser.userClass,
+      timeZone: profile?.timeZone ?? deviceTimeZone(),
       rank: rankFromStats(stats),
       stats,
       quests,

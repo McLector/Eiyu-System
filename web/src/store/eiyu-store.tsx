@@ -3,6 +3,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -24,7 +25,9 @@ import {
   rankFromStats,
   reconcileLongQuestStages,
   setStageDone,
-  toDateKey,
+  accountDateKey,
+  deviceTimeZone,
+  millisecondsUntilNextAccountDay,
   undoCompletion,
   updateHabit,
   updateLongQuest,
@@ -108,6 +111,24 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const stats = useMemo(() => statsQuery.data ?? initialUser.stats, [statsQuery.data]);
   const profile = profileQuery.data ?? null;
 
+  useEffect(() => {
+    if (!userId || !profile?.timeZone) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleNextRollover = () => {
+      const delay = millisecondsUntilNextAccountDay(new Date(), profile.timeZone) + 50;
+      timer = setTimeout(() => {
+        if (!active) return;
+        qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }).finally(scheduleNextRollover);
+      }, delay);
+    };
+    scheduleNextRollover();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [profile?.timeZone, qc, userId]);
+
   const questsLoadError = retryingQuests
     ? undefined
     : [habitsQuery.error, profileQuery.error, statsQuery.error].find((e): e is Error => !!e);
@@ -151,12 +172,20 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId) return;
       if (quest.completed) {
-        void runCompletion(id, () => undoCompletion(userId, id, quest.stat), false);
+        void runCompletion(
+          id,
+          () => undoCompletion(userId, id, quest.stat, profile?.timeZone),
+          false
+        );
       } else {
-        void runCompletion(id, () => completeHabit(userId, id, quest.stat, 'full'), true);
+        void runCompletion(
+          id,
+          () => completeHabit(userId, id, quest.stat, 'full', undefined, profile?.timeZone),
+          true
+        );
       }
     },
-    [quests, userId, runCompletion]
+    [quests, userId, runCompletion, profile?.timeZone]
   );
 
   /**
@@ -178,7 +207,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       qc.setQueryData<Quest[]>(key, qs =>
         qs?.map(q => (q.id === id ? { ...q, progressCount: optimisticNew, completed: optimisticNew >= target } : q))
       );
-      incrementHabitProgress(id, toDateKey(new Date()), delta)
+      incrementHabitProgress(
+        id,
+        accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone()),
+        delta
+      )
         .then(async serverCount => {
           qc.setQueryData<Quest[]>(key, qs =>
             qs?.map(q => (q.id === id ? { ...q, progressCount: serverCount, completed: serverCount >= target } : q))
@@ -197,7 +230,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           setQuestActionError(formatError(err));
         });
     },
-    [quests, userId, qc]
+    [quests, userId, qc, profile?.timeZone]
   );
 
   const completeRecovery = useCallback(
@@ -205,7 +238,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId || !quest.frozen || !quest.frozenDate) return;
       try {
-        await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate);
+        await completeHabit(userId, id, quest.stat, 'easy', quest.frozenDate, profile?.timeZone);
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
@@ -217,7 +250,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setQuestActionError(formatError(err));
       }
     },
-    [quests, userId, qc]
+    [quests, userId, qc, profile?.timeZone]
   );
 
   const saveHabit = useCallback(
@@ -322,6 +355,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     () => ({
       name: profile?.displayName ?? initialUser.name,
       userClass: profile?.userClass ?? initialUser.userClass,
+      timeZone: profile?.timeZone ?? deviceTimeZone(),
       rank: rankFromStats(stats),
       stats,
       quests,

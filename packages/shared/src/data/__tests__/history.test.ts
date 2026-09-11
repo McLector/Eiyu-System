@@ -2,7 +2,7 @@ import { fetchHistoryRange, fetchMonthHistory } from '../history';
 import { supabase } from '../../supabase/client';
 
 jest.mock('../../supabase/client', () => ({
-  supabase: { from: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
 
 const YEAR = 2026;
@@ -12,7 +12,7 @@ function weekdayOf(day: number): number {
   return new Date(Date.UTC(YEAR, MONTH, day)).getUTCDay();
 }
 
-function mockTables(habitsData: unknown[], completionsData: unknown[]) {
+function mockTables(habitsData: unknown[], completionsData: unknown[], occurrencesData: unknown[] = []) {
   const habitsBuilder: any = {
     select: jest.fn(() => habitsBuilder),
     eq: jest.fn(() => Promise.resolve({ data: habitsData, error: null })),
@@ -23,16 +23,29 @@ function mockTables(habitsData: unknown[], completionsData: unknown[]) {
     gte: jest.fn(() => completionsBuilder),
     lt: jest.fn(() => Promise.resolve({ data: completionsData, error: null })),
   };
+  const occurrencesBuilder: any = {
+    select: jest.fn(() => occurrencesBuilder),
+    eq: jest.fn(() => occurrencesBuilder),
+    gte: jest.fn(() => occurrencesBuilder),
+    lt: jest.fn(() => Promise.resolve({ data: occurrencesData, error: null })),
+  };
   (supabase.from as jest.Mock).mockImplementation((table: string) => {
     if (table === 'habits') return habitsBuilder;
     if (table === 'habit_completions') return completionsBuilder;
+    if (table === 'habit_occurrences') return occurrencesBuilder;
     throw new Error(`unexpected table ${table}`);
+  });
+  (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+    if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
+    if (name === 'ensure_habit_occurrences') return { data: null, error: null };
+    throw new Error(`unexpected RPC ${name}`);
   });
 }
 
 describe('fetchMonthHistory', () => {
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();
+    (supabase.rpc as jest.Mock).mockReset();
   });
 
   it('returns a dense entry for every day of the month, not just days with completions', async () => {
@@ -42,7 +55,7 @@ describe('fetchMonthHistory', () => {
     expect(result['2026-09-01']).toEqual({ completions: [], completedCount: 0, scheduledCount: 0 });
   });
 
-  it('scheduledCount counts only non-archived, recurring habits whose days mask includes that date\'s weekday', async () => {
+  it('scheduledCount uses the recurring occurrence persisted for that historical date', async () => {
     const day = 10;
     const weekday = weekdayOf(day);
     const otherWeekday = (weekday + 1) % 7;
@@ -53,7 +66,8 @@ describe('fetchMonthHistory', () => {
         { id: 'h3', name: 'Archived match', quest_type: 'habit', days: [weekday], archived: true },
         { id: 'h4', name: 'One-time match', quest_type: 'one_time', days: [0, 1, 2, 3, 4, 5, 6], archived: false },
       ],
-      []
+      [],
+      [{ habit_id: 'h1', occurrence_date: `2026-09-${String(day).padStart(2, '0')}` }]
     );
     const result = await fetchMonthHistory('user-1', YEAR, MONTH);
     const key = `2026-09-${String(day).padStart(2, '0')}`;
@@ -72,7 +86,8 @@ describe('fetchMonthHistory', () => {
       [
         { habit_id: 'h1', completed_on: dateKey, kind: 'full' },
         { habit_id: 'h2', completed_on: dateKey, kind: 'full' },
-      ]
+      ],
+      [{ habit_id: 'h1', occurrence_date: dateKey }]
     );
     const result = await fetchMonthHistory('user-1', YEAR, MONTH);
     expect(result[dateKey].scheduledCount).toBe(1);
@@ -96,6 +111,7 @@ describe('fetchMonthHistory', () => {
 describe('fetchHistoryRange', () => {
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();
+    (supabase.rpc as jest.Mock).mockReset();
   });
 
   it('returns a dense entry for every day across a multi-month span, honoring the exclusive end date', async () => {
@@ -114,7 +130,11 @@ describe('fetchHistoryRange', () => {
   });
 
   it('computes scheduledCount correctly on both sides of the month boundary', async () => {
-    mockTables([{ id: 'h1', name: 'Every day', quest_type: 'habit', days: [0, 1, 2, 3, 4, 5, 6], archived: false }], []);
+    mockTables(
+      [{ id: 'h1', name: 'Every day', quest_type: 'habit', days: [0, 1, 2, 3, 4, 5, 6], archived: false }],
+      [],
+      ['2026-08-28', '2026-09-01', '2026-09-02'].map(occurrence_date => ({ habit_id: 'h1', occurrence_date }))
+    );
     const start = new Date(Date.UTC(2026, 7, 28));
     const end = new Date(Date.UTC(2026, 8, 3));
     const result = await fetchHistoryRange('user-1', start, end);
@@ -126,7 +146,8 @@ describe('fetchHistoryRange', () => {
   it('places a completion on the correct side of the month boundary', async () => {
     mockTables(
       [{ id: 'h1', name: 'Every day', quest_type: 'habit', days: [0, 1, 2, 3, 4, 5, 6], archived: false }],
-      [{ habit_id: 'h1', completed_on: '2026-09-01', kind: 'full' }]
+      [{ habit_id: 'h1', completed_on: '2026-09-01', kind: 'full' }],
+      [{ habit_id: 'h1', occurrence_date: '2026-09-01' }]
     );
     const start = new Date(Date.UTC(2026, 7, 28));
     const end = new Date(Date.UTC(2026, 8, 3));

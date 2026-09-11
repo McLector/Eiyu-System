@@ -9,7 +9,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$supabaseCli = Join-Path $projectRoot 'node_modules\.bin\supabase.cmd'
+$supabaseNativeCli = Join-Path $projectRoot 'node_modules\@supabase\cli-windows-x64\bin\supabase.exe'
+$supabaseCli = if (Test-Path -LiteralPath $supabaseNativeCli) {
+  $supabaseNativeCli
+} else {
+  Join-Path $projectRoot 'node_modules\.bin\supabase.cmd'
+}
 $localNetwork = 'eiyu-supabase-local'
 $excludedServices = 'gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor'
 
@@ -73,7 +78,11 @@ function Invoke-Supabase {
 
   Push-Location $projectRoot
   try {
-    Invoke-Checked -Executable $supabaseCli -CommandArguments $CommandArguments
+    # CLI 2.117 auto-detects coding agents and otherwise substitutes a limited
+    # JSON-only command surface. This wrapper needs the normal local-dev CLI.
+    Invoke-Checked -Executable $supabaseCli -CommandArguments (
+      @('--agent', 'no', '--network-id', $localNetwork) + $CommandArguments
+    )
   } finally {
     Pop-Location
   }
@@ -84,7 +93,6 @@ function Start-LocalStack {
   Ensure-LocalNetwork
   Invoke-Supabase -CommandArguments @(
     'start',
-    '--network-id', $localNetwork,
     '--exclude', $excludedServices
   )
 }
@@ -117,7 +125,7 @@ switch ($Action) {
     }
   }
   'status' {
-    Invoke-Supabase -CommandArguments @('status', '--output', 'table')
+    Invoke-Supabase -CommandArguments @('status', '--output', 'pretty')
   }
   'stop' {
     Invoke-Supabase -CommandArguments @('stop')

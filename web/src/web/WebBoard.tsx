@@ -212,7 +212,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
           <div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 4 }}>TODAY</div>
             <div style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)', marginBottom: 4 }}>
-              {formatDisplayDate(new Date())}
+              {formatDisplayDate(new Date(), user.timeZone)}
             </div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)' }}>
               {completedToday} <span style={{ color: 'var(--c-dim-flat)', fontWeight: 500 }}>/ {totalToday} quests</span>

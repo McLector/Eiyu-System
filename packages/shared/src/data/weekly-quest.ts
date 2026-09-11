@@ -1,4 +1,4 @@
-import { addUtcDays, mondayOfWeek, toDateKey } from '../logic/date-utils';
+import { accountDateKey, addDateKeyDays, mondayDateKey } from '../logic/date-utils';
 import { weakestStat } from '../logic/eiyu-logic';
 import { supabase } from '../supabase/client';
 import { Stat, StatData } from '../types/eiyu';
@@ -56,11 +56,11 @@ async function countCompletionsForStatThisWeek(
 export async function fetchOrCreateWeeklyQuest(
   userId: string,
   stats: Record<Stat, StatData>,
+  timeZone: string,
   now: Date = new Date()
 ): Promise<WeeklyQuest> {
-  const weekStartDate = mondayOfWeek(now);
-  const weekStart = toDateKey(weekStartDate);
-  const weekEnd = toDateKey(addUtcDays(weekStartDate, 7));
+  const weekStart = mondayDateKey(accountDateKey(now, timeZone));
+  const weekEnd = addDateKeyDays(weekStart, 7);
 
   const { data: existing, error: fetchError } = await supabase
     .from('weekly_quests')
