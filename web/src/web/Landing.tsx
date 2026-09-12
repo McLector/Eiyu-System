@@ -35,7 +35,7 @@ const FEATURES = [
     icon: <FireStreak size={22} />,
     tint: 'var(--c-fire-inner)',
     title: 'Streak Tracking',
-    desc: 'Build daily streaks on your habits. Use Freeze Shields to protect streaks on off days.',
+    desc: 'Build streaks on scheduled habits. After a miss, complete the Penalty during the next product day to recover.',
   },
   {
     icon: <SparkleIcon size={20} />,

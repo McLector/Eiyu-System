@@ -23,4 +23,10 @@ describe('Penalty terminology on active web surfaces', () => {
     expect(history).toContain('Penalty');
     expect(history).not.toContain('Partial / easy');
   });
+
+  it('uses current recovery terminology on the public landing page', () => {
+    const landing = source('../web/Landing.tsx');
+    expect(landing).toContain('Penalty');
+    expect(landing).not.toMatch(/Freeze Shield/i);
+  });
 });

@@ -10,11 +10,13 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import {
+  LEGAL_DOCUMENTS,
   passwordStrength,
   validateConfirmPassword,
   validateDisplayName,
   validateEmail,
   validatePassword,
+  type LegalDocumentId,
 } from '@eiyu/shared';
 
 type AuthMode = 'login' | 'signup' | 'forgot';
@@ -37,11 +39,12 @@ export default function AuthScreen() {
   const [name, setName] = useState('');
   const [confirm, setConfirm] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [showTerms, setShowTerms] = useState(false);
+  const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
 
   /** Switch auth mode without leaking submit-state, stale errors, or secrets
    * across forms. Password/confirm/terms are cleared deliberately: a login-
@@ -302,12 +305,12 @@ export default function AuthScreen() {
                   </View>
                 )}
                 {mode === 'signup' && (
-                  <Pressable
-                    onPress={() => setAcceptedTerms(v => !v)}
-                    style={styles.termsRow}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: acceptedTerms }}
-                    accessibilityLabel="Accept Privacy Policy and Terms">
+                  <View style={styles.termsRow}>
+                    <Pressable
+                      onPress={() => setAcceptedTerms(v => !v)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: acceptedTerms }}
+                      accessibilityLabel="Accept Privacy Policy and Terms">
                     <View
                       testID="terms-checkbox"
                       style={[
@@ -316,15 +319,20 @@ export default function AuthScreen() {
                       ]}>
                       {acceptedTerms && <CheckIcon size={12} color="#4ade80" />}
                     </View>
-                    <Text style={[styles.termsText, { color: theme.muted, fontFamily: fonts.body }]}>
-                      I agree to the{' '}
-                      <Text
-                        style={{ color: theme.accent }}
-                        onPress={() => setShowTerms(true)}>
-                        Privacy Policy &amp; Terms
-                      </Text>
-                    </Text>
-                  </Pressable>
+                    </Pressable>
+                    <View style={styles.termsCopy}>
+                      <Text style={[styles.termsText, { color: theme.muted, fontFamily: fonts.body }]}>I agree to the</Text>
+                      <View style={styles.legalLinksRow}>
+                        <Pressable role="link" aria-label="Privacy Policy" onPress={() => setLegalDocument('privacy')}>
+                          <Text style={[styles.legalLink, { color: theme.accent, fontFamily: fonts.body }]}>Privacy Policy</Text>
+                        </Pressable>
+                        <Text style={[styles.termsText, { color: theme.muted, fontFamily: fonts.body }]}>and</Text>
+                        <Pressable role="link" aria-label="Terms of Use" onPress={() => setLegalDocument('terms')}>
+                          <Text style={[styles.legalLink, { color: theme.accent, fontFamily: fonts.body }]}>Terms of Use</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
                 )}
                 {mode === 'login' && (
                   <Pressable onPress={() => switchMode('forgot')} style={{ alignSelf: 'flex-end' }}>
@@ -380,55 +388,42 @@ export default function AuthScreen() {
           )}
 
         <Modal
-          visible={showTerms}
+          visible={activeLegalDocument !== null}
           transparent
           animationType="fade"
-          onRequestClose={() => setShowTerms(false)}>
+          onRequestClose={() => setLegalDocument(null)}>
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
+            <View
+              role="dialog"
+              aria-label={activeLegalDocument?.title}
+              aria-modal
+              accessibilityViewIsModal
+              onAccessibilityEscape={() => setLegalDocument(null)}
+              style={[styles.modalCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
               <Text style={[styles.modalTitle, { color: theme.text, fontFamily: fonts.display }]}>
-                PRIVACY &amp; TERMS
+                {activeLegalDocument?.title.toUpperCase()}
               </Text>
-              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
-                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                  DATA WE COLLECT
-                </Text>
-                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Your account email, display name, and the quests and completion history you
-                  create. Nothing else.
-                </Text>
-                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                  HOW IT&apos;S USED
-                </Text>
-                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Only to run your account and sync your progress across your devices. No ads, no
-                  data selling, no third-party trackers. Your password is stored encrypted by our
-                  auth provider and never visible to us.
-                </Text>
-                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                  AI FEATURES
-                </Text>
-                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Quest names you submit for suggestions are processed by Google&apos;s Gemini API
-                  solely to generate those suggestions. Suggestions are always optional and never
-                  auto-saved.
-                </Text>
-                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                  YOUR CONTROL
-                </Text>
-                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
-                  You can export your data as JSON or delete your account at any time from
-                  Settings.
-                </Text>
-                <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                  TERMS OF USE
-                </Text>
-                <Text style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Eiyu System is provided as-is, without warranty. One account per person, keep
-                  content respectful. Your quest data remains yours.
-                </Text>
+              <ScrollView
+                accessibilityLabel={`${activeLegalDocument?.title ?? 'Legal document'} content`}
+                contentInsetAdjustmentBehavior="automatic"
+                showsVerticalScrollIndicator
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}>
+                {activeLegalDocument?.sections.map(section => (
+                  <View key={section.heading}>
+                    <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
+                      {section.heading}
+                    </Text>
+                    <Text selectable style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
+                      {section.body}
+                    </Text>
+                  </View>
+                ))}
               </ScrollView>
-              <GhostButton label="GOT IT" onPress={() => setShowTerms(false)} />
+              <GhostButton
+                label={`Close ${activeLegalDocument?.title ?? 'document'}`}
+                onPress={() => setLegalDocument(null)}
+              />
             </View>
           </View>
         </Modal>
@@ -572,8 +567,22 @@ const styles = StyleSheet.create({
   },
   termsText: {
     fontSize: 13,
-    flexShrink: 1,
     lineHeight: 18,
+  },
+  termsCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 5,
+  },
+  legalLink: {
+    fontSize: 13,
+    lineHeight: 20,
+    textDecorationLine: 'underline',
   },
   modalOverlay: {
     flex: 1,
@@ -596,7 +605,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
   modalScroll: {
-    flexGrow: 0,
+    flexShrink: 1,
+  },
+  modalScrollContent: {
+    gap: 10,
+    paddingBottom: 8,
   },
   modalSectionTitle: {
     fontSize: 11,

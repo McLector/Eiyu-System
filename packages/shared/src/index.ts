@@ -10,6 +10,7 @@ export * from './logic/color-tint';
 export * from './logic/board-summary';
 export * from './logic/long-quest-sequence';
 export * from './logic/stage-description';
+export * from './logic/legal-content';
 export * from './data/habits';
 export * from './data/completions';
 export * from './data/stats';

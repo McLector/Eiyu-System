@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { supabase } from '../lib/supabase';
 import {
   authErrorMessage,
   confirmEmailMessage,
+  LEGAL_DOCUMENTS,
   passwordStrength,
   resetLinkSentMessage,
   validateConfirmPassword,
@@ -12,6 +13,7 @@ import {
   validatePassword,
   deviceTimeZone,
   type AuthMode,
+  type LegalDocumentId,
 } from '@eiyu/shared';
 
 import { CheckIcon, MailIcon } from '../Icons';
@@ -65,9 +67,58 @@ export default function WebAuth({ onLogin }: Props) {
   const [confirmPw, setConfirmPw] = useState('');
   const [name, setName] = useState('');
   const [terms, setTerms] = useState(false);
+  const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const legalTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const legalCloseRef = useRef<HTMLButtonElement | null>(null);
+  const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
+
+  useEffect(() => {
+    if (!legalDocument) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    legalCloseRef.current?.focus();
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setLegalDocument(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const dialog = legalCloseRef.current?.closest('[role="dialog"]');
+      if (!dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.body.style.overflow = previousOverflow;
+      legalTriggerRef.current?.focus();
+    };
+  }, [legalDocument]);
+
+  const openLegalDocument = (id: LegalDocumentId, trigger: HTMLButtonElement) => {
+    legalTriggerRef.current = trigger;
+    setLegalDocument(id);
+  };
 
   /** Switch auth mode without leaking submit-state, stale errors, or secrets
    * across forms. Password/confirm/terms are cleared deliberately: a login-
@@ -135,7 +186,10 @@ export default function WebAuth({ onLogin }: Props) {
 
   return (
     <div className="surface-flat" style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', position: 'relative' }}>
-      <div style={{ width: '100%', maxWidth: 440, position: 'relative', zIndex: 1 }}>
+      <div
+        aria-hidden={activeLegalDocument ? true : undefined}
+        style={{ width: '100%', maxWidth: 440, position: 'relative', zIndex: 1 }}
+      >
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{
@@ -171,31 +225,31 @@ export default function WebAuth({ onLogin }: Props) {
               {mode === 'signup' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DISPLAY NAME</label>
-                  <input className="field" placeholder="Kaito Mizuru" value={name} onChange={e => setName(e.target.value)} />
+                  <input aria-label="Display name" className="field" placeholder="Kaito Mizuru" value={name} onChange={e => setName(e.target.value)} />
                 </div>
               )}
               <div>
                 <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>EMAIL</label>
-                <input className="field" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+                <input aria-label="Email address" className="field" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
               </div>
               {mode !== 'forgot' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>PASSWORD</label>
-                  <input className="field" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+                  <input aria-label="Password" className="field" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
                   {mode === 'signup' && <PasswordStrength password={password} />}
                 </div>
               )}
               {mode === 'signup' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>CONFIRM PASSWORD</label>
-                  <input className="field" type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
+                  <input aria-label="Confirm password" className="field" type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
                   {confirmPw.length > 0 && confirmPw !== password && (
                     <p style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', marginTop: 6 }}>Passwords don&apos;t match</p>
                   )}
                 </div>
               )}
               {mode === 'signup' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <button
                     type="button"
                     role="checkbox"
@@ -212,9 +266,21 @@ export default function WebAuth({ onLogin }: Props) {
                   >
                     {terms && <CheckIcon size={11} />}
                   </button>
-                  <span onClick={() => setTerms(!terms)} style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
+                  <span style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', lineHeight: 1.6 }}>
                     I agree to the{' '}
-                    <span style={{ color: 'var(--c-accent)', textDecoration: 'underline' }}>Privacy Policy & Terms</span>
+                    <button
+                      type="button"
+                      onClick={event => openLegalDocument('privacy', event.currentTarget)}
+                      style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      Privacy Policy
+                    </button>{' '}
+                    and{' '}
+                    <button
+                      type="button"
+                      onClick={event => openLegalDocument('terms', event.currentTarget)}
+                      style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      Terms of Use
+                    </button>.
                   </span>
                 </div>
               )}
@@ -252,6 +318,62 @@ export default function WebAuth({ onLogin }: Props) {
           </div>
         )}
       </div>
+
+      {activeLegalDocument && (
+        <div
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget) setLegalDocument(null);
+          }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 20, padding: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.72)',
+          }}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`legal-dialog-title-${activeLegalDocument.id}`}
+            style={{
+              width: 'min(640px, 100%)', maxHeight: 'min(82svh, 760px)',
+              display: 'flex', flexDirection: 'column', gap: 16,
+              padding: '22px clamp(18px, 4vw, 30px)', borderRadius: 18,
+              background: 'var(--c-panel-flat)', border: '1px solid var(--c-glass-border)',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+            }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <h2
+                id={`legal-dialog-title-${activeLegalDocument.id}`}
+                style={{ margin: 0, fontFamily: 'Rajdhani', fontSize: 'clamp(20px, 4vw, 26px)', color: 'var(--c-text)', letterSpacing: '0.05em' }}>
+                {activeLegalDocument.title}
+              </h2>
+              <button
+                ref={legalCloseRef}
+                type="button"
+                aria-label={`Close ${activeLegalDocument.title}`}
+                onClick={() => setLegalDocument(null)}
+                style={{ minWidth: 44, minHeight: 44, borderRadius: 22, border: '1px solid var(--c-glass-border)', background: 'none', color: 'var(--c-text)', cursor: 'pointer', fontSize: 22 }}>
+                ×
+              </button>
+            </div>
+            <div
+              tabIndex={0}
+              aria-label={`${activeLegalDocument.title} content`}
+              style={{ overflowY: 'auto', overscrollBehavior: 'contain', paddingRight: 8 }}>
+              {activeLegalDocument.sections.map(section => (
+                <section key={section.heading} style={{ marginBottom: 20 }}>
+                  <h3 style={{ margin: '0 0 7px', fontFamily: 'Rajdhani', fontSize: 13, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>
+                    {section.heading}
+                  </h3>
+                  <p style={{ margin: 0, fontFamily: 'Inter', fontSize: 14, lineHeight: 1.75, color: 'var(--c-muted-flat)', overflowWrap: 'anywhere' }}>
+                    {section.body}
+                  </p>
+                </section>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
