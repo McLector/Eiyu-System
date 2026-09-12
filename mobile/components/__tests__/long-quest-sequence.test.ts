@@ -16,4 +16,14 @@ describe('mobile Long Quest sequence contract', () => {
     expect(source).toContain('qc.setQueryData<LongQuest[]>(key, previous)');
     expect(source).toContain('await qc.invalidateQueries({ queryKey: key })');
   });
+
+  it('supports optional, bounded, multiline stage descriptions without truncating their display', () => {
+    const editor = readFileSync(resolve(__dirname, '../../app/long-quest-editor.tsx'), 'utf8');
+    const list = readFileSync(resolve(__dirname, '../../app/(tabs)/longquests.tsx'), 'utf8');
+    expect(editor).toContain('setStageDescriptionAt');
+    expect(editor).toContain('STAGE_DESCRIPTION_MAX_LENGTH');
+    expect(editor).toContain('Stage description (optional)');
+    expect(editor).toContain('multiline');
+    expect(list).not.toMatch(/numberOfLines=\{1\}[\s\S]{0,120}styles\.stageDescription/);
+  });
 });

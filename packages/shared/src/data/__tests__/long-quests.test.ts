@@ -67,6 +67,16 @@ describe('createLongQuest', () => {
 
     expect(insertedQuest).toHaveBeenCalledWith(expect.objectContaining({ description: null }));
   });
+
+  it('rejects an over-limit stage description before inserting the parent quest', async () => {
+    await expect(createLongQuest('user-1', {
+      name: 'Q',
+      stat: 'STR',
+      stages: [{ name: 'S1', description: 'a'.repeat(2001) }],
+    })).rejects.toThrow('Stage descriptions must be 2000 characters or fewer.');
+
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
 });
 
 describe('fetchLongQuests', () => {
@@ -182,6 +192,30 @@ describe('reconcileLongQuestStages', () => {
       p_long_quest_id: 'lq-1',
       p_stages: [{ id: null, name: 'New Stage', description: null }],
     });
+  });
+
+  it('normalizes blank descriptions and preserves trimmed multiline Unicode text', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+
+    await reconcileLongQuestStages('lq-1', [
+      { id: 's1', name: 'Plan', description: ' \n\t ' },
+      { id: 's2', name: 'Build', description: '  First line\n勇者 ✨\n  ' },
+    ]);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('reconcile_long_quest_stages', {
+      p_long_quest_id: 'lq-1',
+      p_stages: [
+        { id: 's1', name: 'Plan', description: null },
+        { id: 's2', name: 'Build', description: 'First line\n勇者 ✨' },
+      ],
+    });
+  });
+
+  it('rejects an over-limit stage description before calling the write boundary', async () => {
+    await expect(
+      reconcileLongQuestStages('lq-1', [{ id: 's1', name: 'Plan', description: 'a'.repeat(2001) }])
+    ).rejects.toThrow('Stage descriptions must be 2000 characters or fewer.');
+    expect(supabase.rpc).not.toHaveBeenCalled();
   });
 
   it('preserves array order (the order the RPC uses to assign final positions)', async () => {

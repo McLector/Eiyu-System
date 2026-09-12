@@ -1,5 +1,13 @@
 import { useState } from 'react';
-import { LongQuest, STAT_COLORS, formatError, stageSequenceState, type Stat } from '@eiyu/shared';
+import {
+  LongQuest,
+  STAGE_DESCRIPTION_MAX_LENGTH,
+  STAT_COLORS,
+  formatError,
+  isStageDescriptionWithinLimit,
+  stageSequenceState,
+  type Stat,
+} from '@eiyu/shared';
 import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, NoteIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
@@ -423,6 +431,10 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
     setEditStages(prev => prev.map((s, idx) => (idx === i ? { ...s, name: value } : s)));
   };
 
+  const setEditStageDescriptionAt = (i: number, value: string) => {
+    setEditStages(prev => prev.map((s, idx) => (idx === i ? { ...s, description: value } : s)));
+  };
+
   const removeEditStage = (i: number) => {
     if (editStages.length <= MIN_STAGES) return;
     setEditStages(prev => prev.filter((_, idx) => idx !== i));
@@ -533,7 +545,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
                     {stage.name}
                   </span>
                   {stage.description && (
-                    <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)' }}>
+                    <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                       {stage.description}
                     </span>
                   )}
@@ -606,14 +618,27 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
             />
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)' }}>STAGES</div>
             {editStages.map((st, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <input
-                  className="field"
-                  style={{ flex: 1 }}
-                  placeholder={`Stage ${i + 1}...`}
-                  value={st.name}
-                  onChange={e => setEditStageNameAt(i, e.target.value)}
-                />
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flex: 1, flexDirection: 'column', gap: 6 }}>
+                  <input
+                    className="field"
+                    placeholder={`Stage ${i + 1}...`}
+                    value={st.name}
+                    onChange={e => setEditStageNameAt(i, e.target.value)}
+                  />
+                  <textarea
+                    className="field"
+                    placeholder="Stage description (optional)"
+                    value={st.description ?? ''}
+                    onChange={e => {
+                      if (isStageDescriptionWithinLimit(e.target.value)) {
+                        setEditStageDescriptionAt(i, e.target.value);
+                      }
+                    }}
+                    aria-label={`Stage ${i + 1} description. Maximum ${STAGE_DESCRIPTION_MAX_LENGTH} characters.`}
+                    rows={3}
+                  />
+                </div>
                 {editStages.length > MIN_STAGES && (
                   <button
                     onClick={() => removeEditStage(i)}
@@ -655,13 +680,16 @@ export default function WebLongQuests() {
   const [newName, setNewName] = useState('');
   const [newStat, setNewStat] = useState<Stat>('INT');
   const [newStages, setNewStages] = useState(['', '']);
+  const [newStageDescriptions, setNewStageDescriptions] = useState(['', '']);
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
   const addLongQuest = async () => {
     if (!newName.trim() || creating) return;
-    const stages = newStages.map(s => s.trim()).filter(Boolean).map(name => ({ name }));
+    const stages = newStages
+      .map((stageName, index) => ({ name: stageName.trim(), description: newStageDescriptions[index] }))
+      .filter(stage => stage.name.length > 0);
     if (stages.length === 0) return;
     setCreating(true);
     setCreateError(null);
@@ -676,6 +704,7 @@ export default function WebLongQuests() {
       setNewName('');
       setNewDescription('');
       setNewStages(['', '']);
+      setNewStageDescriptions(['', '']);
     } catch (err) {
       setCreateError(`The System couldn't create that quest — ${formatError(err)}`);
     } finally {
@@ -717,9 +746,23 @@ export default function WebLongQuests() {
             />
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)' }}>STAGES</div>
             {newStages.map((st, i) => (
-              <input key={i} className="field" placeholder={`Stage ${i + 1}...`} value={st} onChange={e => setNewStages(newStages.map((s, j) => j === i ? e.target.value : s))} />
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <input className="field" placeholder={`Stage ${i + 1}...`} value={st} onChange={e => setNewStages(newStages.map((s, j) => j === i ? e.target.value : s))} />
+                <textarea
+                  className="field"
+                  placeholder="Stage description (optional)"
+                  value={newStageDescriptions[i] ?? ''}
+                  onChange={e => {
+                    if (isStageDescriptionWithinLimit(e.target.value)) {
+                      setNewStageDescriptions(newStageDescriptions.map((value, j) => j === i ? e.target.value : value));
+                    }
+                  }}
+                  aria-label={`Stage ${i + 1} description. Maximum ${STAGE_DESCRIPTION_MAX_LENGTH} characters.`}
+                  rows={3}
+                />
+              </div>
             ))}
-            <button onClick={() => setNewStages([...newStages, ''])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', cursor: 'pointer' }}>
+            <button onClick={() => { setNewStages([...newStages, '']); setNewStageDescriptions([...newStageDescriptions, '']); }} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', cursor: 'pointer' }}>
               + Add stage
             </button>
             {createError && <p style={{ color: '#f87171', fontSize: 12 }}>{createError}</p>}

@@ -150,7 +150,6 @@ export default function LongQuestsScreen() {
                               </Text>
                               {stage.description && (
                                 <Text
-                                  numberOfLines={1}
                                   style={[styles.stageDescription, { color: theme.dim, fontFamily: fonts.body }]}>
                                   {stage.description}
                                 </Text>

@@ -18,4 +18,15 @@ describe('web Long Quest sequence contract', () => {
     expect(source).toContain('qc.setQueryData<LongQuest[]>(key, previous)');
     expect(source).toContain('await qc.invalidateQueries({ queryKey: key })');
   });
+
+  it('supports optional bounded stage-description editing and readable inert display text', () => {
+    const source = readFileSync(resolve(__dirname, '../web/WebLongQuests.tsx'), 'utf8');
+    expect(source).toContain('STAGE_DESCRIPTION_MAX_LENGTH');
+    expect(source).toContain('setEditStageDescriptionAt');
+    expect(source).toContain('newStageDescriptions');
+    expect(source).toContain('Stage description (optional)');
+    expect(source).toContain("whiteSpace: 'pre-wrap'");
+    expect(source).toContain("overflowWrap: 'anywhere'");
+    expect(source).not.toContain('dangerouslySetInnerHTML');
+  });
 });

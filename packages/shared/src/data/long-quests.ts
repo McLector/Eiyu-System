@@ -1,5 +1,6 @@
 import { supabase } from '../supabase/client';
 import { LongQuest, QuestStage, Stat } from '../types/eiyu';
+import { normalizeStageDescription } from '../logic/stage-description';
 
 /** R-32/R-33: real Long Quests, replacing the mock data that shipped with the UI. */
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
@@ -51,6 +52,10 @@ export interface LongQuestInput {
 }
 
 export async function createLongQuest(userId: string, input: LongQuestInput): Promise<string> {
+  const normalizedStages = input.stages.map(stage => ({
+    ...stage,
+    description: normalizeStageDescription(stage.description),
+  }));
   const { data: quest, error } = await supabase
     .from('long_quests')
     .insert({
@@ -63,11 +68,11 @@ export async function createLongQuest(userId: string, input: LongQuestInput): Pr
     .single();
   if (error) throw error;
 
-  const rows = input.stages.map((stage, i) => ({
+  const rows = normalizedStages.map((stage, i) => ({
     long_quest_id: quest.id,
     user_id: userId,
     name: stage.name,
-    description: stage.description?.trim() ? stage.description.trim() : null,
+    description: stage.description,
     position: i,
   }));
   const { error: stagesError } = await supabase.from('long_quest_stages').insert(rows);
@@ -100,7 +105,7 @@ export async function reconcileLongQuestStages(
     p_stages: stages.map(s => ({
       id: s.id ?? null,
       name: s.name,
-      description: s.description ?? null,
+      description: normalizeStageDescription(s.description),
     })),
   });
   if (error) throw error;

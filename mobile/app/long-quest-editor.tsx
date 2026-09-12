@@ -4,11 +4,17 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { StatIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
-import { STATS, STAT_COLORS } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { formatError, suggestStages } from '@eiyu/shared';
-import { Stat } from '@eiyu/shared';
+import {
+  STAGE_DESCRIPTION_MAX_LENGTH,
+  STATS,
+  STAT_COLORS,
+  formatError,
+  isStageDescriptionWithinLimit,
+  suggestStages,
+  type Stat,
+} from '@eiyu/shared';
 
 const MIN_STAGES = 2;
 const MAX_STAGES = 8;
@@ -53,6 +59,11 @@ export default function LongQuestEditorScreen() {
 
   const setStageNameAt = (i: number, value: string) => {
     setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, name: value } : s)));
+  };
+
+  const setStageDescriptionAt = (i: number, value: string) => {
+    if (!isStageDescriptionWithinLimit(value)) return;
+    setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, description: value } : s)));
   };
 
   const addStage = () => {
@@ -188,13 +199,26 @@ export default function LongQuestEditorScreen() {
                   <Text style={[styles.stageIndex, { color: theme.dim, fontFamily: fonts.mono }]}>
                     {i + 1}
                   </Text>
-                  <TextInput
-                    style={[styles.field, fieldStyle, { flex: 1 }]}
-                    placeholder={`Stage ${i + 1}`}
-                    placeholderTextColor={theme.dim}
-                    value={s.name}
-                    onChangeText={v => setStageNameAt(i, v)}
-                  />
+                  <View style={styles.stageFields}>
+                    <TextInput
+                      style={[styles.field, fieldStyle]}
+                      placeholder={`Stage ${i + 1}`}
+                      placeholderTextColor={theme.dim}
+                      value={s.name}
+                      onChangeText={v => setStageNameAt(i, v)}
+                    />
+                    <TextInput
+                      accessibilityLabel={`Stage ${i + 1} description (optional)`}
+                      style={[styles.field, styles.stageDescriptionField, fieldStyle]}
+                      placeholder="Stage description (optional)"
+                      placeholderTextColor={theme.dim}
+                      value={s.description ?? ''}
+                      onChangeText={v => setStageDescriptionAt(i, v)}
+                      accessibilityHint={`Maximum ${STAGE_DESCRIPTION_MAX_LENGTH} characters`}
+                      multiline
+                      textAlignVertical="top"
+                    />
+                  </View>
                   {stages.length > MIN_STAGES && (
                     <Pressable onPress={() => removeStage(i)} style={styles.stageRemove}>
                       <Text style={{ color: theme.dim, fontSize: 18, lineHeight: 18 }}>×</Text>
@@ -319,13 +343,21 @@ const styles = StyleSheet.create({
   },
   stageInputRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
+  },
+  stageFields: {
+    flex: 1,
+    gap: 6,
+  },
+  stageDescriptionField: {
+    minHeight: 64,
   },
   stageIndex: {
     fontSize: 12,
     width: 14,
     textAlign: 'center',
+    marginTop: 14,
   },
   stageRemove: {
     width: 24,
