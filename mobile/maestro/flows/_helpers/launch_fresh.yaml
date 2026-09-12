@@ -9,22 +9,24 @@ appId: com.anonymous.eiyusystem
     clearState: true
 - extendedWaitUntil:
     visible: ".*(EIYU SYSTEM|10\\.0\\.2\\.2).*"
-    timeout: 30000
+    timeout: 60000
 - tapOn:
     text: ".*10\\.0\\.2\\.2.*"
     optional: true
-# First connection after clearState also triggers Expo's one-time dev-menu
-# tutorial overlay, which covers the screen and hides EIYU SYSTEM from the
-# accessibility tree until dismissed. Its "Continue" button advances INTO the
-# full dev-menu panel (not closing it), and that panel's "Go home" exits to
-# the dev-launcher picker (not the app) - both make it worse. The app is
-# already loaded behind the overlay (visible but dimmed), so the hardware
-# back button is what actually closes the sheet in place.
+# First connection after clearState can trigger Expo Go's dev-menu tutorial.
+# Its close icon has no accessibility label in SDK 54, so use the stable
+# top-right location of that bottom-sheet icon only while the tutorial copy is
+# visible. Hardware back is not reliable here: on the Android 35 emulator
+# it left the tutorial covering the login screen.
 - extendedWaitUntil:
     visible: ".*(EIYU SYSTEM|developer menu).*"
     timeout: 30000
-- back:
-    optional: true
+- runFlow:
+    when:
+      visible: ".*This is the developer menu.*"
+    commands:
+      - tapOn:
+          point: "93%,53%"
 - extendedWaitUntil:
     visible: "EIYU SYSTEM"
     timeout: 30000

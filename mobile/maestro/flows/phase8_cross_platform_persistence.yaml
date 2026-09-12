@@ -1,0 +1,88 @@
+# Phase 8 isolated browser-to-Android persistence journey.
+#
+# Prerequisites:
+# - the app is running in Expo Go against the same disposable local Supabase
+#   stack used by the browser journey;
+# - PHASE8_EMAIL and PHASE8_PASSWORD identify that local-only account;
+# - PHASE8_METRO_URL identifies this project's development-client server when
+#   other Expo projects are discoverable on the same emulator;
+# - the browser has created the named habit, one-time quest, and Long Quest.
+
+appId: com.anonymous.eiyusystem
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: ".*(EIYU SYSTEM|${PHASE8_METRO_URL}).*"
+    timeout: 60000
+- tapOn:
+    text: "${PHASE8_METRO_URL}"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*(EIYU SYSTEM|developer menu).*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: ".*This is the developer menu.*"
+    commands:
+      - tapOn:
+          point: "93%,53%"
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 30000
+- tapOn: "you@example.com"
+- eraseText
+- inputText: ${PHASE8_EMAIL}
+- tapOn: "••••••••"
+- eraseText
+- inputText: ${PHASE8_PASSWORD}
+- hideKeyboard
+- tapOn: "ENTER SYSTEM"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+
+# Saturday is an off-day for the browser-created M/W/F habit. The same
+# persisted definition is visible in All Habits, not the normal daily list.
+- assertVisible: "ALL HABITS"
+- assertVisible: "MWF Journey Habit"
+- assertVisible: "OFF DAY"
+
+# The browser completed the one-time quest on Sep 12. This Android switch ran
+# after the account-local midnight boundary, so it must not leak into Sep 13's
+# board; its completion remains independently available in history.
+- assertVisible: "ONE-TIME QUESTS"
+- assertVisible: "No one-time quests scheduled for today."
+- tapOn: "SETTINGS"
+- tapOn: "Quest History"
+- extendedWaitUntil:
+    visible: "HISTORY"
+    timeout: 10000
+- tapOn: "12"
+- assertVisible: "2026-09-12"
+- extendedWaitUntil:
+    visible: "Book Appointment"
+    timeout: 10000
+- back
+
+# Long Quests remain in their dedicated tab and preserve ordered completion
+# plus all optional descriptions written by the web client.
+- tapOn: "QUESTS"
+- extendedWaitUntil:
+    visible: "Cross-platform Journey"
+    timeout: 10000
+- tapOn: "3/3"
+- assertVisible:
+    text: "Plan.*"
+    checked: true
+- assertVisible:
+    text: "Build.*"
+    checked: true
+- assertVisible:
+    text: "Ship.*"
+    checked: true
+- assertVisible: "Define the route."
+- assertVisible: "Build across platforms"
+- assertVisible: "Verify persistence"
+# Completion is represented by the persisted 3/3 count and checked stage rows;
+# the mobile card intentionally has no separate COMPLETE badge.

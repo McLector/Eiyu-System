@@ -39,6 +39,13 @@ such flow run in the same invocation and corrupt each other's data -
 quests left half-created, wrongly marked complete, etc. Invoke each file
 separately, e.g. in a loop or one `maestro test` call per flow.
 
+`phase8_cross_platform_persistence.yaml` is intentionally local-only. It reads
+`PHASE8_EMAIL`, `PHASE8_PASSWORD`, and `PHASE8_METRO_URL` from the Maestro
+command environment and expects its named records to have been created by the
+Phase 8 browser journey against the same disposable local Supabase stack. The
+explicit Metro URL prevents a development client from selecting another Expo
+project when several local bundlers are discoverable.
+
 `_helpers/login.yaml` is included via `runFlow` by every flow that needs a
 session — it always does a fresh `launchApp: { clearState: true }` first,
 so flows are independent and can run in any order (aside from `00_setup_*`,
