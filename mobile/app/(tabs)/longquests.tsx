@@ -8,7 +8,7 @@ import { GlassView } from '@/components/eiyu/glass-view';
 import { CheckIcon, ChevronIcon, PlusIcon, StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { Screen } from '@/components/eiyu/screen';
-import { STAT_COLORS } from '@eiyu/shared';
+import { STAT_COLORS, stageSequenceState } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 
@@ -112,12 +112,19 @@ export default function LongQuestsScreen() {
 
                   {isExpanded && (
                     <View style={[styles.expandedBody, { borderTopColor: theme.glassBorder }]}>
-                      {lq.stages.map((stage, i) => (
+                      {lq.stages.map((stage, i) => {
+                        const sequence = stageSequenceState(lq.stages, i);
+                        const lockedReason = sequence.reason ?? 'Complete earlier stages first.';
+                        return (
                         <View key={stage.id}>
                           {i > 0 && <Divider />}
                           <Pressable
                             testID="stage-checkbox"
-                            style={styles.stageRow}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: stage.done, disabled: sequence.locked }}
+                            accessibilityLabel={`${stage.name}. ${sequence.locked ? lockedReason : stage.done ? 'Completed' : 'Available'}`}
+                            disabled={sequence.locked}
+                            style={[styles.stageRow, sequence.locked && styles.stageRowLocked]}
                             onPress={() => toggleStage(lq.id, stage.id)}>
                             <View
                               style={[
@@ -129,25 +136,32 @@ export default function LongQuestsScreen() {
                               ]}>
                               {stage.done && <CheckIcon size={12} color={color} />}
                             </View>
-                            <Text
-                              style={[
-                                styles.stageName,
-                                {
-                                  color: stage.done ? theme.muted : theme.text,
-                                  textDecorationLine: stage.done ? 'line-through' : 'none',
-                                  fontFamily: fonts.body,
-                                },
-                              ]}>
-                              {stage.name}
-                            </Text>
-                            {stage.description && (
+                            <View style={styles.stageCopy}>
                               <Text
-                                numberOfLines={1}
-                                style={[styles.stageDescription, { color: theme.dim, fontFamily: fonts.body }]}>
-                                {stage.description}
+                                style={[
+                                  styles.stageName,
+                                  {
+                                    color: stage.done ? theme.muted : theme.text,
+                                    textDecorationLine: stage.done ? 'line-through' : 'none',
+                                    fontFamily: fonts.body,
+                                  },
+                                ]}>
+                                {stage.name}
                               </Text>
-                            )}
-                            {i === done && !stage.done && (
+                              {stage.description && (
+                                <Text
+                                  numberOfLines={1}
+                                  style={[styles.stageDescription, { color: theme.dim, fontFamily: fonts.body }]}>
+                                  {stage.description}
+                                </Text>
+                              )}
+                              {sequence.locked && (
+                                <Text style={[styles.lockedReason, { color: theme.dim, fontFamily: fonts.body }]}>
+                                  {lockedReason}
+                                </Text>
+                              )}
+                            </View>
+                            {!sequence.locked && i === done && !stage.done && (
                               <View
                                 style={[
                                   styles.nextBadge,
@@ -158,9 +172,15 @@ export default function LongQuestsScreen() {
                                 </Text>
                               </View>
                             )}
+                            {sequence.locked && (
+                              <View style={[styles.nextBadge, { borderColor: theme.glassBorder }]}>
+                                <Text style={[styles.nextBadgeText, { color: theme.dim, fontFamily: fonts.display }]}>LOCKED</Text>
+                              </View>
+                            )}
                           </Pressable>
                         </View>
-                      ))}
+                        );
+                      })}
                       <Divider style={{ marginTop: 4, marginBottom: 4 }} />
                       <Pressable style={styles.deleteRow} onPress={() => confirmDelete(lq.id, lq.name)}>
                         <Text style={styles.deleteRowText}>Delete Long Quest</Text>
@@ -367,6 +387,13 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
   },
+  stageRowLocked: {
+    opacity: 0.58,
+  },
+  stageCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   stageCheckbox: {
     width: 22,
     height: 22,
@@ -383,6 +410,10 @@ const styles = StyleSheet.create({
   stageDescription: {
     fontSize: 11,
     flexShrink: 1,
+  },
+  lockedReason: {
+    fontSize: 10,
+    marginTop: 2,
   },
   nextBadge: {
     marginLeft: 'auto',

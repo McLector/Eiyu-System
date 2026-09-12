@@ -54,6 +54,8 @@ export interface LongQuest {
   name: string;
   stat: Stat;
   description: string | null;
+  /** Immutable timestamp of the first time every stage was completed. */
+  completedAt: string | null;
   stages: QuestStage[];
 }
 

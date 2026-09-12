@@ -5,7 +5,7 @@ import { LongQuest, QuestStage, Stat } from '../types/eiyu';
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
   const { data: quests, error } = await supabase
     .from('long_quests')
-    .select('id, name, stat, description')
+    .select('id, name, stat, description, completed_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -32,6 +32,7 @@ export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
     name: q.name,
     stat: q.stat,
     description: q.description,
+    completedAt: q.completed_at,
     stages: stagesByQuest.get(q.id) ?? [],
   }));
 }
@@ -106,7 +107,10 @@ export async function reconcileLongQuestStages(
 }
 
 export async function setStageDone(stageId: string, done: boolean) {
-  const { error } = await supabase.from('long_quest_stages').update({ done }).eq('id', stageId);
+  const { error } = await supabase.rpc('set_long_quest_stage_done', {
+    p_stage_id: stageId,
+    p_done: done,
+  });
   if (error) throw error;
 }
 

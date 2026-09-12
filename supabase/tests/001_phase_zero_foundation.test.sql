@@ -140,8 +140,15 @@ select lives_ok(
   'an update targeting another user long quest stage is safely filtered by RLS'
 );
 
+select public.ensure_habit_occurrences(
+  (statement_timestamp() at time zone 'UTC')::date
+);
+
 select lives_ok(
-  $$select public.complete_habit('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-11', 'full')$$,
+  format(
+    $$select public.complete_habit('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', %L, 'full')$$,
+    (statement_timestamp() at time zone 'UTC')::date
+  ),
   'an authenticated user can complete their own habit'
 );
 
@@ -158,7 +165,10 @@ select is(
 );
 
 select throws_ok(
-  $$select public.complete_habit('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-11', 'full')$$,
+  format(
+    $$select public.complete_habit('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', %L, 'full')$$,
+    (statement_timestamp() at time zone 'UTC')::date
+  ),
   '23505',
   'duplicate key value violates unique constraint "habit_completions_habit_id_completed_on_key"',
   'a duplicate completion is rejected'
@@ -171,7 +181,10 @@ select is(
 );
 
 select throws_ok(
-  $$select public.complete_habit('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-09-11', 'full')$$,
+  format(
+    $$select public.complete_habit('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', %L, 'full')$$,
+    (statement_timestamp() at time zone 'UTC')::date
+  ),
   'P0001',
   'habit bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb not found for calling user',
   'the completion RPC rejects another user habit'

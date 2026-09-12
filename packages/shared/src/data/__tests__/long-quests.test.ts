@@ -1,4 +1,4 @@
-import { createLongQuest, fetchLongQuests, updateLongQuest, reconcileLongQuestStages } from '../long-quests';
+import { createLongQuest, fetchLongQuests, updateLongQuest, reconcileLongQuestStages, setStageDone } from '../long-quests';
 import { supabase } from '../../supabase/client';
 
 function chainable(result: { data?: unknown; error: unknown }) {
@@ -78,7 +78,7 @@ describe('fetchLongQuests', () => {
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'long_quests') {
         return chainable({
-          data: [{ id: 'lq-1', name: 'Ship a Side Project', stat: 'INT', description: 'build momentum' }],
+          data: [{ id: 'lq-1', name: 'Ship a Side Project', stat: 'INT', description: 'build momentum', completed_at: null }],
           error: null,
         });
       }
@@ -102,6 +102,7 @@ describe('fetchLongQuests', () => {
         name: 'Ship a Side Project',
         stat: 'INT',
         description: 'build momentum',
+        completedAt: null,
         stages: [
           { id: 's1', name: 'Plan', done: false, description: 'scope it out' },
           { id: 's2', name: 'Build', done: false, description: null },
@@ -202,5 +203,31 @@ describe('reconcileLongQuestStages', () => {
     });
 
     await expect(reconcileLongQuestStages('lq-1', [{ id: 's1', name: 'Plan' }])).rejects.toThrow('not found for calling user');
+  });
+});
+
+describe('setStageDone', () => {
+  beforeEach(() => {
+    (supabase.rpc as jest.Mock).mockReset();
+  });
+
+  it('uses the authoritative sequence RPC for completion and undo', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
+
+    await setStageDone('stage-2', true);
+
+    expect(supabase.rpc).toHaveBeenCalledWith('set_long_quest_stage_done', {
+      p_stage_id: 'stage-2',
+      p_done: true,
+    });
+  });
+
+  it('surfaces an authoritative sequence rejection', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({
+      data: null,
+      error: Object.assign(new Error('Complete earlier stages first'), { code: 'P0001' }),
+    });
+
+    await expect(setStageDone('stage-3', true)).rejects.toThrow('Complete earlier stages first');
   });
 });

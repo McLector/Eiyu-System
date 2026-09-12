@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LongQuest, STAT_COLORS, formatError, type Stat } from '@eiyu/shared';
+import { LongQuest, STAT_COLORS, formatError, stageSequenceState, type Stat } from '@eiyu/shared';
 import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, NoteIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
@@ -499,12 +499,22 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
             STAGES
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {lq.stages.map(stage => (
-              <button key={stage.id} onClick={() => toggleStage(stage.id)} style={{
+            {lq.stages.map((stage, index) => {
+              const sequence = stageSequenceState(lq.stages, index);
+              const lockedReason = sequence.reason ?? 'Complete earlier stages first.';
+              return (
+              <button
+                key={stage.id}
+                onClick={() => toggleStage(stage.id)}
+                disabled={sequence.locked}
+                aria-label={`${stage.name}. ${sequence.locked ? lockedReason : stage.done ? 'Completed' : 'Available'}`}
+                title={sequence.locked ? lockedReason : undefined}
+                style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                borderRadius: 10, cursor: 'pointer', textAlign: 'left', width: '100%',
+                borderRadius: 10, cursor: sequence.locked ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%',
                 background: stage.done ? 'rgba(74,222,128,0.05)' : 'var(--c-accent-glass)',
                 border: `1px solid ${stage.done ? 'rgba(74,222,128,0.15)' : 'var(--c-glass-border)'}`,
+                opacity: sequence.locked ? 0.58 : 1,
               }}>
                 <div style={{
                   width: 20, height: 20, borderRadius: 6, flexShrink: 0,
@@ -514,20 +524,33 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
                 }}>
                   {stage.done && <CheckIcon />}
                 </div>
-                <span style={{
-                  fontFamily: 'Inter', fontSize: 13,
-                  color: stage.done ? 'var(--c-muted-flat)' : 'var(--c-text)',
-                  textDecoration: stage.done ? 'line-through' : 'none',
-                }}>
-                  {stage.name}
+                <span style={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column', gap: 2 }}>
+                  <span style={{
+                    fontFamily: 'Inter', fontSize: 13,
+                    color: stage.done ? 'var(--c-muted-flat)' : 'var(--c-text)',
+                    textDecoration: stage.done ? 'line-through' : 'none',
+                  }}>
+                    {stage.name}
+                  </span>
+                  {stage.description && (
+                    <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)' }}>
+                      {stage.description}
+                    </span>
+                  )}
+                  {sequence.locked && (
+                    <span style={{ fontFamily: 'Inter', fontSize: 10, color: 'var(--c-dim-flat)' }}>
+                      {lockedReason}
+                    </span>
+                  )}
                 </span>
-                {stage.description && (
-                  <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)', marginLeft: 8 }}>
-                    {stage.description}
+                {sequence.locked && (
+                  <span style={{ fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c-dim-flat)' }}>
+                    LOCKED
                   </span>
                 )}
               </button>
-            ))}
+              );
+            })}
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
             <button

@@ -123,13 +123,35 @@ select throws_ok(
   'a future direct completion is rejected using authoritative server time'
 );
 
+-- Keep the current-day assertion independent of the calendar date on which
+-- the suite runs. The fixed M/W/F fixture above continues to verify exact
+-- historical occurrence keys.
+insert into public.habits (
+  id, user_id, name, easy_version, stat, difficulty, days, created_at
+)
+values (
+  'abababab-abab-4bab-8bab-abababababac',
+  '33333333-3333-4333-8333-333333333333',
+  'Every-day completion fixture',
+  'One minute',
+  'STR',
+  'Medium',
+  '{0,1,2,3,4,5,6}',
+  statement_timestamp() - interval '1 day'
+);
+
+select public.ensure_habit_occurrences((statement_timestamp() at time zone 'Asia/Manila')::date);
+
 select lives_ok(
-  $$select public.complete_habit('abababab-abab-4bab-8bab-abababababab', '2026-09-11', 'full')$$,
+  format(
+    $$select public.complete_habit('abababab-abab-4bab-8bab-abababababac', %L, 'full')$$,
+    (statement_timestamp() at time zone 'Asia/Manila')::date
+  ),
   'a scheduled current-day completion remains valid'
 );
 
 select is(
-  (select count(*) from public.habit_completions where habit_id = 'abababab-abab-4bab-8bab-abababababab'),
+  (select count(*) from public.habit_completions where habit_id = 'abababab-abab-4bab-8bab-abababababac'),
   1::bigint,
   'only the eligible completion is recorded'
 );

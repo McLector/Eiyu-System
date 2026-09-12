@@ -496,6 +496,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       if (!stage || !userId) return;
       const nextDone = !stage.done;
       const key = longQuestsKey(userId);
+      const previous = qc.getQueryData<LongQuest[]>(key);
       qc.setQueryData<LongQuest[]>(key, lqs =>
         lqs?.map(q =>
           q.id === lqId
@@ -507,14 +508,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         await setStageDone(stageId, nextDone);
         setLqActionError(null);
       } catch (err) {
-        qc.setQueryData<LongQuest[]>(key, lqs =>
-          lqs?.map(q =>
-            q.id === lqId
-              ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: !nextDone } : s)) }
-              : q
-          )
-        );
+        qc.setQueryData<LongQuest[]>(key, previous);
         setLqActionError(formatError(err));
+      } finally {
+        await qc.invalidateQueries({ queryKey: key });
       }
     },
     [longQuests, userId, qc]

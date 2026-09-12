@@ -181,6 +181,7 @@ export interface Database {
           stat: StatKey;
           description: string | null;
           deadline: string | null;
+          completed_at: string | null;
           created_at: string;
         };
         Insert: Partial<Database['public']['Tables']['long_quests']['Row']> & {
@@ -276,6 +277,10 @@ export interface Database {
       /** Slice 3: reconcile long quest stages (insert new, update existing, delete absent). */
       reconcile_long_quest_stages: {
         Args: { p_long_quest_id: string; p_stages: unknown };
+        Returns: undefined;
+      };
+      set_long_quest_stage_done: {
+        Args: { p_stage_id: string; p_done: boolean };
         Returns: undefined;
       };
       /** Slice 5: atomically adjust a quantity habit's today progress; auto-crosses complete_habit/undo_habit_completion. */
