@@ -173,6 +173,50 @@ export interface Database {
         Update: Partial<Database['public']['Tables']['habit_recovery_windows']['Row']>;
         Relationships: [];
       };
+      deleted_habit_history: {
+        Row: {
+          id: string;
+          user_id: string;
+          source_habit_id: string;
+          historical_date: string;
+          habit_name: string;
+          stat: StatKey;
+          quest_type: QuestTypeKey;
+          scheduled: boolean;
+          completion_kind: CompletionKind | null;
+          xp_awarded: number;
+          time_zone: string | null;
+          day_ends_at: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Omit<Database['public']['Tables']['deleted_habit_history']['Row'], 'user_id'>> & {
+          user_id: string;
+          source_habit_id: string;
+          historical_date: string;
+          habit_name: string;
+          stat: StatKey;
+          quest_type: QuestTypeKey;
+        };
+        Update: Partial<Database['public']['Tables']['deleted_habit_history']['Row']>;
+        Relationships: [];
+      };
+      habit_archive_intervals: {
+        Row: {
+          id: string;
+          habit_id: string;
+          user_id: string;
+          archived_from: string;
+          restored_on: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Omit<Database['public']['Tables']['habit_archive_intervals']['Row'], 'habit_id' | 'user_id'>> & {
+          habit_id: string;
+          user_id: string;
+          archived_from: string;
+        };
+        Update: Partial<Database['public']['Tables']['habit_archive_intervals']['Row']>;
+        Relationships: [];
+      };
       long_quests: {
         Row: {
           id: string;
@@ -324,6 +368,18 @@ export interface Database {
         Returns: {
           status: 'recovered' | 'already_recovered' | 'expired' | 'no_open_recovery';
         };
+      };
+      archive_habit: {
+        Args: { p_habit_id: string };
+        Returns: undefined;
+      };
+      restore_habit: {
+        Args: { p_habit_id: string };
+        Returns: undefined;
+      };
+      delete_habit: {
+        Args: { p_habit_id: string };
+        Returns: undefined;
       };
     };
   };

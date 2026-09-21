@@ -29,12 +29,21 @@ export async function fetchWeeklyReview(
   if (habitsError) throw habitsError;
   const statByHabit = new Map((habits ?? []).map(h => [h.id, h.stat]));
 
-  const { data: completions, error } = await supabase
-    .from('habit_completions')
-    .select('habit_id, completed_on')
-    .eq('user_id', userId)
-    .gte('completed_on', startStr);
+  const [{ data: completions, error }, { data: deletedHistory, error: deletedHistoryError }] = await Promise.all([
+    supabase
+      .from('habit_completions')
+      .select('habit_id, completed_on')
+      .eq('user_id', userId)
+      .gte('completed_on', startStr),
+    supabase
+      .from('deleted_habit_history')
+      .select('source_habit_id, historical_date, stat, completion_kind')
+      .eq('user_id', userId)
+      .gte('historical_date', startStr)
+      .lte('historical_date', todayKey),
+  ]);
   if (error) throw error;
+  if (deletedHistoryError) throw deletedHistoryError;
 
   const buckets = new Map<string, Record<Stat, number>>();
   for (let i = 0; i < 7; i++) {
@@ -46,6 +55,12 @@ export async function fetchWeeklyReview(
     const bucket = buckets.get(c.completed_on);
     if (!stat || !bucket) continue;
     bucket[stat] += 1;
+  }
+  for (const row of deletedHistory ?? []) {
+    if (!row.completion_kind) continue;
+    const bucket = buckets.get(row.historical_date);
+    if (!bucket) continue;
+    bucket[row.stat] += 1;
   }
 
   return Array.from(buckets.entries()).map(([dateKey, counts]) => ({

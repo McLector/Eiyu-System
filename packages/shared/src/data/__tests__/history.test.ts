@@ -29,10 +29,17 @@ function mockTables(habitsData: unknown[], completionsData: unknown[], occurrenc
     gte: jest.fn(() => occurrencesBuilder),
     lt: jest.fn(() => Promise.resolve({ data: occurrencesData, error: null })),
   };
+  const deletedHistoryBuilder: any = {
+    select: jest.fn(() => deletedHistoryBuilder),
+    eq: jest.fn(() => deletedHistoryBuilder),
+    gte: jest.fn(() => deletedHistoryBuilder),
+    lt: jest.fn(() => Promise.resolve({ data: [], error: null })),
+  };
   (supabase.from as jest.Mock).mockImplementation((table: string) => {
     if (table === 'habits') return habitsBuilder;
     if (table === 'habit_completions') return completionsBuilder;
     if (table === 'habit_occurrences') return occurrencesBuilder;
+    if (table === 'deleted_habit_history') return deletedHistoryBuilder;
     throw new Error(`unexpected table ${table}`);
   });
   (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {

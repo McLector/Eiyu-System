@@ -270,8 +270,20 @@ export async function updateHabit(id: string, input: HabitInput) {
   if (error) throw error;
 }
 
-/** R-03: "archive" not hard-delete, so history/completions stay intact. */
+/** Phase 1: archive through the server boundary so pause metadata is recorded. */
 export async function archiveHabit(id: string) {
-  const { error } = await supabase.from('habits').update({ archived: true }).eq('id', id);
+  const { error } = await supabase.rpc('archive_habit', { p_habit_id: id });
+  if (error) throw error;
+}
+
+/** Phase 1: restore through the server boundary so paused dates are not backfilled. */
+export async function restoreHabit(id: string) {
+  const { error } = await supabase.rpc('restore_habit', { p_habit_id: id });
+  if (error) throw error;
+}
+
+/** Phase 1: permanently remove the executable definition while retaining history. */
+export async function deleteHabit(id: string) {
+  const { error } = await supabase.rpc('delete_habit', { p_habit_id: id });
   if (error) throw error;
 }

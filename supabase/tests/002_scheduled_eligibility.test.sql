@@ -168,7 +168,12 @@ select lives_ok(
 );
 
 select is(
-  (select count(*) from public.habit_occurrences where habit_id = 'abababab-abab-4bab-8bab-abababababab'),
+  (
+    select count(*)
+    from public.habit_occurrences
+    where habit_id = 'abababab-abab-4bab-8bab-abababababab'
+      and occurrence_date in ('2026-09-07', '2026-09-09', '2026-09-11')
+  ),
   3::bigint,
   'a schedule edit preserves existing occurrence history'
 );
@@ -204,7 +209,12 @@ select is(
 );
 
 select is(
-  (select count(*) from public.habit_occurrences where habit_id = 'abababab-abab-4bab-8bab-abababababab'),
+  (
+    select count(*)
+    from public.habit_occurrences
+    where habit_id = 'abababab-abab-4bab-8bab-abababababab'
+      and occurrence_date in ('2026-09-07', '2026-09-09', '2026-09-11')
+  ),
   3::bigint,
   'a timezone edit cannot move historical occurrence date keys'
 );

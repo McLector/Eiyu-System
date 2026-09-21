@@ -47,6 +47,9 @@ describe('regenerateWeeklySummary', () => {
       if (table === 'habit_completions') {
         return chainable({ data: [{ habit_id: 'h1', kind: 'full' }], error: null });
       }
+      if (table === 'deleted_habit_history') {
+        return chainable({ data: [], error: null });
+      }
       if (table === 'weekly_summaries') {
         return chainable({ error: null });
       }
@@ -88,6 +91,7 @@ describe('regenerateWeeklySummary', () => {
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') return chainable({ data: [], error: null });
       if (table === 'habit_completions') return chainable({ data: [], error: null });
+      if (table === 'deleted_habit_history') return chainable({ data: [], error: null });
       if (table === 'weekly_summaries') return chainable({ error: new Error('update failed') });
       throw new Error(`unexpected table ${table}`);
     });

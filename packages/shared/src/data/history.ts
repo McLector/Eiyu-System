@@ -1,7 +1,9 @@
 import { addDateKeyDays, addUtcDays, toDateKey } from '../logic/date-utils';
 import { supabase } from '../supabase/client';
-import { CompletionKind } from '../types/database';
+import { CompletionKind, Database } from '../types/database';
 import { initializeAccountTimeZone } from './profile';
+
+type DeletedHabitHistoryRow = Database['public']['Tables']['deleted_habit_history']['Row'];
 
 export interface HistoryCompletion {
   habitName: string;
@@ -39,8 +41,24 @@ export async function fetchHistoryRange(userId: string, startDate: Date, endDate
     .eq('user_id', userId);
   if (habitsError) throw habitsError;
 
+  const { data: deletedHistory, error: deletedHistoryError } = await supabase
+    .from('deleted_habit_history')
+    .select('source_habit_id, historical_date, habit_name, quest_type, scheduled, completion_kind')
+    .eq('user_id', userId)
+    .gte('historical_date', startStr)
+    .lt('historical_date', endStr);
+  if (deletedHistoryError) throw deletedHistoryError;
+
   const nameByHabit = new Map((habits ?? []).map(h => [h.id, h.name]));
-  const recurringHabitIds = new Set((habits ?? []).filter(h => h.quest_type === 'habit').map(h => h.id));
+  const deletedRows = (deletedHistory ?? []) as Pick<
+    DeletedHabitHistoryRow,
+    'source_habit_id' | 'historical_date' | 'habit_name' | 'quest_type' | 'scheduled' | 'completion_kind'
+  >[];
+  for (const row of deletedRows) nameByHabit.set(row.source_habit_id, row.habit_name);
+  const recurringHabitIds = new Set([
+    ...(habits ?? []).filter(h => h.quest_type === 'habit').map(h => h.id),
+    ...deletedRows.filter(row => row.quest_type === 'habit').map(row => row.source_habit_id),
+  ]);
 
   const { data: occurrences, error: occurrencesError } = await supabase
     .from('habit_occurrences')
@@ -57,6 +75,11 @@ export async function fetchHistoryRange(userId: string, startDate: Date, endDate
     }
     scheduledByDate.get(occurrence.occurrence_date)!.add(occurrence.habit_id);
   }
+  for (const row of deletedRows) {
+    if (!row.scheduled || row.quest_type !== 'habit') continue;
+    if (!scheduledByDate.has(row.historical_date)) scheduledByDate.set(row.historical_date, new Set());
+    scheduledByDate.get(row.historical_date)!.add(row.source_habit_id);
+  }
 
   const { data: completions, error } = await supabase
     .from('habit_completions')
@@ -70,6 +93,14 @@ export async function fetchHistoryRange(userId: string, startDate: Date, endDate
   for (const c of completions ?? []) {
     if (!completionsByDate.has(c.completed_on)) completionsByDate.set(c.completed_on, []);
     completionsByDate.get(c.completed_on)!.push({ habit_id: c.habit_id, kind: c.kind });
+  }
+  for (const row of deletedRows) {
+    if (!row.completion_kind) continue;
+    if (!completionsByDate.has(row.historical_date)) completionsByDate.set(row.historical_date, []);
+    completionsByDate.get(row.historical_date)!.push({
+      habit_id: row.source_habit_id,
+      kind: row.completion_kind,
+    });
   }
 
   const result: HistoryByDate = {};
