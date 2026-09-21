@@ -12,10 +12,10 @@ This ledger records local phase approvals and integrations. Remote push, product
 - Landed commit SHA: `ace2a58f8d8e926e0b9902ba6836bbabf3c7a964` (local `main` fast-forwarded on 2026-09-21).
 - Post-main smoke: `npm run test --workspace @eiyu/shared -- --runInBand src/logic/__tests__/board-refresh-fixtures.test.ts` passed, 1 suite / 4 tests, on local `main` before creating the Phase 1 branch.
 
-Phase 1 remains the only authorized implementation scope after this landing. It must receive its own review package and user stop.
+Phase 1 was the only authorized implementation scope after the Phase 0 landing and has now been landed locally. Phase 2 implementation remains unauthorized by the current continuation message.
 
-Phase 1 candidate branch: `codex/board-refresh-phase-01` (uncommitted)
-
-Phase 1 review package: `phase-01-report.md` and `phase-01-executive-summary.md`
-
-Phase 1 gate: **REVIEW READY — AWAITING USER**; no Phase 1 commit or Phase 2 work is authorized yet.
+- Phase 1 candidate branch: `codex/board-refresh-phase-01`
+- Phase 1 review package: `phase-01-report.md` and `phase-01-executive-summary.md`
+- Landed commit SHA: `6918d03` (`fix: add safe habit lifecycle persistence`); local `main` fast-forwarded on 2026-09-22.
+- Post-main smoke: direct local Jest invocation for `lifecycle.test.ts` and `lifecycle-readers.test.ts` passed, 2 suites / 5 tests.
+- Phase 2 branch prepared: `codex/board-refresh-phase-02`; implementation not started and explicit Phase 2 authorization is still required.
