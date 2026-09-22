@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeInUp,
@@ -22,6 +22,8 @@ import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
 import { EASY_XP, FULL_XP } from '@eiyu/shared';
 import { Quest, Rank } from '@eiyu/shared';
+
+type BoardLaneId = 'daily' | 'one-time' | 'all-habits' | 'archived';
 
 /**
  * The per-stat XP bar, animated. It used to set `width: \`${pct}%\`` directly,
@@ -288,12 +290,17 @@ export default function BoardScreen() {
   } = useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
-  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
-  const activeHabits = allHabits.filter(quest => !quest.archived);
-  const archivedHabits = allHabits.filter(quest => quest.archived);
+  const [activeLane, setActiveLane] = useState<BoardLaneId>('daily');
+  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits, archivedQuests } = partitionBoardQuests(user.quests);
   const completed = dailyQuests.filter(q => q.completed).length;
   const total = dailyQuests.length;
   const initials = user.name.split(' ').map(n => n[0]).join('');
+  const laneOptions: { id: BoardLaneId; label: string; count: number }[] = [
+    { id: 'daily', label: 'DAILY QUEST', count: dailyQuests.length },
+    { id: 'one-time', label: 'ONE TIME QUEST', count: oneTimeQuests.length },
+    { id: 'all-habits', label: 'ALL HABITS', count: allHabits.length },
+    { id: 'archived', label: 'ARCHIVED', count: archivedQuests.length },
+  ];
 
   const flashXp = (id: string, xp: number) => {
     setXpToast({ id, xp });
@@ -433,108 +440,104 @@ export default function BoardScreen() {
 
         <View style={styles.questsHeader}>
           <View>
-            <Text style={[styles.questsTitle, { color: theme.text, fontFamily: fonts.display }]}>
-              DAILY QUESTS
-            </Text>
+            <Text style={[styles.questsTitle, { color: theme.text, fontFamily: fonts.display }]}>BOARD</Text>
             <Text style={[styles.questsSub, { color: theme.muted, fontFamily: fonts.body }]}>
-              {completed} of {total} completed
+              {completed} of {total} due today
             </Text>
           </View>
-          <View
-            style={[styles.progressPill, { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder }]}>
-            <Text style={[styles.mono, { color: theme.accent }]}>
-              {completed}/{total}
-            </Text>
+          <View style={[styles.progressPill, { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder }]}>
+            <Text style={[styles.mono, { color: theme.accent }]}>{completed}/{total}</Text>
           </View>
         </View>
 
-        <GlassView style={styles.questList}>
-          <Divider />
-          {questsError ? (
-            <View style={styles.errorBlock}>
-              <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
-              <Pressable onPress={retryQuests} style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
-                <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>
-                  RETRY
-                </Text>
-              </Pressable>
-            </View>
-          ) : questsLoading ? (
-            <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
-          ) : dailyQuests.length === 0 ? (
-            <Text style={[styles.emptyText, { color: theme.muted }]}>
-              No habits are scheduled for today. Your saved habits are still available under All Habits.
-            </Text>
-          ) : (
-            dailyQuests.map(quest => (
-              <QuestRow
-                key={quest.id}
-                quest={quest}
-                onToggle={() => handleToggle(quest)}
-                onCompleteEasy={() => handleCompleteEasy(quest)}
-                onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-                onAdjustProgress={delta => adjustProgress(quest.id, delta)}
-                xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
-              />
-            ))
-          )}
-        </GlassView>
-
-        {!questsLoading && !questsError && (
-          <>
-            <View style={styles.sectionGroup}>
-              <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>
-                ONE-TIME QUESTS
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.laneTabs}
+          accessibilityRole="tablist">
+          {laneOptions.map(lane => (
+            <Pressable
+              key={lane.id}
+              testID={`board-lane-tab-${lane.id}`}
+              accessibilityRole="tab"
+              accessibilityLabel={lane.label}
+              accessibilityState={{ selected: activeLane === lane.id }}
+              onPress={() => setActiveLane(lane.id)}
+              style={[
+                styles.laneTab,
+                { borderColor: activeLane === lane.id ? theme.accentBorder : theme.glassBorder },
+                activeLane === lane.id && { backgroundColor: theme.accentGlass },
+              ]}>
+              <Text style={[styles.laneTabText, { color: activeLane === lane.id ? theme.accent : theme.muted, fontFamily: fonts.display }]}>
+                {lane.label} <Text style={[styles.laneTabCount, { color: activeLane === lane.id ? theme.accent : theme.dim }]}>{lane.count}</Text>
               </Text>
-              <GlassView style={styles.questList}>
-                {oneTimeQuests.length === 0 ? (
-                  <Text style={[styles.emptyText, { color: theme.muted }]}>No one-time quests scheduled for today.</Text>
-                ) : (
-                  oneTimeQuests.map(quest => (
-                    <QuestRow
-                      key={quest.id}
-                      quest={quest}
-                      onToggle={() => handleToggle(quest)}
-                      onCompleteEasy={() => handleCompleteEasy(quest)}
-                      onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-                      onAdjustProgress={delta => adjustProgress(quest.id, delta)}
-                      xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
-                    />
-                  ))
-                )}
-              </GlassView>
-            </View>
+            </Pressable>
+          ))}
+        </ScrollView>
 
-            <View style={styles.sectionGroup}>
-              <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ALL HABITS</Text>
-              <GlassView style={styles.questList}>
-                {allHabits.length === 0 ? (
-                  <Text style={[styles.emptyText, { color: theme.muted }]}>No saved habits yet.</Text>
-                ) : (
-                  <>
-                    {activeHabits.map(quest => (
-                      <HabitCatalogRow
-                        key={quest.id}
-                        quest={quest}
-                        onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-                      />
-                    ))}
-                    {archivedHabits.length > 0 && (
-                      <>
-                        <Text style={[styles.sectionLabel, { color: theme.muted, fontFamily: fonts.display }]}>ARCHIVED</Text>
-                        {archivedHabits.map(quest => (
-                          <HabitCatalogRow
-                            key={quest.id}
-                            quest={quest}
-                            onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })}
-                          />
-                        ))}
-                      </>
-                    )}
-                  </>
-                )}
-              </GlassView>
-            </View>
+        {questsError ? (
+          <View style={styles.errorBlock}>
+            <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
+            <Pressable onPress={retryQuests} style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
+              <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
+            </Pressable>
+          </View>
+        ) : questsLoading ? (
+          <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
+        ) : (
+          <>
+        {activeLane === 'daily' && (
+          <View style={styles.lanePanel} accessibilityLabel="Daily Quest">
+            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>DAILY QUEST</Text>
+            <GlassView style={styles.questList}>
+              <Divider />
+              {dailyQuests.length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.muted }]}>No habits are scheduled for today. Create one or check All Habits.</Text>
+              ) : dailyQuests.map(quest => (
+                <QuestRow key={quest.id} quest={quest} onToggle={() => handleToggle(quest)} onCompleteEasy={() => handleCompleteEasy(quest)} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} onAdjustProgress={delta => adjustProgress(quest.id, delta)} xpToast={xpToast?.id === quest.id ? xpToast.xp : null} />
+              ))}
+            </GlassView>
+          </View>
+        )}
+
+        {activeLane === 'one-time' && (
+          <View style={styles.lanePanel} accessibilityLabel="One Time Quest">
+            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ONE TIME QUEST</Text>
+            <GlassView style={styles.questList}>
+              {oneTimeQuests.length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.muted }]}>No one-time quests scheduled for today.</Text>
+              ) : oneTimeQuests.map(quest => (
+                <QuestRow key={quest.id} quest={quest} onToggle={() => handleToggle(quest)} onCompleteEasy={() => handleCompleteEasy(quest)} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} onAdjustProgress={delta => adjustProgress(quest.id, delta)} xpToast={xpToast?.id === quest.id ? xpToast.xp : null} />
+              ))}
+            </GlassView>
+          </View>
+        )}
+
+        {activeLane === 'all-habits' && (
+          <View style={styles.lanePanel} accessibilityLabel="All Habits">
+            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ALL HABITS</Text>
+            <GlassView style={styles.questList}>
+              {allHabits.length === 0 ? (
+                <Text style={[styles.emptyText, { color: theme.muted }]}>No saved habits yet. Add a recurring quest to build your catalog.</Text>
+              ) : allHabits.map(quest => (
+                <HabitCatalogRow key={quest.id} quest={quest} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} />
+              ))}
+            </GlassView>
+          </View>
+        )}
+
+        {activeLane === 'archived' && (
+          <View style={styles.lanePanel} accessibilityLabel="Archived">
+            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ARCHIVED</Text>
+            <GlassView style={styles.questList}>
+              {archivedQuests.length === 0 ? (
+                <Text testID="board-archived-empty" style={[styles.emptyText, { color: theme.muted }]}>No archived quests. Archived definitions will stay here with their history.</Text>
+              ) : archivedQuests.map(quest => (
+                <HabitCatalogRow key={quest.id} quest={quest} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} />
+              ))}
+            </GlassView>
+          </View>
+        )}
           </>
         )}
 
@@ -790,6 +793,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
+  },
+  laneTabs: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  laneTab: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderRadius: 9,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  laneTabText: {
+    fontSize: 11,
+    letterSpacing: 0.7,
+  },
+  laneTabCount: {
+    fontSize: 10,
+  },
+  lanePanel: {
+    gap: 8,
   },
   questsTitle: {
     fontSize: 20,

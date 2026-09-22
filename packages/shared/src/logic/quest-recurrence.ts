@@ -36,6 +36,7 @@ export interface BoardQuestSections {
   recoveryRequired: Quest[];
   oneTimeQuests: Quest[];
   allHabits: Quest[];
+  archivedQuests: Quest[];
 }
 
 /** One shared routing contract for mobile and web board sections. */
@@ -44,8 +45,15 @@ export function partitionBoardQuests(quests: Quest[]): BoardQuestSections {
     dailyQuests: quests.filter(
       quest => quest.questType === 'habit' && quest.dailyEligible === true && !quest.archived
     ),
-    recoveryRequired: quests.filter(quest => quest.questType === 'habit' && quest.frozen),
-    oneTimeQuests: quests.filter(quest => quest.questType === 'one_time'),
-    allHabits: quests.filter(quest => quest.questType === 'habit'),
+    recoveryRequired: quests.filter(
+      quest => quest.questType === 'habit' && quest.frozen && !quest.archived
+    ),
+    oneTimeQuests: quests.filter(
+      quest => quest.questType === 'one_time' && !quest.archived
+    ),
+    allHabits: quests.filter(
+      quest => quest.questType === 'habit' && !quest.archived
+    ),
+    archivedQuests: quests.filter(quest => quest.archived === true),
   };
 }

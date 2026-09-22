@@ -58,7 +58,8 @@ describe('partitionBoardQuests', () => {
     expect(sections.dailyQuests.map(q => q.id)).toEqual(['daily']);
     expect(sections.recoveryRequired.map(q => q.id)).toEqual(['recovery']);
     expect(sections.oneTimeQuests.map(q => q.id)).toEqual(['one-time']);
-    expect(sections.allHabits.map(q => q.id)).toEqual(['daily', 'off-day', 'recovery', 'archived']);
+    expect(sections.allHabits.map(q => q.id)).toEqual(['daily', 'off-day', 'recovery']);
+    expect(sections.archivedQuests.map(q => q.id)).toEqual(['archived']);
     expect(sections.allHabits[0]).toBe(sections.dailyQuests[0]);
   });
 
@@ -78,6 +79,7 @@ describe('partitionBoardQuests', () => {
     expect(sections.dailyQuests).toEqual([]);
     expect(sections.allHabits).toEqual([]);
     expect(sections.oneTimeQuests).toEqual([oneTime]);
+    expect(sections.archivedQuests).toEqual([]);
   });
 });
 

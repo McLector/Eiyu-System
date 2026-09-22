@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { initialUser, type Quest, type UserProfile } from '@eiyu/shared';
@@ -67,7 +67,7 @@ describe('WebBoard recovery state', () => {
     );
 
     expect(container).toHaveTextContent('1 / 1 quests');
-    expect(container).toHaveTextContent('STREAK FROZEN — RECOVERY QUEST');
+    expect(container).toHaveTextContent('Streak frozen');
     expect(container).toHaveTextContent('Penalty: Walk for one minute');
     const recover = screen.getByRole('button', { name: 'MARK RECOVERY COMPLETE' });
     await user.click(recover);
@@ -104,10 +104,10 @@ describe('WebBoard recovery state', () => {
     const { container } = render(
       <WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />
     );
-    expect(container).toHaveTextContent('0 / 1 quests');
-    expect(container).toHaveTextContent('DAILY QUESTS');
-    expect(container).toHaveTextContent('ONE-TIME QUESTS');
-    expect(container).toHaveTextContent('ALL HABITS');
+    expect(container).toHaveTextContent('0 / 2 quests');
+    expect(container).toHaveTextContent('Daily Quest');
+    expect(container).toHaveTextContent('One Time Quest');
+    expect(container).toHaveTextContent('All Habits');
     expect(container).toHaveTextContent('Off-day habit');
     expect(container).toHaveTextContent('Archived habit');
     expect(screen.getByRole('button', { name: 'Complete Daily habit' })).toBeInTheDocument();
@@ -161,6 +161,47 @@ describe('WebBoard recovery state', () => {
     rerender(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
     expect(screen.getByText(/No habits are scheduled for today/)).toBeInTheDocument();
     expect(screen.getByText('No one-time quests scheduled for today.')).toBeInTheDocument();
-    expect(screen.getByText('No saved habits yet.')).toBeInTheDocument();
+    expect(screen.getByText(/No saved habits yet/)).toBeInTheDocument();
+  });
+
+  it('renders four named lanes and keeps archived definitions out of active catalog views', async () => {
+    const interaction = userEvent.setup();
+    const habit = {
+      id: 'daily', name: 'Daily habit', stat: 'STR' as const, difficulty: 'Medium' as const,
+      easyVersion: 'One minute', description: null, questType: 'habit' as const,
+      archived: false, time: '08:00', days: [1, 3, 5], streak: 0, frozen: false,
+      completed: false, targetCount: null, progressCount: 0,
+    };
+    const quests: Quest[] = [
+      { ...habit, dailyEligible: true },
+      { ...habit, id: 'off-day', name: 'Off-day habit', dailyEligible: false },
+      { ...habit, id: 'archived', name: 'Archived habit', archived: true, dailyEligible: false },
+      { ...habit, id: 'archived-one-time', name: 'Archived one-time', archived: true, questType: 'one_time', easyVersion: null, days: [], dailyEligible: false },
+    ];
+    store.useEiyu.mockReturnValue({
+      user: { ...initialUser, timeZone: 'UTC', rank: 'E', quests, longQuests: [] },
+      questsLoading: false,
+      questsError: null,
+      retryQuests: vi.fn(),
+      toggleQuest: store.toggleQuest,
+      adjustProgress: vi.fn(),
+      completeRecovery: store.completeRecovery,
+    });
+
+    render(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
+
+    const dailyLane = screen.getByRole('region', { name: 'Daily Quest' });
+    const oneTimeLane = screen.getByRole('region', { name: 'One Time Quest' });
+    const allLane = screen.getByRole('region', { name: 'All Habits' });
+    const archivedLane = screen.getByRole('region', { name: 'Archived' });
+    expect(within(dailyLane).getByText('Daily habit')).toBeInTheDocument();
+    expect(within(oneTimeLane).getByText('No one-time quests scheduled for today.')).toBeInTheDocument();
+    expect(within(allLane).getByText('Off-day habit')).toBeInTheDocument();
+    expect(within(allLane).queryByText('Archived habit')).not.toBeInTheDocument();
+    expect(within(archivedLane).getByText('Archived habit')).toBeInTheDocument();
+    expect(within(archivedLane).getByText('Archived one-time')).toBeInTheDocument();
+
+    await interaction.click(within(allLane).getByRole('button', { name: 'Edit Off-day habit' }));
+    expect(screen.getByRole('region', { name: 'All Habits' })).toBeInTheDocument();
   });
 });

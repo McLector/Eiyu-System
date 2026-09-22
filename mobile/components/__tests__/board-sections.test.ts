@@ -9,9 +9,10 @@ describe('mobile board section contract', () => {
     );
     expect(board).toContain('partitionBoardQuests');
     expect(board).toContain('RECOVERY REQUIRED');
-    expect(board).toContain('DAILY QUESTS');
-    expect(board).toContain('ONE-TIME QUESTS');
+    expect(board).toContain('DAILY QUEST');
+    expect(board).toContain('ONE TIME QUEST');
     expect(board).toContain('ALL HABITS');
+    expect(board).toContain('ARCHIVED');
 
     const catalogRow = board.slice(
       board.indexOf('function HabitCatalogRow'),

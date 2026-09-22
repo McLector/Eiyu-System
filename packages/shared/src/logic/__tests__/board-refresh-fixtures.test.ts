@@ -63,18 +63,18 @@ describe('board refresh characterization fixtures', () => {
     expect(labelsFor(sections.oneTimeQuests.map(quest => quest.id))).toEqual([
       'one-time-pending',
       'one-time-completed',
-      'archived-one-time',
     ]);
 
-    // Characterization of the pre-refresh implementation: Phase 3 will make
-    // allHabits active-only and provide a dedicated archivedQuests lane.
     expect(labelsFor(sections.allHabits.map(quest => quest.id))).toEqual([
       'active-due',
       'active-off-day',
       'quantity-due',
-      'archived-recurring',
       'recovery-open',
       'long-name',
+    ]);
+    expect(labelsFor(sections.archivedQuests.map(quest => quest.id))).toEqual([
+      'archived-recurring',
+      'archived-one-time',
     ]);
   });
 
