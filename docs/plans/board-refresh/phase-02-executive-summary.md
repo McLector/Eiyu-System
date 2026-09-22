@@ -1,6 +1,6 @@
 # Phase 02 executive summary — honest lifecycle controls on mobile and web
 
-Status: **REVIEW READY — AWAITING USER** (iOS execution explicitly excluded by user authorization)
+Status: **APPROVED / LANDED** (iOS execution explicitly excluded by user authorization)
 
 Date / implementer: 2026-09-22 / Codex, continuing the Luna-scoped handoff
 
@@ -10,7 +10,7 @@ Handoff: `docs/plans/board-refresh/luna-handoff.md`
 
 Base revision: `345a6e9`
 
-Candidate revision: uncommitted `codex/board-refresh-phase-02` working tree
+Candidate / landed revision: `7004bcc` (`feat: add honest quest lifecycle controls`), fast-forwarded into local `main` on 2026-09-22
 
 ## What changed for the user
 
@@ -67,8 +67,8 @@ Review the candidate branch `codex/board-refresh-phase-02`, the detailed [phase-
 - `mobile/maestro/flows/phase2_notification_schedule_retry.yaml`
 - `mobile/maestro/flows/phase2_notification_cancel_retry.yaml`
 
-No Phase 2 commit was created. No remote, production, deployment, or publishing action was performed.
+Phase 2 was committed locally as `7004bcc` and fast-forwarded into local `main`. No remote, production, deployment, or publishing action was performed.
 
 ## Decision needed / next boundary
 
-Phase 2 is **REVIEW READY — AWAITING USER** for the authorized non-iOS scope. No Phase 2 commit was created; the candidate remains unlanded pending user review and approval. iOS execution is explicitly excluded, the emulator permission-warning path is documented but not claimed as a native pass, and Phase 3 is **NOT AUTHORIZED** unless the user explicitly approves it after Phase 2 is accepted and landed.
+Phase 2 is **APPROVED / LANDED** for the authorized non-iOS scope. Post-main smoke passed with web lifecycle/store tests (2 files / 7 tests) and mobile lifecycle/notification tests (2 suites / 5 tests). iOS execution is explicitly excluded, the emulator permission-warning path is documented but not claimed as a native pass, and Phase 3 is authorized by the user's explicit instruction: **“commit and start phase 3.”**

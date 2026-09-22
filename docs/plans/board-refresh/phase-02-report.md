@@ -6,11 +6,11 @@ Plan: `docs/plans/2026-09-13-board-navigation-design-plan.md`
 
 Handoff: `docs/plans/board-refresh/luna-handoff.md`
 
-Status: **REVIEW READY — AWAITING USER** (iOS execution explicitly excluded by user authorization)
+Status: **APPROVED / LANDED** (iOS execution explicitly excluded by user authorization)
 
 Base main SHA: `345a6e9` — local Phase 1 landing record; Phase 1 feature SHA is `6918d03`.
 
-Candidate: uncommitted working tree on `codex/board-refresh-phase-02`.
+Candidate / landed commit: `7004bcc` — `feat: add honest quest lifecycle controls`; local `main` fast-forwarded on 2026-09-22.
 
 User authorization: the user said **“phase 2”** on 2026-09-22. No Phase 3 work, remote push, production data change, deployment, or publishing was authorized or performed.
 
@@ -121,6 +121,6 @@ git diff -- web/src/store/eiyu-store.tsx web/src/web/WebQuestEditor.tsx mobile/c
 
 ## Gate verdict and next boundary
 
-The automated implementation evidence and all authorized non-iOS Phase 2 runtime gates are green. The package is **REVIEW READY — AWAITING USER**. iOS native execution is explicitly excluded by the user and remains unexecuted on Windows. No Phase 2 commit was created and local `main` was not changed.
+The automated implementation evidence and all authorized non-iOS Phase 2 runtime gates are green. The package was approved by the user with **“commit and start phase 3”**, committed as `7004bcc`, and fast-forwarded into local `main`. The post-main smoke passed: web lifecycle/store tests 2 files / 7 tests and mobile lifecycle/notification tests 2 suites / 5 tests. iOS native execution is explicitly excluded by the user and remains unexecuted on Windows.
 
-Phase 3 is **NOT AUTHORIZED**. Phase 2 needs a follow-up review and explicit landing approval before it can be committed or landed.
+Phase 3 is authorized by the same user instruction and begins from local `main` at `7004bcc`.
