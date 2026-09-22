@@ -1,0 +1,15 @@
+appId: com.mclector.eiyusystem
+---
+# Runs against the already-authenticated local editor after the cross-platform
+# board/archive journey. The action row is below the initial viewport.
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-delete-permanent"
+- assertVisible: "DELETE QUEST PERMANENTLY?"
+- tapOn:
+    id: "quest-delete-cancel"
+- assertVisible: "EDIT QUEST"

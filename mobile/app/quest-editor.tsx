@@ -1,7 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { StatIcon } from '@/components/eiyu/icons';
@@ -59,9 +59,10 @@ const difficultyColor: Record<Difficulty, string> = {
 };
 
 export default function QuestEditorScreen() {
-  const { theme, user, saveHabit, archiveQuest } = useEiyu();
+  const { theme, user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
   const { id, type } = useLocalSearchParams<{ id?: string; type?: string }>();
   const quest = id ? user.quests.find(q => q.id === id) ?? null : null;
+  const editingId = id;
 
   // Editing locks the quest type; creation takes it from the board's chooser
   // popup. Round-tripping questType/description here is what keeps an edit
@@ -84,9 +85,11 @@ export default function QuestEditorScreen() {
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const lifecycleInFlight = useRef(false);
 
   const handleSuggest = async () => {
     if (!name.trim() || suggesting) return;
@@ -133,7 +136,7 @@ export default function QuestEditorScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      await saveHabit(input, quest?.id);
+      await saveHabit(input, editingId);
       hapticSuccess();
       router.back();
     } catch (err) {
@@ -143,17 +146,22 @@ export default function QuestEditorScreen() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!quest || submitting) return;
+  const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
+    if (!editingId || submitting || lifecycleInFlight.current) return;
+    lifecycleInFlight.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      await archiveQuest(quest.id);
+      if (operation === 'archive') await archiveQuest(editingId);
+      if (operation === 'restore') await restoreQuest(editingId);
+      if (operation === 'delete') await deleteQuest(editingId);
       hapticLight();
       router.back();
     } catch (err) {
       setError(formatError(err));
       setSubmitting(false);
+      if (operation === 'delete') setConfirmDelete(true);
+      lifecycleInFlight.current = false;
     }
   };
 
@@ -437,9 +445,28 @@ export default function QuestEditorScreen() {
 
           <View style={styles.actionsRow}>
             {quest && (
-              <Pressable style={styles.deleteButton} onPress={handleDelete} disabled={submitting}>
-                <Text style={[styles.deleteButtonText, { fontFamily: fonts.display }]}>DELETE</Text>
-              </Pressable>
+              <>
+                <Pressable
+                  testID={quest.archived ? 'quest-restore' : 'quest-archive'}
+                  style={[styles.lifecycleButton, { borderColor: theme.accentBorder }]}
+                  onPress={() => void handleLifecycle(quest.archived ? 'restore' : 'archive')}
+                  disabled={submitting}
+                  accessibilityRole="button"
+                  accessibilityLabel={quest.archived ? 'RESTORE QUEST' : 'ARCHIVE QUEST'}>
+                  <Text style={[styles.lifecycleButtonText, { color: theme.accent, fontFamily: fonts.display }]}>
+                    {quest.archived ? 'RESTORE QUEST' : 'ARCHIVE QUEST'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  testID="quest-delete-permanent"
+                  style={[styles.deleteButton, { opacity: submitting ? 0.5 : 1 }]}
+                  onPress={() => setConfirmDelete(true)}
+                  disabled={submitting}
+                  accessibilityRole="button"
+                  accessibilityLabel="DELETE PERMANENTLY">
+                  <Text style={[styles.deleteButtonText, { fontFamily: fonts.display }]}>DELETE PERMANENTLY</Text>
+                </Pressable>
+              </>
             )}
             <Pressable
               disabled={!valid || submitting}
@@ -463,6 +490,40 @@ export default function QuestEditorScreen() {
           </View>
         </Screen>
       </View>
+
+      <Modal
+        visible={confirmDelete}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmDelete(false)}>
+        <View style={styles.confirmOverlay} accessibilityRole="alert" accessibilityViewIsModal>
+          <View style={[styles.confirmCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
+            <Text style={[styles.confirmTitle, { color: theme.text, fontFamily: fonts.display }]}>DELETE QUEST PERMANENTLY?</Text>
+            <Text style={[styles.confirmBody, { color: theme.muted, fontFamily: fonts.body }]}>The saved definition will be removed. Its history will remain available, but the quest cannot be restored.</Text>
+            {error && <Text style={styles.errorText}>{error}</Text>}
+            <View style={styles.confirmActions}>
+              <Pressable
+                testID="quest-delete-cancel"
+                onPress={() => setConfirmDelete(false)}
+                disabled={submitting}
+                style={[styles.confirmCancel, { borderColor: theme.glassBorder }]}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel">
+                <Text style={[styles.lifecycleButtonText, { color: theme.muted, fontFamily: fonts.display }]}>CANCEL</Text>
+              </Pressable>
+              <Pressable
+                testID="quest-delete-confirm"
+                onPress={() => void handleLifecycle('delete')}
+                disabled={submitting}
+                style={[styles.confirmDelete, { borderColor: 'rgba(248,113,113,0.45)' }]}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm permanent delete">
+                <Text style={[styles.deleteButtonText, { fontFamily: fonts.display }]}>{submitting ? 'DELETING…' : 'CONFIRM PERMANENT DELETE'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -594,6 +655,17 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 4,
   },
+  lifecycleButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  lifecycleButtonText: {
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
   deleteButton: {
     backgroundColor: 'rgba(248,113,113,0.08)',
     borderWidth: 1,
@@ -607,6 +679,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#f87171',
     letterSpacing: 0.5,
+  },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 20,
+    gap: 12,
+  },
+  confirmTitle: {
+    fontSize: 16,
+    letterSpacing: 0.8,
+  },
+  confirmBody: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'flex-end',
+  },
+  confirmCancel: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  confirmDelete: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(248,113,113,0.12)',
   },
   saveButton: {
     flex: 1,

@@ -38,10 +38,12 @@ import { accountDateKey, deviceTimeZone, millisecondsUntilNextAccountDay } from 
 import {
   archiveHabit,
   createHabit,
+  deleteHabit,
   fetchAllActiveHabits,
   fetchTodayOneTimeHabits,
   fetchTodayHabits,
   HabitInput,
+  restoreHabit,
   updateHabit,
 } from '@eiyu/shared';
 import {
@@ -110,6 +112,10 @@ interface EiyuStore {
   completeRecovery: (id: string) => void;
   saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
+  restoreQuest: (id: string) => Promise<void>;
+  deleteQuest: (id: string) => Promise<void>;
+  /** Non-blocking device reminder warning after a successful DB mutation. */
+  reminderWarning: string | null;
   /** R-33: toggle one stage's done state. */
   toggleStage: (lqId: string, stageId: string) => void;
   longQuestsLoading: boolean;
@@ -139,7 +145,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
+  const [reminderWarning, setReminderWarning] = useState<string | null>(null);
   const [accountDayRevision, setAccountDayRevision] = useState(0);
+  const lifecycleRequests = useRef(new Map<string, Promise<void>>());
+  const deletedHabitIds = useRef(new Set<string>());
+  const activeUserId = useRef(userId);
 
   const habitsQuery = useQuery({
     queryKey: habitsTodayKey(userId),
@@ -220,10 +230,19 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const questsError = questsLoadError ? formatError(questsLoadError) : questActionError;
   const longQuestsError = longQuestsQuery.isPending || retryingLongQuests ? null : longQuestsQuery.error ? formatError(longQuestsQuery.error) : lqActionError;
 
-  // Sign-out hygiene: nothing user-scoped should survive into another account.
+  // Sign-out/account-switch hygiene: no user-scoped query or persisted cache
+  // entry may survive into another account's board.
   useEffect(() => {
+    const previousUserId = activeUserId.current;
+    if (previousUserId && previousUserId !== userId) {
+      qc.removeQueries({ predicate: query => query.queryKey.includes(previousUserId) });
+    }
     if (!userId) qc.removeQueries();
-  }, [userId, qc]);
+    activeUserId.current = userId;
+    deletedHabitIds.current.clear();
+    lifecycleRequests.current.clear();
+    setReminderWarning(null);
+  }, [qc, userId]);
   // Frozen-recovery notifications (R-41): notify only on the transition into
   // frozen while the app is open. The first observed snapshot of a session -
   // including one restored from the persisted cache - is seeded silently.
@@ -260,7 +279,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         return;
       }
       const granted = await requestNotificationPermissions();
-      if (!granted) return;
+      if (!granted) throw new Error('Notification permission is unavailable on this device.');
       await ensureNotificationSetup();
       const accountTimeZone = profile?.timeZone ?? deviceTimeZone();
       const habits = await fetchAllActiveHabits(userId);
@@ -422,6 +441,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const saveHabit = useCallback(
     async (input: HabitInput, existingId?: string) => {
       if (!userId) return;
+      if (existingId && deletedHabitIds.current.has(existingId)) {
+        throw new Error('This quest was deleted. Close this editor and reload the board.');
+      }
       let id: string;
       if (existingId) {
         await updateHabit(existingId, input);
@@ -432,6 +454,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       await qc.invalidateQueries({ queryKey: ['habits'] });
       setQuestActionError(null);
       if (!notificationsEnabled) return;
+      const reminderFailure = (err: unknown) => {
+        setReminderWarning(`Quest saved, but reminders could not be updated: ${formatError(err)}`);
+      };
       if (input.questType === 'one_time') {
         // One-shot DATE trigger on the quest's scheduled date; no-ops if that
         // moment has already passed.
@@ -445,27 +470,70 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
               accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone()),
           },
           profile?.timeZone ?? deviceTimeZone()
-        ).catch(() => {});
+        ).catch(reminderFailure);
       } else {
         scheduleHabitReminders(
           id,
           input,
           profile?.timeZone ?? deviceTimeZone()
-        ).catch(() => {});
+        ).catch(reminderFailure);
       }
     },
     [userId, qc, notificationsEnabled, profile?.timeZone]
   );
 
-  const archiveQuest = useCallback(
-    async (id: string) => {
-      await archiveHabit(id);
-      await qc.invalidateQueries({ queryKey: ['habits'] });
-      setQuestActionError(null);
-      cancelHabitReminders(id).catch(() => {});
+  const runLifecycle = useCallback(
+    (id: string, operation: 'archive' | 'restore' | 'delete'): Promise<void> => {
+      const existing = lifecycleRequests.current.get(id);
+      if (existing) return existing;
+
+      const request = (async () => {
+        setReminderWarning(null);
+        try {
+          if (operation === 'archive') await archiveHabit(id);
+          if (operation === 'restore') await restoreHabit(id);
+          if (operation === 'delete') await deleteHabit(id);
+        } catch (err) {
+          setQuestActionError(formatError(err));
+          throw err;
+        }
+
+        if (operation === 'delete') {
+          deletedHabitIds.current.add(id);
+          qc.setQueriesData<Quest[]>({ queryKey: ['habits'] }, rows =>
+            rows?.filter(row => row.id !== id)
+          );
+        }
+        await qc.invalidateQueries({ queryKey: ['habits'] });
+        setQuestActionError(null);
+
+        // Database success is authoritative. Notification cleanup/rearming is
+        // deliberately best-effort and reported separately, so a permission
+        // or OS scheduling failure never tells the user the DB action failed.
+        try {
+          if (operation === 'archive' || operation === 'delete') {
+            await cancelHabitReminders(id);
+          } else if (notificationsEnabled) {
+            await syncAllReminders(true);
+          }
+        } catch (err) {
+          setReminderWarning(`Quest ${operation}d, but reminders could not be updated: ${formatError(err)}`);
+        }
+      })();
+
+      lifecycleRequests.current.set(id, request);
+      request.then(
+        () => lifecycleRequests.current.delete(id),
+        () => lifecycleRequests.current.delete(id)
+      );
+      return request;
     },
-    [qc]
+    [notificationsEnabled, qc, syncAllReminders]
   );
+
+  const archiveQuest = useCallback((id: string) => runLifecycle(id, 'archive'), [runLifecycle]);
+  const restoreQuest = useCallback((id: string) => runLifecycle(id, 'restore'), [runLifecycle]);
+  const deleteQuest = useCallback((id: string) => runLifecycle(id, 'delete'), [runLifecycle]);
 
   const retryQuests = useCallback(async () => {
     setQuestActionError(null);
@@ -578,6 +646,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       completeRecovery,
       saveHabit,
       archiveQuest,
+      restoreQuest,
+      deleteQuest,
+      reminderWarning,
       toggleStage,
       longQuestsLoading: longQuestsQuery.isPending || retryingLongQuests,
       longQuestsError,
@@ -605,6 +676,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       completeRecovery,
       saveHabit,
       archiveQuest,
+      restoreQuest,
+      deleteQuest,
+      reminderWarning,
       toggleStage,
       longQuestsQuery.isPending,
       longQuestsError,

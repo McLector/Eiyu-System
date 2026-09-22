@@ -1,0 +1,40 @@
+appId: com.mclector.eiyusystem
+---
+# Local-only Phase 2 retry. The browser restores and archives this account's
+# quest against the disposable Supabase stack before this flow starts.
+- tapOn:
+    point: "50%,90%"
+- tapOn:
+    text: "Reload"
+    optional: true
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 60000
+- tapOn: "you@example.com"
+- eraseText
+- inputText: ${PHASE2_EMAIL}
+- tapOn: "••••••••"
+- eraseText
+- inputText: ${PHASE2_PASSWORD}
+- hideKeyboard
+- tapOn: "ENTER SYSTEM"
+- tapOn:
+    text: "Allow"
+    optional: true
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+- assertVisible: "P2 Local Lifecycle"
+- assertVisible: "ARCHIVED"
+- tapOn: "Edit P2 Local Lifecycle"
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-delete-permanent"
+- assertVisible: "DELETE QUEST PERMANENTLY?"
+- tapOn:
+    id: "quest-delete-cancel"
+- assertVisible: "EDIT QUEST"

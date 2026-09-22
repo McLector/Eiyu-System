@@ -5,12 +5,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
 
 import {
   archiveHabit,
+  deleteHabit,
   completeHabit,
   completeHabitRecovery,
   createHabit,
@@ -31,6 +33,7 @@ import {
   millisecondsUntilNextAccountDay,
   undoCompletion,
   updateHabit,
+  restoreHabit,
   updateLongQuest,
   type HabitInput,
   type LongQuest,
@@ -66,6 +69,8 @@ interface EiyuStore {
   completeRecovery: (id: string) => void;
   saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
+  restoreQuest: (id: string) => Promise<void>;
+  deleteQuest: (id: string) => Promise<void>;
   toggleStage: (lqId: string, stageId: string) => void;
   longQuestsLoading: boolean;
   longQuestsError: string | null;
@@ -85,6 +90,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [retryingQuests, setRetryingQuests] = useState(false);
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
   const [lqActionError, setLqActionError] = useState<string | null>(null);
+  const lifecycleRequests = useRef(new Map<string, Promise<void>>());
+  const deletedHabitIds = useRef(new Set<string>());
+  const activeUserId = useRef(userId);
 
   const habitsQuery = useQuery({
     queryKey: habitsTodayKey(userId),
@@ -129,6 +137,20 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       clearTimeout(timer);
     };
   }, [profile?.timeZone, qc, userId]);
+
+  // Clear client-side deletion guards whenever the authenticated owner
+  // changes so a matching UUID in another account is never blocked.
+  useEffect(() => {
+    deletedHabitIds.current.clear();
+  }, [userId]);
+  useEffect(() => {
+    const previousUserId = activeUserId.current;
+    if (previousUserId && previousUserId !== userId) {
+      qc.removeQueries({ predicate: query => query.queryKey.includes(previousUserId) });
+    }
+    if (!userId) qc.removeQueries();
+    activeUserId.current = userId;
+  }, [qc, userId]);
 
   const questsLoadError = retryingQuests
     ? undefined
@@ -257,6 +279,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const saveHabit = useCallback(
     async (input: HabitInput, existingId?: string) => {
       if (!userId) return;
+      if (existingId && deletedHabitIds.current.has(existingId)) {
+        throw new Error('This quest was deleted. Close this editor and reload the board.');
+      }
       if (existingId) {
         await updateHabit(existingId, input);
       } else {
@@ -268,14 +293,44 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     [userId, qc]
   );
 
-  const archiveQuest = useCallback(
-    async (id: string) => {
-      await archiveHabit(id);
-      await qc.invalidateQueries({ queryKey: ['habits'] });
-      setQuestActionError(null);
+  const runLifecycle = useCallback(
+    (id: string, operation: 'archive' | 'restore' | 'delete'): Promise<void> => {
+      const existing = lifecycleRequests.current.get(id);
+      if (existing) return existing;
+
+      const request = (async () => {
+        try {
+          if (operation === 'archive') await archiveHabit(id);
+          if (operation === 'restore') await restoreHabit(id);
+          if (operation === 'delete') await deleteHabit(id);
+
+          if (operation === 'delete') {
+            deletedHabitIds.current.add(id);
+            qc.setQueriesData<Quest[]>({ queryKey: ['habits'] }, rows =>
+              rows?.filter(row => row.id !== id)
+            );
+          }
+          await qc.invalidateQueries({ queryKey: ['habits'] });
+          setQuestActionError(null);
+        } catch (err) {
+          setQuestActionError(formatError(err));
+          throw err;
+        }
+      })();
+
+      lifecycleRequests.current.set(id, request);
+      request.then(
+        () => lifecycleRequests.current.delete(id),
+        () => lifecycleRequests.current.delete(id)
+      );
+      return request;
     },
     [qc]
   );
+
+  const archiveQuest = useCallback((id: string) => runLifecycle(id, 'archive'), [runLifecycle]);
+  const restoreQuest = useCallback((id: string) => runLifecycle(id, 'restore'), [runLifecycle]);
+  const deleteQuest = useCallback((id: string) => runLifecycle(id, 'delete'), [runLifecycle]);
 
   const retryQuests = useCallback(async () => {
     setQuestActionError(null);
@@ -374,6 +429,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       completeRecovery,
       saveHabit,
       archiveQuest,
+      restoreQuest,
+      deleteQuest,
       toggleStage,
       longQuestsLoading: longQuestsQuery.isLoading || retryingLongQuests,
       longQuestsError,
@@ -394,6 +451,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       completeRecovery,
       saveHabit,
       archiveQuest,
+      restoreQuest,
+      deleteQuest,
       toggleStage,
       longQuestsQuery.isLoading,
       retryingLongQuests,

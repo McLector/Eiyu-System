@@ -284,6 +284,7 @@ export default function BoardScreen() {
     questsLoading,
     questsError,
     retryQuests,
+    reminderWarning,
   } = useEiyu();
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
   const [showTypeChooser, setShowTypeChooser] = useState(false);
@@ -324,6 +325,18 @@ export default function BoardScreen() {
     <View style={{ flex: 1, backgroundColor: theme.body }}>
       <PageBackground />
       <Screen contentContainerStyle={styles.scroll} topGap={24}>
+        {reminderWarning && (
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.reminderNotice,
+              { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder },
+            ]}>
+            <Text style={[styles.reminderNoticeText, { color: theme.muted, fontFamily: fonts.body }]}>
+              {reminderWarning}
+            </Text>
+          </View>
+        )}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View
@@ -626,6 +639,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 100,
     gap: 16,
+  },
+  reminderNotice: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  reminderNoticeText: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   header: {
     flexDirection: 'row',

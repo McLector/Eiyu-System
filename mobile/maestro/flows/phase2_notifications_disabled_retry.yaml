@@ -1,0 +1,14 @@
+appId: com.mclector.eiyusystem
+---
+# Runs against the already-authenticated local Android client after the
+# lifecycle journey. This is a reversible device-preference boundary check.
+- pressKey: BACK
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+- tapOn: "SETTINGS"
+- assertVisible: "Settings"
+- tapOn: "Quest Reminders"
+- assertVisible: "Quest Reminders"
+- tapOn: "Quest Reminders"
+- assertVisible: "Quest Reminders"

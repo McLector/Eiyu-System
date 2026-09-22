@@ -1,0 +1,17 @@
+appId: com.mclector.eiyusystem
+---
+# Runs after phase2_notification_schedule_retry while the synthetic quest is
+# active. Archiving must cancel the scheduled Android reminder IDs.
+- tapOn: "Edit P2 Notification Retry"
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-archive"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+- assertVisible: "P2 Notification Retry"
+- assertVisible: "ARCHIVED"

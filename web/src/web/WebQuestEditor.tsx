@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { accountDateKey, Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
 import { STAT_COLORS } from '@eiyu/shared';
 import { SparkleIcon, StatIcon } from '../Icons';
@@ -12,7 +12,7 @@ interface Props {
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
 
 export default function WebQuestEditor({ editingQuest, onClose }: Props) {
-  const { user, saveHabit, archiveQuest } = useEiyu();
+  const { user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
   const [name, setName] = useState(editingQuest?.name ?? '');
   const [note, setNote] = useState(editingQuest?.description ?? '');
   const [easyVer, setEasyVer] = useState(editingQuest?.easyVersion ?? '');
@@ -31,6 +31,9 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const lifecycleInFlight = useRef(false);
+  const deleteTrigger = useRef<HTMLButtonElement>(null);
+  const hadDeleteDialog = useRef(false);
 
   const toggleDay = (d: number) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
@@ -68,17 +71,38 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirmDelete) { setConfirmDelete(true); return; }
-    if (!editingQuest) return;
+  const confirmDeleteButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!confirmDelete) {
+      if (hadDeleteDialog.current) deleteTrigger.current?.focus();
+      hadDeleteDialog.current = false;
+      return;
+    }
+    hadDeleteDialog.current = true;
+    confirmDeleteButton.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setConfirmDelete(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [confirmDelete]);
+
+  const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
+    if (!editingQuest || saving || lifecycleInFlight.current) return;
+    lifecycleInFlight.current = true;
     setSaving(true);
     setSaveError(null);
     try {
-      await archiveQuest(editingQuest.id);
+      if (operation === 'archive') await archiveQuest(editingQuest.id);
+      if (operation === 'restore') await restoreQuest(editingQuest.id);
+      if (operation === 'delete') await deleteQuest(editingQuest.id);
       onClose();
     } catch (err) {
       setSaveError(formatError(err));
       setSaving(false);
+      if (operation === 'delete') setConfirmDelete(true);
+      lifecycleInFlight.current = false;
     }
   };
 
@@ -301,22 +325,60 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
             </button>
           </div>
 
-          {/* Delete — only when editing */}
+          {/* Lifecycle controls — archive is reversible; delete is permanent. */}
           {editingQuest && (
-            <button
-              onClick={() => void handleDelete()}
-              onMouseLeave={() => setConfirmDelete(false)}
-              disabled={saving}
-              style={{
-                padding: '10px', borderRadius: 10, cursor: 'pointer', transition: 'all 0.15s',
-                background: confirmDelete ? 'rgba(248,113,113,0.12)' : 'transparent',
-                border: `1px solid ${confirmDelete ? 'rgba(248,113,113,0.45)' : 'rgba(248,113,113,0.2)'}`,
-                fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700,
-                color: '#f87171', letterSpacing: '0.08em',
-              }}
-            >
-              {confirmDelete ? 'CONFIRM DELETE' : 'DELETE QUEST'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {editingQuest.archived ? (
+                  <button
+                    onClick={() => void handleLifecycle('restore')}
+                    disabled={saving}
+                    className="btn-ghost"
+                    style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
+                    RESTORE QUEST
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => void handleLifecycle('archive')}
+                    disabled={saving}
+                    className="btn-ghost"
+                    style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-muted-flat)', letterSpacing: '0.08em' }}>
+                    ARCHIVE QUEST
+                  </button>
+                )}
+                <button
+                  ref={deleteTrigger}
+                  onClick={() => { setConfirmDelete(true); setSaveError(null); }}
+                  disabled={saving}
+                  style={{ flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(248,113,113,0.25)', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em' }}>
+                  DELETE PERMANENTLY
+                </button>
+              </div>
+
+              {confirmDelete && (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="delete-quest-title"
+                  className="panel-flat"
+                  style={{ padding: 14, border: '1px solid rgba(248,113,113,0.35)' }}>
+                  <strong id="delete-quest-title" style={{ display: 'block', fontFamily: 'Rajdhani', fontSize: 14, color: 'var(--c-text)' }}>
+                    Delete quest permanently
+                  </strong>
+                  <p style={{ margin: '6px 0 12px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)' }}>
+                    This removes the saved definition. Its history remains available, but the quest cannot be restored.
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button onClick={() => setConfirmDelete(false)} disabled={saving} className="btn-ghost" style={{ padding: '7px 12px', fontFamily: 'Inter', fontSize: 12 }}>
+                      Cancel
+                    </button>
+                    <button ref={confirmDeleteButton} onClick={() => void handleLifecycle('delete')} disabled={saving} style={{ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.45)', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: '#f87171' }}>
+                      {saving ? 'DELETING…' : 'Confirm permanent delete'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
