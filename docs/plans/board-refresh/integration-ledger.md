@@ -49,8 +49,17 @@ Phase 1 was the only authorized implementation scope after the Phase 0 landing a
 
 ## Phase 5 — compact weekly review and page sizing candidate
 
-- User authorization: the user said **“proceed phase 5 if phase 4 is clear now”** on 2026-09-25.
+- User authorization: the user said **“proceed phase 5 if phase 4 is clear now”** on 2026-09-25, then **“proceed to next phase if everything is clear with phase 5”** on 2026-09-25 after the Phase 5 review package reported all authorized gates clear. This authorized Phase 5 landing and Phase 6 implementation.
 - Base revision: `9681243` (`feat: move web navigation to header and add account dialogs`).
 - Candidate branch: `codex/board-refresh-phase-05`.
 - Review package: `phase-05-report.md` and `phase-05-executive-summary.md`.
-- Candidate status: **IN PROGRESS**. Phase 5 covers the remaining R9/R10 scope, R12 regression protection, and the required weekly/layout evidence. Phase 6 is not authorized.
+- Candidate status: **APPROVED / LANDED**. Phase 5 covered the remaining R9/R10 scope, R12 regression protection, and the required weekly/layout evidence. Shared/web/mobile tests, static/build/export checks, browser geometry, the Android Status Maestro flow, and the detector passed for the authorized non-iOS scope. The remote retained-history schema and a fresh Docker-backed local DB rerun remain environment limitations; no production data change was made.
+- Landed commit SHA: `87c370d` (`feat: compact weekly review and rebalance web layouts`); local `main` will be fast-forwarded to this Phase 5 landing before the Phase 6 branch is created.
+
+## Phase 6 — whole-product acceptance and final handoff candidate
+
+- User authorization: the user said **“proceed to next phase if everything is clear with phase 5”** on 2026-09-25, after Phase 5 was verified clear for the authorized non-iOS scope.
+- Base revision: `87c370d` (`feat: compact weekly review and rebalance web layouts`).
+- Candidate branch: `codex/board-refresh-phase-06`.
+- Review package: `phase-06-report.md` and `phase-06-executive-summary.md` (to be produced).
+- Candidate status: **IN PROGRESS**. Phase 6 owns the authored whole-product web/Android journey, full SQL/security/concurrency regression, final visual/accessibility gates, requirements evidence, and final user-review stop. iOS remains excluded; remote push, production data changes, deployment, and publishing remain out of scope.
