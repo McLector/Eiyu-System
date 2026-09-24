@@ -52,6 +52,73 @@ describe('lifecycle readers', () => {
     expect(weeklyStatTotal(result, 'INT')).toBe(1);
   });
 
+  it('returns seven ordered account-local date keys with zero-filled boundary days and exact counts', async () => {
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') {
+        return chainable({
+          data: [
+            { id: 'str', stat: 'STR' },
+            { id: 'int', stat: 'INT' },
+            { id: 'dex', stat: 'DEX' },
+            { id: 'wis', stat: 'WIS' },
+            { id: 'cha', stat: 'CHA' },
+          ],
+          error: null,
+        });
+      }
+      if (table === 'habit_completions') {
+        return chainable({
+          data: [
+            { habit_id: 'str', completed_on: '2026-12-25' },
+            { habit_id: 'int', completed_on: '2026-12-26' },
+            { habit_id: 'int', completed_on: '2026-12-26' },
+            { habit_id: 'int', completed_on: '2026-12-26' },
+            { habit_id: 'dex', completed_on: '2026-12-27' },
+            { habit_id: 'dex', completed_on: '2026-12-27' },
+            { habit_id: 'dex', completed_on: '2026-12-27' },
+            { habit_id: 'dex', completed_on: '2026-12-27' },
+            ...Array.from({ length: 10 }, () => ({ habit_id: 'wis', completed_on: '2026-12-28' })),
+            { habit_id: 'cha', completed_on: '2026-12-29' },
+            { habit_id: 'str', completed_on: '2027-01-01' },
+          ],
+          error: null,
+        });
+      }
+      if (table === 'deleted_habit_history') {
+        return chainable({
+          data: [
+            { source_habit_id: 'deleted-cha', historical_date: '2026-12-30', stat: 'CHA', completion_kind: 'easy' },
+            { source_habit_id: 'deleted-cha-2', historical_date: '2026-12-30', stat: 'CHA', completion_kind: 'full' },
+            { source_habit_id: 'deleted-empty', historical_date: '2026-12-31', stat: 'WIS', completion_kind: null },
+          ],
+          error: null,
+        });
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const result = await fetchWeeklyReview(
+      'user-1',
+      'America/Los_Angeles',
+      new Date('2027-01-01T00:30:00Z')
+    );
+
+    expect(result.map(day => day.dateKey)).toEqual([
+      '2026-12-25', '2026-12-26', '2026-12-27', '2026-12-28',
+      '2026-12-29', '2026-12-30', '2026-12-31',
+    ]);
+    expect(result.map(day => day.day)).toEqual(['Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu']);
+    expect(result.map(day => [day.STR, day.INT, day.DEX, day.WIS, day.CHA])).toEqual([
+      [1, 0, 0, 0, 0],
+      [0, 3, 0, 0, 0],
+      [0, 0, 4, 0, 0],
+      [0, 0, 0, 10, 0],
+      [0, 0, 0, 0, 1],
+      [0, 0, 0, 0, 2],
+      [0, 0, 0, 0, 0],
+    ]);
+  });
+
   it('adds retained recurring completions to weekly quest progress while keeping one-time rows out', async () => {
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'weekly_quests') {

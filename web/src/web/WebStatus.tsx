@@ -1,21 +1,25 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   STAT_COLORS, STATS, RANK_CONFIG, tintSecondaryText, type Stat, type UserProfile,
-  fetchWeeklyReview, fetchOrCreateWeeklySummary, formatError,
+  fetchWeeklyReview, fetchOrCreateWeeklySummary, regenerateWeeklySummary, formatError,
 } from '@eiyu/shared';
 import { StatIcon, SparkleIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import { useSession } from '../store/session-context';
 import SignaturePanel from '../SignaturePanel';
 import WebHeatmap from './WebHeatmap';
+import WeeklyReviewMatrix from './WeeklyReviewMatrix';
 
 interface Props { darkMode: boolean; }
 
 function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
   const [expanded, setExpanded] = useState(false);
-  const { data: summary, isPending, error } = useQuery({
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { data: summary, isPending, error, refetch } = useQuery({
     queryKey: ['weeklySummary', userId],
     queryFn: () => fetchOrCreateWeeklySummary(userId, timeZone),
     enabled: !!userId,
@@ -27,20 +31,50 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
   const isLong = text.length > SHORT_LIMIT;
   const displayed = expanded || !isLong ? text : text.slice(0, SHORT_LIMIT).trimEnd() + '…';
 
+  const handleRegenerate = async () => {
+    if (regenerating || !summary) return;
+    setRegenerating(true);
+    setRegenerateError(null);
+    try {
+      const nextSummary = await regenerateWeeklySummary(userId, timeZone);
+      queryClient.setQueryData(['weeklySummary', userId], nextSummary);
+    } catch (err) {
+      const message = formatError(err);
+      setRegenerateError(message.includes('regen cap reached')
+        ? "You've used both regenerations for today — more tomorrow"
+        : message);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   return (
     <SignaturePanel style={{ padding: '14px 18px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span aria-hidden="true" style={{ display: 'flex' }}>
           <SparkleIcon size={15} />
         </span>
-        <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>WEEKLY DEBRIEF</span>
+        <span style={{ flex: 1, fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>WEEKLY DEBRIEF</span>
+        <button
+          onClick={() => void handleRegenerate()}
+          disabled={regenerating || isPending || !summary}
+          aria-label="Regenerate weekly summary"
+          className="btn-ghost"
+          style={{ padding: '4px 7px', color: 'var(--c-accent)', font: '700 10px Rajdhani, sans-serif', letterSpacing: '.06em', opacity: regenerating || isPending || !summary ? 0.5 : 1 }}
+        >
+          {regenerating ? 'REGENERATING…' : '↻ REGENERATE'}
+        </button>
       </div>
       {isPending ? (
         <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>Reading the week&apos;s signs…</p>
       ) : error ? (
-        <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', lineHeight: 1.6, margin: 0 }}>The System couldn&apos;t reach the archive — {formatError(error)}</p>
+        <div className="status-query-error" role="alert">
+          <span>The System couldn&apos;t reach the archive — {formatError(error)}</span>
+          <button className="btn-ghost" onClick={() => void refetch()}>RETRY</button>
+        </div>
       ) : (
         <>
+          {regenerateError && <p role="alert" style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171', lineHeight: 1.5, margin: '0 0 6px' }}>{regenerateError}</p>}
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>
             {displayed}
           </p>
@@ -100,7 +134,7 @@ export default function WebStatus({ darkMode }: Props) {
   const gridStroke = darkMode ? 'rgba(103,232,249,0.1)' : 'rgba(8,145,178,0.15)';
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 24, alignItems: 'start' }}>
+    <div className="status-layout">
       {/* Left panel */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Rank badge — signature panel (redesign spec sections 3, 8.2) */}
@@ -140,9 +174,9 @@ export default function WebStatus({ darkMode }: Props) {
       {/* Right panel */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Tab toggle — crisp bordered segmented control */}
-        <div style={{ display: 'flex', padding: 3, border: '1px solid var(--c-divider-flat)', borderRadius: 6 }}>
+        <div className="status-tabs" role="tablist" aria-label="Status views">
           {(['stats', 'weekly'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
+            <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} style={{
               flex: 1, padding: '9px 16px',
               borderRadius: 4,
               background: tab === t ? 'var(--c-accent-glass)' : 'transparent',
@@ -171,36 +205,15 @@ export default function WebStatus({ darkMode }: Props) {
           <>
             <div>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 14 }}>LAST 7 DAYS</div>
-              {weeklyReviewQuery.isLoading ? (
+              {weeklyReviewQuery.isPending ? (
                 <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)', padding: '12px 0' }}>Reading the week…</div>
               ) : weeklyReviewQuery.error ? (
-                <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>Couldn&apos;t load this week&apos;s data.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {STATS.map(stat => (
-                    <div key={stat}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-                        <StatIcon stat={stat} size={12} />
-                        <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 5 }}>
-                        {(weeklyReviewQuery.data ?? []).map((day, i) => {
-                          const val = day[stat];
-                          const max = 3;
-                          const pct = (val / max) * 100;
-                          return (
-                            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                              <div style={{ width: '100%', height: 52, borderRadius: 4, background: 'var(--c-track)', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'flex-end' }}>
-                                <div style={{ width: '100%', height: `${pct}%`, background: STAT_COLORS[stat] + 'aa', borderRadius: 4, transition: 'height 0.3s' }} />
-                              </div>
-                              <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.06em' }}>{day.day[0]}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                <div className="status-query-error" role="alert">
+                  <span>Couldn&apos;t load this week&apos;s data.</span>
+                  <button className="btn-ghost" onClick={() => void weeklyReviewQuery.refetch()}>RETRY</button>
                 </div>
+              ) : (
+                <WeeklyReviewMatrix data={weeklyReviewQuery.data ?? []} timeZone={user.timeZone} />
               )}
             </div>
 

@@ -8,13 +8,22 @@ import { StatIcon } from '@/components/eiyu/icons';
 import { PageBackground } from '@/components/eiyu/page-background';
 import { RadarChart } from '@/components/eiyu/radar-chart';
 import { Screen } from '@/components/eiyu/screen';
-import { RANK_CONFIG, STATS, STAT_COLORS } from '@eiyu/shared';
+import WeeklyReviewMatrix from '@/components/weekly-review-matrix';
+import {
+  RANK_CONFIG,
+  STATS,
+  STAT_COLORS,
+  fetchOrCreateWeeklySummary,
+  fetchWeeklyReview,
+  formatError,
+  regenerateWeeklySummary,
+  type Stat,
+  type WeeklyDayDatum,
+  weeklyStatTotal,
+} from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { formatError } from '@eiyu/shared';
-import { fetchWeeklyReview, weeklyDayTotal, weeklyStatTotal, WeeklyDayDatum } from '@eiyu/shared';
-import { fetchOrCreateWeeklySummary, regenerateWeeklySummary, Stat } from '@eiyu/shared';
 
 type StatusTab = 'stats' | 'weekly';
 
@@ -25,6 +34,7 @@ export default function StatusScreen() {
   const [weeklyData, setWeeklyData] = useState<WeeklyDayDatum[]>([]);
   const [weeklyLoading, setWeeklyLoading] = useState(false);
   const [weeklyError, setWeeklyError] = useState<string | null>(null);
+  const [weeklyRetryCount, setWeeklyRetryCount] = useState(0);
   const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
   const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
   const [weeklySummaryError, setWeeklySummaryError] = useState<string | null>(null);
@@ -52,7 +62,7 @@ export default function StatusScreen() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user.id, tab, user.timeZone]);
+  }, [session?.user.id, tab, user.timeZone, weeklyRetryCount]);
 
   /**
    * R-60: the summary is PREFETCHED on mount rather than on the weekly tab
@@ -312,53 +322,24 @@ export default function StatusScreen() {
                 LAST 7 DAYS
               </Text>
             {weeklyError ? (
-              <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>
-                Couldn&apos;t load weekly review: {weeklyError}
-              </Text>
+              <View style={styles.weeklyError}>
+                <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>Couldn&apos;t load weekly review: {weeklyError}</Text>
+                <Pressable
+                  onPress={() => setWeeklyRetryCount(value => value + 1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry weekly review"
+                  style={styles.retryButton}>
+                  <Text style={[styles.regenerateText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
+                </Pressable>
+              </View>
             ) : weeklyLoading ? (
               <Text style={[styles.weeklyEmptyText, { color: theme.muted }]}>Loading…</Text>
             ) : (
               <>
-                {weeklyData.map((day, i) => {
-                  const dayTotal = weeklyDayTotal(day);
-                  const maxTotal = Math.max(1, ...weeklyData.map(weeklyDayTotal));
-                  return (
-                    <View key={`${day.day}-${i}`}>
-                      {i > 0 && <Divider />}
-                      <View style={styles.weeklyRow}>
-                        <Text style={[styles.weeklyDay, { color: theme.muted, fontFamily: fonts.displaySemi }]}>
-                          {day.day}
-                        </Text>
-                        <View style={[styles.weeklyTrack, { backgroundColor: theme.track }]}>
-                          <View
-                            style={[
-                              styles.weeklyTrackFill,
-                              { width: `${(dayTotal / maxTotal) * 100}%`, backgroundColor: theme.accent },
-                            ]}
-                          />
-                        </View>
-                        <View style={styles.weeklyDots}>
-                          {STATS.map(stat => (
-                            <View
-                              key={stat}
-                              style={[
-                                styles.weeklyDot,
-                                { backgroundColor: day[stat] > 0 ? STAT_COLORS[stat] : theme.accentGlass },
-                              ]}
-                            />
-                          ))}
-                        </View>
-                        <Text
-                          style={[
-                            styles.mono,
-                            { color: dayTotal > 5 ? theme.accent : theme.muted, minWidth: 24, textAlign: 'right' },
-                          ]}>
-                          {dayTotal}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
+                <WeeklyReviewMatrix
+                  data={weeklyData}
+                  colors={{ text: theme.text, muted: theme.muted, accent: theme.accent, track: theme.track }}
+                />
                 <Divider style={{ marginTop: 8, marginBottom: 12 }} />
                 <View style={styles.weeklyTotals}>
                   {STATS.map(stat => {
@@ -542,34 +523,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 20,
   },
-  weeklyRow: {
-    flexDirection: 'row',
+  weeklyError: {
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
   },
-  weeklyDay: {
-    fontSize: 13,
-    width: 32,
-  },
-  weeklyTrack: {
-    flex: 1,
-    borderRadius: 4,
-    height: 6,
-    overflow: 'hidden',
-  },
-  weeklyTrackFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  weeklyDots: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  weeklyDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+  retryButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   weeklyTotals: {
     flexDirection: 'row',

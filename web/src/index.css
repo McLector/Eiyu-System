@@ -322,6 +322,150 @@ body {
   color: var(--c-dim);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.status-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  min-width: 0;
+}
+
+.status-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--c-divider-flat);
+  border-radius: 6px;
+}
+
+.status-query-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #f87171;
+  font: 13px/1.5 Inter, sans-serif;
+}
+
+.status-query-error .btn-ghost {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  color: var(--c-accent);
+  font: 700 11px Rajdhani, sans-serif;
+  letter-spacing: .08em;
+}
+
+.protected-main {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.long-quests-page {
+  min-width: 0;
+  max-width: 920px;
+  margin-inline: auto;
+}
+
+.history-dialog {
+  max-height: calc(100svh - 32px);
+  overflow-y: auto;
+}
+
+.weekly-review-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.weekly-review-table {
+  width: 100%;
+  min-width: 650px;
+  border-spacing: 4px 6px;
+  border-collapse: separate;
+  color: var(--c-text);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.weekly-review-table caption {
+  margin-bottom: 8px;
+  color: var(--c-dim-flat);
+  text-align: left;
+  font: 600 11px Rajdhani, sans-serif;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.weekly-review-table th {
+  min-width: 76px;
+  padding: 4px 6px;
+  font: 700 10px/1.25 Rajdhani, sans-serif;
+  letter-spacing: .05em;
+  text-align: center;
+}
+
+.weekly-review-table thead th:first-child {
+  width: 52px;
+  min-width: 52px;
+  color: var(--c-dim-flat);
+  text-align: left;
+}
+
+.weekly-review-table thead th span,
+.weekly-review-table thead th time {
+  display: block;
+}
+
+.weekly-review-table thead th span { color: var(--c-accent); }
+.weekly-review-table thead th time { margin-top: 3px; color: var(--c-dim-flat); font: 9px/1.2 'JetBrains Mono', monospace; letter-spacing: 0; }
+
+.weekly-review-table tbody th {
+  min-width: 52px;
+  padding-inline: 6px;
+  text-align: left;
+}
+
+.weekly-review-table td {
+  min-width: 76px;
+  padding: 12px 8px;
+  border: 1px solid color-mix(in srgb, var(--weekly-stat-color) 35%, var(--c-glass-border));
+  border-radius: 5px;
+  color: var(--c-text);
+  font: 600 14px 'JetBrains Mono', monospace;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+}
+
+@media (max-width: 1050px) {
+  .status-layout { grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 18px; }
+}
+
+@media (max-width: 760px) {
+  .status-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .status-query-error { align-items: flex-start; flex-direction: column; }
+  .status-query-error .btn-ghost { align-self: flex-start; }
+}
+
+@media (max-width: 520px) {
+  .history-dialog { max-height: calc(100svh - 20px); }
+  .history-dialog-header { padding-inline: 16px !important; }
+  .history-dialog-body { padding: 14px 16px 18px !important; }
+  .long-quests-page { width: 100%; }
+}
+
 select.field option {
   background: var(--c-modal);
   color: var(--c-text);

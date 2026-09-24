@@ -44,7 +44,7 @@ export default function ProtectedLayout() {
       />
 
       {/* Main content */}
-      <main style={{ minHeight: '100svh', padding: '24px clamp(16px, 4vw, 56px) 48px' }}>
+      <main className="protected-main" style={{ minHeight: '100svh', padding: '24px clamp(16px, 4vw, 56px) 48px' }}>
         <Outlet context={context} />
       </main>
     </div>

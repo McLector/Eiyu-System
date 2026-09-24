@@ -5,7 +5,7 @@ import { Stat } from '../types/eiyu';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export type WeeklyDayDatum = { day: string } & Record<Stat, number>;
+export type WeeklyDayDatum = { dateKey: string; day: string } & Record<Stat, number>;
 
 function emptyDayCounts(): Record<Stat, number> {
   return { STR: 0, INT: 0, DEX: 0, WIS: 0, CHA: 0 };
@@ -34,7 +34,8 @@ export async function fetchWeeklyReview(
       .from('habit_completions')
       .select('habit_id, completed_on')
       .eq('user_id', userId)
-      .gte('completed_on', startStr),
+      .gte('completed_on', startStr)
+      .lte('completed_on', todayKey),
     supabase
       .from('deleted_habit_history')
       .select('source_habit_id, historical_date, stat, completion_kind')
@@ -64,6 +65,7 @@ export async function fetchWeeklyReview(
   }
 
   return Array.from(buckets.entries()).map(([dateKey, counts]) => ({
+    dateKey,
     day: DAY_LABELS[weekdayForDateKey(dateKey)],
     ...counts,
   }));

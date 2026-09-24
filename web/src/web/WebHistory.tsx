@@ -51,7 +51,7 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
   const todayCompletions = isCurrentMonth ? (data[dateKey(year, month, today)]?.completions ?? []) : [];
 
   return (
-    <div style={{
+    <div role="presentation" style={{
       position: 'fixed', inset: 0, zIndex: 60,
       background: 'var(--c-overlay)',
       backdropFilter: 'blur(8px)',
@@ -59,27 +59,28 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 24,
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="panel-flat" style={{
+      <div className="panel-flat history-dialog" role="dialog" aria-modal="true" aria-labelledby="history-dialog-title" style={{
         width: '100%', maxWidth: 440,
         boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
       }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>HISTORY</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
+        <div className="history-dialog-header" style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 id="history-dialog-title" style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>HISTORY</h2>
+          <button aria-label="Close history" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
 
-        <div style={{ padding: '16px 24px 24px' }}>
+        <div className="history-dialog-body" style={{ padding: '16px 24px 24px' }}>
           {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted-flat)', padding: '4px 8px', display: 'flex' }}>
+            <button aria-label="Previous month" onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted-flat)', padding: '4px 8px', display: 'flex' }}>
               <ChevronIcon direction="left" size={16} />
             </button>
-            <span style={{ fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.08em' }}>
+            <span aria-live="polite" style={{ fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.08em' }}>
               {monthNames[month].toUpperCase()} {year}
             </span>
-            <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted-flat)', padding: '4px 8px', display: 'flex' }}>
+            <button aria-label="Next month" onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-muted-flat)', padding: '4px 8px', display: 'flex' }}>
               <ChevronIcon direction="right" size={16} />
             </button>
           </div>
@@ -87,7 +88,7 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
           {/* Day headers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
             {DAYS_HEADER.map((d, i) => (
-              <div key={i} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.08em', padding: '4px 0' }}>{d}</div>
+              <div key={i} role="columnheader" aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]} style={{ textAlign: 'center', fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, color: 'var(--c-dim-flat)', letterSpacing: '0.08em', padding: '4px 0' }}>{d}</div>
             ))}
           </div>
 
@@ -95,7 +96,10 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
           {historyQuery.isPending ? (
             <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Reading the record…</div>
           ) : historyQuery.error ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>The System couldn&apos;t pull this month&apos;s record. Try again in a moment.</div>
+            <div role="alert" style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>
+              <div>The System couldn&apos;t pull this month&apos;s record. Try again in a moment.</div>
+              <button className="btn-ghost" onClick={() => void historyQuery.refetch()} style={{ marginTop: 12, padding: '7px 12px', color: 'var(--c-accent)', font: '700 11px Rajdhani, sans-serif', letterSpacing: '.08em' }}>RETRY</button>
+            </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
               {cells.map((day, i) => {
@@ -103,7 +107,7 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
                 const completion = dayStatus(data[dateKey(year, month, day)]?.completions);
                 const isToday = isCurrentMonth && day === today;
                 return (
-                  <div key={i} style={{
+                  <div key={i} role="gridcell" aria-label={`${dateKey(year, month, day)}: ${completion === 'full' ? 'full completion' : completion === 'partial' ? 'penalty' : 'no completion'}`} style={{
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
                     padding: '6px 2px',
                     borderRadius: 8,

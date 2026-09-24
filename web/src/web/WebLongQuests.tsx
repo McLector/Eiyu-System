@@ -713,7 +713,7 @@ export default function WebLongQuests() {
   };
 
   return (
-    <div>
+    <div className="long-quests-page">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>LONG QUESTS</h2>
