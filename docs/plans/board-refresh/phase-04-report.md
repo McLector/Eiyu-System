@@ -6,13 +6,13 @@ Plan: `docs/plans/2026-09-13-board-navigation-design-plan.md`
 
 Handoff: `docs/plans/board-refresh/luna-handoff.md`
 
-Status: **REVIEW READY — AWAITING USER**
+Status: **APPROVED / LANDED**
 
 Base revision: `01d47da94a586287fa32536045f8517b6ac6c7bc` — `feat: present quests in a responsive four-lane board`
 
-Candidate branch: `codex/board-refresh-phase-04`; Phase 4 changes are intentionally uncommitted pending user approval.
+Landed branch: `codex/board-refresh-phase-04`; commit `9681243` (`feat: move web navigation to header and add account dialogs`). Local `main` was fast-forwarded to this revision on 2026-09-25.
 
-User authorization: the user said **“commit, start phase 4”** on 2026-09-24. This authorized Phase 4 implementation and verification. It did not authorize the Phase 4 commit, Phase 5, remote push, production data changes, deployment, or publishing.
+User authorization: the user said **“commit, start phase 4”** on 2026-09-24, then **“proceed phase 5 if phase 4 is clear now”** on 2026-09-25 after the review package. This authorized the Phase 4 landing and Phase 5 start. Remote push, production data changes, deployment, and publishing remain out of scope.
 
 ## Outcome
 
@@ -129,8 +129,8 @@ npm run db:verify
 git diff --check
 ```
 
-Review the uncommitted candidate branch `codex/board-refresh-phase-04` against `01d47da94a586287fa32536045f8517b6ac6c7bc`. The planned landing message is `feat: move web navigation to header and add account dialogs`.
+Review commit `9681243` on `main` against `01d47da94a586287fa32536045f8517b6ac6c7bc`. The landing message was `feat: move web navigation to header and add account dialogs`.
 
 ## Gate verdict and next boundary
 
-The authorized non-iOS Phase 4 implementation, local database/profile security checks, web runtime checks, Android account journey, and static/build gates are ready for review. **Phase 4 is not committed. Phase 5 is not authorized.** Await the user's explicit approval before creating the Phase 4 commit or advancing the plan.
+The authorized non-iOS Phase 4 implementation, local database/profile security checks, web runtime checks, Android account journey, and static/build gates passed. **Phase 4 is landed as `9681243`. Phase 5 is authorized and begins on `codex/board-refresh-phase-05`.**

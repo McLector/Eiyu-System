@@ -1,6 +1,6 @@
 # Phase 04 executive summary — horizontal navigation and account overlays
 
-Status: **REVIEW READY — AWAITING USER**
+Status: **APPROVED / LANDED**
 
 Date / implementer: 2026-09-24 / Codex, continuing the Luna-scoped handoff
 
@@ -10,7 +10,7 @@ Handoff: `docs/plans/board-refresh/luna-handoff.md`
 
 Base revision: `01d47da94a586287fa32536045f8517b6ac6c7bc` (`feat: present quests in a responsive four-lane board`)
 
-Candidate branch: `codex/board-refresh-phase-04`, uncommitted
+Landed branch: `codex/board-refresh-phase-04`, commit `9681243`; local `main` was fast-forwarded on 2026-09-25.
 
 ## Before and after
 
@@ -55,4 +55,4 @@ Navigation/account/profile tests were red before implementation: the old fixed s
 
 ## Decision needed
 
-Please review the candidate diff and [detailed Phase 04 report](phase-04-report.md). The planned commit is `feat: move web navigation to header and add account dialogs`. Phase 4 is not committed until you explicitly approve this package. Phase 5 is not authorized.
+Phase 4 was reviewed and landed as `9681243` (`feat: move web navigation to header and add account dialogs`). The user then authorized Phase 5 on 2026-09-25; Phase 5 starts from this revision on `codex/board-refresh-phase-05`.
