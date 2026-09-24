@@ -1,4 +1,4 @@
-import type { Session } from '@supabase/supabase-js';
+import type { AuthError, Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { deviceTimeZone } from '@eiyu/shared';
 
@@ -15,7 +15,7 @@ interface AuthStore {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (email: string, password: string, displayName: string) => Promise<AuthResult>;
-  signOut: () => Promise<void>;
+  signOut: () => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<AuthResult>;
 }
 
@@ -56,7 +56,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: null, needsEmailConfirmation: !data.session };
       },
       signOut: async () => {
-        await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        return { error };
       },
       resetPassword: async email => {
         const { error } = await supabase.auth.resetPasswordForEmail(email);

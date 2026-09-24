@@ -10,6 +10,7 @@
 
 export const MIN_PASSWORD_LENGTH = 6;
 export const MAX_DISPLAY_NAME_LENGTH = 40;
+export const PROFILE_TEXT_MAX_LENGTH = 80;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -25,6 +26,31 @@ export function validateDisplayName(value: string): string | null {
   if (trimmed.length > MAX_DISPLAY_NAME_LENGTH)
     return `Display name must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer.`;
   return null;
+}
+
+/** Profile text uses Unicode code points for the shared 80-character boundary. */
+export function validateProfileText(value: string, label: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return `Enter a ${label.toLowerCase()}.`;
+  if (Array.from(trimmed).length > PROFILE_TEXT_MAX_LENGTH) {
+    return `${label} must be ${PROFILE_TEXT_MAX_LENGTH} characters or fewer.`;
+  }
+  return null;
+}
+
+export interface ProfileEditInput {
+  displayName: string;
+  userClass: string;
+}
+
+export function normalizeProfileEdit(input: ProfileEditInput): ProfileEditInput {
+  const displayName = input.displayName.trim();
+  const userClass = input.userClass.trim();
+  const displayNameError = validateProfileText(displayName, 'Display name');
+  if (displayNameError) throw new Error(displayNameError);
+  const userClassError = validateProfileText(userClass, 'Class');
+  if (userClassError) throw new Error(userClassError);
+  return { displayName, userClass };
 }
 
 export function validateEmail(value: string): string | null {

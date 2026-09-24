@@ -2,7 +2,8 @@ import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
-import { BoardIcon, GearIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
+import { BoardIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
+import AccountHeader from '@/components/eiyu/account-header';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 
@@ -12,7 +13,8 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <AccountHeader />,
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.navDim,
         tabBarStyle: {
@@ -54,13 +56,6 @@ export default function TabLayout() {
         options={{
           title: 'QUESTS',
           tabBarIcon: ({ color }) => <ScrollIcon color={color} size={22} />,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'SETTINGS',
-          tabBarIcon: ({ color }) => <GearIcon color={color} size={22} />,
         }}
       />
     </Tabs>

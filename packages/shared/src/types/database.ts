@@ -381,6 +381,10 @@ export interface Database {
         Args: { p_habit_id: string };
         Returns: undefined;
       };
+      update_profile: {
+        Args: { p_display_name: string; p_user_class: string };
+        Returns: { displayName: string; userClass: string; timeZone: string | null };
+      };
     };
   };
 }

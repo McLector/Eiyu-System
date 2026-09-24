@@ -1,10 +1,30 @@
 import { supabase } from '../supabase/client';
 import { deviceTimeZone } from '../logic/date-utils';
+import { normalizeProfileEdit, type ProfileEditInput } from '../logic/validation';
 
 export interface ProfileData {
   displayName: string;
   userClass: string;
   timeZone: string;
+}
+
+export async function updateProfile(input: ProfileEditInput): Promise<ProfileData> {
+  const normalized = normalizeProfileEdit(input);
+  const { data, error } = await supabase.rpc('update_profile', {
+    p_display_name: normalized.displayName,
+    p_user_class: normalized.userClass,
+  });
+  if (error) throw error;
+  const result = data as {
+    displayName?: string;
+    userClass?: string;
+    timeZone?: string;
+  } | null;
+  return {
+    displayName: result?.displayName ?? normalized.displayName,
+    userClass: result?.userClass ?? normalized.userClass,
+    timeZone: result?.timeZone ?? deviceTimeZone(),
+  };
 }
 
 export async function initializeAccountTimeZone(candidate: string = deviceTimeZone()): Promise<string> {

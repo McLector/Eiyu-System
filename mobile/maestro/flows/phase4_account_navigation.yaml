@@ -1,0 +1,98 @@
+appId: com.mclector.eiyusystem
+---
+# Phase 4 local account/header journey. Use only a disposable local Supabase
+# account via PHASE4_EMAIL and PHASE4_PASSWORD.
+- launchApp:
+    clearState: true
+- tapOn:
+    text: "http://10.0.2.2:8081"
+    optional: true
+- tapOn:
+    point: "50%,20%"
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "This is the developer menu"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Go home"
+    commands:
+      - tapOn:
+          point: "90%,10%"
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 60000
+- tapOn: "you@example.com"
+- inputText: ${PHASE4_EMAIL}
+- tapOn: "••••••••"
+- inputText: ${PHASE4_PASSWORD}
+- hideKeyboard
+- tapOn: "ENTER SYSTEM"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+
+# The account header replaces the old Settings tab and leaves exactly three
+# bottom tabs available.
+- assertVisible: "BOARD"
+- assertVisible: "STATUS"
+- assertVisible: "QUESTS"
+- assertNotVisible: "SETTINGS"
+- tapOn: "Phase Four Updated"
+- assertVisible: "Edit details"
+- assertVisible: "Settings"
+- assertVisible: "Logout"
+
+# Edit details is a real profile write, not a local-only display update.
+- tapOn: "Edit details"
+- extendedWaitUntil:
+    visible: "EDIT DETAILS"
+    timeout: 5000
+- tapOn: "Display name"
+- eraseText
+- inputText: "Phase Four Native"
+- hideKeyboard
+- tapOn: "Class"
+- eraseText
+- inputText: "Navigator"
+- hideKeyboard
+- tapOn: "SAVE"
+- extendedWaitUntil:
+    visible: "Phase Four Native"
+    timeout: 15000
+
+# Settings is an account action; Android Back must dismiss the full-screen
+# settings surface without logging out or changing the selected tab.
+- tapOn: "Phase Four Native"
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "SETTINGS"
+    timeout: 5000
+- assertVisible: "Quest History"
+- back
+- assertVisible: "BOARD"
+
+# The History action routes to the existing history screen and Back returns to
+# the board shell.
+- tapOn: "Phase Four Native"
+- tapOn: "Settings"
+- tapOn: "Quest History"
+- extendedWaitUntil:
+    visible: "HISTORY"
+    timeout: 10000
+- back
+- assertVisible: "BOARD"
+
+# Logout remains available from the account menu and returns to auth.
+- tapOn: "Phase Four Native"
+- tapOn: "Logout"
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 15000

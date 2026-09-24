@@ -62,9 +62,13 @@ export function BoardIcon({ active }: { active: boolean }) {
 export function StatusIcon({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+      role="img" aria-label="Status"
       stroke={active ? 'var(--c-accent)' : 'var(--c-nav-dim)'}
       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12,3 16,8 22,9 18,14 19,21 12,17 5,21 6,14 2,9 8,8" />
+      <circle cx="9" cy="8" r="3" />
+      <circle cx="16.5" cy="9" r="2.5" />
+      <path d="M3 20c.5-3.6 2.5-5.5 6-5.5s5.5 1.9 6 5.5" />
+      <path d="M14 15c3-.5 5.5 1.1 6.5 4.5" />
     </svg>
   );
 }

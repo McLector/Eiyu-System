@@ -61,7 +61,10 @@ export function BoardIcon({ color, size = 22 }: { color: string; size?: number }
 export function StatusIcon({ color, size = 22 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <Polygon points="12,3 16,8 22,9 18,14 19,21 12,17 5,21 6,14 2,9 8,8" />
+      <Circle cx="9" cy="8" r="3" />
+      <Circle cx="16.5" cy="9" r="2.5" />
+      <Path d="M3 20c.5-3.6 2.5-5.5 6-5.5s5.5 1.9 6 5.5" />
+      <Path d="M14 15c3-.5 5.5 1.1 6.5 4.5" />
     </Svg>
   );
 }

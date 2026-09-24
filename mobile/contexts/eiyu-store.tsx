@@ -68,7 +68,7 @@ import {
   setStageDone,
   updateLongQuest,
 } from '@eiyu/shared';
-import { fetchProfile } from '@eiyu/shared';
+import { fetchProfile, updateProfile } from '@eiyu/shared';
 import { fetchStats } from '@eiyu/shared';
 import { fetchOrCreateWeeklyQuest, WeeklyQuest } from '@eiyu/shared';
 import { LongQuest, Quest, UserProfile } from '@eiyu/shared';
@@ -130,6 +130,7 @@ interface EiyuStore {
   setNotificationsEnabled: (enabled: boolean) => void;
   /** R-30/R-31: this week's auto-generated quest, null until the first load resolves. */
   weeklyQuest: WeeklyQuest | null;
+  saveProfile: (input: { displayName: string; userClass: string }) => Promise<void>;
 }
 
 const EiyuContext = createContext<EiyuStore | null>(null);
@@ -609,6 +610,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     [userId, qc]
   );
 
+  const saveProfile = useCallback(
+    async (input: { displayName: string; userClass: string }) => {
+      const updated = await updateProfile(input);
+      qc.setQueryData(['profile', userId ?? null], updated);
+    },
+    [qc, userId]
+  );
+
   const user: UserProfile = useMemo(
     () => ({
       name: profile?.displayName ?? initialUser.name,
@@ -658,6 +667,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       notificationsEnabled,
       setNotificationsEnabled,
       weeklyQuest,
+      saveProfile,
     }),
     [
       user,
@@ -688,6 +698,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       notificationsEnabled,
       setNotificationsEnabled,
       weeklyQuest,
+      saveProfile,
     ]
   );
 

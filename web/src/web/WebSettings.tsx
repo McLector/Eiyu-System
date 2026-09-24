@@ -6,11 +6,12 @@ interface Props {
   onShowHistory: () => void;
   onLogout: () => void;
   signOutError?: string | null;
+  embedded?: boolean;
 }
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
-    <button onClick={onToggle} style={{
+    <button aria-label="Dark mode" role="switch" aria-checked={on} onClick={onToggle} style={{
       width: 44, height: 24, borderRadius: 12,
       background: on ? 'var(--c-accent-strong)' : 'var(--c-track)',
       border: `1.5px solid ${on ? 'var(--c-accent-border)' : 'var(--c-divider-flat)'}`,
@@ -43,11 +44,13 @@ function SectionLabel({ label, first }: { label: string; first?: boolean }) {
   return <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--c-dim-flat)', marginTop: first ? 0 : 24, marginBottom: 4 }}>{label}</div>;
 }
 
-export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onLogout, signOutError }: Props) {
+export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onLogout, signOutError, embedded }: Props) {
   return (
     <div style={{ maxWidth: 560 }}>
-      <h2 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: '0 0 4px' }}>SETTINGS</h2>
-      <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginBottom: 20 }}>Configure your experience</p>
+      {!embedded && <>
+        <h2 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: '0 0 4px' }}>SETTINGS</h2>
+        <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginBottom: 20 }}>Configure your experience</p>
+      </>}
 
       <SectionLabel label="APPEARANCE" first />
       <SettingRow

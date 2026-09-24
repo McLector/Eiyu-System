@@ -146,6 +146,111 @@ body {
   transform: scale(0.97);
 }
 
+.phase4-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 4vw, 56px);
+  min-height: 76px;
+  padding: 12px clamp(16px, 4vw, 56px);
+  background: color-mix(in srgb, var(--c-nav) 94%, transparent);
+  border-bottom: 1px solid var(--c-nav-border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.phase4-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: max-content;
+  color: var(--c-text);
+  text-decoration: none;
+}
+.phase4-brand-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1.5px solid var(--c-accent-border);
+  border-radius: 11px;
+  color: var(--c-accent);
+  background: var(--c-accent-glass);
+  font: 700 19px Rajdhani, sans-serif;
+}
+.phase4-brand strong, .phase4-brand small { display: block; }
+.phase4-brand strong { font: 700 17px/1 Rajdhani, sans-serif; letter-spacing: .1em; }
+.phase4-brand small { margin-top: 2px; color: var(--c-muted-flat); font: 600 10px Rajdhani, sans-serif; letter-spacing: .18em; }
+.phase4-primary-nav { display: flex; align-items: stretch; gap: 4px; min-width: 0; flex: 1; }
+.phase4-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--c-nav-dim);
+  font: 600 13px Rajdhani, sans-serif;
+  letter-spacing: .12em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.phase4-nav-link:hover, .phase4-nav-link.active {
+  color: var(--c-accent);
+  background: var(--c-accent-glass);
+  border-color: var(--c-accent-border);
+}
+.phase4-account-wrap { position: relative; min-width: 0; }
+.phase4-account-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(300px, 32vw);
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--c-text);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.phase4-account-trigger:hover, .phase4-account-trigger:focus-visible { background: var(--c-accent-glass); border-color: var(--c-accent-border); }
+.phase4-avatar { display: grid; width: 34px; height: 34px; flex-shrink: 0; place-items: center; border: 1.5px solid var(--c-accent-border); border-radius: 50%; color: var(--c-accent); background: var(--c-accent-glass); font: 700 12px Rajdhani, sans-serif; }
+.phase4-account-copy { display: grid; min-width: 0; }
+.phase4-account-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 14px/1.2 Rajdhani, sans-serif; }
+.phase4-account-copy small { margin-top: 2px; color: var(--c-muted-flat); font: 11px Inter, sans-serif; }
+.phase4-rank { display: grid; width: 30px; height: 30px; flex-shrink: 0; place-items: center; border: 1.5px solid; border-radius: 8px; font: 700 15px Rajdhani, sans-serif; }
+.phase4-account-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 190px; padding: 6px; border: 1px solid var(--c-panel-border); border-radius: 6px; background: var(--c-modal); box-shadow: 0 16px 44px rgba(0,0,0,.28); }
+.phase4-account-menu button { display: block; width: 100%; padding: 10px 12px; border: 0; border-radius: 4px; color: var(--c-text); background: transparent; cursor: pointer; text-align: left; font: 600 12px Rajdhani, sans-serif; letter-spacing: .08em; }
+.phase4-account-menu button:hover, .phase4-account-menu button:focus-visible { color: var(--c-accent); background: var(--c-accent-glass); }
+.phase4-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(20px, 4vh) 16px; background: var(--c-overlay); overflow-y: auto; }
+.phase4-dialog { width: min(560px, 100%); max-height: min(760px, 92svh); overflow-y: auto; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--c-panel-border); border-radius: 8px; background: var(--c-modal); box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+.phase4-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.phase4-dialog-heading h2 { margin: 0; color: var(--c-text); font: 700 22px Rajdhani, sans-serif; letter-spacing: .06em; }
+.phase4-close { width: 34px; height: 34px; border: 1px solid var(--c-glass-border); border-radius: 50%; color: var(--c-muted-flat); background: transparent; cursor: pointer; font-size: 22px; line-height: 1; }
+.phase4-close:hover, .phase4-close:focus-visible { color: var(--c-accent); border-color: var(--c-accent-border); }
+.phase4-form { display: grid; gap: 16px; }
+.phase4-form label { display: grid; gap: 7px; color: var(--c-muted-flat); font: 600 12px Rajdhani, sans-serif; letter-spacing: .08em; }
+.phase4-form input { width: 100%; padding: 11px 12px; border: 1px solid var(--c-glass-border); border-radius: 4px; outline: none; color: var(--c-text); background: var(--c-track); font: 14px Inter, sans-serif; }
+.phase4-form input:focus { border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-glass); }
+.phase4-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+.phase4-dialog-actions button { padding: 8px 18px; font: 700 12px Rajdhani, sans-serif; letter-spacing: .08em; }
+.phase4-secondary { color: var(--c-muted-flat); }
+.phase4-primary { color: var(--c-accent); }
+.phase4-error { margin: 8px 0 0; color: #f87171; font: 12px/1.4 Inter, sans-serif; }
+
+@media (max-width: 720px) {
+  .phase4-header { gap: 10px; min-height: 68px; padding-inline: 12px; }
+  .phase4-brand span:last-child, .phase4-account-copy { display: none; }
+  .phase4-brand-mark { width: 34px; height: 34px; }
+  .phase4-primary-nav { justify-content: center; overflow-x: auto; }
+  .phase4-nav-link { gap: 5px; padding: 9px 8px; font-size: 11px; letter-spacing: .08em; }
+  .phase4-account-trigger { padding-inline: 2px; }
+  .phase4-account-menu { right: -4px; }
+}
+
 .divider {
   border: none;
   border-top: 1px solid var(--c-glass-border);

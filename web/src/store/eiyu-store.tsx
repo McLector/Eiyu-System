@@ -20,6 +20,7 @@ import {
   deleteLongQuest,
   fetchLongQuests,
   fetchProfile,
+  updateProfile,
   fetchStats,
   fetchTodayHabits,
   formatError,
@@ -77,6 +78,7 @@ interface EiyuStore {
   retryLongQuests: () => Promise<void>;
   saveLongQuest: (input: LongQuestInput, existingId?: string) => Promise<void>;
   removeLongQuest: (id: string) => Promise<void>;
+  saveProfile: (input: { displayName: string; userClass: string }) => Promise<void>;
 }
 
 const EiyuContext = createContext<EiyuStore | null>(null);
@@ -404,6 +406,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     [userId, qc]
   );
 
+  const saveProfile = useCallback(
+    async (input: { displayName: string; userClass: string }) => {
+      const updated = await updateProfile(input);
+      qc.setQueryData(['profile', userId ?? null], updated);
+    },
+    [qc, userId]
+  );
+
   const user: UserProfile = useMemo(
     () => ({
       name: profile?.displayName ?? initialUser.name,
@@ -437,6 +447,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       retryLongQuests,
       saveLongQuest,
       removeLongQuest,
+      saveProfile,
     }),
     [
       user,
@@ -460,6 +471,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       retryLongQuests,
       saveLongQuest,
       removeLongQuest,
+      saveProfile,
     ]
   );
 

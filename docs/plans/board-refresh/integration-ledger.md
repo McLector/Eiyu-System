@@ -37,4 +37,12 @@ Phase 1 was the only authorized implementation scope after the Phase 0 landing a
 - Candidate branch: `codex/board-refresh-phase-03`.
 - Review package: `phase-03-report.md` and `phase-03-executive-summary.md`.
 - Candidate status: **REVIEW READY — AWAITING USER** for the authorized non-iOS scope. Shared/web/mobile suites, static checks, web build, Expo export, desktop geometry, and Android lane navigation passed. The existing narrow web fixed-rail overflow and unexecuted 30/100-card + 200% zoom stress screenshots are explicitly documented limitations; Phase 4 remains unauthorized.
-- Phase 3 commit SHA: none; do not land until the user approves this package.
+- Phase 3 commit SHA: `01d47da94a586287fa32536045f8517b6ac6c7bc` (`feat: present quests in a responsive four-lane board`). This committed predecessor revision is the Phase 4 base; the current checkout's `main` ref remains at `e7160ea`.
+
+## Phase 4 — horizontal navigation and account overlays candidate
+
+- User authorization: the user said **“commit, start phase 4”** on 2026-09-24. This authorized Phase 4 implementation and verification after the Phase 3 commit; it does not authorize the Phase 4 commit, Phase 5, remote push, production data changes, deployment, or publishing.
+- Base revision: `01d47da94a586287fa32536045f8517b6ac6c7bc` (`feat: present quests in a responsive four-lane board`).
+- Candidate branch: `codex/board-refresh-phase-04`.
+- Review package: `phase-04-report.md` and `phase-04-executive-summary.md`.
+- Candidate status: **REVIEW READY — AWAITING USER** for the authorized non-iOS scope. Web/native/runtime/database gates pass; the user must approve the Phase 4 commit before landing. Phase 5 is not authorized.
