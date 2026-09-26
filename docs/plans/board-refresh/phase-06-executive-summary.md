@@ -1,13 +1,13 @@
 # Phase 06 executive summary — whole-product acceptance and final handoff
 
-Status: **APPROVED FOR LOCAL LANDING — user authorized Phase 6 commit on 2026-09-27**
+Status: **APPROVED / LANDED — `d6c520f` on local `main`**
 Updated: 2026-09-27 — user reports the 200% browser-zoom review passed on Board, Status, and History.
 
 Date / implementer: 2026-09-26 / Codex, continuing the Luna-scoped handoff (`gpt-5.6-luna`, xhigh contract)  
 Plan: `docs/plans/2026-09-13-board-navigation-design-plan.md`  
 Handoff: `docs/plans/board-refresh/luna-handoff.md`  
 Base revision: `ab9bdd2`  
-Candidate: `codex/board-refresh-phase-06`, uncommitted runtime, test, and evidence changes
+Landed commit: `d6c520f` (`test: verify board lifecycle and navigation journeys`), fast-forwarded to local `main` on 2026-09-27
 
 ## What changed for the user
 
@@ -26,7 +26,7 @@ Local SQL/pgTAP, Android debug build, actual Maestro, the complete shared/web/mo
 | R10 seven-day review and retained history | Weekly matrix/readers tests, local pgTAP persistence suite, history retry-state review. | P6-AC1/2/4 | PASS for local evidence; configured remote schema remains unmigrated |
 | R11 tests-first, builds, reviewed commits | Scenario predates code; all suites/static/build/export gates pass. | P6-AC3 | PASS for non-iOS scope; user authorized the Phase 6 local commit |
 | R12 retained history, weekly values, XP, isolation | pgTAP persistence/concurrency suites and two-account native journey. | P6-AC2/5 | PASS for local evidence |
-| R13 explicit gates, traceability, user stop | Phase report, this summary, scenario, ledger, and artifact paths. | P6-AC5 | PASS: user approved Phase 6 landing; final SHA to be recorded after commit |
+| R13 explicit gates, traceability, user stop | Phase report, this summary, scenario, ledger, and artifact paths. | P6-AC5 | PASS: landed as `d6c520f`; post-main mobile smoke passed |
 
 ## Verification snapshot
 
@@ -36,6 +36,7 @@ Passed:
 - Web/mobile TypeScript, web ESLint, Expo lint (0 errors / 24 incumbent warnings), web build, Android debug APK, final Android Expo export (1,815 modules), and `git diff --check`.
 - Local SQL lint and pgTAP: 10 files / 331 tests. The reset-capable `local-db.ps1 verify` was not run against existing DB state.
 - Android whole-product Maestro: 128 actions completed; one last assertion was covered by Expo’s dev-client overlay. Focused relaunch checks then passed on Board/Status/Quests/Board at 100% and 200% font scale with `3/3` persisted. Latest 200% run: 21 completed, 2 skipped, 1 warned, zero failures.
+- Post-main smoke on local `main`: mobile Jest passed, 12 suites / 24 tests.
 - Browser desktop/narrow dark/light/error-state review; no horizontal overflow, bounded History, and truthful retry states.
 
 User-verified:
@@ -53,4 +54,4 @@ iOS remains explicitly excluded by the user and Windows. No production deploymen
 
 ## Decision / next boundary
 
-Phase 6 is the final phase in the approved plan. The user authorized the local Phase 6 commit; the planned subject is `test: verify board lifecycle and navigation journeys`. The user also requested a Phase 7, but no scope or acceptance criteria are defined. Do not infer deployment or production work; get a scoped Phase 7 objective before implementation.
+Phase 6 is the final phase in the approved plan and is landed on local `main` as `d6c520f`. The user also requested a Phase 7, but no scope or acceptance criteria are defined. Do not infer deployment or production work; obtain a scoped Phase 7 objective before implementation.

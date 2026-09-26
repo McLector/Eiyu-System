@@ -3,7 +3,7 @@
 Phase / date / implementer: Phase 6 / 2026-09-26 / Codex, continuing the Luna-scoped handoff (`gpt-5.6-luna`, xhigh contract)  
 Plan: `docs/plans/2026-09-13-board-navigation-design-plan.md`  
 Handoff: `docs/plans/board-refresh/luna-handoff.md`  
-Status: **APPROVED FOR LOCAL LANDING — user authorized Phase 6 commit on 2026-09-27**
+Status: **APPROVED / LANDED — `d6c520f` on local `main`**
 Review update: 2026-09-27 — user reports the 200% web-zoom check passed on Board, Status, and History.
 
 Base main SHA: `ab9bdd2` — `docs: record phase 5 landing and authorize phase 6`  
@@ -25,7 +25,7 @@ The FINAL-01 scenario and Android flow were authored before corrective runtime c
 | P6-AC2 / FINAL-02 | Local SQL lint and pgTAP passed: 10 files / 331 tests, including retained-history/RLS and concurrency coverage. The reset-capable `scripts/local-db.ps1 verify` was not run against the existing local stack; the destructive reset boundary is documented. Configured remote schema lacks the history table and was not changed. | **PASS for executed local SQL/security/concurrency suites; full reset intentionally not run** |
 | P6-AC3 / FINAL-03 | Shared 27/215, web 13/39, mobile 12/24; web/mobile TypeScript; web ESLint; Expo SDK 54 lint (0 errors, 24 incumbent warnings); web production build; Android debug APK; actual Maestro; and final Expo Android export (1,815 modules) passed. iOS remains explicitly excluded on Windows. | **PASS for authorized non-iOS scope** |
 | P6-AC4 / FINAL-04 | Desktop 1440×900 and narrow 463×800 web checks, dark/light overlays, bounded dialogs, truthful remote error/retry states, Android 200% font scale, and long-title wrapping were reviewed. On 2026-09-27 the user reports checking Board, Status, and History at 200% browser zoom and finding them good. No screenshots or measurements were supplied. | **PASS — user-verified; not independently captured** |
-| P6-AC5 / FINAL-05 | R1–R13 mapping and evidence paths are recorded below and in the executive summary/ledger. The user approved local Phase 6 landing on 2026-09-27; the commit SHA and post-main smoke will be recorded after landing. No production deployment is claimed. | **PASS — local landing authorized; SHA pending** |
+| P6-AC5 / FINAL-05 | R1–R13 mapping and evidence paths are recorded below and in the executive summary/ledger. Phase 6 landed on local `main` as `d6c520f`; post-main mobile Jest passed 12 suites / 24 tests. No production deployment is claimed. | **PASS — landed and post-main smoke passed** |
 
 ## Test-first evidence
 
