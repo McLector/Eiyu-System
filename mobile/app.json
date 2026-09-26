@@ -22,9 +22,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.mclector.eiyusystem"
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"

@@ -1,6 +1,6 @@
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, useWindowDimensions } from 'react-native';
 
 import { BoardIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
 import AccountHeader from '@/components/eiyu/account-header';
@@ -9,6 +9,9 @@ import { useEiyu } from '@/contexts/eiyu-store';
 
 export default function TabLayout() {
   const { theme, darkMode } = useEiyu();
+  const { fontScale } = useWindowDimensions();
+  const scaledTabBarPadding = 24;
+  const scaledTabBarHeight = 73 + Math.max(0, Math.ceil((fontScale - 1) * 40));
 
   return (
     <Tabs
@@ -18,11 +21,17 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.navDim,
         tabBarStyle: {
-          position: 'absolute',
+          position: fontScale > 1.15 ? 'relative' : 'absolute',
           borderTopWidth: 1,
           borderTopColor: theme.navBorder,
           backgroundColor: 'transparent',
           elevation: 0,
+          ...(fontScale > 1.15
+            ? {
+                height: scaledTabBarHeight,
+                paddingBottom: scaledTabBarPadding,
+              }
+            : {}),
         },
         tabBarBackground: () => (
           <BlurView

@@ -1,0 +1,43 @@
+# Focused retry for FINAL-01-RELOAD after the full acceptance journey has run.
+appId: com.mclector.eiyusystem
+---
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: ".*(EIYU SYSTEM|10\\.0\\.2\\.2|BOARD).*"
+    timeout: 60000
+- tapOn:
+    text: ".*10\\.0\\.2\\.2.*"
+    optional: true
+- extendedWaitUntil:
+    visible: ".*(EIYU SYSTEM|BOARD).*"
+    timeout: 120000
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Connected to:"
+    commands:
+      - pressKey: BACK
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 60000
+- assertVisible: "Phase 6 Android"
+- assertVisible: "P6 Quantity Quest"
+- assertVisible: "3/3"
+- takeScreenshot: android-reload-smoke
+- tapOn: "STATUS"
+- assertVisible: "CURRENT RANK"
+- takeScreenshot: android-fontscale-status
+- tapOn: "QUESTS"
+- assertVisible: "Long Quests"
+- takeScreenshot: android-fontscale-quests
+- tapOn: "BOARD"
+- assertVisible: "P6 Quantity Quest"
+- assertVisible: "3/3"
+- takeScreenshot: android-fontscale-board-return

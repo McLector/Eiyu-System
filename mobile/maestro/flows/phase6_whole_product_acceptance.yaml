@@ -1,0 +1,233 @@
+# Phase 6 FINAL-01 Android leg. Run only against the disposable local account
+# also used by the web leg; the appId matches Expo's generated Android package.
+appId: com.mclector.eiyusystem
+---
+- runFlow: _helpers/launch_fresh.yaml
+- tapOn: "Email address"
+- inputText: ${PHASE6_EMAIL}
+- tapOn: "Password"
+- inputText: ${PHASE6_PASSWORD}
+- hideKeyboard
+- tapOn: "ENTER SYSTEM"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+- takeScreenshot: android-authenticated-board
+
+# Read the same persisted state created through the web UI.
+- tapOn:
+    id: "board-lane-tab-daily"
+- assertVisible: "P6 Quantity Quest"
+- assertVisible: "3/3"
+- assertVisible: "P6 Penalty Today"
+- takeScreenshot: android-cross-platform-state
+- longPressOn:
+    id: "quest-checkbox"
+- assertVisible: "P6 Penalty Today (completed)"
+- tapOn:
+    id: "board-lane-tab-one-time"
+- assertVisible: "P6 One-Time Quest (completed)"
+
+# A schedule edit is prospective: Saturday remains an off-day, while the
+# M/W/F definition is still available in the catalog.
+- tapOn:
+    id: "board-lane-tab-all-habits"
+- assertVisible: "Edit P6 Scheduled Penalty"
+- assertVisible: "Mon, Wed, Fri"
+- assertVisible: "OFF DAY"
+
+# Archive and restore the off-day definition without creating a Saturday row.
+- tapOn: "Edit P6 Scheduled Penalty"
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-archive"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+- tapOn:
+    id: "board-lane-tab-archived"
+- assertVisible: "P6 Scheduled Penalty"
+- tapOn: "Edit P6 Scheduled Penalty"
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-restore"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+- tapOn:
+    id: "board-lane-tab-all-habits"
+- assertVisible: "OFF DAY"
+
+# Delete completed disposable quests only after their evidence has been read.
+- tapOn:
+    id: "board-lane-tab-one-time"
+- tapOn:
+    id: "quest-edit-trigger"
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-delete-permanent"
+- assertVisible: "DELETE QUEST PERMANENTLY?"
+- tapOn:
+    id: "quest-delete-confirm"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+- tapOn:
+    id: "board-lane-tab-all-habits"
+- tapOn: "Edit P6 Penalty Today"
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-archive"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+- tapOn:
+    id: "board-lane-tab-archived"
+- tapOn: "Edit P6 Penalty Today"
+- extendedWaitUntil:
+    visible: "EDIT QUEST"
+    timeout: 15000
+- swipe:
+    direction: UP
+- tapOn:
+    id: "quest-delete-permanent"
+- tapOn:
+    id: "quest-delete-confirm"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 15000
+
+# Deleted quest history, settings, and profile persistence.
+- tapOn: "Phase 6 Android, Acceptance Runner, rank E"
+- tapOn: "Settings"
+- tapOn: "Quest History"
+- extendedWaitUntil:
+    visible: "HISTORY"
+    timeout: 15000
+- assertVisible: "P6 One-Time Quest"
+- assertVisible: "P6 Penalty Today"
+- takeScreenshot: android-history-after-delete
+- back
+- tapOn: "Phase 6 Android, Acceptance Runner, rank E"
+- tapOn: "Edit details"
+- tapOn: "Display name"
+- eraseText
+- inputText: "Phase 6 Android"
+- hideKeyboard
+- tapOn: "Class"
+- eraseText
+- inputText: "Acceptance Runner"
+- hideKeyboard
+- tapOn: "Save"
+- assertVisible: "Phase 6 Android"
+- tapOn: "Phase 6 Android, Acceptance Runner, rank E"
+- tapOn: "Settings"
+- runFlow:
+    when:
+      visible: "Dark Theme"
+    commands:
+      - tapOn: "Dark Theme"
+      - assertVisible: "Light Theme"
+      - tapOn: "Light Theme"
+- runFlow:
+    when:
+      visible: "Light Theme"
+    commands:
+      - tapOn: "Light Theme"
+      - assertVisible: "Dark Theme"
+      - tapOn: "Dark Theme"
+- tapOn: "Close Settings"
+- tapOn: "STATUS"
+- tapOn: "QUESTS"
+- tapOn: "BOARD"
+
+# Verify auth/cache isolation with a second local-only disposable account.
+- tapOn: "Phase 6 Android, Acceptance Runner, rank E"
+- tapOn: "Logout"
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 15000
+- tapOn: "Email address"
+- inputText: ${PHASE6_OTHER_EMAIL}
+- tapOn: "Password"
+- inputText: ${PHASE6_OTHER_PASSWORD}
+- hideKeyboard
+- tapOn: "ENTER SYSTEM"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+- assertNotVisible: "P6 Quantity Quest"
+- assertNotVisible: "Phase 6 Android"
+- takeScreenshot: android-account-isolation
+- tapOn:
+    id: "board-lane-tab-one-time"
+- assertNotVisible: "P6 One-Time Quest"
+- tapOn: "Phase 6 Isolation, Developer, rank E"
+- tapOn: "Logout"
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 15000
+
+# Return to the primary account, verify surviving progress, and restart without
+# clearing its local auth/session state.
+- tapOn: "Email address"
+- inputText: ${PHASE6_EMAIL}
+- tapOn: "Password"
+- inputText: ${PHASE6_PASSWORD}
+- hideKeyboard
+- tapOn: "ENTER SYSTEM"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+- assertVisible: "Phase 6 Android"
+- tapOn:
+    id: "board-lane-tab-daily"
+- assertVisible: "P6 Quantity Quest"
+- assertVisible: "3/3"
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: ".*(EIYU SYSTEM|10\\.0\\.2\\.2|BOARD).*"
+    timeout: 60000
+- tapOn:
+    text: ".*10\\.0\\.2\\.2.*"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Connected to:"
+    commands:
+      - pressKey: BACK
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 60000
+- assertVisible: "Phase 6 Android"
+- assertVisible: "P6 Quantity Quest"
+- assertVisible: "3/3"
+- takeScreenshot: android-final-primary-state
+- takeScreenshot: android-final-primary-state
+- tapOn: "STATUS"
+- tapOn: "QUESTS"
+- tapOn: "BOARD"

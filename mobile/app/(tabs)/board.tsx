@@ -178,7 +178,6 @@ function QuestRow({
 
         <Pressable testID="quest-edit-trigger" style={styles.questInfo} onPress={onEdit}>
           <Text
-            numberOfLines={1}
             style={[
               styles.questName,
               {

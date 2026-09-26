@@ -51,6 +51,13 @@ session — it always does a fresh `launchApp: { clearState: true }` first,
 so flows are independent and can run in any order (aside from `00_setup_*`,
 which only needs to run once ever).
 
+The Phase 6 flows use a separate disposable local account and are deliberately
+not idempotent: `phase6_whole_product_acceptance.yaml` permanently deletes its
+named test quests. Run it only against a fresh/reset Phase 6 fixture with the
+same local Supabase stack used by the web leg. `phase6_reload_smoke.yaml` is a
+read-only post-journey route/persistence check; it can be run after the main
+flow at normal or increased Android font scale.
+
 ## What's covered
 
 - `auth_*` — signup/login/forgot-password happy paths, validation errors,
@@ -60,6 +67,10 @@ which only needs to run once ever).
   double-tap race-condition probe
 - `longquest_*` — Long Quest CRUD, stage list min/max bounds, AI stage
   breakdown, stage toggling, delete (native `Alert.alert` confirm/cancel)
+- `phase6_whole_product_acceptance.yaml` — disposable cross-platform lifecycle,
+  account-isolation, retained-history, and Android navigation journey
+- `phase6_reload_smoke.yaml` — same-account relaunch, persisted board state,
+  and Board/Status/Quests navigation smoke
 - `status_weekly_summary_and_cache` — weekly AI summary generates and
   then serves from cache on revisit
 - `history_month_navigation` — calendar month paging
