@@ -1,12 +1,12 @@
-import { cleanup, render, screen, userEvent } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
 import type { Quest, UserProfile } from '@eiyu/shared';
 import { initialUser } from '@eiyu/shared';
 
-const mockRouter = { back: jest.fn() };
 let mockSearchParams: { id?: string } = {};
 let mockStoreValue: any;
 
-jest.mock('expo-router', () => ({ router: mockRouter, useLocalSearchParams: () => mockSearchParams }));
+jest.mock('expo-router', () => ({ router: { back: jest.fn() }, useLocalSearchParams: () => mockSearchParams }));
 jest.mock('@/contexts/eiyu-store', () => ({ useEiyu: () => mockStoreValue }));
 jest.mock('@/lib/haptics', () => ({ hapticLight: jest.fn(), hapticSuccess: jest.fn() }));
 jest.mock('react-native-keyboard-controller', () => {
@@ -24,6 +24,7 @@ jest.mock('@/components/eiyu/screen', () => {
 });
 
 import QuestEditorScreen from '../../app/quest-editor';
+const mockRouter = jest.requireMock('expo-router').router as { back: jest.Mock };
 
 const habit: Quest = {
   id: 'habit-1',
@@ -85,7 +86,8 @@ describe('mobile QuestEditor lifecycle controls', () => {
     await render(<QuestEditorScreen />);
 
     await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
-    expect(screen.getByText('DELETE QUEST PERMANENTLY?')).toBeOnTheScreen();
+    expect(screen.getByText('DELETE Morning walk PERMANENTLY?')).toBeOnTheScreen();
+    expect(screen.getByText(/History, Weekly Review, and earned XP remain/)).toBeOnTheScreen();
     await user.press(screen.getByRole('button', { name: 'Cancel' }));
     expect(value.deleteQuest).not.toHaveBeenCalled();
 
@@ -93,6 +95,34 @@ describe('mobile QuestEditor lifecycle controls', () => {
     await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
     expect(value.deleteQuest).toHaveBeenCalledWith('habit-1');
     expect(value.archiveQuest).not.toHaveBeenCalled();
+  });
+
+  it('keeps the confirmation open on Android Back and repeated taps while deletion is pending', async () => {
+    const value = setup();
+    let resolveDelete!: () => void;
+    value.deleteQuest.mockImplementation(() => new Promise<void>(resolve => { resolveDelete = resolve; }));
+    const user = userEvent.setup();
+    const rendered = await render(<QuestEditorScreen />);
+
+    await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
+    const focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
+    await act(async () => { fireEvent(rendered.getByTestId('quest-delete-modal'), 'show'); });
+    expect(focus).toHaveBeenCalledWith(expect.anything(), 'focus');
+    focus.mockRestore();
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toBeDisabled());
+    await act(async () => { rendered.getByTestId('quest-delete-modal').props.onRequestClose(); });
+    expect(screen.getByText('DELETE Morning walk PERMANENTLY?')).toBeOnTheScreen();
+    expect(value.deleteQuest).toHaveBeenCalledTimes(1);
+    expect(mockRouter.back).not.toHaveBeenCalled();
+    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    expect(value.deleteQuest).toHaveBeenCalledTimes(1);
+
+    await act(async () => { resolveDelete(); });
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalledTimes(1));
   });
 
   it('shows Restore and Delete for archived quests, without a completion control', async () => {

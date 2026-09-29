@@ -1,9 +1,8 @@
 import { addDateKeyDays, addUtcDays, toDateKey } from '../logic/date-utils';
 import { supabase } from '../supabase/client';
-import { CompletionKind, Database } from '../types/database';
+import { CompletionKind } from '../types/database';
+import { Stat } from '../types/eiyu';
 import { initializeAccountTimeZone } from './profile';
-
-type DeletedHabitHistoryRow = Database['public']['Tables']['deleted_habit_history']['Row'];
 
 export interface HistoryCompletion {
   habitName: string;
@@ -25,103 +24,83 @@ export interface DayHistory {
 
 export type HistoryByDate = Record<string, DayHistory>;
 
+export type HistoryEvidenceRow = {
+  source_habit_id: string;
+  historical_date: string;
+  habit_name: string;
+  stat: Stat;
+  quest_type: 'habit' | 'one_time';
+  scheduled: boolean;
+  completion_kind: CompletionKind | null;
+};
+
+export type HistorySnapshot = {
+  rows: HistoryEvidenceRow[];
+  habits: { id: string; name: string; stat: Stat }[];
+  recurring_totals: Partial<Record<Stat, number>>;
+};
+
+/** Stable detail paging within the immutable single-request database snapshot. */
+export function pageHistoryEvidence(snapshot: HistorySnapshot, offset: number, limit: number): HistoryEvidenceRow[] {
+  if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1) {
+    throw new RangeError('History page offset and limit must be positive integers');
+  }
+  return snapshot.rows.slice(offset, offset + limit);
+}
+
+/**
+ * One statement returns ordered normalized detail and exact recurring totals.
+ * The JSON envelope is one PostgREST result row, so its detail is not clipped
+ * by max_rows. Consumers page the returned immutable array locally if needed.
+ */
+export async function fetchHistoryEvidence(
+  startDate: string,
+  endDate: string
+): Promise<HistorySnapshot> {
+  const { data, error } = await supabase.rpc('read_history_range', {
+    p_start_date: startDate,
+    p_end_date: endDate,
+  });
+  if (error) throw error;
+  const snapshot = data as HistorySnapshot | null;
+  if (!snapshot || !Array.isArray(snapshot.rows) || !Array.isArray(snapshot.habits) || !snapshot.recurring_totals) {
+    throw new Error('History snapshot response is invalid');
+  }
+  return snapshot;
+}
+
 /** Completions + heatmap ratio for every day in `[startDate, endDate)`, grouped by date key. */
 export async function fetchHistoryRange(userId: string, startDate: Date, endDate: Date): Promise<HistoryByDate> {
   const startStr = toDateKey(startDate);
   const endStr = toDateKey(endDate);
   await initializeAccountTimeZone();
+
   const { error: ensureError } = await supabase.rpc('ensure_habit_occurrences', {
     p_through_date: addDateKeyDays(endStr, -1),
   });
   if (ensureError) throw ensureError;
 
-  const { data: habits, error: habitsError } = await supabase
-    .from('habits')
-    .select('id, name, quest_type')
-    .eq('user_id', userId);
-  if (habitsError) throw habitsError;
-
-  const { data: deletedHistory, error: deletedHistoryError } = await supabase
-    .from('deleted_habit_history')
-    .select('source_habit_id, historical_date, habit_name, quest_type, scheduled, completion_kind')
-    .eq('user_id', userId)
-    .gte('historical_date', startStr)
-    .lt('historical_date', endStr);
-  if (deletedHistoryError) throw deletedHistoryError;
-
-  const nameByHabit = new Map((habits ?? []).map(h => [h.id, h.name]));
-  const deletedRows = (deletedHistory ?? []) as Pick<
-    DeletedHabitHistoryRow,
-    'source_habit_id' | 'historical_date' | 'habit_name' | 'quest_type' | 'scheduled' | 'completion_kind'
-  >[];
-  for (const row of deletedRows) nameByHabit.set(row.source_habit_id, row.habit_name);
-  const recurringHabitIds = new Set([
-    ...(habits ?? []).filter(h => h.quest_type === 'habit').map(h => h.id),
-    ...deletedRows.filter(row => row.quest_type === 'habit').map(row => row.source_habit_id),
-  ]);
-
-  const { data: occurrences, error: occurrencesError } = await supabase
-    .from('habit_occurrences')
-    .select('habit_id, occurrence_date')
-    .eq('user_id', userId)
-    .gte('occurrence_date', startStr)
-    .lt('occurrence_date', endStr);
-  if (occurrencesError) throw occurrencesError;
-  const scheduledByDate = new Map<string, Set<string>>();
-  for (const occurrence of occurrences ?? []) {
-    if (!recurringHabitIds.has(occurrence.habit_id)) continue;
-    if (!scheduledByDate.has(occurrence.occurrence_date)) {
-      scheduledByDate.set(occurrence.occurrence_date, new Set());
-    }
-    scheduledByDate.get(occurrence.occurrence_date)!.add(occurrence.habit_id);
+  const boundaryRows = (await fetchHistoryEvidence(startStr, endStr)).rows;
+  const rowsByDate = new Map<string, HistoryEvidenceRow[]>();
+  for (const row of boundaryRows) {
+    const rows = rowsByDate.get(row.historical_date) ?? [];
+    rows.push(row);
+    rowsByDate.set(row.historical_date, rows);
   }
-  for (const row of deletedRows) {
-    if (!row.scheduled || row.quest_type !== 'habit') continue;
-    if (!scheduledByDate.has(row.historical_date)) scheduledByDate.set(row.historical_date, new Set());
-    scheduledByDate.get(row.historical_date)!.add(row.source_habit_id);
-  }
-
-  const { data: completions, error } = await supabase
-    .from('habit_completions')
-    .select('habit_id, completed_on, kind')
-    .eq('user_id', userId)
-    .gte('completed_on', startStr)
-    .lt('completed_on', endStr);
-  if (error) throw error;
-
-  const completionsByDate = new Map<string, { habit_id: string; kind: CompletionKind }[]>();
-  for (const c of completions ?? []) {
-    if (!completionsByDate.has(c.completed_on)) completionsByDate.set(c.completed_on, []);
-    completionsByDate.get(c.completed_on)!.push({ habit_id: c.habit_id, kind: c.kind });
-  }
-  for (const row of deletedRows) {
-    if (!row.completion_kind) continue;
-    if (!completionsByDate.has(row.historical_date)) completionsByDate.set(row.historical_date, []);
-    completionsByDate.get(row.historical_date)!.push({
-      habit_id: row.source_habit_id,
-      kind: row.completion_kind,
-    });
-  }
-
-  const result: HistoryByDate = {};
+  const byDate: HistoryByDate = {};
   for (let d = startDate; d < endDate; d = addUtcDays(d, 1)) {
     const dateKey = toDateKey(d);
-    const scheduledIds = scheduledByDate.get(dateKey) ?? new Set<string>();
-    const dayCompletions = completionsByDate.get(dateKey) ?? [];
-
-    const completionDetails: HistoryCompletion[] = [];
-    for (const c of dayCompletions) {
-      const name = nameByHabit.get(c.habit_id);
-      if (name) completionDetails.push({ habitName: name, kind: c.kind });
-    }
-
-    result[dateKey] = {
-      completions: completionDetails,
-      completedCount: dayCompletions.filter(c => scheduledIds.has(c.habit_id)).length,
+    const rows = rowsByDate.get(dateKey) ?? [];
+    const scheduledIds = new Set(rows.filter(row => row.scheduled && row.quest_type === 'habit').map(row => row.source_habit_id));
+    byDate[dateKey] = {
+      completions: rows.filter(row => row.completion_kind).map(row => ({ habitName: row.habit_name, kind: row.completion_kind! })),
+      completedCount: rows.filter(row => row.completion_kind && scheduledIds.has(row.source_habit_id)).length,
+      // One-time completions are shown in details, while heatmap ratios keep
+      // the recurring-only occurrence contract.
       scheduledCount: scheduledIds.size,
     };
   }
-  return result;
+  return byDate;
 }
 
 /** Completions + heatmap ratio for a calendar month, grouped by canonical date key. */

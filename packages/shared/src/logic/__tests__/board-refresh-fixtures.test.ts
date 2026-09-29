@@ -1,4 +1,4 @@
-import { partitionBoardQuests } from '../quest-recurrence';
+import { boardTodayProgress, partitionBoardQuests } from '../quest-recurrence';
 import {
   BOARD_REFRESH_FIXTURE_DATE,
   BOARD_REFRESH_FIXTURE_USERS,
@@ -55,9 +55,9 @@ describe('board refresh characterization fixtures', () => {
     const labelsFor = (ids: string[]) => ids.map(labelFor);
 
     expect(labelsFor(sections.dailyQuests.map(quest => quest.id))).toEqual([
-      'active-due',
-      'quantity-due',
       'long-name',
+      'quantity-due',
+      'active-due',
     ]);
     expect(labelsFor(sections.recoveryRequired.map(quest => quest.id))).toEqual(['recovery-open']);
     expect(labelsFor(sections.oneTimeQuests.map(quest => quest.id))).toEqual([
@@ -66,15 +66,15 @@ describe('board refresh characterization fixtures', () => {
     ]);
 
     expect(labelsFor(sections.allHabits.map(quest => quest.id))).toEqual([
-      'active-due',
-      'active-off-day',
-      'quantity-due',
-      'recovery-open',
       'long-name',
+      'quantity-due',
+      'active-due',
+      'recovery-open',
+      'active-off-day',
     ]);
     expect(labelsFor(sections.archivedQuests.map(quest => quest.id))).toEqual([
-      'archived-recurring',
       'archived-one-time',
+      'archived-recurring',
     ]);
   });
 
@@ -95,5 +95,29 @@ describe('board refresh characterization fixtures', () => {
     });
     expect(archived).toMatchObject({ archived: true, dailyEligible: false });
     expect(longName.name.length).toBeGreaterThan(80);
+  });
+
+  it('orders Unicode and equal-name ties by scalar value and ID across locales', () => {
+    const base = createBoardRefreshFixtureSet().primary.quests.find(quest => quest.fixtureLabel === 'active-due')!;
+    const names = [
+      { id: 'id-2', name: 'Same' }, { id: 'id-1', name: 'Same' },
+      { id: 'emoji', name: '🧭 Quest' }, { id: 'accent', name: 'Éclair' },
+      { id: 'lower', name: 'alpha' }, { id: 'upper', name: 'Zeta' },
+    ];
+    const source = names.map(item => ({ ...base, ...item, time: '08:00', completed: false }));
+    const before = source.map(quest => quest.id);
+    const sorted = partitionBoardQuests(source).dailyQuests.map(quest => quest.id);
+    expect(sorted).toEqual(['id-1', 'id-2', 'upper', 'lower', 'accent', 'emoji']);
+    expect(source.map(quest => quest.id)).toEqual(before);
+  });
+
+  it('counts each actionable ID once across Daily and One Time while excluding catalog copies', () => {
+    const fixture = createBoardRefreshFixtureSet().primary.quests;
+    const daily = fixture.find(quest => quest.fixtureLabel === 'active-due')!;
+    const oneTime = fixture.find(quest => quest.fixtureLabel === 'one-time-completed')!;
+    expect(boardTodayProgress({ dailyQuests: [daily, { ...daily, completed: true }], oneTimeQuests: [oneTime] }))
+      .toEqual({ completed: 2, total: 2 });
+    expect(boardTodayProgress({ dailyQuests: [], oneTimeQuests: [oneTime] }))
+      .toEqual({ completed: 1, total: 1 });
   });
 });

@@ -16,7 +16,7 @@ jest.mock('react-native', () => {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { requestNotificationPermissions, cancelHabitReminders } from '../notifications';
+import { inspectNotificationPermissions, requestNotificationPermissions, cancelHabitReminders } from '../notifications';
 
 const mockNotifications = Notifications as any;
 
@@ -43,5 +43,17 @@ describe('lifecycle reminder boundaries', () => {
 
     await expect(requestNotificationPermissions()).resolves.toBe(false);
     expect(mockNotifications.requestPermissionsAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['granted', { granted: true }, true],
+    ['denied', { granted: false, canAskAgain: false }, false],
+    ['undetermined', { granted: false, canAskAgain: true }, false],
+  ])('inspects %s permission without prompting the operating system', async (_state, result, expected) => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue(result);
+
+    await expect(inspectNotificationPermissions()).resolves.toBe(expected);
+    expect(mockNotifications.getPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
   });
 });

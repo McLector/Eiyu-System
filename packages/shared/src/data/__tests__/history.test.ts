@@ -1,4 +1,4 @@
-import { fetchHistoryRange, fetchMonthHistory } from '../history';
+import { fetchHistoryRange, fetchMonthHistory, pageHistoryEvidence } from '../history';
 import { supabase } from '../../supabase/client';
 
 jest.mock('../../supabase/client', () => ({
@@ -45,6 +45,28 @@ function mockTables(habitsData: unknown[], completionsData: unknown[], occurrenc
   (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
     if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
     if (name === 'ensure_habit_occurrences') return { data: null, error: null };
+    if (name === 'read_history_range') {
+      const habits = habitsData as { id: string; name: string; stat?: string; quest_type: string }[];
+      const completions = completionsData as { habit_id: string; completed_on: string; kind: string }[];
+      const occurrences = occurrencesData as { habit_id: string; occurrence_date: string }[];
+      const rows = occurrences.map(occurrence => {
+        const habit = habits.find(h => h.id === occurrence.habit_id)!;
+        return {
+          source_habit_id: habit.id, historical_date: occurrence.occurrence_date,
+          habit_name: habit.name, stat: habit.stat ?? 'STR', quest_type: habit.quest_type,
+          scheduled: true,
+          completion_kind: completions.find(c => c.habit_id === habit.id && c.completed_on === occurrence.occurrence_date)?.kind ?? null,
+        };
+      });
+      for (const completion of completions) {
+        if (rows.some(row => row.source_habit_id === completion.habit_id && row.historical_date === completion.completed_on)) continue;
+        const habit = habits.find(h => h.id === completion.habit_id)!;
+        rows.push({ source_habit_id: habit.id, historical_date: completion.completed_on,
+          habit_name: habit.name, stat: habit.stat ?? 'STR', quest_type: habit.quest_type,
+          scheduled: false, completion_kind: completion.kind });
+      }
+      return { data: { rows, habits: habits.map(h => ({ id: h.id, name: h.name, stat: h.stat ?? 'STR' })), recurring_totals: {} }, error: null };
+    }
     throw new Error(`unexpected RPC ${name}`);
   });
 }
@@ -162,4 +184,17 @@ describe('fetchHistoryRange', () => {
     expect(result['2026-08-31'].completedCount).toBe(0);
     expect(result['2026-09-01'].completedCount).toBe(1);
   });
+});
+
+it('pages ordered details inside one immutable snapshot', () => {
+  const rows = Array.from({ length: 1001 }, (_, index) => ({
+    source_habit_id: String(index).padStart(4, '0'), historical_date: '2026-09-01',
+    habit_name: `Quest ${index}`, stat: 'STR' as const, quest_type: 'habit' as const,
+    scheduled: true, completion_kind: 'full' as const,
+  }));
+  const snapshot = { rows, habits: [], recurring_totals: { STR: 1001 } };
+  expect(pageHistoryEvidence(snapshot, 0, 500)).toHaveLength(500);
+  expect(pageHistoryEvidence(snapshot, 500, 500)).toHaveLength(500);
+  expect(pageHistoryEvidence(snapshot, 1000, 500)[0]).toBe(rows[1000]);
+  expect(() => pageHistoryEvidence(snapshot, -1, 500)).toThrow(RangeError);
 });

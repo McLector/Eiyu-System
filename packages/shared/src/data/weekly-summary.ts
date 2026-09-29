@@ -3,76 +3,33 @@ import { supabase } from '../supabase/client';
 import { STATS } from '../constants/eiyu-data';
 import { accountDateKey, addDateKeyDays, mondayDateKey } from '../logic/date-utils';
 import { Stat } from '../types/eiyu';
+import { fetchHistoryEvidence } from './history';
 
 export async function gatherWeekData(
   userId: string,
   weekStart: string,
   weekEndExclusive: string
 ): Promise<{ habits: WeeklySummaryHabitDatum[]; statTotals: Record<Stat, number> }> {
-  // These reads are user-scoped and independent, so they go out together.
-  // Archived live habits remain readable, while deleted habits contribute
-  // from their immutable history ledger.
-  const [
-    { data: habits, error: habitsError },
-    { data: completions, error: completionsError },
-    { data: deletedHistory, error: deletedHistoryError },
-  ] = await Promise.all([
-    supabase.from('habits').select('id, name, stat').eq('user_id', userId),
-    supabase
-      .from('habit_completions')
-      .select('habit_id, kind')
-      .eq('user_id', userId)
-      .gte('completed_on', weekStart)
-      .lt('completed_on', weekEndExclusive),
-    supabase
-      .from('deleted_habit_history')
-      .select('source_habit_id, habit_name, stat, completion_kind')
-      .eq('user_id', userId)
-      .gte('historical_date', weekStart)
-      .lt('historical_date', weekEndExclusive),
-  ]);
-  if (habitsError) throw habitsError;
-  if (completionsError) throw completionsError;
-  if (deletedHistoryError) throw deletedHistoryError;
-
-  const countsByHabit = new Map<string, { full: number; easy: number }>();
-  for (const c of completions ?? []) {
-    if (!countsByHabit.has(c.habit_id)) countsByHabit.set(c.habit_id, { full: 0, easy: 0 });
-    const bucket = countsByHabit.get(c.habit_id)!;
-    if (c.kind === 'full') bucket.full += 1;
-    else bucket.easy += 1;
+  const snapshot = await fetchHistoryEvidence(weekStart, weekEndExclusive);
+  const countsByHabit = new Map<string, WeeklySummaryHabitDatum>();
+  for (const habit of snapshot.habits) {
+    countsByHabit.set(habit.id, { name: habit.name, stat: habit.stat, fullCount: 0, easyCount: 0 });
   }
-  const deletedByHabit = new Map<string, { name: string; stat: Stat; full: number; easy: number }>();
-  for (const row of deletedHistory ?? []) {
+  for (const row of snapshot.rows) {
     if (!row.completion_kind) continue;
-    if (!deletedByHabit.has(row.source_habit_id)) {
-      deletedByHabit.set(row.source_habit_id, { name: row.habit_name, stat: row.stat, full: 0, easy: 0 });
+    let datum = countsByHabit.get(row.source_habit_id);
+    if (!datum) {
+      datum = { name: row.habit_name, stat: row.stat, fullCount: 0, easyCount: 0 };
+      countsByHabit.set(row.source_habit_id, datum);
     }
-    const bucket = deletedByHabit.get(row.source_habit_id)!;
-    if (row.completion_kind === 'full') bucket.full += 1;
-    else bucket.easy += 1;
+    if (row.completion_kind === 'full') datum.fullCount += 1;
+    else datum.easyCount += 1;
   }
-
-  const statTotals = STATS.reduce((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<Stat, number>);
-  const habitData: WeeklySummaryHabitDatum[] = (habits ?? []).map(h => {
-    const counts = countsByHabit.get(h.id) ?? { full: 0, easy: 0 };
-    statTotals[h.stat] += counts.full + counts.easy;
-    return { name: h.name, stat: h.stat, fullCount: counts.full, easyCount: counts.easy };
-  });
-
-  for (const deleted of deletedByHabit.values()) {
-    statTotals[deleted.stat] += deleted.full + deleted.easy;
-    habitData.push({
-      name: deleted.name,
-      stat: deleted.stat,
-      fullCount: deleted.full,
-      easyCount: deleted.easy,
-    });
-  }
-
-  return { habits: habitData, statTotals };
+  const habits = Array.from(countsByHabit.values());
+  const statTotals = STATS.reduce((acc, stat) => ({ ...acc, [stat]: 0 }), {} as Record<Stat, number>);
+  for (const habit of habits) statTotals[habit.stat] += habit.fullCount + habit.easyCount;
+  return { habits, statTotals };
 }
-
 /**
  * R-60: fetches this week's AI summary paragraph, generating one (from the
  * week-to-date's completion data) the first time it's read in a given week -

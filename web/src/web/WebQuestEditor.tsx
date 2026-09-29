@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { accountDateKey, Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
 import { STAT_COLORS } from '@eiyu/shared';
 import { SparkleIcon, StatIcon } from '../Icons';
@@ -33,6 +34,10 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const lifecycleInFlight = useRef(false);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
+  const deleteDialog = useRef<HTMLDivElement>(null);
+  const cancelDeleteButton = useRef<HTMLButtonElement>(null);
+  const savingRef = useRef(saving);
+  savingRef.current = saving;
   const hadDeleteDialog = useRef(false);
 
   const toggleDay = (d: number) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
@@ -71,8 +76,6 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
     }
   };
 
-  const confirmDeleteButton = useRef<HTMLButtonElement>(null);
-
   useEffect(() => {
     if (!confirmDelete) {
       if (hadDeleteDialog.current) deleteTrigger.current?.focus();
@@ -80,12 +83,56 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
       return;
     }
     hadDeleteDialog.current = true;
-    confirmDeleteButton.current?.focus();
+    cancelDeleteButton.current?.focus();
+    const overlay = deleteDialog.current?.parentElement;
+    const background = Array.from(document.body.children).filter(element => element !== overlay) as HTMLElement[];
+    const previousBackgroundState = background.map(element => ({
+      element,
+      inert: element.inert,
+      ariaHidden: element.getAttribute('aria-hidden'),
+    }));
+    for (const element of background) {
+      element.inert = true;
+      element.setAttribute('aria-hidden', 'true');
+    }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setConfirmDelete(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!savingRef.current) setConfirmDelete(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = Array.from(
+        deleteDialog.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        deleteDialog.current?.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !deleteDialog.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !deleteDialog.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      for (const state of previousBackgroundState) {
+        state.element.inert = state.inert;
+        if (state.ariaHidden === null) state.element.removeAttribute('aria-hidden');
+        else state.element.setAttribute('aria-hidden', state.ariaHidden);
+      }
+    };
   }, [confirmDelete]);
 
   const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
@@ -130,7 +177,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
       WebkitBackdropFilter: 'blur(10px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 24,
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    }} onClick={e => { if (e.target === e.currentTarget && !confirmDelete && !saving) onClose(); }}>
       <div className="panel-flat" style={{
         width: '100%', maxWidth: 480,
         boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
@@ -141,7 +188,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>
             {editingQuest ? 'EDIT QUEST' : 'NEW QUEST'}
           </h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
+          <button onClick={() => { if (!confirmDelete && !saving) onClose(); }} disabled={confirmDelete || saving} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
         <div style={{ height: 2, background: 'var(--c-accent)', margin: '16px 24px 0', borderRadius: 1, opacity: 0.7 }} />
 
@@ -313,14 +360,14 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
             </div>
           </div>
 
-          {saveError && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171' }}>{saveError}</p>}
+          {saveError && !confirmDelete && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171' }}>{saveError}</p>}
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
             <button onClick={() => void handleSave()} disabled={saving || !valid} className="btn-ghost" style={{ flex: 1, padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: saving || !valid ? 0.6 : 1 }}>
               {saving ? 'SAVING…' : editingQuest ? 'SAVE CHANGES' : 'CREATE QUEST'}
             </button>
-            <button onClick={onClose} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
+            <button onClick={() => { if (!confirmDelete && !saving) onClose(); }} disabled={confirmDelete || saving} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
@@ -355,28 +402,40 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
                 </button>
               </div>
 
-              {confirmDelete && (
+              {confirmDelete && createPortal(
                 <div
+                  data-theme={document.querySelector<HTMLElement>('.surface-flat[data-theme]')?.dataset.theme}
+                  onClick={event => {
+                    if (event.target === event.currentTarget && !savingRef.current) setConfirmDelete(false);
+                  }}
+                  style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center', padding: 24, background: 'var(--c-overlay)', backdropFilter: 'blur(8px)' }}
+                >
+                <div
+                  ref={deleteDialog}
                   role="dialog"
                   aria-modal="true"
                   aria-labelledby="delete-quest-title"
+                  aria-describedby="delete-quest-description"
+                  tabIndex={-1}
                   className="panel-flat"
-                  style={{ padding: 14, border: '1px solid rgba(248,113,113,0.35)' }}>
+                  style={{ width: '100%', maxWidth: 440, padding: 20, border: '1px solid rgba(248,113,113,0.35)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
                   <strong id="delete-quest-title" style={{ display: 'block', fontFamily: 'Rajdhani', fontSize: 14, color: 'var(--c-text)' }}>
-                    Delete quest permanently
+                    Delete {editingQuest?.name} permanently?
                   </strong>
-                  <p style={{ margin: '6px 0 12px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)' }}>
-                    This removes the saved definition. Its history remains available, but the quest cannot be restored.
+                  <p id="delete-quest-description" style={{ margin: '8px 0 16px', fontFamily: 'Inter', fontSize: 13, lineHeight: 1.5, color: 'var(--c-muted-flat)' }}>
+                    This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.
                   </p>
+                  {saveError && <p role="alert" style={{ margin: '0 0 12px', fontFamily: 'Inter', fontSize: 12, lineHeight: 1.5, color: '#f87171' }}>{saveError}</p>}
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button onClick={() => setConfirmDelete(false)} disabled={saving} className="btn-ghost" style={{ padding: '7px 12px', fontFamily: 'Inter', fontSize: 12 }}>
+                    <button ref={cancelDeleteButton} onClick={() => setConfirmDelete(false)} disabled={saving} className="btn-ghost" style={{ padding: '8px 14px', fontFamily: 'Inter', fontSize: 13 }}>
                       Cancel
                     </button>
-                    <button ref={confirmDeleteButton} onClick={() => void handleLifecycle('delete')} disabled={saving} style={{ padding: '7px 12px', borderRadius: 8, cursor: 'pointer', background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.45)', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: '#f87171' }}>
+                    <button onClick={() => void handleLifecycle('delete')} disabled={saving} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.45)', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: '#f87171' }}>
                       {saving ? 'DELETING…' : 'Confirm permanent delete'}
                     </button>
                   </div>
                 </div>
+                </div>, document.body
               )}
             </div>
           )}

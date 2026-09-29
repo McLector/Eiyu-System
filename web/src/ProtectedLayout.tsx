@@ -11,19 +11,34 @@ export interface LayoutContext {
 
 export default function ProtectedLayout() {
   const [darkMode, setDarkMode] = useState(true);
-  const [overlay, setOverlay] = useState<AccountOverlay>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const params = new URLSearchParams(location.search);
+  const requestedOverlay = params.get('account');
+  const overlay: AccountOverlay = requestedOverlay === 'profile' || requestedOverlay === 'settings'
+    ? requestedOverlay : null;
+
+  const openOverlay = (kind: Exclude<AccountOverlay, null>) => {
+    const next = new URLSearchParams(location.search);
+    next.set('account', kind);
+    navigate({ pathname: location.pathname, search: `?${next.toString()}` }, { state: { accountOverlayEntry: true } });
+  };
 
   const context: LayoutContext = {
     darkMode,
     onToggleDark: () => setDarkMode(d => !d),
-    openSettings: () => setOverlay('settings'),
+    openSettings: () => openOverlay('settings'),
   };
 
   const closeOverlay = () => {
-    setOverlay(null);
-    if (location.pathname === '/settings') navigate('/board', { replace: true });
+    if (location.state?.accountOverlayEntry) {
+      navigate(-1);
+      return;
+    }
+    const next = new URLSearchParams(location.search);
+    next.delete('account');
+    navigate({ pathname: location.pathname === '/settings' ? '/board' : location.pathname,
+      search: next.toString() ? `?${next.toString()}` : '' }, { replace: true });
   };
 
   return (
@@ -37,7 +52,7 @@ export default function ProtectedLayout() {
 
       <AccountShell
         overlay={overlay}
-        onOpenOverlay={setOverlay}
+        onOpenOverlay={openOverlay}
         onCloseOverlay={closeOverlay}
         darkMode={darkMode}
         onToggleDark={context.onToggleDark}

@@ -1,4 +1,4 @@
-import { createHabit, updateHabit, fetchTodayOneTimeHabits, fetchTodayHabits } from '../habits';
+import { createHabit, updateHabit, fetchTodayOneTimeHabits, fetchUpcomingOneTimeHabits, fetchTodayHabits } from '../habits';
 import { supabase } from '../../supabase/client';
 
 function chainable(result: { data?: unknown; error: unknown }) {
@@ -7,6 +7,7 @@ function chainable(result: { data?: unknown; error: unknown }) {
     eq: jest.fn(() => builder),
     insert: jest.fn(() => builder),
     update: jest.fn(() => builder),
+    maybeSingle: jest.fn(() => Promise.resolve(result)),
     single: jest.fn(() => Promise.resolve(result)),
     then: (resolve: (v: typeof result) => void) => Promise.resolve(result).then(resolve),
   };
@@ -62,7 +63,7 @@ describe('createHabit / updateHabit — scheduled_date column mapping', () => {
   });
 
   it('updateHabit writes scheduled_date the same way as createHabit', async () => {
-    const updated = jest.fn(() => chainable({ error: null }));
+    const updated = jest.fn(() => chainable({ data: { id: 'h1' }, error: null }));
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') return { update: updated };
       throw new Error(`unexpected table ${table}`);
@@ -74,6 +75,21 @@ describe('createHabit / updateHabit — scheduled_date column mapping', () => {
     });
 
     expect(updated).toHaveBeenCalledWith(expect.objectContaining({ scheduled_date: '2026-09-11' }));
+  });
+
+  it('rejects an update when the authenticated write affects no definition', async () => {
+    const noRows = chainable({ data: null, error: null });
+    const updated = jest.fn(() => noRows);
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return { update: updated };
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await expect(updateHabit('deleted-habit', {
+      name: 'Morning walk', easyVersion: 'One minute', stat: 'STR', difficulty: 'Medium',
+      time: '08:00', days: [1, 2, 3],
+    })).rejects.toThrow(/no longer exists|could not be updated/i);
+    expect(noRows.maybeSingle).toHaveBeenCalledTimes(1);
   });
 
   it('writes target_count for a quantity habit, forced null for one-time', async () => {
@@ -274,13 +290,23 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       ...recurring, id: 'one-today', name: 'One-time today', easy_version: null,
       quest_type: 'one_time', days: [], scheduled_date: '2026-09-11',
     };
+    const archivedOneTime = {
+      ...oneTime, id: 'one-archived', name: 'Archived one-time', archived: true,
+      scheduled_date: '2026-09-08',
+    };
+    const futureOneTime = {
+      ...oneTime, id: 'one-future', name: 'Future one-time', scheduled_date: '2026-09-12',
+    };
     (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
       if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
       if (name === 'get_habits_for_date') return { data: [oneTime], error: null };
       if (name === 'get_open_habit_recoveries') return { data: [], error: null };
       throw new Error(`unexpected RPC ${name}`);
     });
-    const catalogBuilder = chainable({ data: [recurring, archived], error: null });
+    // The authenticated table read includes all owned definitions. The board
+    // must retain archived rows, exclude active one-time quests off today, and
+    // deduplicate today's active one-time row returned by both transports.
+    const catalogBuilder = chainable({ data: [recurring, archived, archivedOneTime, futureOneTime, oneTime], error: null });
     const emptyBuilder: any = {
       select: jest.fn(() => emptyBuilder),
       eq: jest.fn(() => emptyBuilder),
@@ -298,10 +324,18 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
     });
 
     const quests = await fetchTodayHabits('user-1');
-    expect(quests.map(quest => quest.id)).toEqual(['h-off-day', 'h-archived', 'one-today']);
+    expect(quests.map(quest => quest.id)).toEqual(expect.arrayContaining([
+      'h-off-day', 'h-archived', 'one-archived', 'one-today',
+    ]));
+    expect(quests).toHaveLength(4);
+    expect(quests.filter(quest => quest.id === 'one-today')).toHaveLength(1);
+    expect(quests.some(quest => quest.id === 'one-future')).toBe(false);
     expect(quests.find(quest => quest.id === 'h-off-day')).toMatchObject({ dailyEligible: false, archived: false });
     expect(quests.find(quest => quest.id === 'h-archived')).toMatchObject({ dailyEligible: false, archived: true });
     expect(quests.find(quest => quest.id === 'one-today')).toMatchObject({ questType: 'one_time' });
+    expect(quests.find(quest => quest.id === 'one-archived')).toMatchObject({
+      questType: 'one_time', archived: true, dailyEligible: false,
+    });
   });
 });
 
@@ -332,5 +366,34 @@ describe('fetchTodayOneTimeHabits', () => {
     const scheduledDateCall = eqCalls.find(([col]) => col === 'scheduled_date');
     expect(scheduledDateCall).toBeDefined();
     expect(builder.eq).not.toHaveBeenCalledWith('created_at', expect.anything());
+  });
+});
+
+describe('fetchUpcomingOneTimeHabits', () => {
+  beforeEach(() => {
+    (supabase.from as jest.Mock).mockReset();
+    mockTimeZoneInitialization();
+  });
+
+  it('reads only active one-time definitions from today forward with their original dates', async () => {
+    const builder: any = {
+      select: jest.fn(() => builder),
+      eq: jest.fn(() => builder),
+      gte: jest.fn(() => builder),
+      then: (resolve: (v: { data: unknown; error: null }) => void) => Promise.resolve({
+        data: [{ id: 'future', name: 'Future task', reminder_time: '09:30:00', scheduled_date: '2026-10-03' }],
+        error: null,
+      }).then(resolve),
+    };
+    (supabase.from as jest.Mock).mockReturnValue(builder);
+
+    const reminders = await fetchUpcomingOneTimeHabits('user-1');
+
+    expect(builder.select).toHaveBeenCalledWith('id, name, reminder_time, scheduled_date');
+    expect(builder.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(builder.eq).toHaveBeenCalledWith('archived', false);
+    expect(builder.eq).toHaveBeenCalledWith('quest_type', 'one_time');
+    expect(builder.gte).toHaveBeenCalledWith('scheduled_date', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+    expect(reminders).toEqual([{ id: 'future', name: 'Future task', time: '09:30', date: '2026-10-03' }]);
   });
 });

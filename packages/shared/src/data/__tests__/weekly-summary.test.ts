@@ -39,7 +39,11 @@ describe('regenerateWeeklySummary', () => {
   });
 
   it('reserves a regen slot, gathers week data, generates and saves a new summary', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({ data: 1, error: null });
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => name === 'read_history_range'
+      ? { data: { habits: [{ id: 'h1', name: 'Read', stat: 'INT' }], recurring_totals: { INT: 1 }, rows: [
+        { source_habit_id: 'h1', historical_date: '2026-09-03', habit_name: 'Read', stat: 'INT', quest_type: 'habit', scheduled: true, completion_kind: 'full' },
+      ] }, error: null }
+      : { data: 1, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') {
         return chainable({ data: [{ id: 'h1', name: 'Read', stat: 'INT' }], error: null });
@@ -87,7 +91,9 @@ describe('regenerateWeeklySummary', () => {
   });
 
   it('throws if the final update fails after a successful generation', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({ data: 1, error: null });
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => name === 'read_history_range'
+      ? { data: { habits: [], recurring_totals: {}, rows: [] }, error: null }
+      : { data: 1, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') return chainable({ data: [], error: null });
       if (table === 'habit_completions') return chainable({ data: [], error: null });

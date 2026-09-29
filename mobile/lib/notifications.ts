@@ -43,6 +43,14 @@ export async function ensureNotificationSetup() {
   }
 }
 
+/** Passive check used during restore/startup; this never opens an OS prompt. */
+export async function inspectNotificationPermissions(): Promise<boolean> {
+  if (!SUPPORTED) return false;
+  const existing = await Notifications.getPermissionsAsync();
+  return existing.granted;
+}
+
+/** Explicit opt-in path used only after the user enables reminders. */
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!SUPPORTED) return false;
   const existing = await Notifications.getPermissionsAsync();

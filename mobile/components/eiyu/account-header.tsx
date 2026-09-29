@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { formatError, normalizeProfileEdit, RANK_CONFIG } from '@eiyu/shared';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { router, useLocalSearchParams } from 'expo-router';
+import { formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
 
 import SettingsContent from '@/components/eiyu/settings-content';
 import { fonts } from '@/constants/eiyu-theme';
@@ -17,6 +19,8 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
   const [userClass, setUserClass] = useState(user.userClass);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const saving = useRef(false);
+  const dirty = displayName !== user.name || userClass !== user.userClass;
 
   useEffect(() => {
     setDisplayName(user.name);
@@ -24,50 +28,74 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
     setError(null);
   }, [user.name, user.userClass]);
 
+  const requestClose = () => {
+    if (pending) return;
+    if (!dirty) {
+      onClose();
+      return;
+    }
+    Alert.alert('Discard changes?', 'Your unsaved profile changes will be lost.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: onClose },
+    ]);
+  };
+
   const save = async () => {
+    if (saving.current) return;
     try {
       setError(null);
-      const normalized = normalizeProfileEdit({ displayName, userClass });
+      const normalized = normalizeProfileEdit({ displayName, userClass }, {
+        displayName: user.name, userClass: user.userClass,
+      });
+      saving.current = true;
       setPending(true);
       await saveProfile(normalized);
       onClose();
     } catch (err) {
       setError(formatError(err));
     } finally {
+      saving.current = false;
       setPending(false);
     }
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={requestClose}>
       <View style={[styles.modalRoot, { backgroundColor: theme.overlay }]}>
-        <View style={[styles.sheet, { backgroundColor: theme.modal, borderColor: theme.glassBorder, paddingBottom: 30 + insets.bottom }]}>
+        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" style={[styles.sheet, { backgroundColor: theme.modal, borderColor: theme.glassBorder, paddingBottom: 30 + insets.bottom }]}>
           <View style={styles.sheetHeading}>
             <Text style={[styles.sheetTitle, { color: theme.text, fontFamily: fonts.display }]}>EDIT DETAILS</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close Edit details" onPress={onClose}><Text style={[styles.close, { color: theme.muted }]}>×</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close Edit details" onPress={requestClose} disabled={pending}><Text style={[styles.close, { color: theme.muted }]}>×</Text></Pressable>
           </View>
           <Text style={[styles.fieldLabel, { color: theme.muted, fontFamily: fonts.display }]}>DISPLAY NAME</Text>
-          <TextInput accessibilityLabel="Display name" value={displayName} onChangeText={setDisplayName} maxLength={80} autoFocus style={[styles.input, { color: theme.text, borderColor: theme.glassBorder, backgroundColor: theme.track }]} />
+          <TextInput accessibilityLabel="Display name" value={displayName} editable={!pending} onChangeText={value => setDisplayName(value)} autoFocus style={[styles.input, { color: theme.text, borderColor: theme.glassBorder, backgroundColor: theme.track }]} />
           <Text style={[styles.fieldLabel, { color: theme.muted, fontFamily: fonts.display }]}>CLASS</Text>
-          <TextInput accessibilityLabel="Class" value={userClass} onChangeText={setUserClass} maxLength={80} style={[styles.input, { color: theme.text, borderColor: theme.glassBorder, backgroundColor: theme.track }]} />
+          <TextInput accessibilityLabel="Class" value={userClass} editable={!pending} onChangeText={value => setUserClass(value)} style={[styles.input, { color: theme.text, borderColor: theme.glassBorder, backgroundColor: theme.track }]} />
           {error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <View style={styles.actions}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={onClose} disabled={pending}><Text style={[styles.actionText, { color: theme.muted, fontFamily: fonts.display }]}>CANCEL</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Cancel" onPress={requestClose} disabled={pending}><Text style={[styles.actionText, { color: theme.muted, fontFamily: fonts.display }]}>CANCEL</Text></Pressable>
             <Pressable accessibilityRole="button" accessibilityLabel={pending ? 'Saving' : 'Save'} onPress={() => void save()} disabled={pending} style={[styles.saveButton, { borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}><Text style={[styles.actionText, { color: theme.accent, fontFamily: fonts.display }]}>{pending ? 'SAVING…' : 'SAVE'}</Text></Pressable>
           </View>
-        </View>
+        </KeyboardAwareScrollView>
       </View>
     </Modal>
   );
 }
 
 export default function AccountHeader() {
+  const { account } = useLocalSearchParams<{ account?: string }>();
   const { user, theme } = useEiyu();
   const { signOut } = useAuth();
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [logoutPending, setLogoutPending] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (account !== 'settings') return;
+    setSheet('settings');
+    router.setParams({ account: undefined });
+  }, [account]);
   const rankCfg = RANK_CONFIG[user.rank];
   const accountLabel = `${user.name}, ${user.userClass}, rank ${user.rank}`;
 
@@ -86,7 +114,7 @@ export default function AccountHeader() {
       <View style={[styles.header, { backgroundColor: theme.nav, borderBottomColor: theme.navBorder, paddingTop: insets.top }]}>
         <View style={styles.brand}><Text style={[styles.brandMark, { color: theme.accent, borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>英</Text><Text style={[styles.brandText, { color: theme.text, fontFamily: fonts.display }]}>EIYU</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel={accountLabel} accessibilityHint="Open account menu" onPress={() => { setLogoutError(null); setSheet('menu'); }} style={styles.accountTrigger}>
-          <View style={[styles.avatar, { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder }]}><Text style={[styles.avatarText, { color: theme.accent, fontFamily: fonts.display }]}>{user.name.split(' ').map(n => n[0]).join('').slice(0, 3)}</Text></View>
+          <View style={[styles.avatar, { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder }]}><Text style={[styles.avatarText, { color: theme.accent, fontFamily: fonts.display }]}>{profileInitials(user.name)}</Text></View>
           <View style={styles.accountCopy}><Text numberOfLines={1} style={[styles.accountName, { color: theme.text, fontFamily: fonts.display }]}>{user.name}</Text><Text numberOfLines={1} style={[styles.accountClass, { color: theme.muted, fontFamily: fonts.body }]}>{user.userClass}</Text></View>
           <Text style={[styles.rank, { color: rankCfg.color, borderColor: rankCfg.color }]}>{user.rank}</Text>
         </Pressable>
@@ -110,7 +138,7 @@ export default function AccountHeader() {
             <Text style={[styles.sheetTitle, { color: theme.text, fontFamily: fonts.display }]}>SETTINGS</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Close Settings" onPress={() => setSheet(null)}><Text style={[styles.close, { color: theme.muted }]}>×</Text></Pressable>
           </View>
-          <SettingsContent onClose={() => setSheet(null)} />
+          <SettingsContent onClose={() => setSheet(null)} embedded />
         </View>
       </Modal>
     </>

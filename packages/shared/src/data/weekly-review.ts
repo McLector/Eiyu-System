@@ -1,7 +1,7 @@
 import { STATS } from '../constants/eiyu-data';
 import { accountDateKey, addDateKeyDays, weekdayForDateKey } from '../logic/date-utils';
-import { supabase } from '../supabase/client';
 import { Stat } from '../types/eiyu';
+import { fetchHistoryEvidence } from './history';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -20,44 +20,14 @@ export async function fetchWeeklyReview(
   const todayKey = accountDateKey(now, timeZone);
   const startStr = addDateKeyDays(todayKey, -6);
 
-  // includes archived habits: past completions still happened, even for
-  // habits the user has since archived.
-  const { data: habits, error: habitsError } = await supabase
-    .from('habits')
-    .select('id, stat')
-    .eq('user_id', userId);
-  if (habitsError) throw habitsError;
-  const statByHabit = new Map((habits ?? []).map(h => [h.id, h.stat]));
-
-  const [{ data: completions, error }, { data: deletedHistory, error: deletedHistoryError }] = await Promise.all([
-    supabase
-      .from('habit_completions')
-      .select('habit_id, completed_on')
-      .eq('user_id', userId)
-      .gte('completed_on', startStr)
-      .lte('completed_on', todayKey),
-    supabase
-      .from('deleted_habit_history')
-      .select('source_habit_id, historical_date, stat, completion_kind')
-      .eq('user_id', userId)
-      .gte('historical_date', startStr)
-      .lte('historical_date', todayKey),
-  ]);
-  if (error) throw error;
-  if (deletedHistoryError) throw deletedHistoryError;
+  const snapshot = await fetchHistoryEvidence(startStr, addDateKeyDays(todayKey, 1));
 
   const buckets = new Map<string, Record<Stat, number>>();
   for (let i = 0; i < 7; i++) {
     buckets.set(addDateKeyDays(startStr, i), emptyDayCounts());
   }
 
-  for (const c of completions ?? []) {
-    const stat = statByHabit.get(c.habit_id);
-    const bucket = buckets.get(c.completed_on);
-    if (!stat || !bucket) continue;
-    bucket[stat] += 1;
-  }
-  for (const row of deletedHistory ?? []) {
+  for (const row of snapshot.rows) {
     if (!row.completion_kind) continue;
     const bucket = buckets.get(row.historical_date);
     if (!bucket) continue;

@@ -32,6 +32,10 @@ describe('lifecycle readers', () => {
   });
 
   it('includes deleted completions in the weekly review stat totals', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: { habits: [], recurring_totals: {}, rows: [
+      { source_habit_id: 'live-1', historical_date: '2026-09-16', habit_name: 'Live', stat: 'STR', quest_type: 'habit', scheduled: true, completion_kind: 'full' },
+      { source_habit_id: 'deleted-1', historical_date: '2026-09-17', habit_name: 'Deleted', stat: 'INT', quest_type: 'habit', scheduled: true, completion_kind: 'easy' },
+    ] }, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') return chainable({ data: [{ id: 'live-1', stat: 'STR' }], error: null });
       if (table === 'habit_completions') {
@@ -53,6 +57,13 @@ describe('lifecycle readers', () => {
   });
 
   it('returns seven ordered account-local date keys with zero-filled boundary days and exact counts', async () => {
+    const counts = [
+      ['2026-12-25', 'STR', 1], ['2026-12-26', 'INT', 3], ['2026-12-27', 'DEX', 4],
+      ['2026-12-28', 'WIS', 10], ['2026-12-29', 'CHA', 1], ['2026-12-30', 'CHA', 2],
+    ] as const;
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: { habits: [], recurring_totals: {}, rows: counts.flatMap(([date, stat, count]) =>
+      Array.from({ length: count }, (_, index) => ({ source_habit_id: `${stat}-${index}`, historical_date: date,
+        habit_name: stat, stat, quest_type: 'habit', scheduled: true, completion_kind: 'full' }))) }, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') {
         return chainable({
@@ -120,6 +131,7 @@ describe('lifecycle readers', () => {
   });
 
   it('adds retained recurring completions to weekly quest progress while keeping one-time rows out', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: { habits: [], rows: [], recurring_totals: { DEX: 3 } }, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'weekly_quests') {
         return chainable({ data: { stat: 'DEX', target_count: 5 }, error: null });
@@ -147,6 +159,10 @@ describe('lifecycle readers', () => {
   });
 
   it('keeps archived live definitions and deleted retained completions in AI summary inputs', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: { habits: [{ id: 'archived-1', name: 'Archived', stat: 'WIS' }], recurring_totals: {}, rows: [
+      { source_habit_id: 'archived-1', historical_date: '2026-09-15', habit_name: 'Archived', stat: 'WIS', quest_type: 'habit', scheduled: true, completion_kind: 'full' },
+      { source_habit_id: 'deleted-1', historical_date: '2026-09-16', habit_name: 'Deleted', stat: 'CHA', quest_type: 'habit', scheduled: true, completion_kind: 'easy' },
+    ] }, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') {
         return chainable({ data: [{ id: 'archived-1', name: 'Archived', stat: 'WIS' }], error: null });

@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { BoardIcon, StatusIcon, ScrollIcon, GearIcon } from '../Icons';
-import { RANK_CONFIG } from '@eiyu/shared';
+import { profileInitials, RANK_CONFIG } from '@eiyu/shared';
 import { useEiyu } from '../store/eiyu-store';
 
 const NAV: { to: string; label: string; Icon: React.FC<{ active: boolean }> }[] = [
@@ -96,7 +96,7 @@ export default function Sidebar() {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)',
           }}>
-            {user.name.split(' ').map(n => n[0]).join('')}
+            {profileInitials(user.name)}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 14, fontWeight: 700, color: 'var(--c-text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

@@ -1,4 +1,5 @@
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { AccessibilityInfo } from 'react-native';
 import type { Quest, UserProfile } from '@eiyu/shared';
 import { initialUser } from '@eiyu/shared';
 import BoardScreen from '../../app/(tabs)/board';
@@ -34,6 +35,7 @@ const habit: Quest = {
 };
 
 function setup() {
+  mockRouter.push.mockClear();
   const quests: Quest[] = [
     habit,
     { ...habit, id: 'off-day', name: 'Off-day habit', dailyEligible: false },
@@ -54,11 +56,58 @@ function setup() {
     adjustProgress: jest.fn(),
     completeRecovery: jest.fn(),
     reminderWarning: null,
+    archiveQuest: jest.fn().mockResolvedValue(undefined),
+    restoreQuest: jest.fn().mockResolvedValue(undefined),
+    deleteQuest: jest.fn().mockResolvedValue(undefined),
   };
 }
 
 describe('mobile BoardScreen lanes', () => {
   beforeEach(setup);
+
+  it('counts a mixed board and keeps each actionable quest in its own card', async () => {
+    const oneTime = { ...habit, id: 'one-time', name: 'Today only', questType: 'one_time' as const, days: [], completed: true };
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, oneTime] };
+    const user = userEvent.setup();
+    await render(<BoardScreen />);
+    expect(screen.getByText('1/2')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Archive Daily habit' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Delete Daily habit' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Open Daily habit details' })).toBeOnTheScreen();
+    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    expect(screen.getByRole('button', { name: 'Archive Today only' })).toBeOnTheScreen();
+  });
+
+  it('counts a one-time-only board', async () => {
+    const oneTime = { ...habit, id: 'one-time', name: 'Today only', questType: 'one_time' as const, days: [], completed: true };
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTime] };
+    await render(<BoardScreen />);
+    expect(screen.getByText('1/1')).toBeOnTheScreen();
+  });
+
+  it('keeps the note accessible independently from quest details', async () => {
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [{ ...habit, description: 'A longer note' }] };
+    const user = userEvent.setup();
+    await render(<BoardScreen />);
+    await user.press(screen.getByRole('button', { name: 'Show note for Daily habit' }));
+    expect(screen.getByRole('button', { name: 'Hide note for Daily habit' })).toBeOnTheScreen();
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+
+  it('disables repeated archive and delete actions while an archive is pending', async () => {
+    const user = userEvent.setup();
+    let release!: () => void;
+    mockStoreValue.archiveQuest.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    await render(<BoardScreen />);
+    await user.press(screen.getByRole('button', { name: 'Archive Daily habit' }));
+    expect(screen.getByRole('button', { name: 'Archive Daily habit' })).toBeDisabled();
+    expect(screen.getByText('ARCHIVING…')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Delete Daily habit' })).toBeDisabled();
+    await user.press(screen.getByRole('button', { name: 'Archive Daily habit' }));
+    expect(mockStoreValue.archiveQuest).toHaveBeenCalledTimes(1);
+    await act(async () => { release(); });
+    expect(screen.getByRole('button', { name: 'Archive Daily habit' })).toBeEnabled();
+  });
 
   it('uses a phone lane selector to reach All Habits and Archived without hiding actions', async () => {
     const user = userEvent.setup();
@@ -77,5 +126,56 @@ describe('mobile BoardScreen lanes', () => {
     expect(screen.getByText('Archived habit')).toBeOnTheScreen();
     expect(screen.queryByText('Off-day habit')).not.toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Edit Archived habit' })).toBeOnTheScreen();
+  });
+
+  it('requires a named retention confirmation before deleting an archived card', async () => {
+    const user = userEvent.setup();
+    const rendered = await render(<BoardScreen />);
+    await user.press(screen.getByRole('tab', { name: 'ARCHIVED' }));
+    await user.press(screen.getByRole('button', { name: 'Delete Archived habit' }));
+
+    const focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
+    await act(async () => { fireEvent(rendered.getByTestId('board-delete-modal'), 'show'); });
+    expect(focus).toHaveBeenCalledWith(expect.anything(), 'focus');
+    focus.mockRestore();
+
+    expect(screen.getByText('DELETE Archived habit PERMANENTLY?')).toBeOnTheScreen();
+    expect(screen.getByText(/History, Weekly Review, and earned XP remain/)).toBeOnTheScreen();
+    expect(mockStoreValue.deleteQuest).not.toHaveBeenCalled();
+    await act(async () => { rendered.getByTestId('board-delete-modal').props.onRequestClose(); });
+    expect(mockStoreValue.deleteQuest).not.toHaveBeenCalled();
+    await waitFor(() => expect(rendered.queryByTestId('board-delete-modal')).toBeNull());
+
+    await user.press(screen.getByRole('button', { name: 'Delete Archived habit' }));
+    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    expect(mockStoreValue.deleteQuest).toHaveBeenCalledTimes(1);
+    expect(mockStoreValue.deleteQuest).toHaveBeenCalledWith('archived');
+  });
+
+  it('blocks Back and repeat confirmation while pending, then keeps an error for retry', async () => {
+    const user = userEvent.setup();
+    let rejectDelete!: (error: Error) => void;
+    mockStoreValue.deleteQuest
+      .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectDelete = reject; }))
+      .mockResolvedValueOnce(undefined);
+    const rendered = await render(<BoardScreen />);
+    await user.press(screen.getByRole('tab', { name: 'ARCHIVED' }));
+    await user.press(screen.getByRole('button', { name: 'Delete Archived habit' }));
+    await act(async () => {
+      fireEvent.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toBeDisabled());
+    await act(async () => { rendered.getByTestId('board-delete-modal').props.onRequestClose(); });
+    expect(rendered.getByTestId('board-delete-modal')).toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    expect(mockStoreValue.deleteQuest).toHaveBeenCalledTimes(1);
+
+    await act(async () => { rejectDelete(new Error('network offline')); });
+    expect(screen.getByText('network offline')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toBeEnabled();
+    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    expect(mockStoreValue.deleteQuest).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(rendered.queryByTestId('board-delete-modal')).toBeNull());
   });
 });

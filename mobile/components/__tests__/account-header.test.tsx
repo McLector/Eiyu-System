@@ -1,4 +1,5 @@
-import { render, screen, userEvent } from '@testing-library/react-native';
+import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import AccountHeader from '../eiyu/account-header';
 
 jest.mock('react-native-keyboard-controller', () => ({
@@ -13,9 +14,10 @@ jest.mock('react-native-safe-area-context', () => ({
 
 const mockSignOut = jest.fn();
 const mockSaveProfile = jest.fn();
-const mockRouter = { push: jest.fn() };
+let mockParams: { account?: string } = {};
 
-jest.mock('expo-router', () => ({ router: mockRouter }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => mockParams }));
+const mockRouter = jest.requireMock('expo-router').router as { push: jest.Mock; setParams: jest.Mock };
 jest.mock('@/contexts/auth-store', () => ({ useAuth: () => ({ signOut: mockSignOut }) }));
 jest.mock('@/contexts/eiyu-store', () => ({
   useEiyu: () => ({
@@ -37,6 +39,9 @@ describe('native account header', () => {
     mockSignOut.mockReset().mockResolvedValue({ error: null });
     mockSaveProfile.mockReset().mockResolvedValue(undefined);
     mockRouter.push.mockReset();
+    mockRouter.setParams.mockReset();
+    mockParams = {};
+    jest.restoreAllMocks();
   });
 
   it('exposes the exact three account actions and opens profile editing', async () => {
@@ -50,5 +55,46 @@ describe('native account header', () => {
     expect(screen.getByRole('button', { name: 'Logout' })).toBeOnTheScreen();
     await user.press(screen.getByRole('button', { name: 'Edit details' }));
     expect(screen.getByText('EDIT DETAILS')).toBeOnTheScreen();
+  });
+
+  it('asks before discarding edits through the native Back or Cancel path', async () => {
+    const user = userEvent.setup();
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    await render(<AccountHeader />);
+    await user.press(screen.getByRole('button', { name: /Yuki Tanaka.*rank C/i }));
+    await user.press(screen.getByRole('button', { name: 'Edit details' }));
+    await user.type(screen.getByLabelText('Display name'), ' X');
+    await user.press(screen.getByRole('button', { name: 'Cancel' }));
+    expect(alert).toHaveBeenCalledWith('Discard changes?', expect.any(String), expect.any(Array));
+    expect(screen.getByText('EDIT DETAILS')).toBeOnTheScreen();
+    const actions = alert.mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
+    expect(actions.map(action => action.text)).toEqual(['Keep editing', 'Discard']);
+    await act(async () => actions[1].onPress?.());
+    expect(screen.queryByText('EDIT DETAILS')).toBeNull();
+  });
+
+  it('holds a pending profile sheet and shows a late save failure', async () => {
+    const user = userEvent.setup();
+    let reject!: (error: Error) => void;
+    mockSaveProfile.mockImplementationOnce(() => new Promise<void>((_resolve, r) => { reject = r; }));
+    await render(<AccountHeader />);
+    await user.press(screen.getByRole('button', { name: /Yuki Tanaka.*rank C/i }));
+    await user.press(screen.getByRole('button', { name: 'Edit details' }));
+    await user.type(screen.getByLabelText('Display name'), ' X');
+    await user.press(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('button', { name: 'Saving' })).toBeDisabled();
+    expect(screen.getByLabelText('Display name').props.editable).toBe(false);
+    expect(screen.getByLabelText('Class').props.editable).toBe(false);
+    expect(mockSaveProfile).toHaveBeenCalledTimes(1);
+    await act(async () => reject(new Error('server unavailable')));
+    expect(screen.getByText('server unavailable')).toBeOnTheScreen();
+    expect(screen.getByText('EDIT DETAILS')).toBeOnTheScreen();
+  });
+
+  it('opens the shared Settings sheet from the legacy route parameter', async () => {
+    mockParams = { account: 'settings' };
+    await render(<AccountHeader />);
+    expect(screen.getByText('SETTINGS')).toBeOnTheScreen();
+    expect(mockRouter.setParams).toHaveBeenCalledWith({ account: undefined });
   });
 });

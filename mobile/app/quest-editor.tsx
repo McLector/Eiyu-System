@@ -1,7 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { StatIcon } from '@/components/eiyu/icons';
@@ -90,6 +90,8 @@ export default function QuestEditorScreen() {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const lifecycleInFlight = useRef(false);
+  const pendingRef = useRef(false);
+  const deleteCancelRef = useRef<View>(null);
 
   const handleSuggest = async () => {
     if (!name.trim() || suggesting) return;
@@ -134,6 +136,7 @@ export default function QuestEditorScreen() {
       targetCount: !isOneTime && targetCount ? Number(targetCount) : null,
     };
     setSubmitting(true);
+    pendingRef.current = true;
     setError(null);
     try {
       await saveHabit(input, editingId);
@@ -142,6 +145,7 @@ export default function QuestEditorScreen() {
     } catch (err) {
       setError(formatError(err));
     } finally {
+      pendingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -149,6 +153,7 @@ export default function QuestEditorScreen() {
   const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
     if (!editingId || submitting || lifecycleInFlight.current) return;
     lifecycleInFlight.current = true;
+    pendingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -158,6 +163,7 @@ export default function QuestEditorScreen() {
       hapticLight();
       router.back();
     } catch (err) {
+      pendingRef.current = false;
       setError(formatError(err));
       setSubmitting(false);
       if (operation === 'delete') setConfirmDelete(true);
@@ -175,7 +181,7 @@ export default function QuestEditorScreen() {
           <Text style={[styles.headerTitle, { color: theme.text, fontFamily: fonts.display }]}>
             {quest ? 'EDIT QUEST' : isOneTime ? 'NEW ONE-TIME QUEST' : 'NEW QUEST'}
           </Text>
-          <Pressable onPress={() => router.back()}>
+          <Pressable onPress={() => { if (!pendingRef.current && !confirmDelete) router.back(); }} disabled={submitting || confirmDelete}>
             <Text style={[styles.closeX, { color: theme.dim }]}>×</Text>
           </Pressable>
         </View>
@@ -492,19 +498,24 @@ export default function QuestEditorScreen() {
       </View>
 
       <Modal
+        testID="quest-delete-modal"
         visible={confirmDelete}
         transparent
         animationType="fade"
-        onRequestClose={() => setConfirmDelete(false)}>
+        onShow={() => {
+          if (deleteCancelRef.current) AccessibilityInfo.sendAccessibilityEvent(deleteCancelRef.current, 'focus');
+        }}
+        onRequestClose={() => { if (!pendingRef.current) setConfirmDelete(false); }}>
         <View style={styles.confirmOverlay} accessibilityRole="alert" accessibilityViewIsModal>
           <View style={[styles.confirmCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
-            <Text style={[styles.confirmTitle, { color: theme.text, fontFamily: fonts.display }]}>DELETE QUEST PERMANENTLY?</Text>
-            <Text style={[styles.confirmBody, { color: theme.muted, fontFamily: fonts.body }]}>The saved definition will be removed. Its history will remain available, but the quest cannot be restored.</Text>
+            <Text style={[styles.confirmTitle, { color: theme.text, fontFamily: fonts.display }]}>DELETE {quest?.name} PERMANENTLY?</Text>
+            <Text style={[styles.confirmBody, { color: theme.muted, fontFamily: fonts.body }]}>This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</Text>
             {error && <Text style={styles.errorText}>{error}</Text>}
             <View style={styles.confirmActions}>
               <Pressable
+                ref={deleteCancelRef}
                 testID="quest-delete-cancel"
-                onPress={() => setConfirmDelete(false)}
+                onPress={() => { if (!pendingRef.current) setConfirmDelete(false); }}
                 disabled={submitting}
                 style={[styles.confirmCancel, { borderColor: theme.glassBorder }]}
                 accessibilityRole="button"

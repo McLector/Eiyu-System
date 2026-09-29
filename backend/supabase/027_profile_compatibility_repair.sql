@@ -1,7 +1,10 @@
--- Profile editing is deliberately separate from timezone mutation. The
--- timezone RPC remains the only path that can change occurrence semantics.
--- JavaScript String.trim() whitespace set, expressed explicitly so PostgreSQL
--- validation and normalization agree for NBSP, BOM, line separators, etc.
+-- Compatibility repair for databases that applied the original 026 before
+-- its grandfathered-value upgrade path was corrected. Keep legacy values,
+-- remove table CHECKs that can reject an unchanged legacy field, and install
+-- the same changed-field validation/normalization as the corrected 026.
+alter table public.profiles drop constraint if exists profiles_display_name_valid;
+alter table public.profiles drop constraint if exists profiles_user_class_valid;
+
 create or replace function public.trim_profile_text(p_text text)
 returns text
 language sql

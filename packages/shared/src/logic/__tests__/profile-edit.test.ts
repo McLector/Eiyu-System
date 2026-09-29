@@ -17,4 +17,12 @@ describe('profile editing validation', () => {
     expect(validateProfileText('😀'.repeat(PROFILE_TEXT_MAX_LENGTH), 'Display name')).toBeNull();
     expect(validateProfileText('😀'.repeat(PROFILE_TEXT_MAX_LENGTH + 1), 'Display name')).toMatch(/80/);
   });
+
+  it('preserves an unchanged legacy 81+ code-point field while editing the other field', () => {
+    const original = { displayName: '🧭'.repeat(81), userClass: 'Old class' };
+    expect(normalizeProfileEdit({ displayName: original.displayName, userClass: '  Ranger  ' }, original))
+      .toEqual({ displayName: original.displayName, userClass: 'Ranger' });
+    expect(() => normalizeProfileEdit({ displayName: `${original.displayName}!`, userClass: 'Ranger' }, original))
+      .toThrow(/80 characters/);
+  });
 });

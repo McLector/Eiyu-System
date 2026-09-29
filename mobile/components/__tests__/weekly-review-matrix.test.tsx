@@ -20,7 +20,6 @@ describe('WeeklyReviewMatrix', () => {
       />
     );
 
-    expect(screen.getByLabelText('Weekly activity, last 7 days')).toBeTruthy();
     expect(screen.getByLabelText(/WIS, Mon, December 28, 2026: 10 completions/)).toBeTruthy();
     expect(screen.getByLabelText(/STR, Thu, December 31, 2026: 0 completions/)).toBeTruthy();
   });

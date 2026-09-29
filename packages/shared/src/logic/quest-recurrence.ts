@@ -39,21 +39,59 @@ export interface BoardQuestSections {
   archivedQuests: Quest[];
 }
 
+// Compare Unicode scalar values explicitly so device locale and Intl collation
+// settings cannot reorder equal-time board cards between web and native.
+function compareCodePoints(a: string, b: string): number {
+  const left = Array.from(a);
+  const right = Array.from(b);
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    const difference = left[index].codePointAt(0)! - right[index].codePointAt(0)!;
+    if (difference) return difference;
+  }
+  return left.length - right.length;
+}
+
+function compareNameAndId(a: Quest, b: Quest): number {
+  return compareCodePoints(a.name, b.name) || compareCodePoints(a.id, b.id);
+}
+
+function compareActionable(a: Quest, b: Quest): number {
+  return Number(a.completed) - Number(b.completed)
+    || compareCodePoints(a.time, b.time)
+    || compareNameAndId(a, b);
+}
+
+function compareCatalog(a: Quest, b: Quest): number {
+  return compareCodePoints(a.time, b.time) || compareNameAndId(a, b);
+}
+
+export function boardTodayProgress(sections: Pick<BoardQuestSections, 'dailyQuests' | 'oneTimeQuests'>): { completed: number; total: number } {
+  const actionable = new Map([...sections.dailyQuests, ...sections.oneTimeQuests].map(quest => [quest.id, quest]));
+  return { completed: [...actionable.values()].filter(quest => quest.completed).length, total: actionable.size };
+}
+
 /** One shared routing contract for mobile and web board sections. */
 export function partitionBoardQuests(quests: Quest[]): BoardQuestSections {
+  const active = quests.filter(quest => !quest.archived);
+  const dailyQuests = active
+    .filter(quest => quest.questType === 'habit' && quest.dailyEligible === true)
+    .sort(compareActionable);
+  const oneTimeQuests = active
+    .filter(quest => quest.questType === 'one_time')
+    .sort(compareActionable);
+  const allHabits = active
+    .filter(quest => quest.questType === 'habit')
+    .sort(compareCatalog);
+  const archivedQuests = quests
+    .filter(quest => quest.archived === true)
+    .sort(compareNameAndId);
   return {
-    dailyQuests: quests.filter(
-      quest => quest.questType === 'habit' && quest.dailyEligible === true && !quest.archived
-    ),
+    dailyQuests,
     recoveryRequired: quests.filter(
       quest => quest.questType === 'habit' && quest.frozen && !quest.archived
-    ),
-    oneTimeQuests: quests.filter(
-      quest => quest.questType === 'one_time' && !quest.archived
-    ),
-    allHabits: quests.filter(
-      quest => quest.questType === 'habit' && !quest.archived
-    ),
-    archivedQuests: quests.filter(quest => quest.archived === true),
+    ).sort(compareActionable),
+    oneTimeQuests,
+    allHabits,
+    archivedQuests,
   };
 }

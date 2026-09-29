@@ -2,6 +2,7 @@ import { accountDateKey, addDateKeyDays, mondayDateKey } from '../logic/date-uti
 import { weakestStat } from '../logic/eiyu-logic';
 import { supabase } from '../supabase/client';
 import { Stat, StatData } from '../types/eiyu';
+import { fetchHistoryEvidence } from './history';
 
 // Roughly one completion every weekday — simple, defensible, and avoids
 // tying the target to each habit's schedule (Could-priority feature, not
@@ -13,51 +14,6 @@ export interface WeeklyQuest {
   stat: Stat;
   targetCount: number;
   currentCount: number;
-}
-
-async function countCompletionsForStatThisWeek(
-  userId: string,
-  stat: Stat,
-  weekStart: string,
-  weekEnd: string
-): Promise<number> {
-  // Decision (Phase 4 review): one-time quests are EXCLUDED from the weekly
-  // count. The target was calibrated around habit cadence ("roughly one
-  // completion per weekday"); letting a burst of same-day todos blow through
-  // it would trivialize the weekly loop. XP still counts fully — this only
-  // affects progress toward the auto-generated Weekly Quest.
-  const { data: habits, error: habitsError } = await supabase
-    .from('habits')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('stat', stat)
-    .neq('quest_type', 'one_time');
-  if (habitsError) throw habitsError;
-  const habitIds = (habits ?? []).map(h => h.id);
-
-  const [{ count: liveCount, error }, { data: deletedHistory, error: deletedHistoryError }] = await Promise.all([
-    habitIds.length === 0
-      ? Promise.resolve({ count: 0, error: null })
-      : supabase
-          .from('habit_completions')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', userId)
-          .in('habit_id', habitIds)
-          .gte('completed_on', weekStart)
-          .lt('completed_on', weekEnd),
-    supabase
-      .from('deleted_habit_history')
-      .select('source_habit_id')
-      .eq('user_id', userId)
-      .eq('stat', stat)
-      .eq('quest_type', 'habit')
-      .not('completion_kind', 'is', null)
-      .gte('historical_date', weekStart)
-      .lt('historical_date', weekEnd),
-  ]);
-  if (error) throw error;
-  if (deletedHistoryError) throw deletedHistoryError;
-  return (liveCount ?? 0) + (deletedHistory?.length ?? 0);
 }
 
 /**
@@ -115,6 +71,9 @@ export async function fetchOrCreateWeeklyQuest(
     }
   }
 
-  const currentCount = await countCompletionsForStatThisWeek(userId, stat, weekStart, weekEnd);
+  // Weekly Quest counts recurring completions only; the database computes this
+  // exact total from the same snapshot used by every historical reader.
+  const snapshot = await fetchHistoryEvidence(weekStart, weekEnd);
+  const currentCount = snapshot.recurring_totals[stat] ?? 0;
   return { weekStart, stat, targetCount, currentCount };
 }

@@ -26,8 +26,8 @@ export default function WeeklyReviewMatrix({ data, colors }: Props) {
   const maxValue = Math.max(1, ...data.flatMap(day => STATS.map(stat => day[stat])));
 
   return (
-    <View accessible accessibilityLabel="Weekly activity, last 7 days" style={styles.wrapper}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <View style={styles.wrapper}>
+      <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.scrollContent}>
         <View style={styles.table}>
           <View style={styles.row}>
             <View style={[styles.statHeader, { borderBottomColor: colors.track }]}>
@@ -89,27 +89,27 @@ const styles = StyleSheet.create({
     minWidth: '100%',
   },
   table: {
-    minWidth: 470,
+    minWidth: 584,
   },
   row: {
     flexDirection: 'row',
   },
   statHeader: {
     width: 52,
-    minHeight: 45,
+    minHeight: 56,
     justifyContent: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerCell: {
-    width: 59,
-    minHeight: 45,
+    width: 76,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
     borderLeftWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   valueCell: {
-    width: 59,
+    width: 76,
     minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headerDate: {
-    fontSize: 8,
+    fontSize: 11,
     marginTop: 2,
   },
   statText: {

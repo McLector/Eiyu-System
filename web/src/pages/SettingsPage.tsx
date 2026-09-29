@@ -1,17 +1,13 @@
 import { useEffect } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
-import type { LayoutContext } from '../ProtectedLayout';
+import { useNavigate } from 'react-router-dom';
 
 export default function SettingsPage() {
-  const { openSettings } = useOutletContext<LayoutContext>();
   const navigate = useNavigate();
 
   useEffect(() => {
-    openSettings();
-    // The legacy URL remains usable, but the overlay's background should be
-    // the board route so closing it cannot reopen this compatibility entry.
-    navigate('/board', { replace: true });
-  }, [navigate, openSettings]);
+    // The legacy route resolves to the same Board-backed account overlay.
+    navigate('/board?account=settings', { replace: true });
+  }, [navigate]);
 
   return null;
 }

@@ -63,7 +63,7 @@ interface EiyuStore {
   questsError: string | null;
   retryQuests: () => Promise<void>;
   /** Full completion if not yet done, undo if already done. */
-  toggleQuest: (id: string) => void;
+  toggleQuest: (id: string) => Promise<boolean>;
   /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
   adjustProgress: (id: string, delta: number) => void;
   /** Ask the server to resolve the authoritative open recovery window. */
@@ -168,7 +168,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   /** Optimistic completion with rollback. */
   const runCompletion = useCallback(
     async (id: string, action: () => Promise<void>, optimisticCompleted: boolean) => {
-      if (!userId) return;
+      if (!userId) return false;
       const key = habitsTodayKey(userId);
       qc.setQueryData<Quest[]>(key, qs =>
         qs?.map(q => (q.id === id ? { ...q, completed: optimisticCompleted } : q))
@@ -182,28 +182,30 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.invalidateQueries({ queryKey: ['historyRange', userId] }),
         ]);
         setQuestActionError(null);
+        return true;
       } catch (err) {
         qc.setQueryData<Quest[]>(key, qs =>
           qs?.map(q => (q.id === id ? { ...q, completed: !optimisticCompleted } : q))
         );
         setQuestActionError(formatError(err));
+        return false;
       }
     },
     [userId, qc]
   );
 
   const toggleQuest = useCallback(
-    (id: string) => {
+    (id: string): Promise<boolean> => {
       const quest = quests.find(q => q.id === id);
-      if (!quest || !userId) return;
+      if (!quest || !userId) return Promise.resolve(false);
       if (quest.completed) {
-        void runCompletion(
+        return runCompletion(
           id,
           () => undoCompletion(userId, id, quest.stat, profile?.timeZone),
           false
         );
       } else {
-        void runCompletion(
+        return runCompletion(
           id,
           () => completeHabit(userId, id, quest.stat, 'full', undefined, profile?.timeZone),
           true
@@ -408,10 +410,12 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
 
   const saveProfile = useCallback(
     async (input: { displayName: string; userClass: string }) => {
-      const updated = await updateProfile(input);
+      const updated = await updateProfile(input, profile ? {
+        displayName: profile.displayName, userClass: profile.userClass,
+      } : undefined);
       qc.setQueryData(['profile', userId ?? null], updated);
     },
-    [qc, userId]
+    [qc, userId, profile]
   );
 
   const user: UserProfile = useMemo(

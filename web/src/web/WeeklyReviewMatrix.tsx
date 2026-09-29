@@ -6,13 +6,20 @@ interface Props {
 }
 
 function formatDateKey(dateKey: string, timeZone: string): string {
+  // The timezone already selected dateKey upstream; retain the public call
+  // signature while deliberately avoiding another shift during formatting.
+  void timeZone;
   const [year, month, day] = dateKey.split('-').map(Number);
+  // dateKey is already an account-local calendar value. Formatting a noon UTC
+  // instant in a positive-offset zone can advance it into the next day.
+  // Construct a UTC date only to obtain the month/day names and omit a second
+  // timezone conversion.
   return new Intl.DateTimeFormat('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-    timeZone,
-  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 function alphaHex(value: number): string {

@@ -1,11 +1,9 @@
-import { StyleSheet, View } from 'react-native';
-
-import SettingsContent from '@/components/eiyu/settings-content';
-import { useEiyu } from '@/contexts/eiyu-store';
+import { router } from 'expo-router';
+import { useEffect } from 'react';
 
 export default function LegacySettingsRoute() {
-  const { theme } = useEiyu();
-  return <View style={[styles.root, { backgroundColor: theme.body }]}><SettingsContent /></View>;
+  useEffect(() => {
+    router.replace({ pathname: '/(tabs)/board', params: { account: 'settings' } });
+  }, []);
+  return null;
 }
-
-const styles = StyleSheet.create({ root: { flex: 1 } });

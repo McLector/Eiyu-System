@@ -43,13 +43,21 @@ export interface ProfileEditInput {
   userClass: string;
 }
 
-export function normalizeProfileEdit(input: ProfileEditInput): ProfileEditInput {
-  const displayName = input.displayName.trim();
-  const userClass = input.userClass.trim();
-  const displayNameError = validateProfileText(displayName, 'Display name');
-  if (displayNameError) throw new Error(displayNameError);
-  const userClassError = validateProfileText(userClass, 'Class');
-  if (userClassError) throw new Error(userClassError);
+export function normalizeProfileEdit(input: ProfileEditInput, original?: ProfileEditInput): ProfileEditInput {
+  // An unchanged grandfathered value may exceed today's limit. Preserve it
+  // verbatim while validating every field the user actually edits.
+  const displayNameChanged = !original || input.displayName !== original.displayName;
+  const userClassChanged = !original || input.userClass !== original.userClass;
+  const displayName = displayNameChanged ? input.displayName.trim() : input.displayName;
+  const userClass = userClassChanged ? input.userClass.trim() : input.userClass;
+  if (displayNameChanged) {
+    const displayNameError = validateProfileText(displayName, 'Display name');
+    if (displayNameError) throw new Error(displayNameError);
+  }
+  if (userClassChanged) {
+    const userClassError = validateProfileText(userClass, 'Class');
+    if (userClassError) throw new Error(userClassError);
+  }
   return { displayName, userClass };
 }
 

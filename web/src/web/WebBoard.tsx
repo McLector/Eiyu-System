@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Quest,
   FULL_XP,
@@ -7,9 +8,12 @@ import {
   STATS,
   DAYS,
   partitionBoardQuests,
+  profileInitials,
+  boardTodayProgress,
   formatDisplayDate,
   tintSecondaryText,
   boardSummaryLine,
+  formatError,
 } from '@eiyu/shared';
 import { StatIcon, CheckIcon, PlusIcon, SnowflakeIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
@@ -20,9 +24,87 @@ interface Props {
   onNewQuest: () => void;
   onEditQuest: (id: string) => void;
   darkMode: boolean;
+  storageScope?: string;
 }
 
 type BoardLaneId = 'daily-quest' | 'one-time-quest' | 'all-habits' | 'archived';
+
+function BoardDeleteDialog({ quest, onCancel, onDelete }: {
+  quest: Quest;
+  onCancel: () => void;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const overlay = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const trigger = useRef(document.activeElement as HTMLElement | null);
+
+  useEffect(() => {
+    cancel.current?.focus();
+    const background = Array.from(document.body.children).filter(node => node !== overlay.current) as HTMLElement[];
+    const previous = background.map(node => ({ node, inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') }));
+    for (const node of background) { node.inert = true; node.setAttribute('aria-hidden', 'true'); }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!inFlight.current) onCancel();
+      }
+      if (event.key !== 'Tab') return;
+      const buttons = Array.from(dialog.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      if (!buttons.length) { event.preventDefault(); dialog.current?.focus(); return; }
+      const first = buttons[0], last = buttons[buttons.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !dialog.current?.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !dialog.current?.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    const originalTrigger = trigger.current;
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      for (const state of previous) {
+        state.node.inert = state.inert;
+        if (state.ariaHidden === null) state.node.removeAttribute('aria-hidden');
+        else state.node.setAttribute('aria-hidden', state.ariaHidden);
+      }
+      if (originalTrigger?.isConnected) originalTrigger.focus();
+      else document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    };
+  }, [onCancel]);
+
+  const confirm = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      await onDelete(quest.id);
+      onCancel();
+    } catch (err) {
+      setError(formatError(err));
+      inFlight.current = false;
+      setPending(false);
+    }
+  };
+
+  return createPortal(
+    <div ref={overlay} data-theme={document.querySelector<HTMLElement>('.surface-flat[data-theme]')?.dataset.theme} className="board-delete-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !inFlight.current) onCancel(); }}>
+      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="board-delete-title" aria-describedby="board-delete-description" tabIndex={-1} className="panel-flat board-delete-dialog">
+        <strong id="board-delete-title">Delete {quest.name} permanently?</strong>
+        <p id="board-delete-description">This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</p>
+        {error && <p role="alert" className="board-delete-error">{error}</p>}
+        <div className="board-delete-actions">
+          <button ref={cancel} type="button" className="btn-ghost" onClick={() => { if (!inFlight.current) onCancel(); }} disabled={pending}>Cancel</button>
+          <button type="button" className="board-edit-button is-danger" onClick={() => void confirm()} disabled={pending}>{pending ? 'DELETING…' : 'Confirm permanent delete'}</button>
+        </div>
+      </div>
+    </div>, document.body
+  );
+}
 
 function XpBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.min(100, (value / max) * 100);
@@ -38,11 +120,17 @@ function QuestCard({
   onToggle,
   onEdit,
   onAdjustProgress,
+  onArchive,
+  onDelete,
+  pending,
 }: {
   quest: Quest;
   onToggle: () => void;
   onEdit: () => void;
   onAdjustProgress: (delta: number) => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  pending: boolean;
 }) {
   const color = STAT_COLORS[quest.stat];
   const completedLabel = quest.completed ? 'Undo' : 'Complete';
@@ -99,11 +187,15 @@ function QuestCard({
           DETAILS
         </button>
       </div>
+      <div className="board-card-lifecycle">
+        <button type="button" className="board-edit-button" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
+        <button type="button" className="board-edit-button is-danger" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+      </div>
     </article>
   );
 }
 
-function CatalogCard({ quest, onEdit }: { quest: Quest; onEdit: () => void }) {
+function CatalogCard({ quest, onEdit, onArchive, onDelete, pending }: { quest: Quest; onEdit: () => void; onArchive: () => void; onDelete: () => void; pending: boolean }) {
   const schedule = quest.questType === 'one_time'
     ? 'One-time quest'
     : quest.days.length === 7
@@ -115,21 +207,31 @@ function CatalogCard({ quest, onEdit }: { quest: Quest; onEdit: () => void }) {
     <article className="board-catalog-card">
       <button type="button" aria-label={`Edit ${quest.name}`} onClick={onEdit}>
         <span className="board-catalog-name">{quest.name}</span>
-        <span className="board-catalog-meta">{schedule} · {quest.time}</span>
+        <span className="board-catalog-meta">{schedule} · {quest.time}{quest.dailyEligible && quest.targetCount != null ? ` · ${quest.progressCount}/${quest.targetCount}` : ''}</span>
       </button>
-      <span className="board-catalog-status">{status}</span>
+      <div className="board-catalog-actions">
+        <span className={`board-catalog-status${quest.dailyEligible && quest.completed ? ' is-complete' : ''}`}>
+          {quest.dailyEligible && quest.completed ? 'DONE' : status}
+        </span>
+        <button type="button" className="board-edit-button" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
+        <button type="button" className="board-edit-button is-danger" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+      </div>
     </article>
   );
 }
 
-function ArchivedCard({ quest, onEdit }: { quest: Quest; onEdit: () => void }) {
+function ArchivedCard({ quest, onEdit, onRestore, onDelete, pending }: { quest: Quest; onEdit: () => void; onRestore: () => void; onDelete: () => void; pending: boolean }) {
   return (
     <article className="board-catalog-card is-archived">
       <button type="button" aria-label={`Edit ${quest.name}`} onClick={onEdit}>
         <span className="board-catalog-name">{quest.name}</span>
         <span className="board-catalog-meta">{quest.questType === 'one_time' ? 'One-time quest' : 'Recurring habit'} · saved details</span>
       </button>
-      <span className="board-catalog-status">ARCHIVED</span>
+      <div className="board-catalog-actions">
+        <span className="board-catalog-status">ARCHIVED</span>
+        <button type="button" className="board-edit-button" onClick={onRestore} aria-label={`Restore ${quest.name}`} disabled={pending}>{pending ? 'RESTORING…' : 'RESTORE'}</button>
+        <button type="button" className="board-edit-button is-danger" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+      </div>
     </article>
   );
 }
@@ -142,6 +244,7 @@ function BoardLane({
   empty,
   action,
   active,
+  storageKey,
 }: {
   id: string;
   title: string;
@@ -150,6 +253,7 @@ function BoardLane({
   empty: string | false;
   action?: ReactNode;
   active?: boolean;
+  storageKey: string;
 }) {
   return (
     <section className={`board-lane${active ? ' is-mobile-active' : ''}`} aria-labelledby={`${id}-heading`} data-testid={`board-lane-${id}`}>
@@ -160,7 +264,12 @@ function BoardLane({
         </div>
         {action}
       </header>
-      <div className="board-lane-body">
+      <div className="board-lane-body" ref={node => {
+        if (node && !node.dataset.scrollRestored) {
+          node.scrollTop = Number(window.sessionStorage.getItem(storageKey) || 0);
+          node.dataset.scrollRestored = 'true';
+        }
+      }} onScroll={event => window.sessionStorage.setItem(storageKey, String(event.currentTarget.scrollTop))}>
         {empty ? <p className="board-lane-empty">{empty}</p> : children}
       </div>
     </section>
@@ -179,7 +288,7 @@ function recoveryDeadlineLabel(quest: Quest) {
   }).format(new Date(quest.recoveryDeadline));
 }
 
-export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
+export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageScope = 'board' }: Props) {
   const {
     user,
     questsLoading,
@@ -188,23 +297,63 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
     toggleQuest: toggleQuestAction,
     adjustProgress,
     completeRecovery,
+    archiveQuest,
+    restoreQuest,
+    deleteQuest,
   } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
   const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits, archivedQuests } = partitionBoardQuests(user.quests);
-  const actionableToday = [...dailyQuests, ...oneTimeQuests];
-  const completedToday = actionableToday.filter(q => q.completed).length;
-  const totalToday = actionableToday.length;
+  const { completed: completedToday, total: totalToday } = boardTodayProgress({ dailyQuests, oneTimeQuests });
   const [xpToast, setXpToast] = useState<string | null>(null);
-  const [activeLane, setActiveLane] = useState<BoardLaneId>('daily-quest');
+  const [deleteTarget, setDeleteTarget] = useState<Quest | null>(null);
+  const [pendingLifecycleIds, setPendingLifecycleIds] = useState<Set<string>>(() => new Set());
+  const lifecycleInFlight = useRef(new Set<string>());
+  const storagePrefix = `eiyu:${storageScope}`;
+  const [activeLane, setActiveLane] = useState<BoardLaneId>(() => {
+    const saved = typeof window !== 'undefined' ? window.sessionStorage.getItem(`${storagePrefix}:lane`) : null;
+    return saved === 'one-time-quest' || saved === 'all-habits' || saved === 'archived' ? saved : 'daily-quest';
+  });
 
-  const toggleQuest = (id: string) => {
+  useEffect(() => {
+    if (questsLoading || questsError) return;
+    const restore = window.requestAnimationFrame(() => {
+      const savedY = Number(window.sessionStorage.getItem(`${storagePrefix}:page-scroll`) || 0);
+      if (savedY > 0) window.scrollTo(0, savedY);
+    });
+    const save = () => window.sessionStorage.setItem(`${storagePrefix}:page-scroll`, String(window.scrollY));
+    window.addEventListener('scroll', save, { passive: true });
+    return () => { window.cancelAnimationFrame(restore); save(); window.removeEventListener('scroll', save); };
+  }, [questsLoading, questsError, storagePrefix]);
+
+  const selectLane = (lane: BoardLaneId) => {
+    setActiveLane(lane);
+    window.sessionStorage.setItem(`${storagePrefix}:lane`, lane);
+  };
+
+  const confirmDelete = (quest: Quest) => {
+    setDeleteTarget(quest);
+  };
+
+  const queueLifecycle = (id: string, action: () => Promise<void>) => {
+    if (lifecycleInFlight.current.has(id)) return;
+    lifecycleInFlight.current.add(id);
+    setPendingLifecycleIds(new Set(lifecycleInFlight.current));
+    void action().catch(() => {
+      // The store publishes the failure through the board Retry state.
+    }).finally(() => {
+      lifecycleInFlight.current.delete(id);
+      setPendingLifecycleIds(new Set(lifecycleInFlight.current));
+    });
+  };
+
+  const toggleQuest = async (id: string) => {
     const quest = user.quests.find(q => q.id === id);
     if (!quest) return;
-    if (!quest.completed) {
+    const succeeded = await toggleQuestAction(id);
+    if (succeeded && !quest.completed) {
       setXpToast(`+${FULL_XP} ${quest.stat} XP`);
       setTimeout(() => setXpToast(null), 2000);
     }
-    toggleQuestAction(id);
   };
 
   if (questsLoading) return <div className="board-state" role="status">Reading the board…</div>;
@@ -224,7 +373,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
       <section className="web-board-overview" aria-label="Board overview">
         <SignaturePanel style={{ padding: 20 }}>
           <div className="web-board-profile">
-            <div className="web-board-avatar">{user.name.split(' ').map(n => n[0]).join('')}</div>
+            <div className="web-board-avatar">{profileInitials(user.name)}</div>
             <div className="web-board-profile-copy">
               <div className="web-board-profile-name">{user.name}</div>
               <div className="web-board-profile-class">{user.userClass}</div>
@@ -286,26 +435,27 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode }: Props) {
           ['all-habits', 'All Habits', allHabits.length],
           ['archived', 'Archived', archivedQuests.length],
         ] as const).map(([id, title, count]) => (
-          <button key={id} type="button" role="tab" aria-selected={activeLane === id} onClick={() => setActiveLane(id)}>
+          <button key={id} type="button" role="tab" aria-selected={activeLane === id} onClick={() => selectLane(id)}>
             {title} <span>{count}</span>
           </button>
         ))}
       </nav>
 
       <section className="board-lanes" aria-label="Quest board">
-        <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or check All Habits.' : false} action={<button onClick={onNewQuest} className="btn-ghost board-add-button"><PlusIcon /> ADD QUEST</button>}>
-          {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} />)}
+        <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} storageKey={`${storagePrefix}:daily-quest-scroll`} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or check All Habits.' : false} action={<button onClick={onNewQuest} className="btn-ghost board-add-button"><PlusIcon /> ADD QUEST</button>}>
+          {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => queueLifecycle(quest.id, () => archiveQuest(quest.id))} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
-        <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today.' : false}>
-          {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} />)}
+        <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} storageKey={`${storagePrefix}:one-time-quest-scroll`} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today.' : false}>
+          {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => queueLifecycle(quest.id, () => archiveQuest(quest.id))} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
-        <BoardLane id="all-habits" title="All Habits" count={allHabits.length} active={activeLane === 'all-habits'} empty={allHabits.length === 0 ? 'No saved habits yet. Add a recurring quest to build your catalog.' : false}>
-          {allHabits.map(quest => <CatalogCard key={quest.id} quest={quest} onEdit={() => onEditQuest(quest.id)} />)}
+        <BoardLane id="all-habits" title="All Habits" count={allHabits.length} active={activeLane === 'all-habits'} storageKey={`${storagePrefix}:all-habits-scroll`} empty={allHabits.length === 0 ? 'No saved habits yet. Add a recurring quest to build your catalog.' : false}>
+          {allHabits.map(quest => <CatalogCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => onEditQuest(quest.id)} onArchive={() => queueLifecycle(quest.id, () => archiveQuest(quest.id))} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
-        <BoardLane id="archived" title="Archived" count={archivedQuests.length} active={activeLane === 'archived'} empty={archivedQuests.length === 0 ? 'No archived quests. Archived definitions will stay here with their history.' : false}>
-          {archivedQuests.map(quest => <ArchivedCard key={quest.id} quest={quest} onEdit={() => onEditQuest(quest.id)} />)}
+        <BoardLane id="archived" title="Archived" count={archivedQuests.length} active={activeLane === 'archived'} storageKey={`${storagePrefix}:archived-scroll`} empty={archivedQuests.length === 0 ? 'No archived quests. Archived definitions will stay here with their history.' : false}>
+          {archivedQuests.map(quest => <ArchivedCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => onEditQuest(quest.id)} onRestore={() => queueLifecycle(quest.id, () => restoreQuest(quest.id))} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
       </section>
+      {deleteTarget && <BoardDeleteDialog quest={deleteTarget} onCancel={() => setDeleteTarget(null)} onDelete={deleteQuest} />}
     </div>
   );
 }

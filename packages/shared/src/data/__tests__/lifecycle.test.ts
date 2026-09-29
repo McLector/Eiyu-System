@@ -64,6 +64,15 @@ describe('fetchHistoryRange — deleted habit ledger', () => {
       if (table === 'deleted_habit_history') return chainable({ data: [deletedRow], error: null });
       throw new Error(`unexpected table ${table}`);
     });
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+      if (name === 'initialize_account_time_zone' || name === 'ensure_habit_occurrences') {
+        return { data: name === 'initialize_account_time_zone' ? 'UTC' : null, error: null };
+      }
+      if (name === 'read_history_range') {
+        return { data: { rows: [deletedRow], habits: [], recurring_totals: { STR: 1 } }, error: null };
+      }
+      throw new Error(`unexpected RPC ${name}`);
+    });
 
     const result = await fetchHistoryRange(
       'user-1',
@@ -76,5 +85,6 @@ describe('fetchHistoryRange — deleted habit ledger', () => {
       completedCount: 1,
       scheduledCount: 1,
     });
+    expect(supabase.from).not.toHaveBeenCalled();
   });
 });

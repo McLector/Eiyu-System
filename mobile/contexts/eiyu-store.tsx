@@ -40,7 +40,7 @@ import {
   createHabit,
   deleteHabit,
   fetchAllActiveHabits,
-  fetchTodayOneTimeHabits,
+  fetchUpcomingOneTimeHabits,
   fetchTodayHabits,
   HabitInput,
   restoreHabit,
@@ -52,8 +52,8 @@ import {
 } from '@/lib/notification-prefs';
 import {
   cancelAllHabitReminders,
-  cancelHabitReminders,
   ensureNotificationSetup,
+  inspectNotificationPermissions,
   notifyRecoveryQuestGenerated,
   requestNotificationPermissions,
   scheduleOneTimeReminder,
@@ -116,6 +116,8 @@ interface EiyuStore {
   deleteQuest: (id: string) => Promise<void>;
   /** Non-blocking device reminder warning after a successful DB mutation. */
   reminderWarning: string | null;
+  /** Retry reminder reconciliation without opening an OS permission prompt. */
+  retryReminders: () => Promise<void>;
   /** R-33: toggle one stage's done state. */
   toggleStage: (lqId: string, stageId: string) => void;
   longQuestsLoading: boolean;
@@ -146,10 +148,17 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
+  const [notificationPreferenceLoaded, setNotificationPreferenceLoaded] = useState(false);
   const [reminderWarning, setReminderWarning] = useState<string | null>(null);
+  const reminderOperation = useRef(0);
+  const preferenceOperation = useRef(0);
+  const preferenceWriteQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const preferenceReadFailed = useRef(false);
+  const reminderTaskQueue = useRef<Promise<unknown>>(Promise.resolve());
   const [accountDayRevision, setAccountDayRevision] = useState(0);
   const lifecycleRequests = useRef(new Map<string, Promise<void>>());
   const deletedHabitIds = useRef(new Set<string>());
+  const explicitPermissionRequest = useRef(false);
   const activeUserId = useRef(userId);
 
   const habitsQuery = useQuery({
@@ -272,48 +281,127 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     }
   }, [habitsQuery.data, notificationsEnabled]);
 
+  const runReminderTask = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
+    const queued = reminderTaskQueue.current.then(task, task);
+    reminderTaskQueue.current = queued.catch(() => {});
+    return queued;
+  }, []);
+
   const syncAllReminders = useCallback(
-    async (enabled: boolean) => {
+    (enabled: boolean, requestPermission = false) => runReminderTask(async () => {
       if (!userId) return;
       if (!enabled) {
         await cancelAllHabitReminders();
         return;
       }
-      const granted = await requestNotificationPermissions();
-      if (!granted) throw new Error('Notification permission is unavailable on this device.');
+      // Android requires its notification channel before the permission
+      // request. This is also harmless on iOS/web and keeps explicit opt-in
+      // aligned with Expo SDK 54's setup order.
       await ensureNotificationSetup();
+      const granted = requestPermission
+        ? await requestNotificationPermissions()
+        : await inspectNotificationPermissions();
+      // Reconciliation always clears stale OS IDs first. An interrupted
+      // archive/delete cleanup or an older sync can otherwise leave a removed
+      // definition scheduled forever, and a Retry would hide that failure.
+      await cancelAllHabitReminders();
+      if (!granted) throw new Error('Notification permission is unavailable on this device.');
       const accountTimeZone = profile?.timeZone ?? deviceTimeZone();
       const habits = await fetchAllActiveHabits(userId);
       await Promise.all(habits.map(h => scheduleHabitReminders(h.id, h, accountTimeZone)));
-      // Re-arm today's one-time reminders too - cancelAllHabitReminders wiped
-      // their ids from the shared map, and the recurring resync above excludes
-      // them by design. scheduleOneTimeReminder no-ops for past times.
-      // fetchTodayOneTimeHabits already filters to scheduled_date = today
-      // (Slice 4), so "today" is the correct date for every item it returns.
-      const todayKey = accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone());
-      const oneTimeToday = await fetchTodayOneTimeHabits(userId);
+      // Re-arm upcoming one-time quests, including future dates. The full
+      // reset would otherwise erase their existing one-shot reminders.
+      const oneTimeUpcoming = await fetchUpcomingOneTimeHabits(userId);
       await Promise.all(
-        oneTimeToday.map(h =>
-          scheduleOneTimeReminder(h.id, { ...h, date: todayKey }, accountTimeZone)
+        oneTimeUpcoming.map(h =>
+          scheduleOneTimeReminder(h.id, h, accountTimeZone)
         )
       );
-    },
-    [userId, profile?.timeZone]
+    }),
+    [userId, profile?.timeZone, runReminderTask]
   );
 
   useEffect(() => {
-    getNotificationsEnabled().then(setNotificationsEnabledState);
+    let active = true;
+    getNotificationsEnabled().then(enabled => {
+      if (!active) return;
+      preferenceReadFailed.current = false;
+      setNotificationsEnabledState(enabled);
+      setNotificationPreferenceLoaded(true);
+    }).catch(err => {
+      if (!active) return;
+      preferenceReadFailed.current = true;
+      // Default to the safe existing behavior, but make the unavailable
+      // preference visible and allow reconciliation to continue.
+      setNotificationsEnabledState(true);
+      setReminderWarning(`Reminder preference could not be read: ${formatError(err)}`);
+      setNotificationPreferenceLoaded(true);
+    });
+    return () => { active = false; };
   }, []);
+
+  const retryReminders = useCallback(async () => {
+    if (!userId || !notificationPreferenceLoaded) return;
+    const operation = ++reminderOperation.current;
+    setReminderWarning(null);
+    let readingPreference = reminderWarning?.startsWith('Reminder preference') ?? false;
+    try {
+      // A failed preference read/write needs its own reconciliation before
+      // scheduling. Otherwise Retry could hide the warning while storage still
+      // disagrees with the displayed toggle.
+      const enabled = readingPreference
+        ? await getNotificationsEnabled()
+        : notificationsEnabled;
+      preferenceReadFailed.current = false;
+      readingPreference = false;
+      if (enabled !== notificationsEnabled) setNotificationsEnabledState(enabled);
+      await syncAllReminders(enabled, false);
+      if (reminderOperation.current === operation) setReminderWarning(null);
+    } catch (err) {
+      if (reminderOperation.current === operation) {
+        const prefix = readingPreference
+          ? 'Reminder preference could not be read'
+          : 'Reminders could not be updated';
+        setReminderWarning(`${prefix}: ${formatError(err)}`);
+      }
+    }
+  }, [userId, notificationPreferenceLoaded, notificationsEnabled, reminderWarning, syncAllReminders]);
 
   useEffect(() => {
-    if (!userId) return;
-    syncAllReminders(notificationsEnabled).catch(() => {});
-  }, [userId, notificationsEnabled, syncAllReminders, accountDayRevision]);
+    if (!userId || !notificationPreferenceLoaded || preferenceReadFailed.current) return;
+    const shouldRequestPermission = explicitPermissionRequest.current;
+    explicitPermissionRequest.current = false;
+    void (async () => {
+      const operation = ++reminderOperation.current;
+      setReminderWarning(null);
+      try {
+        await syncAllReminders(notificationsEnabled, shouldRequestPermission);
+        if (reminderOperation.current === operation) setReminderWarning(null);
+      } catch (err) {
+        if (reminderOperation.current === operation) {
+          setReminderWarning(`Reminders could not be updated: ${formatError(err)}`);
+        }
+      }
+    })();
+  }, [userId, notificationsEnabled, notificationPreferenceLoaded, syncAllReminders, accountDayRevision]);
 
   const setNotificationsEnabled = useCallback((enabled: boolean) => {
-    setNotificationsEnabledState(enabled);
-    persistNotificationsEnabled(enabled).catch(() => {});
-  }, []);
+    const operation = ++preferenceOperation.current;
+    setReminderWarning(null);
+    // Commit device preference before changing the visible toggle or asking
+    // for OS permission. Serialize rapid toggles so the newest value wins.
+    const write = preferenceWriteQueue.current.then(() => persistNotificationsEnabled(enabled));
+    preferenceWriteQueue.current = write.catch(() => {});
+    void write.then(() => {
+      if (preferenceOperation.current !== operation) return;
+      if (enabled && !notificationsEnabled) explicitPermissionRequest.current = true;
+      setNotificationsEnabledState(enabled);
+    }).catch(err => {
+      if (preferenceOperation.current === operation) {
+        setReminderWarning(`Reminder preference could not be saved: ${formatError(err)}`);
+      }
+    });
+  }, [notificationsEnabled]);
 
   /** Optimistic completion with rollback (same semantics as the pre-Phase-3 store). */
   const runCompletion = useCallback(
@@ -445,42 +533,24 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       if (existingId && deletedHabitIds.current.has(existingId)) {
         throw new Error('This quest was deleted. Close this editor and reload the board.');
       }
-      let id: string;
       if (existingId) {
         await updateHabit(existingId, input);
-        id = existingId;
       } else {
-        id = await createHabit(userId, input);
+        await createHabit(userId, input);
       }
       await qc.invalidateQueries({ queryKey: ['habits'] });
       setQuestActionError(null);
       if (!notificationsEnabled) return;
+      const reminderOperationId = ++reminderOperation.current;
+      setReminderWarning(null);
       const reminderFailure = (err: unknown) => {
-        setReminderWarning(`Quest saved, but reminders could not be updated: ${formatError(err)}`);
+        if (reminderOperation.current === reminderOperationId) {
+          setReminderWarning(`Quest saved, but reminders could not be updated: ${formatError(err)}`);
+        }
       };
-      if (input.questType === 'one_time') {
-        // One-shot DATE trigger on the quest's scheduled date; no-ops if that
-        // moment has already passed.
-        scheduleOneTimeReminder(
-          id,
-          {
-            name: input.name,
-            time: input.time,
-            date:
-              input.scheduledDate ??
-              accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone()),
-          },
-          profile?.timeZone ?? deviceTimeZone()
-        ).catch(reminderFailure);
-      } else {
-        scheduleHabitReminders(
-          id,
-          input,
-          profile?.timeZone ?? deviceTimeZone()
-        ).catch(reminderFailure);
-      }
+      void syncAllReminders(true).catch(reminderFailure);
     },
-    [userId, qc, notificationsEnabled, profile?.timeZone]
+    [userId, qc, notificationsEnabled, syncAllReminders]
   );
 
   const runLifecycle = useCallback(
@@ -489,6 +559,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       if (existing) return existing;
 
       const request = (async () => {
+        const reminderOperationId = ++reminderOperation.current;
         setReminderWarning(null);
         try {
           if (operation === 'archive') await archiveHabit(id);
@@ -512,13 +583,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         // deliberately best-effort and reported separately, so a permission
         // or OS scheduling failure never tells the user the DB action failed.
         try {
-          if (operation === 'archive' || operation === 'delete') {
-            await cancelHabitReminders(id);
-          } else if (notificationsEnabled) {
-            await syncAllReminders(true);
-          }
+          await syncAllReminders(notificationsEnabled);
         } catch (err) {
-          setReminderWarning(`Quest ${operation}d, but reminders could not be updated: ${formatError(err)}`);
+          if (reminderOperation.current === reminderOperationId) {
+            setReminderWarning(`Quest ${operation}d, but reminders could not be updated: ${formatError(err)}`);
+          }
         }
       })();
 
@@ -612,10 +681,12 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
 
   const saveProfile = useCallback(
     async (input: { displayName: string; userClass: string }) => {
-      const updated = await updateProfile(input);
+      const updated = await updateProfile(input, profile ? {
+        displayName: profile.displayName, userClass: profile.userClass,
+      } : undefined);
       qc.setQueryData(['profile', userId ?? null], updated);
     },
-    [qc, userId]
+    [qc, userId, profile]
   );
 
   const user: UserProfile = useMemo(
@@ -658,6 +729,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       restoreQuest,
       deleteQuest,
       reminderWarning,
+      retryReminders,
       toggleStage,
       longQuestsLoading: longQuestsQuery.isPending || retryingLongQuests,
       longQuestsError,
@@ -689,6 +761,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       restoreQuest,
       deleteQuest,
       reminderWarning,
+      retryReminders,
       toggleStage,
       longQuestsQuery.isPending,
       longQuestsError,

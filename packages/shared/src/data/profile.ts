@@ -8,8 +8,8 @@ export interface ProfileData {
   timeZone: string;
 }
 
-export async function updateProfile(input: ProfileEditInput): Promise<ProfileData> {
-  const normalized = normalizeProfileEdit(input);
+export async function updateProfile(input: ProfileEditInput, original?: ProfileEditInput): Promise<ProfileData> {
+  const normalized = normalizeProfileEdit(input, original);
   const { data, error } = await supabase.rpc('update_profile', {
     p_display_name: normalized.displayName,
     p_user_class: normalized.userClass,

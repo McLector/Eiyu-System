@@ -78,21 +78,20 @@ export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onL
         }
       />
 
-      <div className="divider-flat" />
-
-      <SectionLabel label="ACCOUNT" />
-      <SettingRow
-        label="Sign Out"
-        sub="Return to the login screen"
-        right={
-          <button onClick={onLogout} style={{ padding: '6px 16px', borderRadius: 50, border: '1px solid rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em', cursor: 'pointer', transition: 'all 0.15s' }}>
-            SIGN OUT
-          </button>
-        }
-      />
-      {signOutError && (
-        <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171', margin: '8px 0 0' }}>{signOutError}</p>
-      )}
+      {!embedded && <>
+        <div className="divider-flat" />
+        <SectionLabel label="ACCOUNT" />
+        <SettingRow
+          label="Sign Out"
+          sub="Return to the login screen"
+          right={
+            <button onClick={onLogout} style={{ padding: '6px 16px', borderRadius: 50, border: '1px solid rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em', cursor: 'pointer', transition: 'all 0.15s' }}>
+              SIGN OUT
+            </button>
+          }
+        />
+        {signOutError && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171', margin: '8px 0 0' }}>{signOutError}</p>}
+      </>}
 
       <div style={{ marginTop: 24, textAlign: 'center', fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)' }}>
         Eiyu System v1.0.0 · Built for the ascent

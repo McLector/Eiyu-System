@@ -4,9 +4,16 @@ import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { describe, expect, it } from 'vitest';
 
-import WeeklyReviewMatrix from '../WeeklyReviewMatrix';
+import WeeklyReviewMatrix, { formatDateKey } from '../WeeklyReviewMatrix';
 
 describe('WeeklyReviewMatrix', () => {
+  it('keeps the exact calendar key at year and month boundaries in positive and negative zones', () => {
+    for (const zone of ['Pacific/Kiritimati', 'Pacific/Auckland', 'Pacific/Fiji', 'America/Los_Angeles', 'Pacific/Honolulu']) {
+      expect(formatDateKey('2026-12-31', zone)).toBe('December 31, 2026');
+      expect(formatDateKey('2027-01-01', zone)).toBe('January 1, 2027');
+      expect(formatDateKey('2027-02-01', zone)).toBe('February 1, 2027');
+    }
+  });
   it('renders one shared date header, five stat rows, and exact visible values', () => {
     render(
       <WeeklyReviewMatrix

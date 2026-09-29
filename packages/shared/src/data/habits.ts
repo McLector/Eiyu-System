@@ -88,19 +88,23 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   );
   const oneTimeItems = todayItems.filter(item => item.quest_type === 'one_time');
 
-  // Phase 4: the board needs definitions independently of today's occurrence.
-  // Include archived rows so the catalog never makes saved habits unreachable.
+  // Active recurring habits stay in the catalog; archived definitions of either
+  // type stay reachable for Restore/Delete. Active one-time quests are admitted
+  // only from today's authoritative RPC result.
   const { data: catalog, error: catalogError } = await supabase
     .from('habits')
     .select('*')
-    .eq('user_id', userId)
-    .eq('quest_type', 'habit');
+    .eq('user_id', userId);
   if (catalogError) throw catalogError;
-  const catalogHabits = [...(catalog ?? [])].sort(
+  const catalogHabits = (catalog ?? []).filter(
+    habit => habit.archived || habit.quest_type === 'habit'
+  ).sort(
     (a, b) => Number(a.archived) - Number(b.archived) || a.reminder_time.localeCompare(b.reminder_time)
   );
 
-  const boardItems = [...catalogHabits, ...oneTimeItems];
+  const boardItems = [...new Map(
+    [...catalogHabits, ...oneTimeItems].map(habit => [habit.id, habit])
+  ).values()];
   if (boardItems.length === 0) return [];
   const allHabitIds = boardItems.map(habit => habit.id);
   const recoveryByHabit = new Map(openRecoveries.map(recovery => [recovery.habit_id, recovery]));
@@ -266,8 +270,33 @@ export async function fetchTodayOneTimeHabits(
 
 export async function updateHabit(id: string, input: HabitInput) {
   await initializeAccountTimeZone();
-  const { error } = await supabase.from('habits').update(habitColumns(input)).eq('id', id);
+  const { data, error } = await supabase
+    .from('habits')
+    .update(habitColumns(input))
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error('This quest no longer exists or could not be updated. Reload the board before saving.');
+}
+
+/** All upcoming active one-time reminders, including future dates. */
+export async function fetchUpcomingOneTimeHabits(
+  userId: string
+): Promise<{ id: string; name: string; time: string; date: string }[]> {
+  const timeZone = await initializeAccountTimeZone();
+  const today = accountDateKey(new Date(), timeZone);
+  const { data, error } = await supabase
+    .from('habits')
+    .select('id, name, reminder_time, scheduled_date')
+    .eq('user_id', userId)
+    .eq('archived', false)
+    .eq('quest_type', 'one_time')
+    .gte('scheduled_date', today);
+  if (error) throw error;
+  return (data ?? []).filter(h => h.scheduled_date != null).map(h => ({
+    id: h.id, name: h.name, time: h.reminder_time.slice(0, 5), date: h.scheduled_date!,
+  }));
 }
 
 /** Phase 1: archive through the server boundary so pause metadata is recorded. */

@@ -89,8 +89,8 @@ describe('WebQuestEditor lifecycle controls', () => {
     render(<WebQuestEditor editingQuest={habit} onClose={vi.fn()} />);
 
     await user.click(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
-    expect(screen.getByRole('dialog', { name: 'Delete quest permanently' })).toBeInTheDocument();
-    await user.click(within(screen.getByRole('dialog', { name: 'Delete quest permanently' })).getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('dialog', { name: 'Delete Morning walk permanently?' })).toBeInTheDocument();
+    await user.click(within(screen.getByRole('dialog', { name: 'Delete Morning walk permanently?' })).getByRole('button', { name: 'Cancel' }));
     expect(store.deleteQuest).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
@@ -100,17 +100,51 @@ describe('WebQuestEditor lifecycle controls', () => {
     expect(store.archiveQuest).not.toHaveBeenCalled();
   });
 
-  it('focuses the confirmation action and restores focus after Escape dismissal', async () => {
+  it('starts permanent-delete confirmation on Cancel and restores focus after Escape dismissal', async () => {
     const user = userEvent.setup();
     render(<WebQuestEditor editingQuest={habit} onClose={vi.fn()} />);
     const trigger = screen.getByRole('button', { name: 'DELETE PERMANENTLY' });
 
     await user.click(trigger);
-    expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toHaveFocus();
+    const dialog = screen.getByRole('dialog', { name: 'Delete Morning walk permanently?' });
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    const confirm = within(dialog).getByRole('button', { name: 'Confirm permanent delete' });
+    expect(cancel).toHaveFocus();
+    await user.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(confirm).toHaveFocus();
+    await user.keyboard('{Tab}');
+    expect(cancel).toHaveFocus();
     await user.keyboard('{Escape}');
 
-    expect(screen.queryByRole('dialog', { name: 'Delete quest permanently' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Delete Morning walk permanently?' })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it('names the target and states which history and rewards the permanent delete keeps', async () => {
+    const user = userEvent.setup();
+    render(<WebQuestEditor editingQuest={habit} onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'Delete Morning walk permanently?' });
+    expect(within(dialog).getByText(/History, Weekly Review, and earned XP remain/i)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+  });
+
+  it('does not dismiss a permanent delete confirmation while the request is pending', async () => {
+    const user = userEvent.setup();
+    let release!: () => void;
+    store.deleteQuest.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    const onClose = vi.fn();
+    render(<WebQuestEditor editingQuest={habit} onClose={onClose} />);
+
+    await user.click(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.getByRole('dialog', { name: 'Delete Morning walk permanently?' })).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    release();
   });
 
   it('shows Restore and Delete for archived quests, with no completion action', async () => {
@@ -136,7 +170,7 @@ describe('WebQuestEditor lifecycle controls', () => {
     await user.click(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
     await user.click(screen.getByRole('button', { name: 'Confirm permanent delete' }));
 
-    expect(screen.getByRole('dialog', { name: 'Delete quest permanently' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Delete Morning walk permanently?' })).toBeInTheDocument();
     expect(screen.getByText('offline')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toBeEnabled();
   });

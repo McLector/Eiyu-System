@@ -381,6 +381,10 @@ export interface Database {
         Args: { p_habit_id: string };
         Returns: undefined;
       };
+      read_history_range: {
+        Args: { p_start_date: string; p_end_date: string };
+        Returns: { rows: unknown[] };
+      };
       update_profile: {
         Args: { p_display_name: string; p_user_class: string };
         Returns: { displayName: string; userClass: string; timeZone: string | null };
