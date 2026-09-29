@@ -1,5 +1,7 @@
 # Phase 06 executive summary — whole-product acceptance and final handoff
 
+> **Current status (2026-09-29):** This summary records the original Phase 6 landing. The 2026-09-27 post-landing review reopened acceptance; the repair branch and remaining device/zoom/rollout gaps are tracked in `review-evidence/2026-09-29-repair-final-review.md`. Its remote-schema sentence below was a 2026-09-27 observation, not a fresh remote check.
+
 Status: **APPROVED / LANDED — `d6c520f` on local `main`**
 Updated: 2026-09-27 — user reports the 200% browser-zoom review passed on Board, Status, and History.
 

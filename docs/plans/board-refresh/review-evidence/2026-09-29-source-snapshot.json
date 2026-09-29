@@ -1,0 +1,304 @@
+{
+  "baseHead": "aa793baf4eed94c0704f799f36c98d742853a9a4",
+  "branch": "codex/board-refresh-repairs",
+  "scope": "Modified and untracked runtime, test, SQL, and integration source; excludes docs, artifacts, ignored local credentials, and generated output.",
+  "fileCount": 59,
+  "snapshotSha256": "022ef2dc9c4b9dc5f2b23d65939fd3385ad06755e4cd92415cccb7baa3ebd9c0",
+  "files": [
+    {
+      "path": "backend/supabase/026_profile_editing.sql",
+      "bytes": 5241,
+      "sha256": "1f7caa35b0062f7902fd933acee1ddf2fba055db56096c24f5028273f3dd676d"
+    },
+    {
+      "path": "backend/supabase/027_profile_compatibility_repair.sql",
+      "bytes": 5403,
+      "sha256": "e43009a32709679b94113be4ebac278caf442b92364dd0f3a4e6118bdaeaac08"
+    },
+    {
+      "path": "backend/supabase/028_history_read_boundary.sql",
+      "bytes": 3034,
+      "sha256": "e813e6d22385af0b4ce7a19e750c4287a6ce4e2395689d94f460a37501fdc19a"
+    },
+    {
+      "path": "mobile/app/(tabs)/board.tsx",
+      "bytes": 41383,
+      "sha256": "126bd9d0d2a77699e80352738184192607fb83737788f51efceb5b8746cb7281"
+    },
+    {
+      "path": "mobile/app/quest-editor.tsx",
+      "bytes": 27350,
+      "sha256": "4ddb116019e6f5acef825a77534d1aed2c63ad3dbcd8a370dd4f08aee07c4fcc"
+    },
+    {
+      "path": "mobile/app/settings.tsx",
+      "bytes": 254,
+      "sha256": "703b9c3988460b60d4ae72c0bd902f54fef88abbb0e199d4eda718a74085aafe"
+    },
+    {
+      "path": "mobile/components/__tests__/account-header.test.tsx",
+      "bytes": 5019,
+      "sha256": "18aa9502922f78f92571fdd22776f5693cdde8aaabcd9d6c709b572533b37425"
+    },
+    {
+      "path": "mobile/components/__tests__/board-lanes.test.tsx",
+      "bytes": 9654,
+      "sha256": "a6c7f7f81bcb4f4b432f4962e9cff2d54319ac685c8d50e71e1af749760dc3dc"
+    },
+    {
+      "path": "mobile/components/__tests__/quest-editor.lifecycle.test.tsx",
+      "bytes": 6150,
+      "sha256": "9c65bc94f357e1ba261d1053e692638513316e21dd849e9728ab4e114cb2b66b"
+    },
+    {
+      "path": "mobile/components/__tests__/weekly-review-matrix.test.tsx",
+      "bytes": 1316,
+      "sha256": "4762be4a48678240b1a22f9a2a8007ce6a66703ae4660e068d74bbfac685c8dc"
+    },
+    {
+      "path": "mobile/components/eiyu/account-header.tsx",
+      "bytes": 11655,
+      "sha256": "5e273a86f72b6545e1a400a6eefae43871046a0f0c325f868d0ef333c4517a03"
+    },
+    {
+      "path": "mobile/components/eiyu/settings-content.tsx",
+      "bytes": 6470,
+      "sha256": "75fee2a07baedcfb02fffca3578cf4a5e3ebd9827cbff32feb6e2dc567a6897c"
+    },
+    {
+      "path": "mobile/components/weekly-review-matrix.tsx",
+      "bytes": 4324,
+      "sha256": "4b439587829909e52887e17a9f853d537380b6184810ce9b24baf4d78654c652"
+    },
+    {
+      "path": "mobile/contexts/__tests__/eiyu-store.lifecycle.test.tsx",
+      "bytes": 12775,
+      "sha256": "fcf328f44245f8dc609a0ec9a5ceb1a11cf27c5d98888be474108fd4ab6c3824"
+    },
+    {
+      "path": "mobile/contexts/eiyu-store.tsx",
+      "bytes": 30297,
+      "sha256": "fd784620647c4e6a5108443def45f74717b3923e7246d894961b724699c0e3c9"
+    },
+    {
+      "path": "mobile/lib/__tests__/notifications.lifecycle.test.ts",
+      "bytes": 2752,
+      "sha256": "24f25ec4f46aa286849f9fa19ecdf2483f1a668a32bce6bc3437df98833c779d"
+    },
+    {
+      "path": "mobile/lib/notifications.ts",
+      "bytes": 8684,
+      "sha256": "773895bd23db1ec198e63e3c250af67fbd94cf17431217834856ac9b020d4ffc"
+    },
+    {
+      "path": "packages/shared/src/data/__tests__/habits.test.ts",
+      "bytes": 18085,
+      "sha256": "ff4e0e9e4bbb311f82c24d9837f5e5e71c4795db534198009c63b2c9771c29b6"
+    },
+    {
+      "path": "packages/shared/src/data/__tests__/history.test.ts",
+      "bytes": 9555,
+      "sha256": "94d9796b638dd347fd8b9d7fc98363715bb4b714d9b0cbcf9de0b6e79d221527"
+    },
+    {
+      "path": "packages/shared/src/data/__tests__/lifecycle-readers.test.ts",
+      "bytes": 8792,
+      "sha256": "4897e87a957e3f3e70aa4906607d26c02e55de0080e32d2251cf08086d583ab7"
+    },
+    {
+      "path": "packages/shared/src/data/__tests__/lifecycle.test.ts",
+      "bytes": 3618,
+      "sha256": "3b37b493db46dcdcaaa25473de8baec59e3b906c71dca15bb538df77ff0b597f"
+    },
+    {
+      "path": "packages/shared/src/data/__tests__/profile.test.ts",
+      "bytes": 1671,
+      "sha256": "bc5ed424b653bca02e08e193880596396c20a7840525b3077938a66e3ab3f910"
+    },
+    {
+      "path": "packages/shared/src/data/__tests__/weekly-summary.test.ts",
+      "bytes": 5022,
+      "sha256": "e485951cfac7117151a2fe37dde2cb81362208af354fb22469c3543ce914c837"
+    },
+    {
+      "path": "packages/shared/src/data/habits.ts",
+      "bytes": 12019,
+      "sha256": "cb5f44872ec16ab16fa9533017f0311176ebc437cdbde1ac1945177314339988"
+    },
+    {
+      "path": "packages/shared/src/data/history.ts",
+      "bytes": 4453,
+      "sha256": "45e64fcde12c033b1215724de0c85ea55e4c68befa638006dd5f783b00be6d5c"
+    },
+    {
+      "path": "packages/shared/src/data/profile.ts",
+      "bytes": 2053,
+      "sha256": "faf87586eaf5b931539ff6bfe07d93aab34084e194bb691b8d5217006722065a"
+    },
+    {
+      "path": "packages/shared/src/data/weekly-quest.ts",
+      "bytes": 2923,
+      "sha256": "b21ee718a2d9478449bdac9b1d1cf0f1bbac9013778a912a0d0ec497a844678b"
+    },
+    {
+      "path": "packages/shared/src/data/weekly-review.ts",
+      "bytes": 1718,
+      "sha256": "37f1253b01ac3db52faf1a3108f12aac488dcc80b9f440c35e1a124feabc4648"
+    },
+    {
+      "path": "packages/shared/src/data/weekly-summary.ts",
+      "bytes": 4416,
+      "sha256": "55cbe0f84e5d5a9c351c409f0cee63ed0a01b7880b462aa2c123c73921a60ecb"
+    },
+    {
+      "path": "packages/shared/src/index.ts",
+      "bytes": 1077,
+      "sha256": "8dc6ad54aab1ad080fbd8d0339601b26ba0dff79d4045a74d265bc8774f411b9"
+    },
+    {
+      "path": "packages/shared/src/logic/__tests__/board-refresh-fixtures.test.ts",
+      "bytes": 5519,
+      "sha256": "e950f6ee58a11cc0e1a09cd326447b34d7001e3c6ee8f3bdc27cd7050aafeb09"
+    },
+    {
+      "path": "packages/shared/src/logic/__tests__/date-utils.test.ts",
+      "bytes": 1280,
+      "sha256": "740d5ed715266eda3af78efdd59129ad974537d1cabf5d8d512c804106eb8267"
+    },
+    {
+      "path": "packages/shared/src/logic/__tests__/profile-edit.test.ts",
+      "bytes": 1328,
+      "sha256": "4123213db95b70c86c160ec38b6180a483d2cf89bb6b9a19878177398a3b3e5e"
+    },
+    {
+      "path": "packages/shared/src/logic/__tests__/profile-initials.test.ts",
+      "bytes": 289,
+      "sha256": "c14572fd4d6e069d89e60d496c860a9a5d9250403ac324e65bfa878adc092c1a"
+    },
+    {
+      "path": "packages/shared/src/logic/profile-initials.ts",
+      "bytes": 281,
+      "sha256": "008a9c8919619d1ba0ed655130904dafcc823537fcb4752cdc72de7728321ac6"
+    },
+    {
+      "path": "packages/shared/src/logic/quest-recurrence.ts",
+      "bytes": 3809,
+      "sha256": "8ea58521eb20ffe0488dd38031da14ffd8065310e53bbc3c3cc63869fdb10bb9"
+    },
+    {
+      "path": "packages/shared/src/logic/validation.ts",
+      "bytes": 3851,
+      "sha256": "7d93c6f24a2a6d38d5166f0013a9a67cd9cfbbbcd45eed7a7fc39b7bb78b2781"
+    },
+    {
+      "path": "packages/shared/src/types/database.ts",
+      "bytes": 13151,
+      "sha256": "8633d2f9b514a7fbbd298600753ff3d3d884c714f211c81f1cd2d3d0706fcd00"
+    },
+    {
+      "path": "scripts/integration/board-layout-fixtures.cjs",
+      "bytes": 3931,
+      "sha256": "9cdde0bbb287c61207a890b4990ff2de03d442c79867633c752e08262d2e48b8"
+    },
+    {
+      "path": "scripts/integration/board-lifecycle-rest.cjs",
+      "bytes": 5477,
+      "sha256": "5007718c9f711562586d411c4d7fb7845e4445c09ed980b5f20d1f8b176d8a33"
+    },
+    {
+      "path": "scripts/integration/history-boundary-rest.cjs",
+      "bytes": 10717,
+      "sha256": "1ee616e24338ef9b30e301691f68c9b6c8738f8687808cabd4f1a469e203b2b6"
+    },
+    {
+      "path": "scripts/integration/profile-upgrade-rehearsal.cjs",
+      "bytes": 5797,
+      "sha256": "7e3da2ac4b16651bba3b9c09e6e798754fa2628a9673955c0e9d0e4111a5c8d2"
+    },
+    {
+      "path": "scripts/integration/repair-source-manifest.cjs",
+      "bytes": 1800,
+      "sha256": "c3edf6012bcb5c5cb157bc55528fbf18cb3ab64b6745f96c01bfcd5e839ca133"
+    },
+    {
+      "path": "scripts/integration/seed-layout-summary.cjs",
+      "bytes": 1916,
+      "sha256": "b0fa4338d4d5a79b423f54dff40e7ea496a5554ce878a493d3426613814c8b7b"
+    },
+    {
+      "path": "supabase/tests/011_history_read_boundary.test.sql",
+      "bytes": 3809,
+      "sha256": "4c9381bb100a2d8c2d54b92ee019e7496a2179ff954a5be1bebcfde66518a36b"
+    },
+    {
+      "path": "web/src/ProtectedLayout.tsx",
+      "bytes": 2296,
+      "sha256": "7ab5a54a2933147956f93b3fdabb03268bf543f2e450609959057cb8c3bb20f2"
+    },
+    {
+      "path": "web/src/pages/BoardPage.tsx",
+      "bytes": 622,
+      "sha256": "94043142a4e0cf32fa973a8a302bdb921816c84536af8408c874bfc90b16b39e"
+    },
+    {
+      "path": "web/src/pages/SettingsPage.tsx",
+      "bytes": 359,
+      "sha256": "1ab067eb476c9a0ce44ceb0ce993c04a42643df7897813e1ec8325668b2b0a9b"
+    },
+    {
+      "path": "web/src/store/eiyu-store.tsx",
+      "bytes": 16523,
+      "sha256": "57806c8c62e63264fd829e5f39341e7fe92db009be778d17ad873e39338bbd74"
+    },
+    {
+      "path": "web/src/web/AccountShell.tsx",
+      "bytes": 11584,
+      "sha256": "6de418a1ab506e1d140eb5a1eae1cbea8839f9abe1aa9cbcf8825f14175bdd76"
+    },
+    {
+      "path": "web/src/web/Sidebar.tsx",
+      "bytes": 5301,
+      "sha256": "4f9caa103c8ef8f2d5d6760dc250fecbad0dbe6f5d44468c4ee1f9490b339450"
+    },
+    {
+      "path": "web/src/web/WebBoard.tsx",
+      "bytes": 22317,
+      "sha256": "87fcba849fb435492da6b0b332463bd6d8f0dbc7624eb98d006df37faf476489"
+    },
+    {
+      "path": "web/src/web/WebQuestEditor.tsx",
+      "bytes": 23547,
+      "sha256": "2817ad853218a2464403ed0a32075c83547a541520c66fd6e6dc8afcec1ff449"
+    },
+    {
+      "path": "web/src/web/WebSettings.tsx",
+      "bytes": 4166,
+      "sha256": "71dfd5e31b635f2a205f446ab7b3e18de5f7d09ea9a12e29a0cc7d881d5a0fd5"
+    },
+    {
+      "path": "web/src/web/WeeklyReviewMatrix.tsx",
+      "bytes": 3159,
+      "sha256": "f525dfdbc233346ad320c4f038f167f0e181b49752d47c049791cccaea1dd5bf"
+    },
+    {
+      "path": "web/src/web/__tests__/AccountShell.navigation.test.tsx",
+      "bytes": 6099,
+      "sha256": "e5fb4936cd48f3a9181df0da36dabfd2d59cac63b0bc900d5ba8efce74c6cbf5"
+    },
+    {
+      "path": "web/src/web/__tests__/WebBoard.delete.test.tsx",
+      "bytes": 6621,
+      "sha256": "6e123362c697142798f48c3668ce33662e64df07091155b50818c83a53073c97"
+    },
+    {
+      "path": "web/src/web/__tests__/WebQuestEditor.lifecycle.test.tsx",
+      "bytes": 7477,
+      "sha256": "4b4779a85a9812fa4c6557e788eb9754df4700c7154d70ab35f4c7bbbde1c77f"
+    },
+    {
+      "path": "web/src/web/__tests__/WeeklyReviewMatrix.test.tsx",
+      "bytes": 2393,
+      "sha256": "66bebcc2a75a1c254ad760d5329e8087ab9ce2e5f3565af73ec31c6109311beb"
+    }
+  ]
+}

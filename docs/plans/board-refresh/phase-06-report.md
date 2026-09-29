@@ -1,5 +1,7 @@
 # Phase 06 report — whole-product acceptance and final handoff
 
+> **Current status (2026-09-29):** This report records the original landed Phase 6. Post-landing findings reopened acceptance. See `review-evidence/2026-09-29-repair-final-review.md` for the repair branch and unexecuted Android, actual zoom and remote rollout checks. Historical device and user-reported zoom evidence below applies to the earlier revision.
+
 Phase / date / implementer: Phase 6 / 2026-09-26 / Codex, continuing the Luna-scoped handoff (`gpt-5.6-luna`, xhigh contract)  
 Plan: `docs/plans/2026-09-13-board-navigation-design-plan.md`  
 Handoff: `docs/plans/board-refresh/luna-handoff.md`  

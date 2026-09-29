@@ -1,5 +1,7 @@
 # Board refresh integration ledger
 
+> **Current status (2026-09-29):** The phase entries below are dated landing records. The post-landing review reopened acceptance; repairs are on `codex/board-refresh-repairs`. Current criterion-level status and local evidence are in `review-evidence/2026-09-29-repair-final-review.md`; no remote schema verification or production rollout has occurred in this repair effort.
+
 This ledger records local phase approvals and integrations. Remote push, production data changes, deployment, and publishing remain out of scope.
 
 ## Phase 0 — foundation, fixtures, and baseline
@@ -70,3 +72,18 @@ Phase 1 was the only authorized implementation scope after the Phase 0 landing a
 - Landed commit SHA: `d6c520f` (`test: verify board lifecycle and navigation journeys`); local `main` fast-forwarded on 2026-09-27.
 - Post-main smoke: mobile Jest passed, 12 suites / 24 tests, on local `main` after the fast-forward.
 - Next phase: the user requested Phase 7 on 2026-09-27. The approved plan ends at Phase 6 and contains no Phase 7 objective or acceptance criteria; obtain a scoped objective before creating or implementing another phase. This is not authorization to deploy or mutate production.
+
+## Post-landing review — 2026-09-27
+
+- User requested a review against the plan and a repair plan with Luna as implementer/fixer.
+- Reviewed local main: `aa793ba`; prior phase commits/approvals remain historical facts.
+- Current technical assessment: **REOPENED — acceptance defects found**. Existing shared/web/mobile and 331 SQL tests pass, but 13 review probes fail planned behavior and additional source/SQL findings remain open.
+- Review: `2026-09-27-post-landing-review.md`; Luna handoff: `2026-09-27-luna-repair-plan.md`; reproduction evidence: `review-evidence/`.
+- Phase-count clarification: this refresh contains stages 0–6 (seven including foundation); the earlier `mobile-web-quest-design-plan.md` contains stages 0–8 (nine).
+- This review changed documentation/evidence only. No product repair, new phase commit, remote migration, push, or deployment was performed.
+
+## Repair candidate — 2026-09-29
+
+- The user authorized Sol (`gpt-6-sol`, medium) to continue implementation after Luna (`gpt-5.6-luna`, xhigh) stopped. Parent Codex also contributed early A changes and independently executed browser/data reviews. This repair branch is based on `aa793ba`; it is not a new Phase 7 or an amended historical phase commit.
+- Batches A–E have local source, suite, SQL, build/export, and rendered browser evidence. The current source digest is in `review-evidence/2026-09-29-source-snapshot.json`; detailed requirement verdicts, remaining device/zoom/rollout gaps and no-deployment status are in `review-evidence/2026-09-29-repair-final-review.md`.
+- Earlier Phase 6 user-reported 200% browser validation belongs to its landed revision. Actual 200% zoom on the changed repair surfaces, current Android interaction, and remote schema state are not reverified. No repair commit, push, remote migration or production deployment is recorded.
