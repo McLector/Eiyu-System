@@ -114,7 +114,7 @@ export default function WebStatus({ darkMode }: Props) {
   const { user } = useEiyu();
   const { user: authUser } = useSession();
   const userId = authUser?.id;
-  const [tab, setTab] = useState<'stats' | 'weekly'>('stats');
+  const [tab, setTab] = useState<'hero' | 'stats' | 'weekly'>('stats');
   const rankCfg = RANK_CONFIG[user.rank];
 
   const weeklyReviewQuery = useQuery({
@@ -135,11 +135,29 @@ export default function WebStatus({ darkMode }: Props) {
 
   return (
     <div className="status-layout">
+        {/* Tab toggle — crisp bordered segmented control */}
+        <div className="status-tabs" role="tablist" aria-label="Status views">
+          {(['hero', 'stats', 'weekly'] as const).map(t => (
+            <button key={t} className={t === 'hero' ? 'status-hero-tab' : undefined} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} style={{
+              flex: 1, padding: '9px 16px',
+              borderRadius: 4,
+              background: tab === t ? 'var(--c-accent-glass)' : 'transparent',
+              border: `1px solid ${tab === t ? 'var(--c-accent-border)' : 'transparent'}`,
+              fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700,
+              color: tab === t ? 'var(--c-accent)' : 'var(--c-muted-flat)',
+              letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.15s',
+            }}>
+              {t === 'hero' ? 'HERO' : t === 'stats' ? 'STATS' : 'WEEKLY REVIEW'}
+            </button>
+          ))}
+        </div>
+
+
       {/* Left panel */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className={`status-hero-panel${tab === 'hero' ? ' is-active' : ''}`} style={{ flexDirection: 'column', gap: 16 }}>
         {/* Rank badge — signature panel (redesign spec sections 3, 8.2) */}
         <SignaturePanel style={{ padding: '20px', textAlign: 'center' }}>
-          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--c-dim-flat)', marginBottom: 12 }}>HUNTER RANK</div>
+          <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', color: 'var(--c-dim-flat)', marginBottom: 12 }}>HERO RANK</div>
           <div style={{
             width: 72, height: 72, borderRadius: 18, margin: '0 auto 12px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -154,7 +172,7 @@ export default function WebStatus({ darkMode }: Props) {
         {/* Radar chart — plain/grouping (redesign spec section 8.2: chart carries its own visual weight, no border) */}
         <div>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 8 }}>STAT OVERVIEW</div>
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={220}>
             <RadarChart cx="50%" cy="50%" outerRadius="72%" data={radarData}>
               <PolarGrid stroke={gridStroke} strokeDasharray="3 3" />
               <PolarAngleAxis
@@ -172,24 +190,7 @@ export default function WebStatus({ darkMode }: Props) {
       </div>
 
       {/* Right panel */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Tab toggle — crisp bordered segmented control */}
-        <div className="status-tabs" role="tablist" aria-label="Status views">
-          {(['stats', 'weekly'] as const).map(t => (
-            <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} style={{
-              flex: 1, padding: '9px 16px',
-              borderRadius: 4,
-              background: tab === t ? 'var(--c-accent-glass)' : 'transparent',
-              border: `1px solid ${tab === t ? 'var(--c-accent-border)' : 'transparent'}`,
-              fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700,
-              color: tab === t ? 'var(--c-accent)' : 'var(--c-muted-flat)',
-              letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.15s',
-            }}>
-              {t === 'stats' ? 'STATS' : 'WEEKLY REVIEW'}
-            </button>
-          ))}
-        </div>
-
+      <div className={`status-content${tab === 'hero' ? ' is-hidden' : ''}`} style={{ flexDirection: 'column', gap: 16 }}>
         {tab === 'stats' && (
           <div>
             <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--c-dim-flat)', marginBottom: 6 }}>ATTRIBUTE PROGRESS</div>

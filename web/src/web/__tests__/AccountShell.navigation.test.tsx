@@ -136,3 +136,16 @@ it('keeps named routes active and the account menu keyboard reachable with a lon
   expect(screen.getByRole('menuitem', { name: 'Edit details' })).toBeVisible();
   expect(screen.getByRole('link', { name: 'BOARD' })).toBeVisible();
 });
+
+it('opens archived habits from the account menu and restores account focus', async () => {
+  const user = userEvent.setup();
+  const router = setup();
+  const trigger = screen.getByRole('button', { name: /Yuki Tanaka.*rank C/i });
+  await user.click(trigger);
+  await user.click(screen.getByRole('menuitem', { name: 'Archived habits' }));
+  expect(router.state.location.search).toBe('?account=archived');
+  expect(screen.getByRole('dialog', { name: 'Archived habits' })).toHaveTextContent('No archived habits');
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});

@@ -73,6 +73,7 @@ interface EiyuStore {
   restoreQuest: (id: string) => Promise<void>;
   deleteQuest: (id: string) => Promise<void>;
   toggleStage: (lqId: string, stageId: string) => void;
+  stageRewardNotice: string | null;
   longQuestsLoading: boolean;
   longQuestsError: string | null;
   retryLongQuests: () => Promise<void>;
@@ -91,9 +92,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [questActionError, setQuestActionError] = useState<string | null>(null);
   const [retryingQuests, setRetryingQuests] = useState(false);
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
+  const [stageRewardNotice, setStageRewardNotice] = useState<string | null>(null);
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const lifecycleRequests = useRef(new Map<string, Promise<void>>());
   const deletedHabitIds = useRef(new Set<string>());
+  const stageRequests = useRef(new Set<string>());
   const activeUserId = useRef(userId);
 
   const habitsQuery = useQuery({
@@ -144,6 +147,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   // changes so a matching UUID in another account is never blocked.
   useEffect(() => {
     deletedHabitIds.current.clear();
+    stageRequests.current.clear();
+    setStageRewardNotice(null);
   }, [userId]);
   useEffect(() => {
     const previousUserId = activeUserId.current;
@@ -360,7 +365,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     async (lqId: string, stageId: string) => {
       const lq = longQuests.find(q => q.id === lqId);
       const stage = lq?.stages.find(s => s.id === stageId);
-      if (!stage || !userId) return;
+      if (!stage || !userId || stageRequests.current.has(lqId)) return;
+      stageRequests.current.add(lqId);
       const nextDone = !stage.done;
       const key = longQuestsKey(userId);
       const previous = qc.getQueryData<LongQuest[]>(key);
@@ -373,12 +379,19 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       );
       try {
         await setStageDone(stageId, nextDone);
+        if (activeUserId.current !== userId) return;
         setLqActionError(null);
+        setStageRewardNotice(nextDone ? 'Stage completed. Hero attributes updated.' : 'Stage undone. Hero attributes updated.');
       } catch (err) {
         qc.setQueryData<LongQuest[]>(key, previous);
-        setLqActionError(formatError(err));
+        if (activeUserId.current === userId) {
+          setLqActionError(formatError(err));
+          setStageRewardNotice(null);
+        }
       } finally {
         await qc.invalidateQueries({ queryKey: key });
+        await qc.invalidateQueries({ queryKey: ['stats', userId] });
+        stageRequests.current.delete(lqId);
       }
     },
     [longQuests, userId, qc]
@@ -450,6 +463,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       restoreQuest,
       deleteQuest,
       toggleStage,
+      stageRewardNotice,
       longQuestsLoading: longQuestsQuery.isLoading || retryingLongQuests,
       longQuestsError,
       retryLongQuests,
@@ -473,6 +487,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       restoreQuest,
       deleteQuest,
       toggleStage,
+      stageRewardNotice,
       longQuestsQuery.isLoading,
       retryingLongQuests,
       longQuestsError,

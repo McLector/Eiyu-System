@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
+import ArchiveNotice from './components/ArchiveNotice';
 import AccountShell, { type AccountOverlay } from './web/AccountShell';
 
 export interface LayoutContext {
@@ -15,7 +16,7 @@ export default function ProtectedLayout() {
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const requestedOverlay = params.get('account');
-  const overlay: AccountOverlay = requestedOverlay === 'profile' || requestedOverlay === 'settings'
+  const overlay: AccountOverlay = requestedOverlay === 'profile' || requestedOverlay === 'settings' || requestedOverlay === 'archived'
     ? requestedOverlay : null;
 
   const openOverlay = (kind: Exclude<AccountOverlay, null>) => {
@@ -58,8 +59,9 @@ export default function ProtectedLayout() {
         onToggleDark={context.onToggleDark}
       />
 
+      <ArchiveNotice onOpen={() => openOverlay('archived')} />
       {/* Main content */}
-      <main className="protected-main" style={{ minHeight: '100svh', padding: '24px clamp(16px, 4vw, 56px) 48px' }}>
+      <main className="protected-main" style={{ padding: '12px clamp(12px, 2vw, 28px) 16px' }}>
         <Outlet context={context} />
       </main>
     </div>

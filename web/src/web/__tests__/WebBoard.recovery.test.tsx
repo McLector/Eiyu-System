@@ -67,8 +67,9 @@ describe('WebBoard recovery state', () => {
     );
 
     expect(container).toHaveTextContent('1 / 1 quests');
-    expect(container).toHaveTextContent('Streak frozen');
-    expect(container).toHaveTextContent('Penalty: Walk for one minute');
+    await user.click(screen.getByRole('button', { name: '1 recovery required' }));
+    expect(document.body).toHaveTextContent('Streak frozen');
+    expect(document.body).toHaveTextContent('Penalty: Walk for one minute');
     const recover = screen.getByRole('button', { name: 'MARK RECOVERY COMPLETE' });
     await user.click(recover);
     expect(store.completeRecovery).toHaveBeenCalledWith('habit-1');
@@ -109,12 +110,12 @@ describe('WebBoard recovery state', () => {
     expect(container).toHaveTextContent('One Time Quest');
     expect(container).toHaveTextContent('All Habits');
     expect(container).toHaveTextContent('Off-day habit');
-    expect(container).toHaveTextContent('Archived habit');
+    expect(screen.queryByRole('button', { name: 'Edit Archived habit' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Complete Daily habit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Complete Off-day habit' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Complete Archived habit' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit Off-day habit' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit Archived habit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit Archived habit' })).not.toBeInTheDocument();
 
     await interaction.click(screen.getByRole('button', { name: 'Complete One-time item' }));
     expect(store.toggleQuest).toHaveBeenCalledWith('one-time');
@@ -193,15 +194,12 @@ describe('WebBoard recovery state', () => {
     const dailyLane = screen.getByRole('region', { name: 'Daily Quest' });
     const oneTimeLane = screen.getByRole('region', { name: 'One Time Quest' });
     const allLane = screen.getByRole('region', { name: 'All Habits' });
-    const archivedLane = screen.getByRole('region', { name: 'Archived' });
     expect(within(dailyLane).getByText('Daily habit')).toBeInTheDocument();
     expect(within(oneTimeLane).getByText('No one-time quests scheduled for today.')).toBeInTheDocument();
     expect(within(allLane).getByText('Off-day habit')).toBeInTheDocument();
     expect(within(allLane).queryByText('Archived habit')).not.toBeInTheDocument();
-    expect(within(archivedLane).getByText('Archived habit')).toBeInTheDocument();
-    expect(within(archivedLane).getByText('Archived one-time')).toBeInTheDocument();
-
     await interaction.click(within(allLane).getByRole('button', { name: 'Edit Off-day habit' }));
     expect(screen.getByRole('region', { name: 'All Habits' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Archived' })).not.toBeInTheDocument();
   });
 });

@@ -7,8 +7,9 @@ import { BoardIcon, ScrollIcon, StatusIcon } from '../Icons';
 import { useSession } from '../store/session-context';
 import { useEiyu } from '../store/eiyu-store';
 import WebSettings from './WebSettings';
+import ArchivedHabits from './ArchivedHabits';
 
-export type AccountOverlay = 'profile' | 'settings' | null;
+export type AccountOverlay = 'profile' | 'settings' | 'archived' | null;
 
 interface Props {
   overlay: AccountOverlay;
@@ -22,6 +23,7 @@ const NAV = [
   { to: '/board', label: 'BOARD', Icon: BoardIcon },
   { to: '/status', label: 'STATUS', Icon: StatusIcon },
   { to: '/longquests', label: 'LONG QUESTS', Icon: ScrollIcon },
+  { to: '/gym', label: 'GYM PROGRESS', Icon: StatusIcon },
 ] as const;
 
 function initials(name: string) { return profileInitials(name); }
@@ -260,6 +262,7 @@ export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, d
             <div className="phase4-account-menu" role="menu" aria-label="Account menu">
               <button role="menuitem" type="button" onClick={() => openOverlay('profile')}>Edit details</button>
               <button role="menuitem" type="button" onClick={() => openOverlay('settings')}>Settings</button>
+              <button role="menuitem" type="button" onClick={() => openOverlay('archived')}>Archived habits</button>
               <button role="menuitem" type="button" onClick={() => void logout()} disabled={logoutPending}>
                 {logoutPending ? 'Logging out…' : 'Logout'}
               </button>
@@ -268,6 +271,7 @@ export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, d
           )}
         </div>
       </header>
+      {overlay === 'archived' && <ArchivedHabits onClose={closeOverlay} />}
       {overlay === 'profile' && <ProfileDialog onClose={closeOverlay} theme={darkMode ? 'dark' : 'light'} />}
       {overlay === 'settings' && (
         <OverlayFrame title="SETTINGS" onClose={closeOverlay} theme={darkMode ? 'dark' : 'light'}>

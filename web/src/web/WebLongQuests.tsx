@@ -1,3 +1,4 @@
+import PaginatedList from '../components/PaginatedList';
 import { useState } from 'react';
 import {
   LongQuest,
@@ -678,7 +679,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
 // ── Page ─────────────────────────────────────────────────
 
 export default function WebLongQuests() {
-  const { user, longQuestsLoading, longQuestsError, retryLongQuests, saveLongQuest } = useEiyu();
+  const { user, stageRewardNotice, longQuestsLoading, longQuestsError, retryLongQuests, saveLongQuest } = useEiyu();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
@@ -719,10 +720,11 @@ export default function WebLongQuests() {
 
   return (
     <div className="long-quests-page">
+      {stageRewardNotice && <p role="status">{stageRewardNotice}</p>}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>LONG QUESTS</h2>
-          <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginTop: 4 }}>Multi-stage journeys tracked over time</p>
+          <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginTop: 4 }}>20 XP per phase · 20 XP completion bonus</p>
         </div>
         <button onClick={() => setShowNew(!showNew)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
           <PlusIcon />
@@ -788,7 +790,8 @@ export default function WebLongQuests() {
           <button onClick={() => void retryLongQuests()} className="btn-ghost" style={{ padding: '8px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700 }}>RETRY</button>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        <div className="long-quest-list">
+        <PaginatedList label="Long Quests">
           {user.longQuests.length === 0 ? (
             <div style={{ padding: '32px 0', textAlign: 'center' }}>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-dim-flat)', letterSpacing: '0.06em', marginBottom: 6 }}>NO LONG QUESTS</div>
@@ -803,6 +806,7 @@ export default function WebLongQuests() {
               />
             ))
           )}
+        </PaginatedList>
         </div>
       )}
     </div>

@@ -69,8 +69,8 @@ select is(
 );
 select is(
   (select coalesce(sum(xp), 0)::integer from public.stats where user_id = '11111111-1111-4111-8111-111111115001'),
-  0,
-  'stage retries and rejections do not duplicate rewards'
+  80,
+  'three stages and one bonus pay once despite retries and rejections'
 );
 
 select throws_ok(

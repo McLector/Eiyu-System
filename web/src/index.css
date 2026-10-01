@@ -684,3 +684,123 @@ select.field option {
 .board-delete-dialog .board-delete-error { color: #f87171; }
 .board-delete-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .board-delete-actions button { padding: 8px 14px; font-size: 13px; }
+
+/* Plan 011: fixed board composition, accessible pagination and compact dialogs. */
+.board-lanes { grid-template-columns: minmax(220px, .9fr) repeat(3, minmax(0, 1fr)); overflow: visible; gap: 12px; }
+.board-profile-column { min-width: 0; }
+.board-profile-column .web-board-attributes { margin-top: 14px; }
+.board-profile-column .web-board-today { border: 0; padding: 12px 0 0; }
+.board-profile-column .web-board-today strong { font-size: 22px; }
+.board-lane { height: max(360px, calc(100svh - 112px)); }
+.paged-list { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.paged-list-body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; padding: 8px; }
+.list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px; color: var(--c-muted-flat); font-size: 12px; }
+.list-pagination button { min-height: 32px; padding: 5px 8px; font-size: 11px; }
+.list-pagination button:disabled { opacity: .45; cursor: default; }
+.board-card-title, .board-catalog-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.board-quest-card { padding: 10px; }
+.compact-dialog-body { padding: 14px 18px; max-height: 75svh; overflow: auto; }
+.archive-list .board-lane { height: 60svh; }
+.board-recovery-trigger { color: var(--c-ice); margin: 12px 0; width: 100%; }
+@media (max-width: 1199px) {
+  .board-lanes { display: block; overflow: visible; }
+  .board-lane, .board-profile-column { display: none; }
+  .board-lane.is-mobile-active { display: flex; height: max(340px, calc(100svh - 180px)); }
+  .board-profile-column.is-mobile-active { display: block; }
+  .board-lane-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; overflow: visible; }
+  .board-lane-tabs button { min-width: 0; min-height: 40px; padding: 5px; white-space: normal; border: 1px solid var(--c-glass-border); border-radius: 8px; color: var(--c-muted-flat); background: transparent; font: 600 12px Rajdhani, sans-serif; }
+  .board-lane-tabs button[aria-selected="true"] { color: var(--c-accent); background: var(--c-accent-glass); border-color: var(--c-accent-border); }
+  .archive-list .board-lane { display: flex; }
+}
+
+
+.archive-list { display: flex; flex-direction: column; height: 60svh; }
+.archive-notice { position: fixed; z-index: 90; top: 76px; right: 16px; max-width: min(460px, calc(100vw - 32px)); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px; background: var(--c-modal); border: 1px solid var(--c-accent-border); border-radius: 12px; color: var(--c-text); box-shadow: 0 12px 30px rgba(0,0,0,.2); font: 12px Inter,sans-serif; }
+.archive-notice > span { flex: 1; }
+
+.gym-page { display: flex; flex-direction: column; gap: 10px; height: calc(100svh - 110px); min-height: 430px; color: var(--c-text); font: 13px Inter, sans-serif; }
+.gym-heading, .gym-routine-heading, .gym-actions, .gym-toolbar, .gym-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.gym-heading h1, .gym-routine-heading h2 { margin: 0; font: 700 22px Rajdhani, sans-serif; overflow-wrap: anywhere; }
+.gym-routine-heading h2 { font-size: 18px; }
+.gym-routine-heading small { color: var(--c-muted-flat); font: 12px Inter, sans-serif; }
+.gym-toolbar { justify-content: flex-start; }
+.gym-toolbar > label:first-child { display: flex; align-items: center; gap: 10px; flex: 1; }
+.gym-toolbar select { width: min(100%, 450px); }
+.gym-checkbox { display: flex; align-items: center; gap: 8px; }
+.gym-form { display: flex; flex-direction: column; gap: 12px; }
+.gym-form label { display: flex; flex-direction: column; gap: 6px; color: var(--c-text); font: 13px Inter,sans-serif; }
+.gym-form .gym-checkbox { flex-direction: row; }
+.gym-form p { margin: 0; font: 12px/1.5 Inter,sans-serif; color: var(--c-muted-flat); }
+.gym-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.gym-table { display: flex; flex-direction: column; flex: 1; min-height: 200px; border: 1px solid var(--c-glass-border); border-radius: 12px; }
+.gym-table-header, .gym-row { display: grid; grid-template-columns: 24px minmax(160px,1.6fr) minmax(70px,.7fr) 48px 32px minmax(75px,1fr) minmax(85px,.8fr) minmax(85px,.8fr); gap: 8px; align-items: center; }
+.gym-table-header { padding: 10px 12px; border-bottom: 1px solid var(--c-divider-flat); font: 600 12px Rajdhani,sans-serif; }
+.gym-row { padding: 10px 4px; border-bottom: 1px solid var(--c-divider-flat); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.gym-row > * { min-width: 0; overflow-wrap: anywhere; }
+.gym-exercise-name { padding: 0; background: transparent; border: 0; color: var(--c-accent); font: 600 13px Inter,sans-serif; text-align: left; }
+.gym-row-actions { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.gym-row-actions .btn-ghost { padding: 3px 6px; min-height: 28px; font-size: 11px; }
+.gym-weight { padding: 7px; width: 100%; font-size: 13px; }
+.gym-notes { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.gym-session-actions { justify-content: flex-start; }
+.gym-media { width: 100%; max-height: 60svh; object-fit: contain; border-radius: 10px; }
+.gym-history { display: flex; flex-direction: column; height: 60svh; }
+.gym-history-session { flex-shrink: 0; padding: 10px; color: var(--c-text); font: 13px/1.5 Inter,sans-serif; border-bottom: 1px solid var(--c-divider-flat); }
+.gym-history-session summary { cursor: pointer; }
+.gym-history-session p { margin: 6px 0; }
+/* Native surfaces remain themed wherever scrolling is needed for accessibility. */
+* { scrollbar-width: thin; scrollbar-color: var(--c-accent-border) transparent; }
+*::-webkit-scrollbar { display: block; width: 5px; height: 5px; }
+*::-webkit-scrollbar-thumb { background: var(--c-accent-border); border-radius: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+.board-lane-body::-webkit-scrollbar, .board-recovery-list::-webkit-scrollbar, .board-lane-tabs::-webkit-scrollbar { width: 5px; height: 5px; }
+::selection { color: var(--c-text); background: var(--c-accent-border); }
+input, textarea { caret-color: var(--c-accent); }
+:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
+.surface-flat, .phase4-overlay { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M2 2v18l5-5 4 7 3-2-4-7h8z' fill='%23050b14' stroke='%2367e8f9' stroke-width='1.5'/%3E%3C/svg%3E") 2 2, auto; }
+.surface-flat button:not(:disabled), .surface-flat a, .surface-flat summary, .phase4-overlay button:not(:disabled), .phase4-overlay a, .phase4-overlay summary { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M2 2v18l5-5 4 7 3-2-4-7h8z' fill='%2367e8f9' stroke='%23050b14' stroke-width='1.5'/%3E%3C/svg%3E") 2 2, pointer !important; }
+.surface-flat input, .surface-flat textarea, .phase4-overlay input, .phase4-overlay textarea { cursor: text; }
+.surface-flat input[type='checkbox'], .surface-flat select, .phase4-overlay input[type='checkbox'], .phase4-overlay select { cursor: pointer; }
+.surface-flat :disabled, .phase4-overlay :disabled { cursor: default !important; }
+[data-theme='light'].surface-flat, .phase4-overlay { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M2 2v18l5-5 4 7 3-2-4-7h8z' fill='%23e8f4fb' stroke='%230891b2' stroke-width='1.5'/%3E%3C/svg%3E") 2 2, auto; }
+.phase4-brand-mark { animation: eiyuStar 2.8s ease-in-out infinite; }
+@keyframes eiyuStar { 0%,100% { opacity: .78; text-shadow: 0 0 2px var(--c-accent); } 50% { opacity: 1; text-shadow: 0 0 12px var(--c-accent), 0 0 22px var(--c-accent-border); } }
+.protected-main .long-quests-page { max-width: none; }
+.phase4-dialog { max-height: 92svh; }
+.phase4-primary-nav { gap: clamp(4px,1vw,18px); }
+.phase4-nav-link { padding-inline: 10px; }
+.protected-main .btn-ghost { min-height: 32px; }
+@media (max-width: 767px) {
+  .phase4-primary-nav { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); overflow: visible; }
+  .phase4-nav-link { min-width: 0; padding: 6px 3px; font-size: 11px; justify-content: center; }
+  .phase4-nav-link span { white-space: normal; text-align: center; }
+  .phase4-nav-link svg { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .phase4-brand-mark { animation: none; text-shadow: 0 0 2px var(--c-accent); } }
+@media (forced-colors: active) { * { scrollbar-color: auto; } .phase4-brand-mark { animation: none; } }
+@media (max-width: 1199px) {
+  .gym-table-header { display: none; }
+  .gym-row { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 10px; border: 1px solid var(--c-glass-border); border-radius: 12px; }
+  .gym-row > [data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--c-muted-flat); font: 600 11px Rajdhani,sans-serif; }
+  .gym-row > :nth-child(2) { grid-column: 2; }
+  .gym-page { height: calc(100svh - 170px); min-height: 520px; }
+  .gym-heading h1 { font-size: 20px; }
+}
+
+.long-quest-list { display: flex; flex-direction: column; height: max(360px, calc(100svh - 190px)); }
+.status-layout { gap: 16px; }
+.status-layout > aside { min-width: 0; }
+.history-dialog-body { padding: 12px 16px 16px !important; }
+@media (max-width: 767px) { .long-quest-list { height: max(350px,calc(100svh - 230px)); } }
+
+.status-layout > .status-tabs { grid-column: 1 / -1; }
+.status-hero-panel, .status-content { display: flex; min-width: 0; }
+.status-tabs .status-hero-tab { display: none; }
+@media (max-width: 767px) {
+  .status-tabs .status-hero-tab { display: block; }
+  .status-hero-panel { display: none; }
+  .status-hero-panel.is-active { display: flex; }
+  .status-content.is-hidden { display: none; }
+  .status-tabs button { padding-inline: 8px !important; }
+  .board-lane.is-mobile-active { height: max(340px, calc(100svh - 200px)); }
+}

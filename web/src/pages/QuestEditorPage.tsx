@@ -1,4 +1,4 @@
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import WebQuestEditor from '../web/WebQuestEditor';
 import { useEiyu } from '../store/eiyu-store';
@@ -6,6 +6,7 @@ import { useEiyu } from '../store/eiyu-store';
 export default function QuestEditorPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, questsLoading } = useEiyu();
 
   // Don't judge the id against a quest list that hasn't loaded yet — a
@@ -23,5 +24,5 @@ export default function QuestEditorPage() {
     return <Navigate to="/board" replace />;
   }
 
-  return <WebQuestEditor editingQuest={editingQuest} onClose={() => navigate('/board')} />;
+  return <WebQuestEditor key={id ?? searchParams.get('type') ?? 'habit'} editingQuest={editingQuest} initialType={searchParams.get('type') === 'one_time' ? 'one_time' : 'habit'} onClose={() => navigate('/board')} />;
 }

@@ -94,5 +94,31 @@ select ok(pg_get_functiondef(to_regprocedure('public.validate_quest_name_edit()'
     ilike '%80 characters or fewer%',
   'the latest validator body is restored after the rollback-only marker probe');
 
+with checks(marker, ok) as (
+  select '032 long quest rewards: server-owned ledger and stage trigger',
+    to_regclass('public.long_quest_rewards') is not null
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.long_quest_stages')
+      and tgname = 'award_long_quest_stage' and not tgisinternal)
+    and not has_table_privilege('authenticated',to_regclass('public.long_quest_rewards'),'INSERT')
+    and not has_function_privilege('authenticated',to_regprocedure('private.award_long_quest_stage()'),'EXECUTE')
+  union all select '033 gym: owned snapshots and authenticated atomic session RPCs',
+    to_regclass('public.gym_routines') is not null
+    and to_regclass('public.gym_exercises') is not null
+    and to_regclass('public.gym_sessions') is not null
+    and to_regclass('public.gym_entries') is not null
+    and (select bool_and(c.relrowsecurity) from pg_class c where c.oid = any(array[to_regclass('public.gym_routines'),to_regclass('public.gym_exercises'),to_regclass('public.gym_sessions'),to_regclass('public.gym_entries')]))
+    and not has_table_privilege('authenticated',to_regclass('public.gym_entries'),'UPDATE')
+    and has_function_privilege('authenticated',to_regprocedure('public.start_gym_session(uuid)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.start_gym_session(uuid)'),'EXECUTE')
+    and has_function_privilege('authenticated',to_regprocedure('public.reorder_gym_exercises(uuid,uuid[])'),'EXECUTE')
+  union all select '034 gym media: private bounded bucket and owner policies',
+    exists (select 1 from storage.buckets where id = 'gym-exercise-media'
+      and not public and file_size_limit = 20971520
+      and allowed_mime_types @> array['image/gif','video/mp4'])
+    and exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'gym_media_read')
+)
+select ok(ok, marker) from checks;
+
 select * from finish();
 rollback;

@@ -10,6 +10,7 @@ import WebLongQuests from './web/WebLongQuests';
 import SettingsPage from './pages/SettingsPage';
 import HistoryPage from './pages/HistoryPage';
 import QuestEditorPage from './pages/QuestEditorPage';
+import WebGym from './web/WebGym';
 
 export const router = createBrowserRouter([
   { path: '/', element: <RootPage /> },
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
           { path: '/board', element: <BoardPage /> },
           { path: '/status', element: <StatusPage /> },
           { path: '/longquests', element: <WebLongQuests /> },
+          { path: '/gym', element: <WebGym /> },
           { path: '/settings', element: <SettingsPage /> },
           { path: '/history', element: <HistoryPage /> },
           { path: '/quest-editor/:id?', element: <QuestEditorPage /> },

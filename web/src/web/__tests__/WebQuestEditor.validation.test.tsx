@@ -31,9 +31,7 @@ describe('WebQuestEditor name validation and default days', () => {
   beforeEach(() => setup());
 
   it('rejects whitespace and zero-width-only names with field-specific copy', async () => {
-    const user = userEvent.setup();
-    render(<WebQuestEditor onClose={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'ONE-TIME' }));
+    render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);
     const name = screen.getByPlaceholderText('e.g. Morning run for 30 min');
     fireEvent.change(name, { target: { value: ' \u200b\u200c\u200d\u2060\ufeff ' } });
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a quest name.');
@@ -42,8 +40,7 @@ describe('WebQuestEditor name validation and default days', () => {
 
   it('accepts 80 code points and rejects 81 before saving', async () => {
     const user = userEvent.setup();
-    render(<WebQuestEditor onClose={vi.fn()} />);
-    await user.click(screen.getByRole('button', { name: 'ONE-TIME' }));
+    render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);
     const name = screen.getByPlaceholderText('e.g. Morning run for 30 min');
     fireEvent.change(name, { target: { value: '😀'.repeat(81) } });
     expect(screen.getByRole('alert')).toHaveTextContent('80 characters or fewer.');
@@ -75,4 +72,20 @@ describe('WebQuestEditor name validation and default days', () => {
     for (const day of ['Monday', 'Wednesday', 'Friday']) expect(screen.getByRole('button', { name: day })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Sunday' })).toHaveAttribute('aria-pressed', 'false');
   });
+});
+
+it('creates only the requested one-time type and saved types take precedence', async () => {
+  setup();
+  const user = userEvent.setup();
+  render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);
+  expect(screen.getByText('NEW ONE TIME QUEST')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Monday' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'ONE-TIME' })).not.toBeInTheDocument();
+  await user.type(screen.getByRole('textbox', { name: 'Quest name' }), 'Appointment');
+  await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
+  await waitFor(() => expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', targetCount: null }), undefined));
+  cleanup();
+  setup(weekdayQuest);
+  render(<WebQuestEditor initialType="one_time" editingQuest={weekdayQuest} onClose={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Monday' })).toBeInTheDocument();
 });

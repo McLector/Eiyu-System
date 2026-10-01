@@ -1,3 +1,6 @@
+import type { GymRoutine, GymExercise, GymSession, GymEntry } from './gym';
+type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+type GymTable<T> = { Row: { [K in keyof T]: T[K] }; Insert: Partial<T>; Update: Partial<T>; Relationships: [] };
 // Hand-written to match backend/supabase/*.sql. Regenerate with
 // `supabase gen types typescript` once the CLI is wired into this project;
 // until then, keep this in sync with the migrations by hand.
@@ -12,6 +15,10 @@ export type QuestTypeKey = 'habit' | 'one_time';
 export interface Database {
   public: {
     Tables: {
+      gym_routines: GymTable<GymRoutine>;
+      gym_exercises: GymTable<GymExercise>;
+      gym_sessions: GymTable<GymSession>;
+      gym_entries: GymTable<GymEntry>;
       profiles: {
         Row: {
           user_id: string;
@@ -295,6 +302,10 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      start_gym_session: { Args: { p_routine_id: string }; Returns: string };
+      save_gym_session: { Args: { p_session_id: string; p_weights: Json; p_finish: boolean }; Returns: undefined };
+      discard_gym_session: { Args: { p_session_id: string }; Returns: undefined };
+      reorder_gym_exercises: { Args: { p_routine_id: string; p_ids: string[] }; Returns: undefined };
       increment_stat_xp: {
         Args: { p_stat: StatKey; p_delta: number };
         Returns: undefined;

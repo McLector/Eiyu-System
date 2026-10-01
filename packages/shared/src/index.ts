@@ -27,3 +27,6 @@ export * from './supabase/client';
 export * from './types/database';
 export * from './types/eiyu';
 export * from './constants/eiyu-data';
+export * from './types/gym';
+export * from './logic/gym';
+export * from './data/gym';

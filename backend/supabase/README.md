@@ -240,6 +240,28 @@ with checks(marker, ok) as (
       and tgname = 'habits_validate_name_length' and not tgisinternal)
     and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.long_quests')
       and tgname = 'long_quests_validate_name_length' and not tgisinternal)
+  union all select '032 long quest rewards: server-owned ledger and stage trigger',
+    to_regclass('public.long_quest_rewards') is not null
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.long_quest_stages')
+      and tgname = 'award_long_quest_stage' and not tgisinternal)
+    and not has_table_privilege('authenticated',to_regclass('public.long_quest_rewards'),'INSERT')
+    and not has_function_privilege('authenticated',to_regprocedure('private.award_long_quest_stage()'),'EXECUTE')
+  union all select '033 gym: owned snapshots and authenticated atomic session RPCs',
+    to_regclass('public.gym_routines') is not null
+    and to_regclass('public.gym_exercises') is not null
+    and to_regclass('public.gym_sessions') is not null
+    and to_regclass('public.gym_entries') is not null
+    and (select bool_and(c.relrowsecurity) from pg_class c where c.oid = any(array[to_regclass('public.gym_routines'),to_regclass('public.gym_exercises'),to_regclass('public.gym_sessions'),to_regclass('public.gym_entries')]))
+    and not has_table_privilege('authenticated',to_regclass('public.gym_entries'),'UPDATE')
+    and has_function_privilege('authenticated',to_regprocedure('public.start_gym_session(uuid)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.start_gym_session(uuid)'),'EXECUTE')
+    and has_function_privilege('authenticated',to_regprocedure('public.reorder_gym_exercises(uuid,uuid[])'),'EXECUTE')
+  union all select '034 gym media: private bounded bucket and owner policies',
+    exists (select 1 from storage.buckets where id = 'gym-exercise-media'
+      and not public and file_size_limit = 20971520
+      and allowed_mime_types @> array['image/gif','video/mp4'])
+    and exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'gym_media_read')
 )
 select marker, ok from checks order by marker;
 ```
@@ -251,7 +273,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–031
+re-run an old file over a newer definition. This query covers migrations 001–034
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -283,3 +305,11 @@ supabase secrets set GEMINI_API_KEY=...
 Run both commands yourself — never paste the API key into chat or a `.env` file.
 `supabase secrets set` stores it as an encrypted project secret that only the
 deployed function can read at runtime.
+
+## Plan 011 rollout
+
+Apply 032, 033 and 034 in order after confirming the existing 001–031 capabilities. Deploy the updated clients afterward. No remote migration or release is performed by the implementation. Migration 032 records zero-value exemptions for already completed phases/quests; there is no retroactive XP. New phases award 20 XP each and final completion adds 20 XP. Undo/redo uses the original awarded stat.
+
+033 persists Gym routines, exercises and immutable completed session snapshots. Gym does not award XP. 034 creates the private GIF/MP4 bucket (20 MiB per file); playback uses short-lived signed URLs. Uploaded media cleanup is best effort and failures remain visible to the user.
+
+Run all 19 rollback/cleanup SQL test files in `supabase/tests` on a disposable local stack, including the connection-aware concurrency cases. Do not reset an existing personal database to test this release. Browser acceptance can be repeated with `scripts/verify-board-gym-browser.cjs` against its explicitly isolated local origins.

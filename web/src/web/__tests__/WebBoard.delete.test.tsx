@@ -8,6 +8,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const store = vi.hoisted(() => ({ useEiyu: vi.fn(), deleteQuest: vi.fn() }));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 import WebBoard from '../WebBoard';
+import ArchivedHabits from '../ArchivedHabits';
+import { MemoryRouter } from 'react-router-dom';
 
 const archived: Quest = {
   id: 'one-archived', name: 'Saved one-time', stat: 'WIS', difficulty: 'Easy',
@@ -29,7 +31,7 @@ afterEach(cleanup);
 
 it('uses a contained Cancel-first confirmation from an archived card', async () => {
   const user = userEvent.setup();
-  render(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
+  render(<MemoryRouter><ArchivedHabits onClose={vi.fn()} /></MemoryRouter>);
   const trigger = screen.getByRole('button', { name: 'Delete Saved one-time' });
   await user.click(trigger);
   const dialog = screen.getByRole('dialog', { name: 'Delete Saved one-time permanently?' });
@@ -43,7 +45,7 @@ it('uses a contained Cancel-first confirmation from an archived card', async () 
   await user.keyboard('{Tab}');
   expect(cancel).toHaveFocus();
   await user.keyboard('{Escape}');
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: /Delete/ })).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
   expect(store.deleteQuest).not.toHaveBeenCalled();
 });
@@ -52,14 +54,14 @@ it('holds the dialog during a pending delete and sends one request', async () =>
   const user = userEvent.setup();
   let release!: () => void;
   store.deleteQuest.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
-  render(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
+  render(<MemoryRouter><ArchivedHabits onClose={vi.fn()} /></MemoryRouter>);
   await user.click(screen.getByRole('button', { name: 'Delete Saved one-time' }));
   await user.click(screen.getByRole('button', { name: 'Confirm permanent delete' }));
   await user.keyboard('{Escape}');
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: /Delete/ })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'DELETING…' })).toBeDisabled();
   await user.keyboard('{Tab}');
-  expect(screen.getByRole('dialog')).toHaveFocus();
+  expect(screen.getByRole('dialog', { name: /Delete/ })).toHaveFocus();
   expect(store.deleteQuest).toHaveBeenCalledTimes(1);
   await act(async () => { release(); });
 });
@@ -67,7 +69,7 @@ it('holds the dialog during a pending delete and sends one request', async () =>
 it('keeps a failed delete visible and permits one deliberate retry', async () => {
   const user = userEvent.setup();
   store.deleteQuest.mockRejectedValueOnce(new Error('network offline')).mockResolvedValueOnce(undefined);
-  render(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
+  render(<MemoryRouter><ArchivedHabits onClose={vi.fn()} /></MemoryRouter>);
   await user.click(screen.getByRole('button', { name: 'Delete Saved one-time' }));
   await user.click(screen.getByRole('button', { name: 'Confirm permanent delete' }));
 
@@ -78,7 +80,7 @@ it('keeps a failed delete visible and permits one deliberate retry', async () =>
 
   await user.click(within(dialog).getByRole('button', { name: 'Confirm permanent delete' }));
   expect(store.deleteQuest).toHaveBeenCalledTimes(2);
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: /Delete/ })).not.toBeInTheDocument();
 });
 
 it('shows earned XP only after the completion boundary succeeds', async () => {
@@ -108,7 +110,7 @@ it('shows pending lifecycle state and sends one restore request from Archived', 
     toggleQuest: vi.fn(), adjustProgress: vi.fn(), completeRecovery: vi.fn(),
     archiveQuest: vi.fn(), restoreQuest, deleteQuest: store.deleteQuest,
   });
-  render(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
+  render(<MemoryRouter><ArchivedHabits onClose={vi.fn()} /></MemoryRouter>);
   await user.click(screen.getByRole('button', { name: 'Restore Saved one-time' }));
   expect(screen.getByRole('button', { name: 'Restore Saved one-time' })).toBeDisabled();
   expect(screen.getByText('RESTORING…')).toBeInTheDocument();

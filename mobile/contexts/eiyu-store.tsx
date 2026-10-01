@@ -760,11 +760,13 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     }
   }, [qc, userId]);
 
+  const stageRequests = useRef(new Set<string>());
   const toggleStage = useCallback(
     async (lqId: string, stageId: string) => {
       const lq = longQuests.find(q => q.id === lqId);
       const stage = lq?.stages.find(s => s.id === stageId);
-      if (!stage || !userId) return;
+      if (!stage || !userId || stageRequests.current.has(lqId)) return;
+      stageRequests.current.add(lqId);
       const nextDone = !stage.done;
       const key = longQuestsKey(userId);
       const previous = qc.getQueryData<LongQuest[]>(key);
@@ -783,6 +785,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setLqActionError(formatError(err));
       } finally {
         await qc.invalidateQueries({ queryKey: key });
+        await qc.invalidateQueries({ queryKey: ['stats', userId] });
+        stageRequests.current.delete(lqId);
       }
     },
     [longQuests, userId, qc]

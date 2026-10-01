@@ -4,15 +4,17 @@ import { accountDateKey, DEFAULT_HABIT_DAYS, Quest, Stat, Difficulty, STATS, Hab
 import { STAT_COLORS } from '@eiyu/shared';
 import { SparkleIcon, StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
+import { announceArchive } from '../components/ArchiveNotice';
 
 interface Props {
   editingQuest?: Quest | null;
+  initialType?: 'habit' | 'one_time';
   onClose: () => void;
 }
 
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
 
-export default function WebQuestEditor({ editingQuest, onClose }: Props) {
+export default function WebQuestEditor({ editingQuest, initialType = 'habit', onClose }: Props) {
   const { user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
   const [name, setName] = useState(editingQuest?.name ?? '');
   const [note, setNote] = useState(editingQuest?.description ?? '');
@@ -23,9 +25,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
   const [days, setDays] = useState<number[]>(editingQuest?.days ?? [...DEFAULT_HABIT_DAYS]);
   const [stat, setStat] = useState<Stat>(editingQuest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(editingQuest?.difficulty ?? 'Medium');
-  const [questType, setQuestType] = useState<'habit' | 'onetime'>(
-    editingQuest?.questType === 'one_time' ? 'onetime' : 'habit'
-  );
+  const questType = (editingQuest?.questType ?? initialType) === 'one_time' ? 'onetime' : 'habit';
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -142,7 +142,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
     setSaving(true);
     setSaveError(null);
     try {
-      if (operation === 'archive') await archiveQuest(editingQuest.id);
+      if (operation === 'archive') { await archiveQuest(editingQuest.id); announceArchive(editingQuest.questType); }
       if (operation === 'restore') await restoreQuest(editingQuest.id);
       if (operation === 'delete') await deleteQuest(editingQuest.id);
       onClose();
@@ -187,32 +187,13 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
         {/* Header */}
         <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>
-            {editingQuest ? 'EDIT QUEST' : 'NEW QUEST'}
+            {editingQuest ? 'EDIT QUEST' : questType === 'onetime' ? 'NEW ONE TIME QUEST' : 'NEW DAILY QUEST'}
           </h2>
           <button onClick={() => { if (!confirmDelete && !saving) onClose(); }} disabled={confirmDelete || saving} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
         </div>
         <div style={{ height: 2, background: 'var(--c-accent)', margin: '16px 24px 0', borderRadius: 1, opacity: 0.7 }} />
 
         <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '75vh', overflowY: 'auto' }}>
-          {/* Quest type */}
-          <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 8 }}>TYPE</label>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {(['habit', 'onetime'] as const).map(t => (
-                <button key={t} onClick={() => setQuestType(t)} style={{
-                  flex: 1, padding: '9px', borderRadius: 10,
-                  background: questType === t ? 'var(--c-accent-glass)' : 'transparent',
-                  border: `1px solid ${questType === t ? 'var(--c-accent-border)' : 'var(--c-glass-border)'}`,
-                  fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, letterSpacing: '0.08em',
-                  color: questType === t ? 'var(--c-accent)' : 'var(--c-muted-flat)',
-                  cursor: 'pointer', transition: 'all 0.15s',
-                }}>
-                  {t === 'habit' ? 'HABIT' : 'ONE-TIME'}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Name */}
           <div>
             <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>QUEST NAME</label>
@@ -290,6 +271,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
               <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>TIME</label>
               <input className="field" type="time" value={time} onChange={e => setTime(e.target.value)} />
             </div>
+            {questType === 'habit' && (
             <div>
               <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DAYS</label>
               <div style={{ display: 'flex', gap: 4 }}>
@@ -305,6 +287,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
                 ))}
               </div>
             </div>
+            )}
           </div>
 
           {/* Date — one-time quests only */}

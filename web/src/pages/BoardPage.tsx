@@ -10,7 +10,7 @@ export default function BoardPage() {
   const { user } = useSession();
   return (
     <WebBoard
-      onNewQuest={() => navigate('/quest-editor')}
+      onNewQuest={type => navigate(`/quest-editor?type=${type}`)}
       onEditQuest={id => navigate(`/quest-editor/${id}`)}
       darkMode={darkMode}
       storageScope={`board:${user?.id ?? 'guest'}`}

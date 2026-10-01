@@ -1,0 +1,14 @@
+begin;
+set search_path=public,extensions;
+select plan(6);
+select is((select public from storage.buckets where id='gym-exercise-media'),false,'demonstrations are private');
+select is((select file_size_limit from storage.buckets where id='gym-exercise-media'),20971520::bigint,'20 MiB enforced by bucket');
+select is((select allowed_mime_types from storage.buckets where id='gym-exercise-media'),array['image/gif','video/mp4'],'only GIF and MP4 allowed');
+set local role authenticated;
+set local "request.jwt.claim.sub"='19000000-0000-4000-8000-000000000001';
+select lives_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media','19000000-0000-4000-8000-000000000001/routine/demo.gif')$$,'own folder upload permitted');
+select throws_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media','19000000-0000-4000-8000-000000000099/routine/demo.gif')$$,'42501',null,'foreign folder upload denied');
+set local "request.jwt.claim.sub"='19000000-0000-4000-8000-000000000099';
+select is((select count(*) from storage.objects where bucket_id='gym-exercise-media'),0::bigint,'foreign media cannot be read');
+select * from finish();
+rollback;
