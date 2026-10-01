@@ -1,0 +1,25 @@
+# Delete every quest for the account in E2E_EMAIL/E2E_PASSWORD, sweeping the
+# Daily, One-time and Archived lanes (up to 5 per lane) through the board's own
+# DELETE button and its confirmation modal (testIDs board-delete-modal/-confirm).
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- tapOn:
+    id: "board-lane-tab-daily"
+- repeat:
+    times: 5
+    commands:
+      - runFlow: _delete_one_if_present.yaml
+- tapOn:
+    id: "board-lane-tab-one-time"
+- repeat:
+    times: 5
+    commands:
+      - runFlow: _delete_one_if_present.yaml
+- tapOn:
+    id: "board-lane-tab-archived"
+- repeat:
+    times: 5
+    commands:
+      - runFlow: _delete_one_if_present.yaml
+- takeScreenshot: cleanup-done

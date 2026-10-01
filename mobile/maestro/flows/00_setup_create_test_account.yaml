@@ -1,9 +1,8 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
-# Run this ONCE to create the persistent test account the other flows log
-# into (see _helpers/login.yaml). Re-running after the account exists will
-# fail at the last assertion (Supabase rejects the duplicate signup) —
-# that's expected; use _helpers/login.yaml / auth_login_happy.yaml instead.
+# Run this with E2E_EMAIL, E2E_PASSWORD, and E2E_NAME supplied through the
+# Maestro environment to create a disposable account. Re-running after signup
+# will fail because Supabase rejects the duplicate address.
 - launchApp:
     clearState: true
 - extendedWaitUntil:
@@ -11,11 +10,11 @@ appId: com.anonymous.eiyusystem
     timeout: 30000
 - tapOn: "Register"
 - tapOn: "Kaito Mizuru"
-- inputText: "Maestro Tester"
+- inputText: ${E2E_NAME}
 - tapOn: "you@example.com"
-- inputText: "maestro.tester@eiyu.test"
+- inputText: ${E2E_EMAIL}
 - tapOn: "••••••••"
-- inputText: "TestPass123!"
+- inputText: ${E2E_PASSWORD}
 - hideKeyboard
 - tapOn: "BEGIN JOURNEY"
 - assertVisible: "BOARD"

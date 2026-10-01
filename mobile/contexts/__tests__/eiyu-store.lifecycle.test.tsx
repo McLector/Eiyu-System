@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, waitFor } from '@testing-library/react-native';
+import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
 
@@ -17,6 +17,9 @@ const mockShared = {
   fetchTodayHabits: jest.fn(),
   fetchTodayOneTimeHabits: jest.fn(),
   fetchUpcomingOneTimeHabits: jest.fn(),
+  completeHabitRecovery: jest.fn(),
+  incrementHabitProgress: jest.fn(),
+  undoCompletion: jest.fn(),
   restoreHabit: jest.fn(),
   updateHabit: jest.fn(),
 };
@@ -37,15 +40,33 @@ const mockPreference = {
   setNotificationsEnabled: jest.fn(),
 };
 
+const mockNetwork = {
+  getNetworkStateAsync: jest.fn(),
+  addNetworkStateListener: jest.fn(),
+  listener: null as ((state: { isConnected: boolean | null }) => void | Promise<unknown>) | null,
+};
+mockNetwork.addNetworkStateListener.mockImplementation((listener: typeof mockNetwork.listener) => {
+  mockNetwork.listener = listener;
+  return { remove: jest.fn() };
+});
+const mockCompleteHabit = jest.fn();
+
 jest.doMock('@eiyu/shared', () => ({
   ...jest.requireActual('@eiyu/shared'),
   ...mockShared,
+  completeHabit: mockCompleteHabit,
 }));
 jest.doMock('@/contexts/auth-store', () => ({
   useAuth: () => ({ session: { user: { id: 'user-1' } } }),
 }));
 jest.doMock('@/lib/notifications', () => mockNative);
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
+jest.doMock('@/lib/sound-effects-prefs', () => ({
+  getSoundEffectsEnabled: jest.fn().mockResolvedValue(false),
+  setSoundEffectsEnabled: jest.fn().mockResolvedValue(undefined),
+}));
+jest.doMock('expo-network', () => mockNetwork, { virtual: true });
+jest.doMock('expo-audio', () => ({ useAudioPlayer: () => ({ seekTo: jest.fn(), play: jest.fn(), volume: 1 }) }));
 
 const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../eiyu-store');
 
@@ -75,6 +96,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   currentStore = null;
   mockShared.archiveHabit.mockResolvedValue(undefined);
+  mockShared.completeHabitRecovery.mockResolvedValue(undefined);
+  mockShared.incrementHabitProgress.mockResolvedValue(0);
+  mockCompleteHabit.mockResolvedValue(undefined);
+  mockShared.undoCompletion.mockResolvedValue(undefined);
   mockShared.createHabit.mockResolvedValue('habit-1');
   mockShared.deleteHabit.mockResolvedValue(undefined);
   mockShared.fetchAllActiveHabits.mockResolvedValue([
@@ -99,9 +124,17 @@ beforeEach(() => {
   mockNative.requestNotificationPermissions.mockResolvedValue(true);
   mockNative.scheduleHabitReminders.mockResolvedValue(undefined);
   mockNative.scheduleOneTimeReminder.mockResolvedValue(undefined);
+  mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: true, isInternetReachable: true });
+  mockNetwork.addNetworkStateListener.mockImplementation((listener: typeof mockNetwork.listener) => {
+    mockNetwork.listener = listener;
+    return { remove: jest.fn() };
+  });
+  mockNetwork.listener = null;
 });
 
-afterEach(() => {
+afterEach(async () => {
+  cleanup();
+  await activeClient?.cancelQueries();
   activeClient?.clear();
   activeClient = null;
   jest.clearAllMocks();
@@ -269,5 +302,54 @@ describe('mobile lifecycle reminder permission policy', () => {
     expect(currentStore?.notificationsEnabled).toBe(false);
     expect(currentStore?.reminderWarning).toBeNull();
     expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
+  });
+});
+
+describe('offline quest recovery', () => {
+  it('formats Supabase plain-object transport errors as friendly offline feedback', async () => {
+    await mountStore();
+    await waitFor(() => expect(currentStore?.user.quests).toHaveLength(1));
+    await act(async () => { await Promise.resolve(); });
+    mockCompleteHabit.mockRejectedValueOnce({ message: 'Network request failed', code: '', details: null, hint: null });
+
+    await act(async () => {
+      currentStore!.toggleQuest('habit-1');
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(currentStore?.questsError).toMatch(/offline.*wasn't saved.*saved quests are still shown/i));
+    expect(currentStore?.user.quests[0].completed).toBe(false);
+    expect(currentStore?.questsError).not.toContain('Network request failed');
+  });
+
+  it('keeps cached quests after an offline completion failure and refetches once on reconnect', async () => {
+    await mountStore();
+    await waitFor(() => expect(currentStore?.user.quests).toHaveLength(1));
+    await waitFor(() => expect(currentStore?.user.timeZone).toBe('UTC'));
+    expect(mockShared.fetchTodayHabits).toHaveBeenCalledTimes(1);
+    await act(async () => { await Promise.resolve(); });
+    mockCompleteHabit.mockRejectedValueOnce(new TypeError('Network request failed'));
+
+    await act(async () => {
+      currentStore!.toggleQuest('habit-1');
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(currentStore?.questsError).toMatch(/offline.*wasn't saved.*saved quests are still shown/i));
+    expect(currentStore?.user.quests[0].completed).toBe(false);
+    expect(currentStore?.questsHaveCachedData).toBe(true);
+    expect(currentStore?.questsError).not.toContain('Network request failed');
+
+    await waitFor(() => expect(mockNetwork.addNetworkStateListener).toHaveBeenCalled());
+    expect(mockNetwork.listener).not.toBeNull();
+    await act(async () => { mockNetwork.listener?.({ isConnected: false }); });
+    await act(async () => {
+      await mockNetwork.listener?.({ isConnected: true });
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(mockShared.fetchTodayHabits).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(currentStore?.questsError).toBeNull());
+    expect(currentStore?.user.quests[0].completed).toBe(false);
+
+    expect(mockShared.fetchTodayHabits).toHaveBeenCalledTimes(2);
   });
 });

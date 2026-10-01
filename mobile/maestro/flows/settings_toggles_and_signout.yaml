@@ -1,26 +1,64 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
+# Settings is opened from the account menu (top-right); Logout also lives there.
 - runFlow: _helpers/login.yaml
-- tapOn: "SETTINGS"
-- assertVisible: "Settings"
+- tapOn:
+    point: "75%, 5%"
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 8000
+- tapOn: "Settings"
+- assertVisible: "Quest History"
 
-# Theme toggle should flip the label and not crash any currently-mounted
-# screen's themed styles.
+# Theme toggle flips its label and re-themes the screen without crashing.
 - tapOn: "Dark Theme"
 - assertVisible: "Light Theme"
 - tapOn: "Light Theme"
 - assertVisible: "Dark Theme"
 
-- tapOn: "Quest Reminders"
-- tapOn: "Sound Effects"
+# Sound Effects: normalize to on, leave Settings, and verify the stored state
+# survives reopening the sheet.
+- runFlow:
+    when:
+      visible:
+        id: settings-sound-effects
+        checked: false
+    commands:
+      - tapOn:
+          id: settings-sound-effects
+- assertVisible:
+    id: settings-sound-effects
+    checked: true
+- tapOn:
+    point: "93%, 6%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: "75%, 5%"
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 8000
+- tapOn: "Settings"
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible:
+    id: settings-sound-effects
+    checked: true
+- takeScreenshot: settings-sound-after-reopen
 
-# BUG (visual): this native Alert.alert dialog renders with the OS's
-# default light theme (white background) against the app's dark navy
-# aesthetic elsewhere - a jarring inconsistency. See build log.
-- tapOn: "Export Data"
-- assertVisible: "Exporting data..."
-- tapOn: "OK"
-
-- tapOn: "Sign Out"
-- assertVisible: "EIYU SYSTEM"
+# Logout returns to the auth screen.
+- tapOn:
+    point: "93%, 6%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    point: "75%, 5%"
+- extendedWaitUntil:
+    visible: "Logout"
+    timeout: 8000
+- tapOn: "Logout"
+- extendedWaitUntil:
+    visible: "EIYU SYSTEM"
+    timeout: 15000
 - assertNotVisible: "BOARD"
+- takeScreenshot: after-logout

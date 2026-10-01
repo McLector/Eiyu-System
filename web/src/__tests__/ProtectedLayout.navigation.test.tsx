@@ -45,7 +45,7 @@ describe('Phase 4 account navigation', () => {
     expect(screen.getByRole('navigation', { name: 'Primary navigation' })).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: 'Primary navigation' })).getAllByRole('link')).toHaveLength(3);
     expect(screen.queryByRole('link', { name: /settings/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Status' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'STATUS' })).toBeInTheDocument();
   });
 
   it('opens exactly Edit details, Settings, and Logout from the real identity trigger', async () => {

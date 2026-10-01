@@ -1,0 +1,35 @@
+# C1 (Android leg): same account as the web leg. Env: E2E_EMAIL, E2E_PASSWORD.
+# Precondition: web created one-time quest "C1 Web OneTime" and completed it;
+# the account also has the daily habit "E2E FontScale Quest ...".
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- waitForAnimationToEnd:
+    timeout: 6000
+- tapOn:
+    id: "board-lane-tab-one-time"
+- assertVisible: "C1 Web OneTime.*"
+- takeScreenshot: c1-android-sees-web-onetime
+# archive the daily habit here, delete the one-time here
+- tapOn:
+    id: "board-lane-tab-daily"
+- tapOn:
+    text: "ARCHIVE"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "board-lane-tab-one-time"
+- tapOn:
+    text: "DELETE"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "board-delete-confirm"
+    timeout: 8000
+- tapOn:
+    id: "board-delete-confirm"
+- waitForAnimationToEnd:
+    timeout: 6000
+- assertNotVisible: "C1 Web OneTime"
+- takeScreenshot: c1-android-after-changes

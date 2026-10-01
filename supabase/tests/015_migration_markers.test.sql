@@ -1,0 +1,98 @@
+begin;
+select no_plan();
+
+-- Migration 029: direct XP writes and internal trigger helpers stay private.
+select ok(has_table_privilege('authenticated', 'public.stats', 'SELECT'),
+  'authenticated can still read owned stats');
+select ok(not has_table_privilege('authenticated', 'public.stats', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.stats', 'INSERT'),
+  'authenticated cannot write XP stats directly');
+select ok(not has_function_privilege('authenticated', 'public.increment_stat_xp(public.stat_key,integer)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.increment_stat_xp(public.stat_key,integer)', 'EXECUTE'),
+  'XP helper is not callable by clients');
+select ok(not has_function_privilege('authenticated', 'public.is_valid_time_zone(text)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.validate_profile_time_zone()', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.set_habit_schedule_start()', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.record_habit_schedule_version()', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.record_habit_archive_interval()', 'EXECUTE'),
+  'trigger helpers are not executable by authenticated clients');
+
+-- Migration 030: quota state is isolated and Edge-only entry points are narrow.
+select has_schema('private', 'private quota schema exists');
+select ok(not has_schema_privilege('authenticated', 'private', 'USAGE')
+    and not has_schema_privilege('anon', 'private', 'USAGE')
+    and not has_schema_privilege('service_role', 'private', 'USAGE'),
+  'private schema is not exposed to PostgREST roles');
+select ok((select relrowsecurity from pg_class where oid = 'private.ai_logical_requests'::regclass)
+    and (select relrowsecurity from pg_class where oid = 'private.ai_user_daily_usage'::regclass)
+    and (select relrowsecurity from pg_class where oid = 'private.ai_provider_daily_usage'::regclass)
+    and (select relrowsecurity from pg_class where oid = 'private.ai_provider_attempts'::regclass)
+    and (select relrowsecurity from pg_class where oid = 'private.ai_pending_weekly_regenerations'::regclass),
+  'every private quota ledger table has row-level security enabled');
+select ok(has_function_privilege('service_role', 'public.ai_begin_request(uuid,text,uuid,date)', 'EXECUTE')
+    and has_function_privilege('service_role', 'public.ai_reserve_next_attempt(uuid,integer)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.ai_begin_request(uuid,text,uuid,date)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.ai_begin_request(uuid,text,uuid,date)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.ai_reserve_next_attempt(uuid,integer)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.ai_reserve_next_attempt(uuid,integer)', 'EXECUTE'),
+  'only service_role can reserve AI logical requests and provider attempts');
+select ok(has_column_privilege('authenticated', 'public.weekly_summaries', 'summary', 'UPDATE')
+    and not has_column_privilege('authenticated', 'public.weekly_summaries', 'regenerate_count', 'UPDATE')
+    and not has_column_privilege('authenticated', 'public.weekly_summaries', 'last_regenerated_date', 'UPDATE')
+    and has_column_privilege('authenticated', 'public.weekly_summaries', 'summary', 'INSERT')
+    and not has_column_privilege('authenticated', 'public.weekly_summaries', 'regenerate_count', 'INSERT'),
+  'client weekly-summary writes cannot change server-owned quota counters');
+
+-- Migration 031: the latest profile and quest validators must remain attached.
+select ok(to_regprocedure('public.trim_profile_text(text)') is not null
+    and to_regprocedure('public.validate_profile_edit_text()') is not null
+    and to_regprocedure('public.update_profile(text,text)') is not null
+    and to_regprocedure('public.validate_quest_name_edit()') is not null,
+  'latest profile and quest validators exist');
+select ok(exists (select 1 from pg_trigger where tgrelid = 'public.profiles'::regclass
+      and tgname = 'profiles_validate_edit_text' and not tgisinternal)
+    and exists (select 1 from pg_trigger where tgrelid = 'public.habits'::regclass
+      and tgname = 'habits_validate_name_length' and not tgisinternal)
+    and exists (select 1 from pg_trigger where tgrelid = 'public.long_quests'::regclass
+      and tgname = 'long_quests_validate_name_length' and not tgisinternal),
+  'profile and both quest-name validation triggers are attached');
+select ok(not has_function_privilege('anon', 'public.trim_profile_text(text)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.trim_profile_text(text)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.update_profile(text,text)', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.update_profile(text,text)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.validate_quest_name_edit()', 'EXECUTE'),
+  'validator helpers are not public trigger-call surfaces');
+
+-- Prove the catalog body marker notices replacement with an older weak body,
+-- while the nested exception block restores the latest definition on rollback.
+create function pg_temp.weaker_name_body_is_rejected()
+returns boolean language plpgsql as $test$
+declare
+  v_old_body_was_rejected boolean := false;
+begin
+  begin
+    execute $ddl$create or replace function public.validate_quest_name_edit()
+      returns trigger language plpgsql security definer set search_path = ''
+      as $body$begin return new; end;$body$$ddl$;
+    select pg_get_functiondef(p.oid) ilike '%80 characters or fewer%'
+      into v_old_body_was_rejected
+      from pg_proc p where p.oid = to_regprocedure('public.validate_quest_name_edit()');
+    v_old_body_was_rejected := not coalesce(v_old_body_was_rejected, false);
+    raise exception using errcode = 'P0001', message = 'rollback temporary marker mutation';
+  exception when sqlstate 'P0001' then
+    null;
+  end;
+  return v_old_body_was_rejected;
+end
+$test$;
+
+-- SELECT emits the TAP result. PERFORM inside DO counts an assertion while
+-- discarding its output, leaving the runner with an incomplete test plan.
+select ok(pg_temp.weaker_name_body_is_rejected(),
+  'a weaker replacement body fails the migration 031 catalog capability marker');
+select ok(pg_get_functiondef(to_regprocedure('public.validate_quest_name_edit()'))
+    ilike '%80 characters or fewer%',
+  'the latest validator body is restored after the rollback-only marker probe');
+
+select * from finish();
+rollback;

@@ -1,4 +1,4 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
@@ -9,6 +9,10 @@ appId: com.anonymous.eiyusystem
 - tapOn: "e.g. Code for 20 minutes"
 - inputText: "delete me easy version"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE QUEST"
 - assertVisible: "Habit To Edit Then Delete"
 
@@ -19,17 +23,22 @@ appId: com.anonymous.eiyusystem
 - tapOn:
     id: "quest-edit-trigger"
 - assertVisible: "EDIT QUEST"
-- assertVisible: "SAVE CHANGES"
-- assertVisible: "DELETE"
 - tapOn: "e.g. Code for 2 hours"
 - eraseText
 - inputText: "Habit After Edit"
 - hideKeyboard
-- tapOn: "SAVE CHANGES"
+# SAVE CHANGES and the delete/archive buttons sit below the fold.
+- scrollUntilVisible:
+    element: "SAVE CH.*"
+    direction: DOWN
+    timeout: 8000
+- assertVisible:
+    id: "quest-delete-permanent"
+- tapOn: "SAVE CH.*"
 - assertVisible: "Habit After Edit"
 - assertNotVisible: "Habit To Edit Then Delete"
 
 - tapOn:
     id: "quest-edit-trigger"
-- tapOn: "DELETE"
+- runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Habit After Edit"

@@ -1,0 +1,19 @@
+appId: com.mclector.eiyusystem
+---
+# Release-only setup: this flow deliberately does not use the development
+# server-picker or dev-client launch helpers.
+- launchApp:
+    clearState: false
+- runFlow:
+    when:
+      visible: "EIYU SYSTEM"
+    commands:
+      - tapOn: "Email address"
+      - inputText: ${E2E_EMAIL}
+      - tapOn: "Password"
+      - inputText: ${E2E_PASSWORD}
+      - hideKeyboard
+      - tapOn: "ENTER SYSTEM"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000

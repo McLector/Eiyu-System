@@ -1,0 +1,10 @@
+# A13 check (a later day): after the account's midnight, the undone habit
+# should surface a recovery quest ("RECOVERY REQUIRED" / "STREAK FROZEN").
+# Env: E2E_EMAIL, E2E_PASSWORD
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: a13-check-board
+- assertVisible: ".*RECOVERY.*"

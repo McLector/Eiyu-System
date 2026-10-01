@@ -77,6 +77,17 @@ describe('createLongQuest', () => {
 
     expect(supabase.from).not.toHaveBeenCalled();
   });
+
+  it('rejects an 81-code-point quest name before inserting anything', async () => {
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return { insert: jest.fn() };
+      throw new Error(`unexpected table ${table}`);
+    });
+    await expect(createLongQuest('user-1', {
+      name: '😀'.repeat(81), stat: 'INT', stages: [{ name: 'Plan' }],
+    })).rejects.toThrow(/80 characters/);
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
 });
 
 describe('fetchLongQuests', () => {
@@ -158,6 +169,28 @@ describe('updateLongQuest', () => {
     });
 
     await expect(updateLongQuest('lq-1', { name: 'Q', stat: 'STR' })).rejects.toThrow('boom');
+  });
+
+  it('rejects an over-limit rename before a Supabase write', async () => {
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return { update: jest.fn() };
+      throw new Error(`unexpected table ${table}`);
+    });
+    await expect(updateLongQuest('lq-1', { name: '😀'.repeat(81), stat: 'STR' })).rejects.toThrow(/80 characters/);
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('allows a stat-only edit to an unchanged over-limit legacy name', async () => {
+    const updated = jest.fn(() => chainable({ error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return { update: updated };
+      throw new Error(`unexpected table ${table}`);
+    });
+    const legacyName = '🧭'.repeat(81);
+    await expect((updateLongQuest as (...args: any[]) => Promise<void>)('lq-legacy', {
+      name: legacyName, stat: 'DEX', description: 'Keep working on it',
+    }, legacyName)).resolves.toBeUndefined();
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ name: legacyName, stat: 'DEX' }));
   });
 });
 

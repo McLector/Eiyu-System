@@ -1,0 +1,40 @@
+# E2E web pilot: fresh signup against the local Vite dev server (talks to the
+# live Supabase project). Env: E2E_EMAIL, E2E_PASSWORD, E2E_NAME.
+# On Maestro web, aria-labels surface as element ids (`id:`), not text.
+url: http://localhost:5173
+---
+- launchApp:
+    clearState: true
+- openLink: http://localhost:5173/auth
+- assertVisible: "Enter the system"
+- takeScreenshot: web-00-auth-landing
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+- tapOn:
+    id: "Display name"
+- inputText: ${E2E_NAME}
+- tapOn:
+    id: "Email address"
+- inputText: ${E2E_EMAIL}
+- tapOn:
+    id: "Password"
+- inputText: ${E2E_PASSWORD}
+- tapOn:
+    id: "Confirm password"
+- inputText: ${E2E_PASSWORD}
+- takeScreenshot: web-00-signup-filled
+# The password-strength meter pushes the terms row below the visible viewport
+# and the web hierarchy only lists on-screen elements, so scroll to it first.
+# "&" in an id is escaped to "&amp;" by the driver, so match around it.
+- scrollUntilVisible:
+    element:
+      id: "I agree to the Privacy Policy.*Terms"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "I agree to the Privacy Policy.*Terms"
+- tapOn: "BEGIN JOURNEY"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+- takeScreenshot: web-00-board-after-signup

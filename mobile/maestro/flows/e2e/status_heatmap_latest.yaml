@@ -1,0 +1,7 @@
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- tapOn: "STATUS"
+- assertVisible: "LAST 6 MONTHS"
+- assertVisible:
+    id: "status-heatmap-today"

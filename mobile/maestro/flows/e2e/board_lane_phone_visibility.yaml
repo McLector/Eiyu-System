@@ -1,0 +1,29 @@
+appId: com.mclector.eiyusystem
+---
+# Run individually at the requested system font scale with a disposable
+# account. HABIT_NAME is supplied by the caller for each scale pass.
+- runFlow: ../_helpers/login.yaml
+- runFlow:
+    file: _create_habit.yaml
+    env:
+      HABIT_NAME: ${HABIT_NAME}
+- assertVisible:
+    id: "board-lane-tab-daily"
+- assertVisible:
+    id: "board-lane-tab-one-time"
+- assertVisible:
+    id: "board-lane-tab-all-habits"
+- assertVisible:
+    id: "board-lane-tab-archived"
+- tapOn:
+    id: "board-lane-tab-all-habits"
+- assertVisible: ${HABIT_NAME}
+- tapOn:
+    id: "board-lane-tab-archived"
+- assertVisible: "ARCHIVED"
+- tapOn:
+    id: "board-lane-tab-daily"
+- tapOn:
+    id: "quest-edit-trigger"
+- runFlow: ../_helpers/delete_open_quest.yaml
+- assertNotVisible: ${HABIT_NAME}

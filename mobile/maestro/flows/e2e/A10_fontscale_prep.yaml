@@ -1,0 +1,39 @@
+# A10 prep (normal font scale): give the account one habit and one long quest.
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- runFlow:
+    file: _create_habit.yaml
+    env:
+      HABIT_NAME: "E2E FontScale Quest With A Rather Long Name"
+
+# Seed the exact maximum accepted profile name and one Long Quest before the
+# font-scale transition. Keep this fixture private to the disposable account.
+- evalScript: ${output.longName = 'M'.repeat(80)}
+- tapOn:
+    id: "account-trigger"
+- tapOn: "Edit details"
+- tapOn: "Display name"
+- eraseText: 100
+- inputText: ${output.longName}
+- hideKeyboard
+- tapOn: "SAVE"
+- assertVisible: ${output.longName}
+
+- tapOn: "QUESTS"
+- tapOn: "ADD A LONG QUEST"
+- tapOn: "e.g. Ship a Side Project"
+- inputText: "E2E FontScale Long Quest"
+- hideKeyboard
+- tapOn: "Stage 1"
+- inputText: "First milestone"
+- hideKeyboard
+- tapOn: "Stage 2"
+- inputText: "Second milestone"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE LONG QUEST"
+    direction: DOWN
+    timeout: 8000
+- tapOn: "CREATE LONG QUEST"
+- assertVisible: "E2E FontScale Long Quest"

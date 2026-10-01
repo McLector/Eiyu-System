@@ -1,24 +1,55 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "QUESTS"
 - tapOn: "ADD A LONG QUEST"
-- assertVisible: "CREATE LONG QUEST"
+- assertVisible: "NEW LONG QUEST"
 
 # No name, no stages filled - blocked.
+- scrollUntilVisible:
+    element: "CREATE LONG QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE LONG QUEST"
 - assertVisible: "NEW LONG QUEST"
 
 # Name only, zero stages filled (MIN_STAGES = 2) - still blocked.
+# The sheet is scrolled down to reach CREATE LONG QUEST; scroll back to the top.
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 85%"
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 85%"
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 85%"
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "Name Only No Stages"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE LONG QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE LONG QUEST"
 - assertVisible: "NEW LONG QUEST"
 
 # Name + exactly one stage filled - still below MIN_STAGES, still blocked.
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 85%"
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 85%"
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 85%"
 - tapOn: "Stage 1"
 - inputText: "Only one stage"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE LONG QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE LONG QUEST"
 - assertVisible: "NEW LONG QUEST"

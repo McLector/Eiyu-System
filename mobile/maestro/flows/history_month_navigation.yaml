@@ -1,32 +1,45 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
+# Date-independent: computes the month labels from today's date. History is
+# reached through the account menu -> Settings -> Quest History (Settings is no
+# longer a tab).
+- evalScript: |
+    ${
+      var names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var d = new Date();
+      output.cur = names[d.getMonth()] + ' ' + d.getFullYear();
+      var b1 = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      output.back1 = names[b1.getMonth()] + ' ' + b1.getFullYear();
+      var b9 = new Date(d.getFullYear(), d.getMonth() - 9, 1);
+      output.back9 = names[b9.getMonth()] + ' ' + b9.getFullYear();
+    }
 - runFlow: _helpers/login.yaml
-- tapOn: "SETTINGS"
+- tapOn:
+    point: "75%, 5%"
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 8000
+- tapOn: "Settings"
 - tapOn: "Quest History"
 - assertVisible: "HISTORY"
 - assertVisible: "TODAY"
-- assertVisible: "August 2026"
+- assertVisible: ${output.cur}
 
-# Navigate back a few months and forward past the starting month - the
-# calendar grid and weekday header should stay aligned, no crash on
-# year rollover (e.g. going back past January). The chevrons are icon-only
-# (no text), so a fixed screen-percentage point was used previously - it
-# silently missed the button entirely (confirmed: month never changed)
-# once the safe-area scaffold fix shifted the sheet's on-screen position.
-# testID is the reliable fix, not a different point guess.
+# Back one month, then nine months (crosses a year boundary for any date
+# before October), then forward again to today's month. The chevrons are
+# icon-only, so they are addressed by testID.
 - tapOn:
     id: "history-prev-month"
-- assertVisible: "July 2026"
-- tapOn:
-    id: "history-prev-month"
-- assertVisible: "June 2026"
-- tapOn:
-    id: "history-prev-month"
-- assertVisible: "May 2026"
-- tapOn:
-    id: "history-next-month"
-- tapOn:
-    id: "history-next-month"
-- tapOn:
-    id: "history-next-month"
-- assertVisible: "August 2026"
+- assertVisible: ${output.back1}
+- repeat:
+    times: 8
+    commands:
+      - tapOn:
+          id: "history-prev-month"
+- assertVisible: ${output.back9}
+- repeat:
+    times: 9
+    commands:
+      - tapOn:
+          id: "history-next-month"
+- assertVisible: ${output.cur}

@@ -25,4 +25,19 @@ describe('profile editing validation', () => {
     expect(() => normalizeProfileEdit({ displayName: `${original.displayName}!`, userClass: 'Ranger' }, original))
       .toThrow(/80 characters/);
   });
+
+  it('rejects invisible-only edited profile values but preserves internal joiners', () => {
+    for (const invisible of ['\u200b', '\u200c', '\u200d', '\u2060', '\ufeff']) {
+      expect(validateProfileText(invisible, 'Display name')).toMatch(/display name/i);
+    }
+    expect(normalizeProfileEdit({ displayName: '  👨‍👩‍👧‍👦  ', userClass: '  ک\u200cتاب  ' })).toEqual({
+      displayName: '👨‍👩‍👧‍👦', userClass: 'ک\u200cتاب',
+    });
+  });
+
+  it('preserves an unchanged 81-code-point legacy name but rejects a new over-limit value', () => {
+    const long = '😀'.repeat(81);
+    expect(normalizeProfileEdit({ displayName: long, userClass: 'Ranger' }, { displayName: long, userClass: 'Old' }).displayName).toBe(long);
+    expect(() => normalizeProfileEdit({ displayName: long, userClass: 'Ranger' })).toThrow(/80 characters/);
+  });
 });

@@ -12,7 +12,9 @@ import {
   STAT_COLORS,
   formatError,
   isStageDescriptionWithinLimit,
+  normalizeNameBoundaries,
   suggestStages,
+  validateQuestName,
   type Stat,
 } from '@eiyu/shared';
 
@@ -42,6 +44,7 @@ export default function LongQuestEditorScreen() {
   const [error, setError] = useState<string | null>(null);
   const [suggestingStages, setSuggestingStages] = useState(false);
   const [suggestStagesError, setSuggestStagesError] = useState<string | null>(null);
+  const nameError = quest?.name === name ? null : validateQuestName(name);
 
   const handleSuggestStages = async () => {
     if (!name.trim() || suggestingStages) return;
@@ -79,7 +82,7 @@ export default function LongQuestEditorScreen() {
   const filledStages = stages
     .map(s => ({ ...s, name: s.name.trim() }))
     .filter(s => s.name.length > 0);
-  const valid = name.trim().length > 0 && filledStages.length >= MIN_STAGES;
+  const valid = !nameError && filledStages.length >= MIN_STAGES;
 
   const handleSave = async () => {
     if (!valid || submitting) return;
@@ -88,7 +91,7 @@ export default function LongQuestEditorScreen() {
     try {
       await saveLongQuest(
         {
-          name: name.trim(),
+          name: quest?.name === name ? name : normalizeNameBoundaries(name),
           stat,
           description: description.trim() || undefined,
           stages: filledStages.map(s => ({ id: s.id, name: s.name, description: s.description })),
@@ -120,14 +123,17 @@ export default function LongQuestEditorScreen() {
 
         <Screen edges={['bottom']} fill={false} contentContainerStyle={{ gap: 16 }}>
           <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME</Text>
+            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME <Text style={{ color: theme.dim, fontSize: 10 }}>(required)</Text></Text>
             <TextInput
               style={[styles.field, fieldStyle]}
               placeholder="e.g. Ship a Side Project"
               placeholderTextColor={theme.dim}
               value={name}
               onChangeText={setName}
+              accessibilityLabel="Long quest name"
+              accessibilityHint={nameError ?? undefined}
             />
+            {nameError && <Text testID="long-quest-name-error" accessibilityRole="alert" style={styles.errorText}>{nameError}</Text>}
           </View>
 
           <View>
@@ -201,6 +207,8 @@ export default function LongQuestEditorScreen() {
                   </Text>
                   <View style={styles.stageFields}>
                     <TextInput
+                      testID={`long-quest-stage-name-${i + 1}`}
+                      accessibilityLabel={`Stage ${i + 1}: ${s.name || 'empty'}`}
                       style={[styles.field, fieldStyle]}
                       placeholder={`Stage ${i + 1}`}
                       placeholderTextColor={theme.dim}
@@ -239,6 +247,7 @@ export default function LongQuestEditorScreen() {
           {error && <Text style={styles.errorText}>{error}</Text>}
 
           <Pressable
+            testID="long-quest-save"
             disabled={!valid || submitting}
             onPress={handleSave}
             style={[

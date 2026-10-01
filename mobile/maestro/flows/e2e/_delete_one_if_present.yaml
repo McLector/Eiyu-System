@@ -1,0 +1,17 @@
+appId: com.mclector.eiyusystem
+---
+- runFlow:
+    when:
+      visible: "DELETE"
+    commands:
+      - tapOn:
+          text: "DELETE"
+          index: 0
+      - extendedWaitUntil:
+          visible:
+            id: "board-delete-confirm"
+          timeout: 8000
+      - tapOn:
+          id: "board-delete-confirm"
+      - waitForAnimationToEnd:
+          timeout: 5000

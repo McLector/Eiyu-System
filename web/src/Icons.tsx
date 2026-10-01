@@ -62,7 +62,7 @@ export function BoardIcon({ active }: { active: boolean }) {
 export function StatusIcon({ active }: { active: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
-      role="img" aria-label="Status"
+      aria-hidden="true"
       stroke={active ? 'var(--c-accent)' : 'var(--c-nav-dim)'}
       strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="9" cy="8" r="3" />

@@ -4,6 +4,7 @@ import { supabase } from '../supabase/client';
 import { Database } from '../types/database';
 import { Difficulty, Quest, QuestType, Stat } from '../types/eiyu';
 import { initializeAccountTimeZone } from './profile';
+import { normalizeEditableQuestName } from '../logic/validation';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
 type RecoveryRow = Database['public']['Functions']['get_open_habit_recoveries']['Returns'][number];
@@ -209,10 +210,11 @@ function habitColumns(input: HabitInput) {
 }
 
 export async function createHabit(userId: string, input: HabitInput): Promise<string> {
+  const name = normalizeEditableQuestName(input.name);
   await initializeAccountTimeZone();
   const { data, error } = await supabase
     .from('habits')
-    .insert({ user_id: userId, ...habitColumns(input) })
+    .insert({ user_id: userId, ...habitColumns({ ...input, name }) })
     .select('id')
     .single();
   if (error) throw error;
@@ -268,11 +270,12 @@ export async function fetchTodayOneTimeHabits(
   return (data ?? []).map(h => ({ id: h.id, name: h.name, time: h.reminder_time.slice(0, 5) }));
 }
 
-export async function updateHabit(id: string, input: HabitInput) {
+export async function updateHabit(id: string, input: HabitInput, originalName?: string) {
+  const name = normalizeEditableQuestName(input.name, originalName);
   await initializeAccountTimeZone();
   const { data, error } = await supabase
     .from('habits')
-    .update(habitColumns(input))
+    .update(habitColumns({ ...input, name }))
     .eq('id', id)
     .select('id')
     .maybeSingle();

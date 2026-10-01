@@ -1,4 +1,4 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
@@ -12,9 +12,17 @@ appId: com.anonymous.eiyusystem
 - extendedWaitUntil:
     notVisible: "THINKING.*"
     timeout: 20000
-# Either real suggestion chips appear, or a readable error - never a
-# silent no-op. Whichever happens, the Penalty field must remain
-# editable by hand regardless (R-64: AI output is never auto-saved).
+# This is the live-success path: all three generated choices must appear.
+# Each chip remains editable by tapping it, and AI output is never auto-saved.
+- assertVisible:
+    id: "quest-ai-suggestion-1"
+    text: ".+"
+- assertVisible:
+    id: "quest-ai-suggestion-2"
+    text: ".+"
+- assertVisible:
+    id: "quest-ai-suggestion-3"
+    text: ".+"
 - tapOn: "e.g. Code for 20 minutes"
 - inputText: "Manually typed override"
 - assertVisible: "Manually typed override"

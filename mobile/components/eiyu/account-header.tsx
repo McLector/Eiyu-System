@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { AccessibilityInfo, findNodeHandle, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,6 +19,8 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
   const [userClass, setUserClass] = useState(user.userClass);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [discardPrompt, setDiscardPrompt] = useState(false);
+  const keepEditingRef = useRef<View>(null);
   const saving = useRef(false);
   const dirty = displayName !== user.name || userClass !== user.userClass;
 
@@ -34,10 +36,12 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
       onClose();
       return;
     }
-    Alert.alert('Discard changes?', 'Your unsaved profile changes will be lost.', [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: onClose },
-    ]);
+    setDiscardPrompt(true);
+  };
+
+  const focusKeepEditing = () => {
+    const target = keepEditingRef.current && findNodeHandle(keepEditingRef.current);
+    if (target != null) AccessibilityInfo.setAccessibilityFocus(target);
   };
 
   const save = async () => {
@@ -60,6 +64,7 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
   };
 
   return (
+    <>
     <Modal visible transparent animationType="slide" onRequestClose={requestClose}>
       <View style={[styles.modalRoot, { backgroundColor: theme.overlay }]}>
         <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" style={[styles.sheet, { backgroundColor: theme.modal, borderColor: theme.glassBorder, paddingBottom: 30 + insets.bottom }]}>
@@ -79,6 +84,40 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
         </KeyboardAwareScrollView>
       </View>
     </Modal>
+    <Modal
+      visible={discardPrompt}
+      transparent
+      animationType="fade"
+      testID="profile-discard-modal"
+      onShow={focusKeepEditing}
+      onRequestClose={() => setDiscardPrompt(false)}>
+        <View style={[styles.promptOverlay, { backgroundColor: theme.overlay }]}>
+        <View
+          accessibilityViewIsModal
+          style={[styles.promptCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
+          <Text accessibilityRole="alert" accessibilityLabel="Discard changes?" style={[styles.sheetTitle, { color: theme.text, fontFamily: fonts.display }]}>Discard changes?</Text>
+          <Text style={[styles.promptText, { color: theme.muted, fontFamily: fonts.body }]}>Your unsaved profile changes will be lost.</Text>
+          <View style={styles.actions}>
+            <Pressable
+              ref={keepEditingRef}
+              accessibilityRole="button"
+              accessibilityLabel="Keep Editing"
+              onPress={() => setDiscardPrompt(false)}
+              style={styles.promptButton}>
+              <Text style={[styles.actionText, { color: theme.accent, fontFamily: fonts.display }]}>KEEP EDITING</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Discard Changes"
+              onPress={() => { setDiscardPrompt(false); onClose(); }}
+              style={[styles.promptButton, { borderColor: '#f87171' }]}>
+              <Text style={[styles.actionText, { color: '#f87171', fontFamily: fonts.display }]}>DISCARD</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -112,8 +151,8 @@ export default function AccountHeader() {
   return (
     <>
       <View style={[styles.header, { backgroundColor: theme.nav, borderBottomColor: theme.navBorder, paddingTop: insets.top }]}>
-        <View style={styles.brand}><Text style={[styles.brandMark, { color: theme.accent, borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>英</Text><Text style={[styles.brandText, { color: theme.text, fontFamily: fonts.display }]}>EIYU</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel={accountLabel} accessibilityHint="Open account menu" onPress={() => { setLogoutError(null); setSheet('menu'); }} style={styles.accountTrigger}>
+        <View style={styles.brand}><Text testID="account-brand-mark" style={[styles.brandMark, { color: theme.accent, borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>英</Text><Text style={[styles.brandText, { color: theme.text, fontFamily: fonts.display }]}>EIYU</Text></View>
+        <Pressable testID="account-trigger" accessibilityRole="button" accessibilityLabel={accountLabel} accessibilityHint="Open account menu" onPress={() => { setLogoutError(null); setSheet('menu'); }} style={styles.accountTrigger}>
           <View style={[styles.avatar, { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder }]}><Text style={[styles.avatarText, { color: theme.accent, fontFamily: fonts.display }]}>{profileInitials(user.name)}</Text></View>
           <View style={styles.accountCopy}><Text numberOfLines={1} style={[styles.accountName, { color: theme.text, fontFamily: fonts.display }]}>{user.name}</Text><Text numberOfLines={1} style={[styles.accountClass, { color: theme.muted, fontFamily: fonts.body }]}>{user.userClass}</Text></View>
           <Text style={[styles.rank, { color: rankCfg.color, borderColor: rankCfg.color }]}>{user.rank}</Text>
@@ -135,7 +174,7 @@ export default function AccountHeader() {
       <Modal visible={sheet === 'settings'} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
         <View style={[styles.settingsRoot, { backgroundColor: theme.body, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
           <View style={[styles.settingsHeading, { backgroundColor: theme.nav, borderBottomColor: theme.navBorder }]}>
-            <Text style={[styles.sheetTitle, { color: theme.text, fontFamily: fonts.display }]}>SETTINGS</Text>
+          <Text accessible accessibilityRole="header" style={[styles.sheetTitle, { color: theme.text, fontFamily: fonts.display }]}>SETTINGS</Text>
             <Pressable accessibilityRole="button" accessibilityLabel="Close Settings" onPress={() => setSheet(null)}><Text style={[styles.close, { color: theme.muted }]}>×</Text></Pressable>
           </View>
           <SettingsContent onClose={() => setSheet(null)} embedded />
@@ -146,9 +185,9 @@ export default function AccountHeader() {
 }
 
 const styles = StyleSheet.create({
-  header: { minHeight: 62, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 }, brandMark: { width: 32, height: 32, borderRadius: 9, borderWidth: 1.5, textAlign: 'center', textAlignVertical: 'center', fontSize: 17, fontWeight: '700' }, brandText: { fontSize: 17, letterSpacing: 2 },
-  accountTrigger: { maxWidth: '58%', flexDirection: 'row', alignItems: 'center', gap: 7, padding: 3 }, avatar: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' }, avatarText: { fontSize: 11, fontWeight: '700' }, accountCopy: { flexShrink: 1 }, accountName: { fontSize: 13 }, accountClass: { fontSize: 10, marginTop: 1 }, rank: { width: 27, height: 27, borderWidth: 1.5, borderRadius: 7, textAlign: 'center', textAlignVertical: 'center', fontFamily: 'Rajdhani_700Bold', fontSize: 13 },
+  header: { minHeight: 62, paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', rowGap: 8, borderBottomWidth: 1 },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 }, brandMark: { minWidth: 32, minHeight: 32, paddingHorizontal: 4, paddingVertical: 3, borderRadius: 9, borderWidth: 1.5, textAlign: 'center', textAlignVertical: 'center', fontSize: 17, fontWeight: '700' }, brandText: { fontSize: 17, letterSpacing: 2 },
+  accountTrigger: { maxWidth: '58%', minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7, padding: 3, flexShrink: 1 }, avatar: { minWidth: 30, minHeight: 30, paddingHorizontal: 3, paddingVertical: 3, borderRadius: 15, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }, avatarText: { fontSize: 11, fontWeight: '700' }, accountCopy: { flex: 1, minWidth: 0 }, accountName: { fontSize: 13 }, accountClass: { fontSize: 10, marginTop: 1 }, rank: { minWidth: 27, minHeight: 27, paddingHorizontal: 3, paddingVertical: 2, borderWidth: 1.5, borderRadius: 7, textAlign: 'center', textAlignVertical: 'center', fontFamily: 'Rajdhani_700Bold', fontSize: 13, flexShrink: 0 },
   menuOverlay: { flex: 1, alignItems: 'flex-end', paddingTop: 68, paddingHorizontal: 14 }, menu: { width: 210, borderRadius: 8, borderWidth: 1, padding: 8 }, menuHeading: { fontSize: 11, letterSpacing: 1.5, paddingHorizontal: 10, paddingVertical: 7 }, menuAction: { paddingHorizontal: 10, paddingVertical: 13 }, menuText: { fontSize: 14, letterSpacing: 0.5 },
-  modalRoot: { flex: 1, justifyContent: 'flex-end' }, sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, padding: 20, paddingBottom: 30 }, sheetHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }, sheetTitle: { fontSize: 20, letterSpacing: 1 }, close: { fontSize: 28, lineHeight: 28 }, fieldLabel: { fontSize: 11, letterSpacing: 1.2, marginBottom: 6, marginTop: 12 }, input: { minHeight: 46, borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, fontFamily: 'Inter_400Regular', fontSize: 15 }, actions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 18, marginTop: 24 }, saveButton: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 9 }, actionText: { fontSize: 12, letterSpacing: 1 }, error: { color: '#f87171', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 12 }, settingsRoot: { flex: 1 }, settingsHeading: { minHeight: 62, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1 },
+  modalRoot: { flex: 1, justifyContent: 'flex-end' }, sheet: { borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, padding: 20, paddingBottom: 30 }, sheetHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 22 }, sheetTitle: { fontSize: 20, letterSpacing: 1 }, close: { fontSize: 28, lineHeight: 28 }, fieldLabel: { fontSize: 11, letterSpacing: 1.2, marginBottom: 6, marginTop: 12 }, input: { minHeight: 46, borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 8, fontFamily: 'Inter_400Regular', fontSize: 15 }, actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 18, marginTop: 24 }, saveButton: { minHeight: 44, borderWidth: 1, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 9, justifyContent: 'center' }, promptOverlay: { flex: 1, justifyContent: 'center', padding: 20 }, promptCard: { width: '100%', maxWidth: 480, alignSelf: 'center', borderWidth: 1, borderRadius: 14, padding: 22 }, promptText: { fontSize: 14, lineHeight: 21, marginTop: 10 }, promptButton: { minHeight: 48, justifyContent: 'center', borderWidth: 1, borderColor: 'transparent', borderRadius: 24, paddingHorizontal: 14 }, actionText: { fontSize: 12, letterSpacing: 1 }, error: { color: '#f87171', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 12 }, settingsRoot: { flex: 1 }, settingsHeading: { minHeight: 62, paddingHorizontal: 18, paddingVertical: 8, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottomWidth: 1 },
 });

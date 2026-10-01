@@ -1,0 +1,75 @@
+# A8: profile editing (Edit details) on Android. Env: E2E_EMAIL, E2E_PASSWORD.
+# Limits are 80 characters for Display name and Class. Maestro cannot type
+# Unicode on Android, so the emoji/NBSP cases run on web only.
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- evalScript: ${output.n80 = 'N'.repeat(80)}
+- evalScript: ${output.n81 = 'N'.repeat(81)}
+
+# --- 81 characters must be rejected, draft kept, no crash ---
+- tapOn:
+    point: "72%, 5%"
+- tapOn: "Edit details"
+- assertVisible: "EDIT DETAILS"
+- tapOn:
+    id: "Display name"
+    optional: true
+- tapOn: "E2E Pilot One"
+- eraseText: 40
+- inputText: ${output.n81}
+- hideKeyboard
+- tapOn: "SAVE"
+- takeScreenshot: a8-81-chars-save
+- assertVisible: ".*80 characters or fewer.*"
+- assertVisible: "EDIT DETAILS"
+
+# --- exactly 80 characters is accepted ---
+- tapOn: "N{20,}.*"
+- eraseText: 90
+- inputText: ${output.n80}
+- hideKeyboard
+- tapOn: "SAVE"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: a8-80-chars-saved
+- assertNotVisible: "EDIT DETAILS"
+
+# --- blank display name is rejected ---
+- tapOn:
+    point: "72%, 5%"
+- tapOn: "Edit details"
+- tapOn: "N{20,}.*"
+- eraseText: 90
+- hideKeyboard
+- tapOn: "SAVE"
+- takeScreenshot: a8-blank-name-save
+- assertVisible: ".*Enter a display name.*"
+
+# --- restore a normal name and change Class ---
+# The name field is empty now; tap it by position (name ~14%, class ~22%).
+- tapOn:
+    point: "50%, 14%"
+- inputText: "E2E Pilot One"
+- hideKeyboard
+- tapOn: "Developer"
+- eraseText: 20
+- inputText: "Tester"
+- hideKeyboard
+- tapOn: "SAVE"
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Tester"
+- assertVisible: "E2E Pilot One"
+- takeScreenshot: a8-class-changed
+
+# --- dirty edit + Android Back must ask before discarding ---
+- tapOn:
+    point: "72%, 5%"
+- tapOn: "Edit details"
+- tapOn: "Tester"
+- eraseText: 10
+- inputText: "Unsaved"
+- hideKeyboard
+- back
+- takeScreenshot: a8-dirty-back

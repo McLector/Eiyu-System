@@ -1,21 +1,40 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
 # Phase 4: the "+" button now opens a quest-type chooser first.
 - tapOn: "HABIT QUEST"
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - assertVisible: "CREATE QUEST"
 
 # Nothing filled in - save must stay blocked (button is disabled, not just
 # unhelpful). If this instead creates a blank quest, that's a bug.
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE QUEST"
 - assertVisible: "NEW QUEST"
 
 # Only the name filled in - a Penalty is also required (recovery fallback).
 # fallback always needs a value), save should still be blocked.
+# The sheet is scrolled down to reach CREATE QUEST; scroll back up to the name.
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 80%"
+- swipe:
+    start: "50%, 30%"
+    end: "50%, 80%"
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Only Name Filled In"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE QUEST"
 # Still on the creation sheet (blocked) - the typed name legitimately
 # stays visible in the input field itself, so don't assert it's gone;
@@ -27,5 +46,9 @@ appId: com.anonymous.eiyusystem
 - tapOn: "e.g. Code for 20 minutes"
 - inputText: "   "
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE QUEST"
 - assertVisible: "NEW QUEST"

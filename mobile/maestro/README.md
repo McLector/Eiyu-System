@@ -1,5 +1,22 @@
 # Maestro flows
 
+## Verify a staged Android release
+
+From the repository root, before installing a staged release:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-android-release.ps1 -AndroidAppBuildDirectory '<verified short-path mobile/android/app/build>' -ApkPath '<local test APK>'
+```
+
+The gate checks the APK's embedded/merged bundle hashes and one router module
+identity for the root, stack and link contexts. APK size, timestamps and
+`UP-TO-DATE` output alone do not prove incorrect packaging. Keep the workspace
+`mobile/metro.config.js` in the staged copy. If it needs another dependency
+directory, set `EXPO_METRO_EXTRA_NODE_MODULES` in that build process. After a
+resolver change, rerun the bundle/merge/package tasks with per-task `--rerun`,
+then verify the artifact and actual startup. This does not replace F-029's
+foreground/no-relaunch font-scale sequence or its settings restoration.
+
 Manual-testing-as-code for the native app, run against an Android emulator
 (or device) with a real dev client — not the web build, since
 `expo-notifications` isn't supported in Expo Go/web on SDK 54.
@@ -15,13 +32,15 @@ export PATH="$PATH:$HOME/.maestro/bin:/c/Users/morad/AppData/Local/Android/Sdk/p
 # Build and install the dev client on a running emulator.
 npx expo run:android
 
-# Create the persistent test account these flows log into.
-maestro test maestro/flows/00_setup_create_test_account.yaml
+# Create a disposable test account. Supply values from your private shell
+# environment; never put credentials in a flow or this README.
+maestro test -e E2E_EMAIL=$env:E2E_EMAIL -e E2E_PASSWORD=$env:E2E_PASSWORD -e E2E_NAME=$env:E2E_NAME maestro/flows/00_setup_create_test_account.yaml
 ```
 
-The test account is `maestro.tester@eiyu.test` / `TestPass123!` (email
-confirmation is off on this Supabase project, so signup drops straight
-into the app). It's a throwaway dev-project account, not a real secret.
+Set `E2E_EMAIL`, `E2E_PASSWORD`, and `E2E_NAME` privately in the current
+shell before running signup or login flows. Use a disposable development
+account. The previously published shared account is not an approved test
+fixture and must be rotated or deleted by the project owner.
 
 ## Running flows
 
@@ -33,8 +52,8 @@ maestro test maestro/flows/auth_login_happy.yaml          # single flow
 `maestro test a.yaml b.yaml` (or `maestro test maestro/flows`) runs the
 files *concurrently* against the same device, not sequentially. Flows that
 only touch their own fresh-signup account are fine either way, but any flow
-that reads/writes the shared `maestro.tester@eiyu.test` account's board
-state (most `habit_*`, `longquest_*`, `board_*`) will race with any other
+that reads/writes the shared test account's board state (most `habit_*`,
+`longquest_*`, `board_*`) will race with any other
 such flow run in the same invocation and corrupt each other's data -
 quests left half-created, wrongly marked complete, etc. Invoke each file
 separately, e.g. in a loop or one `maestro test` call per flow.

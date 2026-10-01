@@ -311,7 +311,7 @@ export default function StatusScreen() {
                   Thinking…
                 </Text>
               ) : (
-                <Text style={[styles.summaryBody, { color: theme.text, fontFamily: fonts.body }]}>
+                <Text testID="weekly-summary-content" style={[styles.summaryBody, { color: theme.text, fontFamily: fonts.body }]}>
                   {weeklySummary}
                 </Text>
               )}

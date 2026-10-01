@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { accountDateKey, Quest, Stat, Difficulty, STATS, HabitInput, formatError, suggestEasyVersions } from '@eiyu/shared';
+import { accountDateKey, DEFAULT_HABIT_DAYS, Quest, Stat, Difficulty, STATS, HabitInput, formatError, normalizeNameBoundaries, suggestEasyVersions, validateQuestName } from '@eiyu/shared';
 import { STAT_COLORS } from '@eiyu/shared';
 import { SparkleIcon, StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
@@ -20,7 +20,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
   const [time, setTime] = useState(editingQuest?.time ?? '07:00');
   const [scheduledDate, setScheduledDate] = useState(() => accountDateKey(new Date(), user.timeZone));
   const [targetCount, setTargetCount] = useState(editingQuest?.targetCount != null ? String(editingQuest.targetCount) : '');
-  const [days, setDays] = useState<number[]>(editingQuest?.days ?? [1, 2, 3, 4, 5]);
+  const [days, setDays] = useState<number[]>(editingQuest?.days ?? [...DEFAULT_HABIT_DAYS]);
   const [stat, setStat] = useState<Stat>(editingQuest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(editingQuest?.difficulty ?? 'Medium');
   const [questType, setQuestType] = useState<'habit' | 'onetime'>(
@@ -46,8 +46,9 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
   // version — every other habit requires one (the DB enforces this with the
   // habits_easy_version_present CHECK constraint, which exempts both cases).
   const targetCountValid = !targetCount || Number(targetCount) > 1;
+  const nameError = editingQuest?.name === name ? null : validateQuestName(name);
   const valid =
-    name.trim().length > 0 &&
+    !nameError &&
     (questType === 'onetime' || easyVer.trim().length > 0 || !!targetCount) &&
     targetCountValid;
 
@@ -57,7 +58,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
     setSaveError(null);
     try {
       const input: HabitInput = {
-        name: name.trim(),
+        name: editingQuest?.name === name ? name : normalizeNameBoundaries(name),
         easyVersion: easyVer.trim() || null,
         stat,
         difficulty,
@@ -215,7 +216,8 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
           {/* Name */}
           <div>
             <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>QUEST NAME</label>
-            <input className="field" placeholder="e.g. Morning run for 30 min" value={name} onChange={e => setName(e.target.value)} />
+            <input aria-label="Quest name" aria-invalid={!!nameError} aria-describedby={nameError ? 'quest-name-error' : undefined} className="field" placeholder="e.g. Morning run for 30 min" value={name} onChange={e => setName(e.target.value)} />
+            {nameError && <p id="quest-name-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{nameError}</p>}
           </div>
 
           {/* Note */}
@@ -292,7 +294,7 @@ export default function WebQuestEditor({ editingQuest, onClose }: Props) {
               <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DAYS</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {['S','M','T','W','T','F','S'].map((d, i) => (
-                  <button key={i} onClick={() => toggleDay(i)} style={{
+                  <button key={i} aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]} aria-pressed={days.includes(i)} onClick={() => toggleDay(i)} style={{
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
                     background: days.includes(i) ? 'var(--c-accent-glass)' : 'transparent',
                     border: `1px solid ${days.includes(i) ? 'var(--c-accent-border)' : 'var(--c-glass-border)'}`,

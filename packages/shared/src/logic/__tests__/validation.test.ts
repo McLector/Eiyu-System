@@ -5,6 +5,7 @@ import {
   validateDisplayName,
   validateEmail,
   validatePassword,
+  validateQuestName,
   validateRequired,
 } from '../validation';
 
@@ -27,6 +28,27 @@ describe('validateDisplayName', () => {
       `${MAX_DISPLAY_NAME_LENGTH} characters or fewer`
     );
     expect(validateDisplayName('a'.repeat(MAX_DISPLAY_NAME_LENGTH))).toBeNull();
+  });
+
+  it('uses 80 Unicode code points and strips only boundary separators', () => {
+    expect(validateDisplayName('😀'.repeat(80))).toBeNull();
+    expect(validateDisplayName('😀'.repeat(81))).toContain('80 characters or fewer');
+    expect(validateDisplayName('🧑🏽‍🚀'.repeat(20))).toBeNull();
+    expect(validateDisplayName(`\u200b  Yuki  \ufeff`)).toBeNull();
+    expect(validateDisplayName('e\u0301'.repeat(40))).toBeNull();
+  });
+
+  it.each(['\u200b', '\u200c', '\u200d', '\u2060', ' ', '\u00a0', '\ufeff'])(
+    'rejects a display name made only of invisible or whitespace separator %p', value => {
+      expect(validateDisplayName(value)).toBe('Enter a display name.');
+    }
+  );
+
+  it('preserves internal joiners and combining marks', () => {
+    expect(validateDisplayName('👨‍👩‍👧‍👦')).toBeNull();
+    expect(validateDisplayName('ک\u200cتاب')).toBeNull();
+    expect(validateDisplayName('क\u200dष')).toBeNull();
+    expect(validateDisplayName('e\u0301')).toBeNull();
   });
 });
 
@@ -76,6 +98,19 @@ describe('validateRequired', () => {
   it('uses the provided label in the message', () => {
     expect(validateRequired('', 'Quest name')).toBe('Quest name is required.');
     expect(validateRequired(' x ', 'Quest name')).toBeNull();
+  });
+});
+
+describe('validateQuestName', () => {
+  it('accepts exactly 80 code points and rejects 81', () => {
+    expect(validateQuestName('😀'.repeat(80))).toBeNull();
+    expect(validateQuestName('😀'.repeat(81))).toContain('80 characters or fewer');
+  });
+
+  it('rejects whitespace and invisible-only values while preserving embedded joiners', () => {
+    expect(validateQuestName(' \u200b\u200c\u200d\u2060\ufeff ')).toMatch(/name/i);
+    expect(validateQuestName('Walk\u200b home')).toBeNull();
+    expect(validateQuestName('👨‍👩‍👧‍👦')).toBeNull();
   });
 });
 

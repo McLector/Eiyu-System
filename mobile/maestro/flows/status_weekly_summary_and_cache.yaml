@@ -1,4 +1,4 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "STATUS"
@@ -9,14 +9,20 @@ appId: com.anonymous.eiyusystem
 - extendedWaitUntil:
     notVisible: "Thinking…"
     timeout: 20000
-# Should now show either a real generated paragraph or a readable error -
-# never stay on "Thinking…" forever, never show blank/empty text.
+# Live success requires an actual generated paragraph. Readable errors are
+# covered by the local failure tests, not accepted as a live-success pass.
+- assertVisible:
+    id: "weekly-summary-content"
+    text: ".+"
 
 # Re-visiting the tab this session must read the cache, not regenerate -
 # switch away and back and confirm it's instant (no "Thinking…" flash).
 - tapOn: "STATS"
 - tapOn: "WEEKLY REVIEW"
 - assertNotVisible: "Thinking…"
+- assertVisible:
+    id: "weekly-summary-content"
+    text: ".+"
 
 # Regenerate button (Slice 2.1) - this flow runs against the shared,
 # persistent Maestro test account, whose daily regen count carries over

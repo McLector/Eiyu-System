@@ -1,4 +1,4 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 # Edge case: rapid double-tap on the same checkbox before the network
 # round-trip for the first toggle resolves. Should not double-count XP,
@@ -12,6 +12,10 @@ appId: com.anonymous.eiyusystem
 - tapOn: "e.g. Code for 20 minutes"
 - inputText: "rapid tap easy version"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE QUEST"
 - assertVisible: "Rapid Tap Habit"
 
@@ -35,5 +39,5 @@ appId: com.anonymous.eiyusystem
 # sidesteps the checkbox/edit-trigger label collision (see maestro/README.md).
 - tapOn:
     id: "quest-edit-trigger"
-- tapOn: "DELETE"
+- runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Rapid Tap Habit"

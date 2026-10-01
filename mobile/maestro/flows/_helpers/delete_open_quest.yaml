@@ -1,0 +1,20 @@
+appId: com.mclector.eiyusystem
+---
+# With the EDIT QUEST sheet open: permanently delete the quest. The sheet opens
+# scrolled to the top, DELETE PERMANENTLY is at the bottom, and it opens a
+# confirmation modal (Cancel is the default; confirm has its own testID).
+- scrollUntilVisible:
+    element:
+      id: "quest-delete-permanent"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    id: "quest-delete-permanent"
+- extendedWaitUntil:
+    visible:
+      id: "quest-delete-confirm"
+    timeout: 8000
+- tapOn:
+    id: "quest-delete-confirm"
+- waitForAnimationToEnd:
+    timeout: 5000

@@ -1,0 +1,21 @@
+# A13 setup (day 1): fresh account, one habit completed today (starts a
+# streak) and one left undone. The recovery window can only open after the
+# account's day rolls over, so A13_recovery_check.yaml runs later.
+# Env: E2E_EMAIL, E2E_PASSWORD, E2E_NAME
+appId: com.mclector.eiyusystem
+---
+- runFlow: 00_signup_fresh.yaml
+- runFlow:
+    file: _create_habit.yaml
+    env:
+      HABIT_NAME: "E2E Streak Keeper"
+- runFlow:
+    file: _create_habit.yaml
+    env:
+      HABIT_NAME: "E2E Will Miss"
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: a13-setup-board

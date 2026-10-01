@@ -66,14 +66,18 @@ describe('web registration legal documents', () => {
     expect(consent).toBeChecked();
   });
 
-  it('keeps submit disabled until consent and calls the real auth boundary after acceptance', async () => {
+  it('explains missing consent on submit and calls the real auth boundary after acceptance', async () => {
     const user = userEvent.setup();
     const onLogin = vi.fn();
     render(<WebAuth onLogin={onLogin} />);
     await openAndFillSignup(user);
 
     const submit = screen.getByRole('button', { name: 'BEGIN JOURNEY' });
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    expect(auth.signUp).not.toHaveBeenCalled();
+
+    await user.click(submit);
+    expect(screen.getByText('Accept the Privacy Policy and Terms to continue.')).toBeInTheDocument();
     expect(auth.signUp).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('checkbox', { name: 'I agree to the Privacy Policy & Terms' }));

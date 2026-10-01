@@ -17,49 +17,249 @@ Re-running a file is the wrong way to find out whether it ran: `create or
 replace` files (012, 013) always succeed and tell you nothing, and a file with
 plain DDL aborts on its first statement without reporting on the rest.
 
-Run this in the SQL Editor instead - every column should read `true`:
+Run this read-only query in the SQL Editor. Every returned marker should be
+`true`. A marker checks the resulting capability, not whether a particular
+historical file was executed; later migrations may replace the original
+implementation while preserving its behavior.
 
 ```sql
-select
-  (select count(*) from information_schema.columns
-    where table_schema = 'public' and table_name = 'habits'
-      and column_name = 'quest_type') = 1                        as "011 quest_type column",
-  (select count(*) from information_schema.columns
-    where table_schema = 'public' and table_name = 'habits'
-      and column_name = 'description') = 1                       as "011 description column",
-  (select is_nullable from information_schema.columns
-    where table_schema = 'public' and table_name = 'habits'
-      and column_name = 'easy_version') = 'YES'                  as "011 easy_version nullable",
-  (select count(*) from pg_constraint
-    where conname = 'habits_easy_version_present') = 1           as "011 easy-version constraint",
-  (select count(*) from pg_indexes
-    where schemaname = 'public'
-      and indexname = 'habits_one_time_created_idx') = 1         as "011 one-time index",
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'complete_habit') = 1
-                                                                 as "012 complete_habit()",
-  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'undo_habit_completion') = 1
-                                                                 as "013 undo_habit_completion()",
-  (select pg_get_functiondef(p.oid) ilike '%returning xp_awarded into%'
-     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = 'undo_habit_completion')
-                                                                 as "013 has the race fix";
+with checks(marker, ok) as (
+  select '001 profiles: owner-scoped RLS', coalesce(
+    (select c.relrowsecurity and exists (
+       select 1 from pg_policies p where p.schemaname = 'public'
+         and p.tablename = 'profiles' and p.policyname = 'profiles_select_own'
+         and p.cmd = 'SELECT')
+     from pg_class c where c.oid = to_regclass('public.profiles')), false)
+  union all select '002 stats: owner-scoped reads', coalesce(
+    (select c.relrowsecurity and exists (
+       select 1 from pg_policies p where p.schemaname = 'public'
+         and p.tablename = 'stats' and p.policyname = 'stats_select_own'
+         and p.cmd = 'SELECT')
+     from pg_class c where c.oid = to_regclass('public.stats')), false)
+  union all select '003 habits: owner-scoped RLS', coalesce(
+    (select c.relrowsecurity and exists (
+       select 1 from pg_policies p where p.schemaname = 'public'
+         and p.tablename = 'habits' and p.policyname = 'habits_select_own'
+         and p.cmd = 'SELECT')
+     from pg_class c where c.oid = to_regclass('public.habits')), false)
+  union all select '004 completion ledger: unique habit/date and RLS', coalesce(
+    (select c.relrowsecurity and exists (
+       select 1 from pg_constraint k where k.conrelid = c.oid
+         and k.contype = 'u' and pg_get_constraintdef(k.oid) ilike '%habit_id%completed_on%')
+     from pg_class c where c.oid = to_regclass('public.habit_completions')), false)
+  union all select '005 streaks: owner-scoped RLS', coalesce(
+    (select c.relrowsecurity and exists (
+       select 1 from pg_policies p where p.schemaname = 'public'
+         and p.tablename = 'streaks' and p.policyname = 'streaks_select_own')
+     from pg_class c where c.oid = to_regclass('public.streaks')), false)
+  union all select '006 Long Quests and stages: RLS',
+    coalesce((select relrowsecurity from pg_class where oid = to_regclass('public.long_quests')), false)
+    and coalesce((select relrowsecurity from pg_class where oid = to_regclass('public.long_quest_stages')), false)
+  union all select '007 weekly quests: user/week uniqueness and RLS', coalesce(
+    (select c.relrowsecurity and exists (
+       select 1 from pg_constraint k where k.conrelid = c.oid
+         and k.contype = 'u' and pg_get_constraintdef(k.oid) ilike '%user_id%week_start%')
+     from pg_class c where c.oid = to_regclass('public.weekly_quests')), false)
+  union all select '008 signup: profile/stat trigger and handler',
+    exists (select 1 from pg_trigger t where t.tgrelid = to_regclass('auth.users')
+      and t.tgname = 'on_auth_user_created' and not t.tgisinternal)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%insert into public.profiles%'
+        and pg_get_functiondef(p.oid) ilike '%insert into public.stats%'
+      from pg_proc p where p.oid = to_regprocedure('public.handle_new_user()')), false)
+  union all select '009 XP helper: bounded server award', coalesce(
+    (select pg_get_functiondef(p.oid) ilike '%abs(p_delta) > 20%'
+       from pg_proc p where p.oid = to_regprocedure('public.increment_stat_xp(public.stat_key,integer)')), false)
+  union all select '010 weekly summaries: owner read/initial insert policies', coalesce(
+    (select c.relrowsecurity
+       and exists (select 1 from pg_policies p where p.schemaname = 'public'
+         and p.tablename = 'weekly_summaries' and p.policyname = 'weekly_summaries_select_own')
+       and exists (select 1 from pg_policies p where p.schemaname = 'public'
+         and p.tablename = 'weekly_summaries' and p.policyname = 'weekly_summaries_insert_own')
+     from pg_class c where c.oid = to_regclass('public.weekly_summaries')), false)
+  union all select '011 quest types: columns, nullable easy version, constraint and current one-time index',
+    exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'habits' and column_name = 'quest_type')
+    and exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'habits' and column_name = 'description')
+    and coalesce((select is_nullable = 'YES' from information_schema.columns
+      where table_schema = 'public' and table_name = 'habits' and column_name = 'easy_version'), false)
+    and coalesce((select pg_get_constraintdef(oid) ilike '%one_time%'
+      from pg_constraint where conrelid = to_regclass('public.habits')
+        and conname = 'habits_easy_version_present'), false)
+    and to_regclass('public.habits_one_time_scheduled_idx') is not null
+  union all select '012 complete_habit: current server-owned completion RPC', coalesce(
+    (select p.prosecdef and pg_get_functiondef(p.oid) ilike '%v_xp := case p_kind%'
+       from pg_proc p where p.oid = to_regprocedure('public.complete_habit(uuid,date,public.completion_kind)')), false)
+  union all select '013 undo: atomic delete-returning XP reversal', coalesce(
+    (select pg_get_functiondef(p.oid) ilike '%returning xp_awarded into%'
+       from pg_proc p where p.oid = to_regprocedure('public.undo_habit_completion(uuid,date)')), false)
+  union all select '014 server XP: caller-supplied award signature removed',
+    to_regprocedure('public.complete_habit(uuid,date,public.completion_kind)') is not null
+    and to_regprocedure('public.complete_habit(uuid,date,public.completion_kind,integer)') is null
+  union all select '015 weekly quota: counters and integer reservation contract',
+    exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'weekly_summaries' and column_name = 'regenerate_count')
+    and exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'weekly_summaries' and column_name = 'last_regenerated_date')
+    and coalesce((select p.prorettype = 'integer'::regtype
+       from pg_proc p where p.oid = to_regprocedure('public.reserve_weekly_summary_regen(date)')), false)
+  union all select '016 Long Quest descriptions: both tables',
+    exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'long_quests' and column_name = 'description')
+    and exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'long_quest_stages' and column_name = 'description')
+  union all select '017 stage reconciliation: owner-bound JSON edit path', coalesce(
+    (select pg_get_functiondef(p.oid) ilike '%jsonb_array_elements(p_stages)%'
+        and pg_get_functiondef(p.oid) ilike '%user_id = auth.uid()%'
+       from pg_proc p where p.oid = to_regprocedure('public.reconcile_long_quest_stages(uuid,jsonb)')), false)
+  union all select '018 scheduled date: current-date reader uses one-time date',
+    exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'habits' and column_name = 'scheduled_date')
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%scheduled_date%'
+       from pg_proc p where p.oid = to_regprocedure('public.ensure_habit_occurrences(date)')), false)
+  union all select '019 quantity progress: target, row lock and bounded count',
+    exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'habits' and column_name = 'target_count')
+    and to_regclass('public.habit_progress') is not null
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%for update%'
+        and pg_get_functiondef(p.oid) ilike '%least(v_target%'
+       from pg_proc p where p.oid = to_regprocedure('public.increment_habit_progress(uuid,date,integer)')), false)
+  union all select '020 quantity/easy-version exemption: effective check constraint', coalesce(
+    (select pg_get_constraintdef(k.oid) ilike '%one_time%'
+        and pg_get_constraintdef(k.oid) ilike '%target_count is not null%'
+       from pg_constraint k where k.conrelid = to_regclass('public.habits')
+         and k.conname = 'habits_easy_version_present'), false)
+  union all select '021 timezone/schedule: profile timezone, version and occurrence triggers',
+    exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'profiles' and column_name = 'time_zone')
+    and to_regclass('public.habit_schedule_versions') is not null
+    and to_regclass('public.habit_occurrences') is not null
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.habits')
+      and tgname = 'habits_record_schedule_version' and not tgisinternal)
+    and to_regprocedure('public.initialize_account_time_zone(text)') is not null
+  union all select '022 recovery state machine: owner recovery RPC and definer completion',
+    to_regclass('public.habit_recovery_windows') is not null
+    and coalesce((select p.prosecdef from pg_proc p
+       where p.oid = to_regprocedure('public.complete_habit_recovery(uuid)')), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%auth.uid()%'
+        and pg_get_functiondef(p.oid) ilike '%user_id = v_user_id%'
+        and pg_get_functiondef(p.oid) ilike '%v_window.status = ''recovered''%'
+        and pg_get_functiondef(p.oid) ilike '%v_window.status = ''expired''%'
+        and pg_get_functiondef(p.oid) ilike '%v_now >= v_window.deadline_at%'
+       from pg_proc p where p.oid = to_regprocedure('public.complete_habit_recovery(uuid)')), false)
+  union all select '023 Long Quest sequencing: ownership FK, predecessor guard and trigger',
+    exists (select 1 from pg_constraint where conrelid = to_regclass('public.long_quest_stages')
+      and conname = 'long_quest_stages_quest_owner_fkey')
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%complete earlier stages first%'
+       from pg_proc p where p.oid = to_regprocedure('public.set_long_quest_stage_done(uuid,boolean)')), false)
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.long_quest_stages')
+      and tgname = 'guard_long_quest_stage_sequence' and not tgisinternal)
+  union all select '024 stage descriptions: 2000-character validator attached',
+    coalesce((select pg_get_functiondef(p.oid) ilike '%2000 characters or fewer%'
+       from pg_proc p where p.oid = to_regprocedure('public.normalize_long_quest_stage_description()')), false)
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.long_quest_stages')
+      and tgname = 'normalize_long_quest_stage_description' and not tgisinternal)
+  union all select '025 lifecycle persistence: history, archive intervals, triggers and RPCs',
+    to_regclass('public.deleted_habit_history') is not null
+    and to_regclass('public.habit_archive_intervals') is not null
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.habits')
+      and tgname = 'habits_record_archive_interval' and not tgisinternal)
+    and to_regprocedure('public.archive_habit(uuid)') is not null
+    and to_regprocedure('public.restore_habit(uuid)') is not null
+    and to_regprocedure('public.delete_habit(uuid)') is not null
+  union all select '026 profile editing: changed-field RPC and limited column grants',
+    to_regprocedure('public.update_profile(text,text)') is not null
+    and coalesce((select count(*) = 3 and bool_and(
+        (a.attname in ('display_name', 'user_class')
+          and has_column_privilege('authenticated', c.oid, a.attnum, 'UPDATE'))
+        or (a.attname = 'time_zone'
+          and not has_column_privilege('authenticated', c.oid, a.attnum, 'UPDATE')))
+      from pg_class c join pg_attribute a on a.attrelid = c.oid
+      where c.oid = to_regclass('public.profiles') and a.attnum > 0
+        and a.attname in ('display_name', 'user_class', 'time_zone')), false)
+  union all select '027 profile compatibility: blocking constraints removed and trigger retained',
+    not exists (select 1 from pg_constraint where conrelid = to_regclass('public.profiles')
+      and conname in ('profiles_display_name_valid', 'profiles_user_class_valid'))
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.profiles')
+      and tgname = 'profiles_validate_edit_text' and not tgisinternal)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%chr(65279)%'
+       from pg_proc p where p.oid = to_regprocedure('public.trim_profile_text(text)')), false)
+  union all select '028 history boundary: half-open owner read, invoker and authenticated-only', coalesce(
+    (select not p.prosecdef
+        and pg_get_functiondef(p.oid) ilike '%historical_date < p_end_date%'
+        and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+        and not has_function_privilege('anon', p.oid, 'EXECUTE')
+        and not exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+          where a.grantee = 0 and a.privilege_type = 'EXECUTE')
+       from pg_proc p where p.oid = to_regprocedure('public.read_history_range(date,date)')), false)
+  union all select '029 server XP: stats writes and internal helpers are not client-callable',
+    coalesce(not has_table_privilege('authenticated', 'public.stats', 'UPDATE')
+      and not has_table_privilege('authenticated', 'public.stats', 'INSERT')
+      and not has_function_privilege('authenticated', 'public.increment_stat_xp(public.stat_key,integer)', 'EXECUTE')
+      and not has_function_privilege('anon', 'public.increment_stat_xp(public.stat_key,integer)', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'public.is_valid_time_zone(text)', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'public.validate_profile_time_zone()', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'public.set_habit_schedule_start()', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'public.record_habit_schedule_version()', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'public.record_habit_archive_interval()', 'EXECUTE')
+      and has_table_privilege('authenticated', 'public.stats', 'SELECT'), false)
+  union all select '030 AI quota: private ledger and service-only reservation RPCs', coalesce(
+    (select n.nspname = 'private' and c.relrowsecurity
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where c.oid = to_regclass('private.ai_logical_requests')), false)
+    and to_regclass('private.ai_user_daily_usage') is not null
+    and to_regclass('private.ai_provider_daily_usage') is not null
+    and to_regclass('private.ai_provider_attempts') is not null
+    and coalesce(not has_schema_privilege('authenticated', 'private', 'USAGE')
+      and not has_schema_privilege('anon', 'private', 'USAGE')
+      and has_function_privilege('service_role', 'public.ai_begin_request(uuid,text,uuid,date)', 'EXECUTE')
+      and has_function_privilege('service_role', 'public.ai_reserve_next_attempt(uuid,integer)', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'public.ai_begin_request(uuid,text,uuid,date)', 'EXECUTE')
+      and not has_function_privilege('anon', 'public.ai_begin_request(uuid,text,uuid,date)', 'EXECUTE')
+      and not has_function_privilege('authenticated', 'public.ai_reserve_next_attempt(uuid,integer)', 'EXECUTE')
+      and not has_function_privilege('anon', 'public.ai_reserve_next_attempt(uuid,integer)', 'EXECUTE'), false)
+    and coalesce(has_table_privilege('authenticated', 'public.weekly_summaries', 'SELECT')
+      and has_column_privilege('authenticated', 'public.weekly_summaries', 'summary', 'UPDATE')
+      and not has_column_privilege('authenticated', 'public.weekly_summaries', 'regenerate_count', 'UPDATE')
+      and not has_column_privilege('authenticated', 'public.weekly_summaries', 'last_regenerated_date', 'UPDATE'), false)
+  union all select '031 profile and quest names: bounded changed-field validators and triggers',
+    to_regprocedure('public.trim_profile_text(text)') is not null
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%chr(8203)%'
+        and pg_get_functiondef(p.oid) ilike '%chr(8205)%'
+        and pg_get_functiondef(p.oid) ilike '%chr(8288)%'
+       from pg_proc p where p.oid = to_regprocedure('public.trim_profile_text(text)')), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%80 characters or fewer%'
+        and pg_get_functiondef(p.oid) ilike '%is distinct from old.display_name%'
+       from pg_proc p where p.oid = to_regprocedure('public.validate_profile_edit_text()')), false)
+    and coalesce((select not p.prosecdef and pg_get_functiondef(p.oid) ilike '%auth.uid()%'
+       from pg_proc p where p.oid = to_regprocedure('public.update_profile(text,text)')), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%80 characters or fewer%'
+        and pg_get_functiondef(p.oid) ilike '%new.name is distinct from old.name%'
+       from pg_proc p where p.oid = to_regprocedure('public.validate_quest_name_edit()')), false)
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.habits')
+      and tgname = 'habits_validate_name_length' and not tgisinternal)
+    and exists (select 1 from pg_trigger where tgrelid = to_regclass('public.long_quests')
+      and tgname = 'long_quests_validate_name_length' and not tgisinternal)
+)
+select marker, ok from checks order by marker;
 ```
 
-That last column is the one worth reading closely. `undo_habit_completion`
-existing only proves *some* version of 013 ran; it checks for the
-`delete ... returning` form specifically, which is what stops two overlapping
-undo calls from both reading `xp_awarded` before either delete commits and
-double-decrementing the stat. If it reads `false`, re-run `013`.
+The markers deliberately inspect current constraints, trigger attachments,
+function signatures/bodies, RLS and effective grants. In particular, the
+013 check requires the `DELETE ... RETURNING` form that prevents overlapping
+undo calls from both decrementing XP. Markers 029–031 also inspect effective
+write grants, private quota-ledger isolation, latest validator bodies, and
+both quest-name triggers. A false marker is a cue to inspect the
+latest compatible migration and the catalog state; it is not an instruction to
+re-run an old file over a newer definition. This query covers migrations 001–031
+alongside their source files and tests.
 
-If re-running 012 or 013 fails with *"cannot change name of input parameter"*,
-an older version defined different parameter names - `create or replace` cannot
-rename them. Drop it first, then re-run the file:
-
-```sql
-drop function if exists public.undo_habit_completion(uuid, date);
-```
+If the catalog shows an older function signature or body, do not drop or
+re-run an applied migration to force it into place. Compare the current
+definition with the newest compatible migration and prepare a new forward
+migration if the deployed behavior needs correction. In particular, input
+parameter-name drift is schema drift to resolve deliberately; dropping an RPC
+can break active clients and dependent functions.
 
 After running these, enable email/password auth in **Authentication → Providers** on your Supabase project (enabled by default on new projects). No other dashboard configuration is required — RLS policies are created by these migrations.
 
@@ -67,8 +267,10 @@ After running these, enable email/password auth in **Authentication → Provider
 
 `functions/ai-proxy` is the only place the Gemini API key is read (R-63) — the
 client never sees it, and every response it returns is a suggestion the user can
-edit or ignore, never auto-saved (R-64). Uses Google Gemini (`gemini-3.6-flash`),
-which has a free tier — no billing setup required.
+edit or ignore, never auto-saved (R-64). SQL 030 adds the server-owned quota
+RPCs; the Edge Function fails closed if those RPCs or the service-role
+environment value are missing. Review the matching migration markers before
+enabling the function.
 
 Get a free key at https://aistudio.google.com/apikey, then deploy and configure
 the function once:

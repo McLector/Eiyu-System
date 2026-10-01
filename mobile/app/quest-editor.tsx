@@ -2,16 +2,18 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { AccessibilityInfo, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GhostButton } from '@/components/eiyu/ghost-button';
 import { StatIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
-import { accountDateKey, DAYS, STATS, STAT_COLORS } from '@eiyu/shared';
+import { accountDateKey, DEFAULT_HABIT_DAYS, DAYS, STATS, STAT_COLORS, validateQuestName } from '@eiyu/shared';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { formatError, suggestEasyVersions } from '@eiyu/shared';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
-import { HabitInput } from '@eiyu/shared';
+import { publishBoardReturnIntent } from '@/lib/board-return-intent';
+import { HabitInput, Quest } from '@eiyu/shared';
 import { Difficulty, QuestType, Stat } from '@eiyu/shared';
 
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
@@ -59,9 +61,14 @@ const difficultyColor: Record<Difficulty, string> = {
 };
 
 export default function QuestEditorScreen() {
+  const insets = useSafeAreaInsets();
   const { theme, user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
-  const { id, type } = useLocalSearchParams<{ id?: string; type?: string }>();
-  const quest = id ? user.quests.find(q => q.id === id) ?? null : null;
+  const { id, type, returnLane } = useLocalSearchParams<{ id?: string; type?: string; returnLane?: string }>();
+  const liveQuest = id ? user.quests.find(q => q.id === id) ?? null : null;
+  const editQuestRef = useRef<Quest | null>(liveQuest);
+  if (liveQuest) editQuestRef.current = liveQuest;
+  const quest = liveQuest ?? editQuestRef.current;
+  const isEditing = Boolean(id);
   const editingId = id;
 
   // Editing locks the quest type; creation takes it from the board's chooser
@@ -80,7 +87,7 @@ export default function QuestEditorScreen() {
   const [scheduledDate, setScheduledDate] = useState(accountDateKey(new Date(), user.timeZone));
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [targetCount, setTargetCount] = useState<string>(quest?.targetCount != null ? String(quest.targetCount) : '');
-  const [days, setDays] = useState<number[]>(quest?.days ?? [0, 1, 2, 3, 4, 5, 6]);
+  const [days, setDays] = useState<number[]>(quest?.days ?? [...DEFAULT_HABIT_DAYS]);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
   const [submitting, setSubmitting] = useState(false);
@@ -115,11 +122,12 @@ export default function QuestEditorScreen() {
   // A quantity habit (target count set) has no Penalty either — target count
   // and the legacy `easyVersion` field are alternative ways to satisfy a habit's
   // "how do I complete this" requirement, not both required at once.
-  const targetCountValid = !targetCount || Number(targetCount) > 1;
-  const valid =
-    name.trim().length > 0 &&
-    (isOneTime || easyVersion.trim().length > 0 || !!targetCount) &&
-    targetCountValid;
+  const nameError = quest?.name === name ? null : validateQuestName(name);
+  const targetCountError = targetCount && Number(targetCount) < 2 ? 'Target count must be at least 2.' : null;
+  const penaltyMissing = !isOneTime && !targetCount && !easyVersion.trim();
+  const valid = !nameError && !targetCountError && !penaltyMissing;
+  const saveDisabledReason = nameError ?? targetCountError ??
+    (penaltyMissing ? 'Add a penalty, or set a target count of at least 2.' : undefined);
 
   const handleSave = async () => {
     if (!valid || submitting) return;
@@ -139,8 +147,11 @@ export default function QuestEditorScreen() {
     pendingRef.current = true;
     setError(null);
     try {
-      await saveHabit(input, editingId);
-      hapticSuccess();
+        await saveHabit(input, editingId);
+        if (!editingId && isOneTime && returnLane === 'one-time') {
+          publishBoardReturnIntent('one-time');
+        }
+        hapticSuccess();
       router.back();
     } catch (err) {
       setError(formatError(err));
@@ -179,23 +190,33 @@ export default function QuestEditorScreen() {
         <View style={[styles.handle, { backgroundColor: theme.accentBorder }]} />
         <View style={styles.headerRow}>
           <Text style={[styles.headerTitle, { color: theme.text, fontFamily: fonts.display }]}>
-            {quest ? 'EDIT QUEST' : isOneTime ? 'NEW ONE-TIME QUEST' : 'NEW QUEST'}
+            {isEditing ? 'EDIT QUEST' : isOneTime ? 'NEW ONE-TIME QUEST' : 'NEW QUEST'}
           </Text>
-          <Pressable onPress={() => { if (!pendingRef.current && !confirmDelete) router.back(); }} disabled={submitting || confirmDelete}>
+          <Pressable
+            testID="quest-editor-close"
+            accessibilityRole="button"
+            accessibilityLabel="Close quest editor"
+            onPress={() => { if (!pendingRef.current && !confirmDelete) router.back(); }}
+            disabled={submitting || confirmDelete}
+            style={styles.closeButton}>
             <Text style={[styles.closeX, { color: theme.dim }]}>×</Text>
           </Pressable>
         </View>
 
-        <Screen edges={['bottom']} fill={false} contentContainerStyle={{ gap: 16 }}>
+        <View testID="quest-editor-form" style={{ flexShrink: 1 }}>
+        <Screen edges={[]} fill={false} contentContainerStyle={{ gap: 16 }}>
           <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME</Text>
+            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME <Text style={{ color: theme.dim, fontSize: 10 }}>(required)</Text></Text>
             <TextInput
               style={[styles.field, fieldStyle]}
               placeholder="e.g. Code for 2 hours"
               placeholderTextColor={theme.dim}
               value={name}
               onChangeText={setName}
+              accessibilityLabel="Quest name"
+              accessibilityHint={nameError ?? undefined}
             />
+            {nameError && <Text testID="quest-name-error" accessibilityRole="alert" style={styles.fieldError}>{nameError}</Text>}
           </View>
 
           <View>
@@ -217,7 +238,7 @@ export default function QuestEditorScreen() {
           {!isOneTime && !targetCount && (
           <View>
             <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-                  PENALTY <Text style={{ color: theme.dim, fontSize: 10 }}>(recovery fallback)</Text>
+                  PENALTY <Text style={{ color: theme.dim, fontSize: 10 }}>(required unless target count is 2 or more)</Text>
             </Text>
             <TextInput
               style={[styles.field, fieldStyle]}
@@ -226,6 +247,7 @@ export default function QuestEditorScreen() {
               value={easyVersion}
               onChangeText={setEasyVersion}
             />
+            {penaltyMissing && <Text style={styles.fieldHint}>Add a penalty, or set a target count of at least 2.</Text>}
             <Pressable
               onPress={handleSuggest}
               disabled={!name.trim() || suggesting}
@@ -240,6 +262,8 @@ export default function QuestEditorScreen() {
                 {suggestions.map((s, i) => (
                   <Pressable
                     key={i}
+                    testID={`quest-ai-suggestion-${i + 1}`}
+                    accessibilityLabel={s}
                     onPress={() => {
                       setEasyVersion(s);
                       setSuggestions([]);
@@ -268,6 +292,7 @@ export default function QuestEditorScreen() {
               onChangeText={t => setTargetCount(t.replace(/[^0-9]/g, ''))}
               keyboardType="number-pad"
             />
+            {targetCountError && <Text testID="quest-target-error" accessibilityRole="alert" style={styles.fieldError}>{targetCountError}</Text>}
           </View>
           )}
 
@@ -365,6 +390,9 @@ export default function QuestEditorScreen() {
                 return (
                   <Pressable
                     key={day}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]}
+                    accessibilityState={{ checked: active }}
                     onPress={() => toggleDay(i)}
                     style={[
                       styles.dayButton,
@@ -378,7 +406,7 @@ export default function QuestEditorScreen() {
                         styles.dayButtonText,
                         { color: active ? theme.accent : theme.dim, fontFamily: fonts.display },
                       ]}>
-                      {day[0]}
+                      {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][i]}
                     </Text>
                   </Pressable>
                 );
@@ -396,6 +424,9 @@ export default function QuestEditorScreen() {
                 return (
                   <Pressable
                     key={s}
+                    accessibilityRole="radio"
+                    accessibilityLabel={s}
+                    accessibilityState={{ checked: active, selected: active }}
                     onPress={() => setStat(s)}
                     style={[
                       styles.statButton,
@@ -429,6 +460,9 @@ export default function QuestEditorScreen() {
                 return (
                   <Pressable
                     key={d}
+                    accessibilityRole="radio"
+                    accessibilityLabel={d}
+                    accessibilityState={{ checked: active, selected: active }}
                     onPress={() => setDifficulty(d)}
                     style={[
                       styles.diffButton,
@@ -447,14 +481,17 @@ export default function QuestEditorScreen() {
             </View>
           </View>
 
-          {error && <Text style={styles.errorText}>{error}</Text>}
+        </Screen>
+        </View>
 
-          <View style={styles.actionsRow}>
-            {quest && (
+        <View testID="quest-editor-footer" style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
+          {error && <Text style={styles.errorText}>{error}</Text>}
+          <View testID="quest-editor-actions" style={styles.actionsRow}>
+            {isEditing && quest && (
               <>
                 <Pressable
                   testID={quest.archived ? 'quest-restore' : 'quest-archive'}
-                  style={[styles.lifecycleButton, { borderColor: theme.accentBorder }]}
+                  style={[styles.lifecycleButton, styles.secondaryActionButton, { borderColor: theme.accentBorder }]}
                   onPress={() => void handleLifecycle(quest.archived ? 'restore' : 'archive')}
                   disabled={submitting}
                   accessibilityRole="button"
@@ -465,7 +502,7 @@ export default function QuestEditorScreen() {
                 </Pressable>
                 <Pressable
                   testID="quest-delete-permanent"
-                  style={[styles.deleteButton, { opacity: submitting ? 0.5 : 1 }]}
+                  style={[styles.deleteButton, styles.secondaryActionButton, { opacity: submitting ? 0.5 : 1 }]}
                   onPress={() => setConfirmDelete(true)}
                   disabled={submitting}
                   accessibilityRole="button"
@@ -475,6 +512,10 @@ export default function QuestEditorScreen() {
               </>
             )}
             <Pressable
+              testID="quest-save"
+              accessibilityRole="button"
+              accessibilityLabel={submitting ? 'Saving' : isEditing ? 'SAVE CHANGES' : 'CREATE QUEST'}
+              accessibilityHint={saveDisabledReason}
               disabled={!valid || submitting}
               onPress={handleSave}
               style={[
@@ -490,11 +531,11 @@ export default function QuestEditorScreen() {
                   styles.saveButtonText,
                   { color: valid ? theme.accent : theme.dim, fontFamily: fonts.display },
                 ]}>
-                {submitting ? 'SAVING…' : quest ? 'SAVE CHANGES' : 'CREATE QUEST'}
+                {submitting ? 'SAVING…' : isEditing ? 'SAVE CHANGES' : 'CREATE QUEST'}
               </Text>
             </Pressable>
           </View>
-        </Screen>
+        </View>
       </View>
 
       <Modal
@@ -550,8 +591,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 32,
+    paddingBottom: 0,
     maxHeight: '88%',
+  },
+  footer: {
+    flexShrink: 0,
+    paddingTop: 8,
   },
   handle: {
     width: 36,
@@ -574,6 +619,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 22,
   },
+  closeButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   label: {
     fontSize: 11,
     letterSpacing: 1.5,
@@ -582,6 +633,17 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     color: '#f87171',
+  },
+  fieldError: {
+    fontSize: 12,
+    color: '#f87171',
+    marginTop: 5,
+  },
+  fieldHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#fbbf24',
+    marginTop: 5,
   },
   suggestText: {
     fontSize: 11,
@@ -620,7 +682,8 @@ const styles = StyleSheet.create({
   },
   dayButton: {
     flex: 1,
-    height: 34,
+    minHeight: 44,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
     alignItems: 'center',
@@ -635,7 +698,8 @@ const styles = StyleSheet.create({
   },
   statButton: {
     flex: 1,
-    height: 44,
+    minHeight: 48,
+    paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1.5,
     alignItems: 'center',
@@ -652,7 +716,8 @@ const styles = StyleSheet.create({
   },
   diffButton: {
     flex: 1,
-    height: 38,
+    minHeight: 44,
+    paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1.5,
     alignItems: 'center',
@@ -663,15 +728,23 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
+    flexWrap: 'wrap',
+    alignItems: 'stretch',
+    gap: 10,
+    marginTop: 12,
   },
   lifecycleButton: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     justifyContent: 'center',
+  },
+  secondaryActionButton: {
+    flexGrow: 1,
+    flexBasis: '40%',
+    minHeight: 48,
+    alignItems: 'center',
   },
   lifecycleButtonText: {
     fontSize: 12,
@@ -682,14 +755,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(248,113,113,0.2)',
     borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     justifyContent: 'center',
   },
   deleteButtonText: {
     fontSize: 14,
     color: '#f87171',
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   confirmOverlay: {
     flex: 1,
@@ -716,16 +790,27 @@ const styles = StyleSheet.create({
   },
   confirmActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     justifyContent: 'flex-end',
   },
   confirmCancel: {
+    flexGrow: 1,
+    flexBasis: '25%',
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderRadius: 10,
     paddingVertical: 10,
     paddingHorizontal: 14,
   },
   confirmDelete: {
+    flexGrow: 1,
+    flexBasis: '55%',
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderRadius: 10,
     paddingVertical: 10,
@@ -733,14 +818,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248,113,113,0.12)',
   },
   saveButton: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '100%',
+    minHeight: 48,
     borderWidth: 1,
     borderRadius: 12,
-    paddingVertical: 13,
+    paddingVertical: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   saveButtonText: {
     fontSize: 15,
     letterSpacing: 1,
+    textAlign: 'center',
   },
 });

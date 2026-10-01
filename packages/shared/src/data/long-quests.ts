@@ -1,6 +1,7 @@
 import { supabase } from '../supabase/client';
 import { LongQuest, QuestStage, Stat } from '../types/eiyu';
 import { normalizeStageDescription } from '../logic/stage-description';
+import { normalizeEditableQuestName } from '../logic/validation';
 
 /** R-32/R-33: real Long Quests, replacing the mock data that shipped with the UI. */
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
@@ -52,6 +53,7 @@ export interface LongQuestInput {
 }
 
 export async function createLongQuest(userId: string, input: LongQuestInput): Promise<string> {
+  const name = normalizeEditableQuestName(input.name);
   const normalizedStages = input.stages.map(stage => ({
     ...stage,
     description: normalizeStageDescription(stage.description),
@@ -60,7 +62,7 @@ export async function createLongQuest(userId: string, input: LongQuestInput): Pr
     .from('long_quests')
     .insert({
       user_id: userId,
-      name: input.name,
+      name,
       stat: input.stat,
       description: input.description?.trim() ? input.description.trim() : null,
     })
@@ -83,12 +85,14 @@ export async function createLongQuest(userId: string, input: LongQuestInput): Pr
 
 export async function updateLongQuest(
   id: string,
-  input: { name: string; stat: Stat; description?: string | null }
+  input: { name: string; stat: Stat; description?: string | null },
+  originalName?: string
 ): Promise<void> {
+  const name = normalizeEditableQuestName(input.name, originalName);
   const { error } = await supabase
     .from('long_quests')
     .update({
-      name: input.name,
+      name,
       stat: input.stat,
       description: input.description?.trim() ? input.description.trim() : null,
     })

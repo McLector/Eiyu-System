@@ -287,14 +287,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         throw new Error('This quest was deleted. Close this editor and reload the board.');
       }
       if (existingId) {
-        await updateHabit(existingId, input);
+        await updateHabit(existingId, input, quests.find(quest => quest.id === existingId)?.name);
       } else {
         await createHabit(userId, input);
       }
       await qc.invalidateQueries({ queryKey: ['habits'] });
       setQuestActionError(null);
     },
-    [userId, qc]
+    [userId, qc, quests]
   );
 
   const runLifecycle = useCallback(
@@ -388,7 +388,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     async (input: LongQuestInput, existingId?: string) => {
       if (!userId) return;
       if (existingId) {
-        await updateLongQuest(existingId, { name: input.name, stat: input.stat, description: input.description });
+        await updateLongQuest(
+          existingId,
+          { name: input.name, stat: input.stat, description: input.description },
+          longQuests.find(quest => quest.id === existingId)?.name
+        );
         await reconcileLongQuestStages(existingId, input.stages);
       } else {
         await createLongQuest(userId, input);
@@ -396,7 +400,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
-    [userId, qc]
+    [userId, qc, longQuests]
   );
 
   const removeLongQuest = useCallback(

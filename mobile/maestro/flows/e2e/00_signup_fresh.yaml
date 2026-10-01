@@ -1,0 +1,32 @@
+# E2E pilot: fresh signup on Android. Run with:
+#   E2E_EMAIL=e2e+<run>-1@eiyu.test  E2E_PASSWORD=<pw>  E2E_NAME=<display name>
+# (pass via maestro `-e` / MCP `env`; never hard-code credentials here)
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/launch_fresh.yaml
+- takeScreenshot: e2e-00-auth-landing
+- tapOn: "Register"
+- assertVisible: "Begin your journey"
+- tapOn: "Display name"
+- inputText: ${E2E_NAME}
+- tapOn: "Email address"
+- inputText: ${E2E_EMAIL}
+# Secure fields both report a masked placeholder; the labelled selectors
+# ("Password" vs "Confirm password") are matched in full, so they differ.
+- tapOn: "Password"
+- inputText: ${E2E_PASSWORD}
+- hideKeyboard
+- tapOn: "Confirm password"
+- inputText: ${E2E_PASSWORD}
+- hideKeyboard
+- takeScreenshot: e2e-00-signup-filled
+- tapOn:
+    id: "terms-checkbox"
+- tapOn: "BEGIN JOURNEY"
+- tapOn:
+    text: "Never"
+    optional: true
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+- takeScreenshot: e2e-00-board-after-signup

@@ -5,9 +5,9 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const store = vi.hoisted(() => ({ saveProfile: vi.fn() }));
+const store = vi.hoisted(() => ({ saveProfile: vi.fn(), name: 'Yuki Tanaka' }));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: () => ({
-  user: { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C' }, saveProfile: store.saveProfile,
+  user: { name: store.name, userClass: 'Ranger', rank: 'C' }, saveProfile: store.saveProfile,
 }) }));
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ signOut: vi.fn() }) }));
 vi.mock('../WebSettings', () => ({ default: ({ onShowHistory }: { onShowHistory: () => void }) =>
@@ -18,6 +18,8 @@ import SettingsPage from '../../pages/SettingsPage';
 function setup(initial = '/board') {
   const router = createMemoryRouter([{ path: '/', element: <ProtectedLayout />, children: [
     { path: '/board', element: <p>BOARD CONTENT</p> },
+    { path: '/status', element: <p>STATUS CONTENT</p> },
+    { path: '/longquests', element: <p>LONG QUESTS CONTENT</p> },
     { path: '/history', element: <p>HISTORY CONTENT</p> },
     { path: '/settings', element: <SettingsPage /> },
   ] }], { initialEntries: [initial] });
@@ -25,7 +27,7 @@ function setup(initial = '/board') {
   return router;
 }
 
-beforeEach(() => store.saveProfile.mockReset().mockResolvedValue(undefined));
+beforeEach(() => { store.saveProfile.mockReset().mockResolvedValue(undefined); store.name = 'Yuki Tanaka'; });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 it('isolates the profile dialog, traps focus, and returns to its account trigger', async () => {
@@ -109,4 +111,28 @@ it('canonicalizes the legacy Settings route into the same closable overlay', asy
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(router.state.location.pathname).toBe('/board');
   expect(router.state.location.search).toBe('');
+});
+
+it('keeps named routes active and the account menu keyboard reachable with a long profile name', async () => {
+  const user = userEvent.setup();
+  store.name = 'M'.repeat(80);
+  const router = setup();
+  const board = screen.getByRole('link', { name: 'BOARD' });
+  const status = screen.getByRole('link', { name: 'STATUS' });
+  const longQuests = screen.getByRole('link', { name: 'LONG QUESTS' });
+  expect(board).toHaveAttribute('aria-current', 'page');
+  expect(status).not.toHaveAttribute('aria-current', 'page');
+  expect(longQuests).not.toHaveAttribute('aria-current', 'page');
+
+  await user.click(status);
+  expect(await screen.findByText('STATUS CONTENT')).toBeInTheDocument();
+  expect(status).toHaveAttribute('aria-current', 'page');
+  expect(router.state.location.pathname).toBe('/status');
+
+  const account = screen.getByRole('button', { name: `${store.name}, Ranger, rank C` });
+  account.focus();
+  await user.keyboard('{Enter}');
+  expect(screen.getByRole('menu', { name: 'Account menu' })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: 'Edit details' })).toBeVisible();
+  expect(screen.getByRole('link', { name: 'BOARD' })).toBeVisible();
 });

@@ -11,6 +11,8 @@ import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import {
   LEGAL_DOCUMENTS,
+  MIN_PASSWORD_LENGTH,
+  normalizeNameBoundaries,
   passwordStrength,
   validateConfirmPassword,
   validateDisplayName,
@@ -85,6 +87,7 @@ export default function AuthScreen() {
   const fieldInvalid = (key: FieldKey) => attempted && Boolean(fieldErrors[key]);
 
   const strength = passwordStrength(mode === 'signup' ? password : '');
+  const strengthTooShort = mode === 'signup' && password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
 
   const handleSubmit = async () => {
     setAttempted(true);
@@ -117,7 +120,7 @@ export default function AuthScreen() {
         const { error: err, needsEmailConfirmation } = await signUp(
           email.trim(),
           password,
-          name.trim()
+          normalizeNameBoundaries(name)
         );
         if (err) {
           setError(err);
@@ -272,9 +275,9 @@ export default function AuthScreen() {
                         <Text
                           style={[
                             styles.strengthLabel,
-                            { color: STRENGTH_COLORS[strength], fontFamily: fonts.body },
+                            { color: strengthTooShort ? '#f87171' : STRENGTH_COLORS[strength], fontFamily: fonts.body },
                           ]}>
-                          {STRENGTH_LABELS[strength]}
+                          {strengthTooShort ? 'Too short' : STRENGTH_LABELS[strength]}
                         </Text>
                       </View>
                     )}

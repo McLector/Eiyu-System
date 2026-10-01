@@ -2,12 +2,14 @@ import { act, fireEvent, render, screen, userEvent, waitFor } from '@testing-lib
 import { AccessibilityInfo } from 'react-native';
 import type { Quest, UserProfile } from '@eiyu/shared';
 import { initialUser } from '@eiyu/shared';
+import { consumeBoardReturnIntent, publishBoardReturnIntent } from '../../lib/board-return-intent';
 import BoardScreen from '../../app/(tabs)/board';
 
 const mockRouter = { push: jest.fn() };
+let mockFocusCallbacks: Array<() => unknown> = [];
 let mockStoreValue: any;
 
-jest.mock('expo-router', () => ({ router: mockRouter }));
+jest.mock('expo-router', () => ({ router: mockRouter, useFocusEffect: (callback: () => unknown) => { mockFocusCallbacks.push(callback); } }));
 jest.mock('@/contexts/eiyu-store', () => ({ useEiyu: () => mockStoreValue }));
 jest.mock('@/lib/haptics', () => ({ hapticLight: jest.fn(), hapticSuccess: jest.fn() }));
 jest.mock('@/components/eiyu/icons', () => ({
@@ -36,6 +38,8 @@ const habit: Quest = {
 
 function setup() {
   mockRouter.push.mockClear();
+  mockFocusCallbacks = [];
+  consumeBoardReturnIntent();
   const quests: Quest[] = [
     habit,
     { ...habit, id: 'off-day', name: 'Off-day habit', dailyEligible: false },
@@ -50,6 +54,7 @@ function setup() {
     user,
     questsLoading: false,
     questsError: null,
+    questsHaveCachedData: true,
     retryQuests: jest.fn(),
     toggleQuest: jest.fn(),
     completeEasy: jest.fn(),
@@ -177,5 +182,75 @@ describe('mobile BoardScreen lanes', () => {
     await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
     expect(mockStoreValue.deleteQuest).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(rendered.queryByTestId('board-delete-modal')).toBeNull());
+  });
+
+  it('keeps saved quest rows visible with a friendly offline banner after a failed update', async () => {
+    mockStoreValue.questsError = "You're offline. Your update wasn't saved. Your saved quests are still shown.";
+    await render(<BoardScreen />);
+
+    expect(screen.getByText('Daily habit')).toBeOnTheScreen();
+    expect(screen.getByText(/You're offline/)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Retry quests' })).toBeOnTheScreen();
+    expect(screen.queryByText(/Network request failed/)).toBeNull();
+  });
+
+  it('offers a full-page Retry state when a first quest load fails without cache', async () => {
+    mockStoreValue.questsHaveCachedData = false;
+    mockStoreValue.questsError = "You're offline. Your quests couldn't be loaded. Check your connection or retry.";
+    await render(<BoardScreen />);
+
+    expect(screen.getByText(/Couldn't load quests:/)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Retry quests' })).toBeOnTheScreen();
+    expect(screen.queryByText('Daily habit')).toBeNull();
+  });
+
+  it('lays out all four named lane tabs in a wrapping selector for narrow and large-text screens', async () => {
+    await render(<BoardScreen />);
+    const laneTabs = screen.getByTestId('board-lane-tabs');
+    expect(laneTabs.props.horizontal).toBeUndefined();
+    expect(laneTabs.props.style.flexWrap).toBe('wrap');
+    for (const label of ['DAILY QUEST', 'ONE TIME QUEST', 'ALL HABITS', 'ARCHIVED']) {
+      expect(screen.getByRole('tab', { name: label })).toBeOnTheScreen();
+    }
+  });
+
+  it('consumes the one-time return intent once and opens the One Time lane', async () => {
+    const oneTime = { ...habit, id: 'one-time', name: 'Created from Daily', questType: 'one_time' as const, days: [], dailyEligible: true };
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, oneTime] };
+    publishBoardReturnIntent('one-time');
+    await render(<BoardScreen />);
+
+    await act(async () => { mockFocusCallbacks[0]?.(); });
+    expect(screen.getByRole('tab', { name: 'ONE TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByText('Created from Daily')).toBeOnTheScreen();
+    expect(consumeBoardReturnIntent()).toBeNull();
+  });
+
+  it('does not change a selected lane when an unrelated refresh adds a one-time quest', async () => {
+    const rendered = await render(<BoardScreen />);
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, { ...habit, id: 'remote-one-time', questType: 'one_time', days: [] }] };
+    rendered.rerender(<BoardScreen />);
+    expect(screen.getByRole('tab', { name: 'DAILY QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
+  });
+
+  it('contains an 80-character profile name beside the rank badge', async () => {
+    const longName = 'M'.repeat(80);
+    mockStoreValue.user = { ...mockStoreValue.user, name: longName };
+    await render(<BoardScreen />);
+
+    const profileName = screen.getByTestId('board-profile-name');
+    expect(profileName.props.children).toBe(longName);
+    expect(profileName.props.numberOfLines).toBe(2);
+    expect(profileName.props.ellipsizeMode).toBe('tail');
+  });
+
+  it('keeps both quest-type choices inside the chooser scroll viewport', async () => {
+    const user = userEvent.setup();
+    await render(<BoardScreen />);
+    await user.press(screen.getByRole('button', { name: 'ADD A QUEST' }));
+
+    expect(screen.getByTestId('board-type-chooser-scroll')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Create a habit quest' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Create a one-time quest' })).toBeOnTheScreen();
   });
 });

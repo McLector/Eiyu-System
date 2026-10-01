@@ -1,7 +1,11 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 # Edge cases around the stage list itself: adding up to MAX_STAGES (8) and
 # removing down to MIN_STAGES (2), where the remove button should disappear.
+# The editor opens with 3 stage slots; + ADD STAGE moves down as slots are
+# added, so scroll to the bottom with a plain swipe before each tap (a
+# scroll-to-element leaves the button under the system nav bar, where taps
+# are swallowed).
 - runFlow: _helpers/login.yaml
 - tapOn: "QUESTS"
 - tapOn: "ADD A LONG QUEST"
@@ -9,11 +13,21 @@ appId: com.anonymous.eiyusystem
 - inputText: "Stage List Edge Cases"
 - hideKeyboard
 
-- tapOn: "+ ADD STAGE"
-- tapOn: "+ ADD STAGE"
-- tapOn: "+ ADD STAGE"
-- tapOn: "+ ADD STAGE"
-- tapOn: "+ ADD STAGE"
+- repeat:
+    times: 5
+    commands:
+      - swipe:
+          start: "50%, 80%"
+          end: "50%, 30%"
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn: "\\+ ADD STAGE"
+      - waitForAnimationToEnd:
+          timeout: 2000
+- swipe:
+    start: "50%, 80%"
+    end: "50%, 30%"
 - assertVisible: "Stage 8"
 # At MAX_STAGES (8), the add-stage control should be gone.
-- assertNotVisible: "+ ADD STAGE"
+- assertNotVisible: "\\+ ADD STAGE"
+- takeScreenshot: e2e-longquest-max-stages

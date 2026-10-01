@@ -1,0 +1,43 @@
+appId: com.mclector.eiyusystem
+---
+# Run after A10_fontscale_prep at font_scale=2.0. Every edit is saved back to
+# the disposable fixture; the chooser options are opened and cancelled.
+- runFlow: ../_helpers/login.yaml
+
+- assertVisible: "BOARD"
+- assertVisible: "M{80}"
+- tapOn:
+    id: "quest-edit-trigger"
+- assertVisible: "EDIT QUEST"
+- scrollUntilVisible:
+    element: "SAVE CHANGES"
+    direction: DOWN
+    timeout: 8000
+- assertVisible:
+    id: "quest-delete-permanent"
+- tapOn: "SAVE CHANGES"
+- assertVisible: "E2E FontScale Quest With A Rather Long Name"
+
+- tapOn: "ADD A QUEST"
+- tapOn: "HABIT QUEST"
+- assertVisible: "NEW QUEST"
+- tapOn:
+    id: "quest-editor-close"
+- tapOn: "ADD A QUEST"
+- tapOn: "ONE-TIME QUEST"
+- assertVisible: "NEW ONE-TIME QUEST"
+- tapOn:
+    id: "quest-editor-close"
+
+- tapOn: "STATUS"
+- assertVisible: "LAST 6 MONTHS"
+- assertVisible:
+    id: "status-heatmap-today"
+- tapOn: "QUESTS"
+- assertVisible: "E2E FontScale Long Quest"
+- tapOn:
+    id: "account-trigger"
+- tapOn: "Settings"
+- assertVisible: "Quest History"
+- tapOn: "Quest History"
+- assertVisible: "HISTORY"

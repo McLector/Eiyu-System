@@ -1,4 +1,4 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
@@ -9,6 +9,10 @@ appId: com.anonymous.eiyusystem
 - tapOn: "e.g. Code for 20 minutes"
 - inputText: "toggle easy version"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE QUEST"
 - assertVisible: "Toggle Complete Habit"
 - assertVisible: "0/1"
@@ -33,5 +37,5 @@ appId: com.anonymous.eiyusystem
 # maestro/README.md).
 - tapOn:
     id: "quest-edit-trigger"
-- tapOn: "DELETE"
+- runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Toggle Complete Habit"

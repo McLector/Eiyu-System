@@ -1,0 +1,29 @@
+appId: com.mclector.eiyusystem
+---
+# F-025 quiet release check only. This flow contains no dev-client launch
+# helpers. Keep it separate from Phase 6 fixtures and run it individually.
+- launchApp:
+    clearState: false
+- evalScript: ${output.startedAt = Date.now()}
+- runFlow:
+    when:
+      visible: "EIYU SYSTEM"
+    commands:
+      - tapOn: "Email address"
+      - inputText: ${E2E_EMAIL}
+      - tapOn: "Password"
+      - inputText: ${E2E_PASSWORD}
+      - hideKeyboard
+      - tapOn: "ENTER SYSTEM"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+- evalScript: ${output.boardReadyAt = Date.now(); output.boardReadyMs = output.boardReadyAt - output.startedAt}
+- assertVisible: "BOARD"
+- evalScript: ${output.historyStartedAt = Date.now()}
+- tapOn:
+    id: "account-trigger"
+- tapOn: "Settings"
+- tapOn: "Quest History"
+- assertVisible: "HISTORY"
+- evalScript: ${output.historyReadyAt = Date.now(); output.historyReadyMs = output.historyReadyAt - output.historyStartedAt}

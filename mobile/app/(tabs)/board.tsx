@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -19,6 +19,7 @@ import { boardTodayProgress, DAYS, EASY_XP, formatDisplayDate, formatError, FULL
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
+import { consumeBoardReturnIntent } from '@/lib/board-return-intent';
 
 type BoardLaneId = 'daily' | 'one-time' | 'all-habits' | 'archived';
 
@@ -296,6 +297,7 @@ export default function BoardScreen() {
     completeRecovery,
     questsLoading,
     questsError,
+    questsHaveCachedData,
     retryQuests,
     reminderWarning,
     retryReminders,
@@ -311,6 +313,10 @@ export default function BoardScreen() {
   const deleteInFlight = useRef(false);
   const deleteCancelRef = useRef<View>(null);
   const [activeLane, setActiveLane] = useState<BoardLaneId>('daily');
+  useFocusEffect(useCallback(() => {
+    const returnLane = consumeBoardReturnIntent();
+    if (returnLane) setActiveLane(returnLane);
+  }, []));
   const [pendingLifecycleIds, setPendingLifecycleIds] = useState<Set<string>>(() => new Set());
   const lifecycleInFlight = useRef(new Set<string>());
   const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits, archivedQuests } = partitionBoardQuests(user.quests);
@@ -414,11 +420,11 @@ export default function BoardScreen() {
                 {initials}
               </Text>
             </View>
-            <View>
-              <Text style={[styles.userName, { color: theme.text, fontFamily: fonts.display }]}>
+            <View style={styles.profileCopy}>
+              <Text testID="board-profile-name" numberOfLines={2} ellipsizeMode="tail" style={[styles.userName, { color: theme.text, fontFamily: fonts.display }]}>
                 {user.name}
               </Text>
-              <Text style={[styles.userClass, { color: theme.muted, fontFamily: fonts.body }]}>
+              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.userClass, { color: theme.muted, fontFamily: fonts.body }]}>
                 {user.userClass}
               </Text>
               <Text style={[styles.dateText, { color: theme.dim, fontFamily: fonts.body }]}>
@@ -509,11 +515,7 @@ export default function BoardScreen() {
           </View>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.laneTabs}
-          accessibilityRole="tablist">
+        <View testID="board-lane-tabs" style={styles.laneTabs} accessibilityRole="tablist">
           {laneOptions.map(lane => (
             <Pressable
               key={lane.id}
@@ -532,16 +534,32 @@ export default function BoardScreen() {
               </Text>
             </Pressable>
           ))}
-        </ScrollView>
+        </View>
 
-        {questsError ? (
-          <View style={styles.errorBlock}>
-            <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
-            <Pressable onPress={retryQuests} style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
+        {questsError && questsHaveCachedData && (
+          <View style={styles.errorBlock} accessibilityRole="alert">
+            <Text style={[styles.emptyText, { color: '#f87171' }]}>{questsError}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry quests"
+              onPress={retryQuests}
+              style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
               <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
             </Pressable>
           </View>
-        ) : questsLoading ? (
+        )}
+        {questsError && !questsHaveCachedData ? (
+          <View style={styles.errorBlock}>
+            <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry quests"
+              onPress={retryQuests}
+              style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
+              <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
+            </Pressable>
+          </View>
+        ) : questsLoading && !questsHaveCachedData ? (
           <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
         ) : (
           <>
@@ -617,7 +635,7 @@ export default function BoardScreen() {
             <Text style={[styles.chooserTitle, { color: theme.text, fontFamily: fonts.display }]}>DELETE {deleteTarget?.name} PERMANENTLY?</Text>
             <Text style={[styles.chooserSub, { color: theme.muted, fontFamily: fonts.body }]}>This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</Text>
             {deleteError && <Text accessibilityRole="alert" style={{ color: '#f87171', fontFamily: fonts.body }}>{deleteError}</Text>}
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10 }}>
               <Pressable ref={deleteCancelRef} testID="board-delete-cancel" accessibilityRole="button" accessibilityLabel="Cancel" disabled={deletePending} onPress={() => { if (!deleteInFlight.current) setDeleteTarget(null); }} style={[styles.catalogAction, styles.deleteConfirmButton, { borderColor: theme.glassBorder }]}><Text style={[styles.catalogActionText, styles.deleteConfirmText, { color: theme.muted, fontFamily: fonts.display }]}>CANCEL</Text></Pressable>
               <Pressable testID="board-delete-confirm" accessibilityRole="button" accessibilityLabel="Confirm permanent delete" disabled={deletePending} onPress={() => void confirmDelete()} style={[styles.catalogAction, styles.deleteConfirmButton, { borderColor: 'rgba(248,113,113,0.45)' }]}><Text style={[styles.catalogActionText, styles.deleteConfirmText, { color: '#f87171', fontFamily: fonts.display }]}>{deletePending ? 'DELETING…' : 'CONFIRM PERMANENT DELETE'}</Text></Pressable>
             </View>
@@ -638,38 +656,44 @@ export default function BoardScreen() {
           <Pressable
             style={[styles.chooserCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}
             onPress={() => {}}>
-            <Text style={[styles.chooserTitle, { color: theme.text, fontFamily: fonts.display }]}>
-              NEW QUEST
-            </Text>
-            <Text style={[styles.chooserSub, { color: theme.muted, fontFamily: fonts.body }]}>
-              What kind of quest is this?
-            </Text>
-            <Pressable
-              onPress={() => {
-                setShowTypeChooser(false);
-                router.push('/quest-editor');
-              }}
-              style={[styles.chooserOption, { borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>
-              <Text style={[styles.chooserOptionTitle, { color: theme.accent, fontFamily: fonts.display }]}>
-                HABIT QUEST
+            <ScrollView testID="board-type-chooser-scroll" style={styles.chooserScroll} contentContainerStyle={styles.chooserContent}>
+              <Text style={[styles.chooserTitle, { color: theme.text, fontFamily: fonts.display }]}>
+                NEW QUEST
               </Text>
-              <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
-                Repeats on chosen days — build streaks
+              <Text style={[styles.chooserSub, { color: theme.muted, fontFamily: fonts.body }]}>
+                What kind of quest is this?
               </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                setShowTypeChooser(false);
-                router.push({ pathname: '/quest-editor', params: { type: 'one_time' } });
-              }}
-              style={[styles.chooserOption, { borderColor: theme.glassBorder }]}>
-              <Text style={[styles.chooserOptionTitle, { color: theme.text, fontFamily: fonts.display }]}>
-                ONE-TIME QUEST
-              </Text>
-              <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
-                A todo for today only — done or gone, no streak
-              </Text>
-            </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Create a habit quest"
+                onPress={() => {
+                  setShowTypeChooser(false);
+                  router.push('/quest-editor');
+                }}
+                style={[styles.chooserOption, { borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>
+                <Text style={[styles.chooserOptionTitle, { color: theme.accent, fontFamily: fonts.display }]}>
+                  HABIT QUEST
+                </Text>
+                <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
+                  Repeats on chosen days — build streaks
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Create a one-time quest"
+                onPress={() => {
+                  setShowTypeChooser(false);
+                    router.push({ pathname: '/quest-editor', params: { type: 'one_time', returnLane: 'one-time' } });
+                }}
+                style={[styles.chooserOption, { borderColor: theme.glassBorder }]}>
+                <Text style={[styles.chooserOptionTitle, { color: theme.text, fontFamily: fonts.display }]}>
+                  ONE-TIME QUEST
+                </Text>
+                <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
+                  A todo for today only — done or gone, no streak
+                </Text>
+              </Pressable>
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -680,12 +704,15 @@ export default function BoardScreen() {
 const styles = StyleSheet.create({
   deleteConfirmButton: {
     minHeight: 44,
+    flexGrow: 1,
+    flexBasis: '35%',
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 14,
   },
   deleteConfirmText: {
     fontSize: 12,
+    textAlign: 'center',
   },
   chooserOverlay: {
     flex: 1,
@@ -697,8 +724,15 @@ const styles = StyleSheet.create({
   chooserCard: {
     width: '100%',
     maxWidth: 360,
+    maxHeight: '85%',
     borderWidth: 1,
     borderRadius: 20,
+    overflow: 'hidden',
+  },
+  chooserScroll: {
+    flexShrink: 1,
+  },
+  chooserContent: {
     padding: 20,
     gap: 12,
   },
@@ -757,11 +791,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
+    gap: 10,
   },
   headerLeft: {
     flexDirection: 'row',
+    flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     gap: 12,
+  },
+  profileCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   avatar: {
     width: 46,
@@ -776,7 +817,6 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 18,
-    lineHeight: 20,
   },
   userClass: {
     fontSize: 12,
@@ -787,8 +827,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   rankBadge: {
-    width: 52,
-    height: 52,
+    minWidth: 52,
+    minHeight: 52,
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+    flexShrink: 0,
     borderRadius: 14,
     borderWidth: 1.5,
     alignItems: 'center',
@@ -800,6 +843,7 @@ const styles = StyleSheet.create({
   rankText: {
     fontSize: 24,
     letterSpacing: 1,
+    textAlign: 'center',
   },
   statBar: {
     padding: 16,
@@ -812,6 +856,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     flex: 1,
+    minWidth: 0,
   },
   statLabel: {
     fontSize: 10,
@@ -896,10 +941,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   laneTabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     paddingVertical: 2,
+    paddingHorizontal: 2,
   },
   laneTab: {
+    flexGrow: 1,
+    flexBasis: 140,
     minHeight: 42,
     borderWidth: 1,
     borderRadius: 9,

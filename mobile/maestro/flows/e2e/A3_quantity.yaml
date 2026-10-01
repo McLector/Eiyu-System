@@ -1,0 +1,10 @@
+# A3: quantity habit. Env: E2E_EMAIL, E2E_PASSWORD.
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- runFlow:
+    file: _create_quantity_habit.yaml
+    env:
+      HABIT_NAME: "E2E Quantity"
+      HABIT_TARGET: "3"
+- takeScreenshot: a3-quantity-created

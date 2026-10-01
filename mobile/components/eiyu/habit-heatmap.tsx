@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
@@ -53,6 +53,10 @@ export default function HabitHeatmap({ userId }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const userStartedScrolling = useRef(false);
+  const autoScrolled = useRef(false);
+  const previousWindow = useRef('');
 
   const now = new Date();
   const todayKey = accountDateKey(now, user.timeZone);
@@ -61,6 +65,19 @@ export default function HabitHeatmap({ userId }: Props) {
   const end = addUtcDays(calendarToday, 1);
   const startKey = toDateKey(start);
   const endKey = toDateKey(end);
+  const windowKey = `${startKey}:${endKey}`;
+
+  useEffect(() => {
+    if (previousWindow.current === windowKey) return;
+    previousWindow.current = windowKey;
+    if (!userStartedScrolling.current) autoScrolled.current = false;
+  }, [windowKey]);
+
+  const scrollToLatest = () => {
+    if (userStartedScrolling.current || autoScrolled.current) return;
+    autoScrolled.current = true;
+    scrollRef.current?.scrollToEnd({ animated: false });
+  };
 
   // Fetches history for the current userId/window. Re-created only when the
   // userId or the (string, stable-across-renders) window keys change, so both
@@ -119,7 +136,13 @@ export default function HabitHeatmap({ userId }: Props) {
                 </View>
               ))}
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView
+              ref={scrollRef}
+              testID="status-heatmap-scroll"
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              onContentSizeChange={scrollToLatest}
+              onScrollBeginDrag={() => { userStartedScrolling.current = true; }}>
               <View>
                 <View style={[styles.monthLabelRow, { width: gridWidth }]}>
                   {monthLabels.map(({ columnIndex, label }) => (
@@ -144,6 +167,9 @@ export default function HabitHeatmap({ userId }: Props) {
                         return (
                           <Pressable
                             key={ri}
+                            testID={dateKey === todayKey ? 'status-heatmap-today' : undefined}
+                            accessibilityRole="button"
+                            accessibilityLabel={dateKey === todayKey ? `Today, ${dateKey}` : `History for ${dateKey}`}
                             disabled={state.isFuture || loading}
                             onPress={() => setSelectedDate(dateKey)}
                             style={styles.cell}>

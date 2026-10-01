@@ -1,9 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, StyleSheet } from 'react-native';
 import type { Quest, UserProfile } from '@eiyu/shared';
 import { initialUser } from '@eiyu/shared';
+import { consumeBoardReturnIntent } from '../../lib/board-return-intent';
 
-let mockSearchParams: { id?: string } = {};
+let mockSearchParams: { id?: string; type?: string; returnLane?: string } = {};
 let mockStoreValue: any;
 
 jest.mock('expo-router', () => ({ router: { back: jest.fn() }, useLocalSearchParams: () => mockSearchParams }));
@@ -22,7 +23,6 @@ jest.mock('@/components/eiyu/screen', () => {
   const { View } = require('react-native');
   return { Screen: ({ children, ...props }: { children: unknown; [key: string]: unknown }) => React.createElement(View, props, children) };
 });
-
 import QuestEditorScreen from '../../app/quest-editor';
 const mockRouter = jest.requireMock('expo-router').router as { back: jest.Mock };
 
@@ -66,6 +66,8 @@ describe('mobile QuestEditor lifecycle controls', () => {
   afterEach(() => {
     cleanup();
     jest.clearAllMocks();
+    consumeBoardReturnIntent();
+    mockSearchParams = {};
     mockStoreValue = undefined;
   });
 
@@ -125,6 +127,54 @@ describe('mobile QuestEditor lifecycle controls', () => {
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalledTimes(1));
   });
 
+  it('keeps a mounted delete route in edit mode while its record leaves live store data', async () => {
+    const value = setup();
+    let resolveDelete!: () => void;
+    value.deleteQuest.mockImplementation(() => new Promise<void>(resolve => { resolveDelete = resolve; }));
+    const user = userEvent.setup();
+    const rendered = await render(<QuestEditorScreen />);
+
+    await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
+    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    expect(screen.getByText('DELETING…')).toBeOnTheScreen();
+    mockStoreValue = { ...value, user: { ...value.user, quests: [] } };
+    await act(async () => { rendered.rerender(<QuestEditorScreen />); await Promise.resolve(); });
+
+    expect(screen.getByText('EDIT QUEST')).toBeOnTheScreen();
+    expect(screen.queryByText('NEW QUEST')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'CREATE QUEST' })).toBeNull();
+    expect(screen.getByText('DELETING…')).toBeOnTheScreen();
+    await act(async () => { resolveDelete(); });
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps the edit form available and reports deletion failure', async () => {
+    const value = setup();
+    value.deleteQuest.mockRejectedValueOnce(new Error('delete unavailable'));
+    const user = userEvent.setup();
+    await render(<QuestEditorScreen />);
+
+    await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
+    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    expect((await screen.findAllByText('delete unavailable')).length).toBeGreaterThan(0);
+    expect(screen.getByText('EDIT QUEST')).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'SAVE CHANGES' })).toBeEnabled();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+  });
+
+  it('publishes a one-use One Time lane intent only after a successful one-time create', async () => {
+    const value = setup();
+    mockSearchParams = { type: 'one_time', returnLane: 'one-time' };
+    const user = userEvent.setup();
+    await render(<QuestEditorScreen />);
+    await user.type(screen.getByLabelText('Quest name'), 'Submit report');
+    await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
+
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalledTimes(1));
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time' }), undefined);
+    expect(consumeBoardReturnIntent()).toBe('one-time');
+  });
+
   it('shows Restore and Delete for archived quests, without a completion control', async () => {
     const value = setup({ ...habit, archived: true });
     const user = userEvent.setup();
@@ -137,4 +187,17 @@ describe('mobile QuestEditor lifecycle controls', () => {
     await user.press(screen.getByRole('button', { name: 'RESTORE QUEST' }));
     expect(value.restoreQuest).toHaveBeenCalledWith('habit-1');
   });
+
+  it('keeps the save action a full-width primary target separate from lifecycle actions', async () => {
+    await setup();
+    await render(<QuestEditorScreen />);
+
+    const actions = screen.getByTestId('quest-editor-actions');
+    const save = screen.getByTestId('quest-save');
+    expect(StyleSheet.flatten(actions.props.style)).toMatchObject({ flexWrap: 'wrap' });
+    expect(save.props.accessibilityRole).toBe('button');
+    expect(save.props.accessibilityLabel).toBe('SAVE CHANGES');
+    expect(StyleSheet.flatten(save.props.style)).toMatchObject({ flexBasis: '100%' });
+  });
 });
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));

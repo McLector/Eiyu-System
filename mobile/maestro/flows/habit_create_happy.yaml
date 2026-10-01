@@ -1,4 +1,4 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
@@ -14,6 +14,10 @@ appId: com.anonymous.eiyusystem
 - hideKeyboard
 - tapOn: "STR"
 - tapOn: "Hard"
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE QUEST"
 - assertVisible: "Maestro Habit Happy Path"
 - assertVisible: "STR"
@@ -26,5 +30,5 @@ appId: com.anonymous.eiyusystem
 # checkbox, toggling completion, even with an index). testID sidesteps it.
 - tapOn:
     id: "quest-edit-trigger"
-- tapOn: "DELETE"
+- runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Maestro Habit Happy Path"

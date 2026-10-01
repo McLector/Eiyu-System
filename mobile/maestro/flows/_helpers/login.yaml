@@ -1,13 +1,15 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
-# Reusable: log in as the persistent Maestro test account (created once by
-# 00_setup_create_test_account.yaml). Included via `runFlow` from every flow
-# that needs a logged-in session.
+# Reusable: log in as a disposable account. Pass E2E_EMAIL / E2E_PASSWORD via
+# the Maestro environment (-e). Included via `runFlow` by every flow that needs
+# a logged-in session.
 - runFlow: launch_fresh.yaml
-- tapOn: "you@example.com"
-- inputText: "maestro.tester@eiyu.test"
-- tapOn: "••••••••"
-- inputText: "TestPass123!"
+- tapOn: "Email address"
+- inputText: ${E2E_EMAIL}
+- tapOn: "Password"
+- inputText: ${E2E_PASSWORD}
 - hideKeyboard
 - tapOn: "ENTER SYSTEM"
-- assertVisible: "BOARD"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000

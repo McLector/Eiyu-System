@@ -18,8 +18,40 @@ appId: com.mclector.eiyusystem
 - waitForAnimationToEnd:
     timeout: 5000
 - extendedWaitUntil:
-    visible: ".*(EIYU SYSTEM|developer menu).*"
+    visible: ".*(EIYU SYSTEM|developer menu|problem loading the project|Error loading app).*"
     timeout: 120000
+# Occasional one-off bundle-download timeout from the emulator (env flake):
+# the error screen offers Reload, which returns to the server picker.
+- runFlow:
+    when:
+      visible: ".*problem loading the project.*"
+    commands:
+      - tapOn: "Reload"
+      - extendedWaitUntil:
+          visible: ".*10\\.0\\.2\\.2.*"
+          timeout: 30000
+      - tapOn:
+          text: ".*10\\.0\\.2\\.2.*"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - extendedWaitUntil:
+          visible: ".*(EIYU SYSTEM|developer menu).*"
+          timeout: 120000
+- runFlow:
+    when:
+      visible: ".*Error loading app.*"
+    commands:
+      - tapOn: "Close"
+      - extendedWaitUntil:
+          visible: ".*10\\.0\\.2\\.2.*"
+          timeout: 15000
+      - tapOn:
+          text: ".*10\\.0\\.2\\.2.*"
+      - waitForAnimationToEnd:
+          timeout: 5000
+      - extendedWaitUntil:
+          visible: ".*(EIYU SYSTEM|developer menu|Error loading app).*"
+          timeout: 120000
 - runFlow:
     when:
       visible: "Continue"
@@ -27,6 +59,15 @@ appId: com.mclector.eiyusystem
       - tapOn: "Continue"
 - waitForAnimationToEnd:
     timeout: 5000
+# "Continue" advances into the dev-menu panel instead of closing it (see
+# README "Known selector traps"); hardware Back closes it in place.
+- runFlow:
+    when:
+      visible: "Connected to:"
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 5000
 - extendedWaitUntil:
     visible: "EIYU SYSTEM"
     timeout: 30000

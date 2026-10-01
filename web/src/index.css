@@ -202,6 +202,7 @@ body {
   background: var(--c-accent-glass);
   border-color: var(--c-accent-border);
 }
+.phase4-nav-link:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
 .phase4-account-wrap { position: relative; min-width: 0; }
 .phase4-account-trigger {
   display: inline-flex;
@@ -242,13 +243,20 @@ body {
 .phase4-error { margin: 8px 0 0; color: #f87171; font: 12px/1.4 Inter, sans-serif; }
 
 @media (max-width: 720px) {
-  .phase4-header { gap: 10px; min-height: 68px; padding-inline: 12px; }
-  .phase4-brand span:last-child, .phase4-account-copy { display: none; }
+  .phase4-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "brand account" "nav nav"; gap: 4px 10px; min-height: 68px; padding-inline: 12px; }
+  .phase4-brand { grid-area: brand; min-width: 0; }
+  .phase4-primary-nav { grid-area: nav; }
+  .phase4-account-wrap { grid-area: account; justify-self: end; }
   .phase4-brand-mark { width: 34px; height: 34px; }
-  .phase4-primary-nav { justify-content: center; overflow-x: auto; }
+  .phase4-primary-nav { width: 100%; max-width: 100%; justify-content: flex-start; overflow-x: auto; overscroll-behavior-x: contain; }
   .phase4-nav-link { gap: 5px; padding: 9px 8px; font-size: 11px; letter-spacing: .08em; }
-  .phase4-account-trigger { padding-inline: 2px; }
+  .phase4-account-trigger { max-width: 42vw; padding-inline: 2px; }
+  .phase4-account-copy { display: none; }
   .phase4-account-menu { right: -4px; }
+}
+
+@media (max-width: 360px) {
+  .phase4-brand span:last-child { display: none; }
 }
 
 .divider {
@@ -633,7 +641,7 @@ select.field option {
 @media (max-width: 767px) {
   .web-board-overview { grid-template-columns: 1fr; gap: 14px; }
   .web-board-today { border-top: 1px solid var(--c-divider-flat); padding-top: 14px; }
-  .board-lane-tabs { display: flex; gap: 6px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: thin; }
+  .board-lane-tabs { display: flex; gap: 6px; padding-bottom: 2px; overflow-x: auto; scrollbar-width: thin; scrollbar-color: var(--c-muted-flat) var(--c-panel); }
   .board-lane-tabs button { flex: 0 0 auto; min-height: 40px; padding: 8px 12px; border: 1px solid var(--c-glass-border); border-radius: 8px; background: transparent; color: var(--c-muted-flat); font: 700 11px Rajdhani, sans-serif; letter-spacing: .06em; white-space: nowrap; }
   .board-lane-tabs button[aria-selected="true"] { border-color: var(--c-accent-border); background: var(--c-accent-glass); color: var(--c-accent); }
   .board-lane-tabs span { margin-left: 4px; font: 10px 'JetBrains Mono', monospace; }

@@ -20,6 +20,7 @@ export const RANK_CONFIG: Record<Rank, { color: string; bg: string; glow: string
 export const STATS: Stat[] = ['STR', 'INT', 'DEX', 'WIS', 'CHA'];
 
 export const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const DEFAULT_HABIT_DAYS: readonly number[] = Object.freeze([0, 1, 2, 3, 4, 5, 6]);
 
 /** Fallback shown only before the real profile/stats load — never quests or long quests, those are real from first render. */
 export const initialUser: Pick<UserProfile, 'name' | 'userClass' | 'stats'> = {

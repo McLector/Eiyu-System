@@ -1,6 +1,8 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - assertVisible: "STATUS"
 - assertVisible: "QUESTS"
-- assertVisible: "SETTINGS"
+# Settings moved out of the tab bar into the account menu (phase 4): the tab
+# bar is now BOARD / STATUS / QUESTS.
+- assertNotVisible: "SETTINGS"

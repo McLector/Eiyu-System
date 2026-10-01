@@ -1,4 +1,4 @@
-appId: com.anonymous.eiyusystem
+appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "QUESTS"
@@ -12,6 +12,10 @@ appId: com.anonymous.eiyusystem
 - tapOn: "Stage 2"
 - inputText: "Second stage"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE LONG QUEST"
+    direction: DOWN
+    timeout: 8000
 - tapOn: "CREATE LONG QUEST"
 - assertVisible: "Long Quest To Delete"
 

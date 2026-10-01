@@ -88,4 +88,11 @@ describe('mobile registration legal documents', () => {
     await waitFor(() => expect(mockSignUp).toHaveBeenCalledTimes(1));
     expect(mockSignUp).toHaveBeenCalledWith('kaito@example.com', 'StrongPass1!', 'Kaito');
   });
+
+  it('labels an under-minimum signup password as too short, not acceptable strength', async () => {
+    await openSignup();
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'abc');
+    expect(screen.getByText('Too short')).toBeOnTheScreen();
+    expect(screen.queryByText('Okay')).not.toBeOnTheScreen();
+  });
 });

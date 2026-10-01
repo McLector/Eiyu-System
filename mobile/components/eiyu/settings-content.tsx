@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { formatError } from '@eiyu/shared';
 
@@ -16,9 +17,9 @@ export function Toggle({ active }: { active: boolean }) {
   return <View style={[styles.toggleTrack, { backgroundColor: active ? theme.accentGlass : 'transparent', borderColor: active ? theme.accentBorder : theme.glassBorder }]}><View style={[styles.toggleThumb, { backgroundColor: active ? theme.accent : theme.dim, left: active ? 22 : 4 }]} /></View>;
 }
 
-function ToggleRow({ label, sublabel, value, onChange }: { label: string; sublabel?: string; value: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow({ label, sublabel, value, onChange, disabled = false, testID }: { label: string; sublabel?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean; testID?: string }) {
   const { theme } = useEiyu();
-  return <Pressable style={styles.row} onPress={() => onChange(!value)} accessibilityRole="switch" accessibilityState={{ checked: value }} accessibilityLabel={label}><View style={{ flex: 1 }}><Text style={[styles.rowLabel, { color: theme.text, fontFamily: fonts.body }]}>{label}</Text>{sublabel && <Text style={[styles.rowSub, { color: theme.muted, fontFamily: fonts.body }]}>{sublabel}</Text>}</View><Toggle active={value} /></Pressable>;
+  return <Pressable testID={testID} style={styles.row} disabled={disabled} onPress={() => onChange(!value)} accessibilityRole="switch" accessibilityState={{ checked: value, disabled }} accessibilityLabel={label}><View style={{ flex: 1 }}><Text style={[styles.rowLabel, { color: theme.text, fontFamily: fonts.body }]}>{label}</Text>{sublabel && <Text style={[styles.rowSub, { color: theme.muted, fontFamily: fonts.body }]}>{sublabel}</Text>}</View><Toggle active={value} /></Pressable>;
 }
 
 function ActionRow({ label, sublabel, danger, onPress }: { label: string; sublabel?: string; danger?: boolean; onPress: () => void }) {
@@ -27,20 +28,20 @@ function ActionRow({ label, sublabel, danger, onPress }: { label: string; sublab
 }
 
 export default function SettingsContent({ onClose, embedded = false }: { onClose?: () => void; embedded?: boolean }) {
-  const { theme, darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled } = useEiyu();
+  const { theme, darkMode, setDarkMode, notificationsEnabled, setNotificationsEnabled, soundEffectsEnabled, soundEffectsLoaded, setSoundEffectsEnabled } = useEiyu();
   const { signOut } = useAuth();
-  const [reminderSound, setReminderSound] = useState(false);
   const [signOutPending, setSignOutPending] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
+  const appVersion = Constants.expoConfig?.version;
   const logout = async () => { if (signOutPending) return; setSignOutPending(true); setSignOutError(null); const { error } = await signOut(); if (error) setSignOutError(formatError(error)); setSignOutPending(false); };
 
   return <Screen contentContainerStyle={styles.scroll} topGap={16}>
-    <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>Settings</Text>
-    <View style={styles.section}><Text style={[styles.sectionLabel, { color: theme.dim, fontFamily: fonts.display }]}>APPEARANCE</Text><GlassView style={styles.sectionCard}><Pressable style={styles.row} onPress={() => setDarkMode(!darkMode)} accessibilityRole="switch" accessibilityState={{ checked: darkMode }} accessibilityLabel="Dark theme"><View style={styles.themeRowLeft}><SunIcon size={16} color={darkMode ? theme.muted : theme.accent} /><View><Text style={[styles.rowLabel, { color: theme.text, fontFamily: fonts.body }]}>{darkMode ? 'Dark Theme' : 'Light Theme'}</Text><Text style={[styles.rowSub, { color: theme.muted, fontFamily: fonts.body }]}>{darkMode ? 'Deep navy glass aesthetic' : 'Soft azure glass aesthetic'}</Text></View></View><View style={styles.themeRowRight}><MoonIcon size={16} color={darkMode ? theme.accent : theme.muted} /><Toggle active={darkMode} /></View></Pressable></GlassView></View>
-    <View style={styles.section}><Text style={[styles.sectionLabel, { color: theme.dim, fontFamily: fonts.display }]}>NOTIFICATIONS</Text><GlassView style={styles.sectionCard}><ToggleRow label="Quest Reminders" sublabel="Notify when quest time arrives" value={notificationsEnabled} onChange={setNotificationsEnabled} /><Divider /><ToggleRow label="Sound Effects" sublabel="Play sound on completion" value={reminderSound} onChange={setReminderSound} /></GlassView></View>
+    {!embedded && <Text accessible accessibilityRole="header" style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>Settings</Text>}
+    <View style={styles.section}><Text style={[styles.sectionLabel, { color: theme.dim, fontFamily: fonts.display }]}>APPEARANCE</Text><GlassView style={styles.sectionCard}><Pressable style={styles.row} onPress={() => setDarkMode(!darkMode)} accessibilityRole="switch" accessibilityState={{ checked: darkMode }} accessibilityLabel="Dark Theme"><View style={styles.themeRowLeft}><SunIcon size={16} color={darkMode ? theme.muted : theme.accent} /><View><Text style={[styles.rowLabel, { color: theme.text, fontFamily: fonts.body }]}>Dark Theme</Text><Text style={[styles.rowSub, { color: theme.muted, fontFamily: fonts.body }]}>{darkMode ? 'Deep navy glass aesthetic' : 'Soft azure glass aesthetic'}</Text></View></View><View style={styles.themeRowRight}><MoonIcon size={16} color={darkMode ? theme.accent : theme.muted} /><Toggle active={darkMode} /></View></Pressable></GlassView></View>
+    <View style={styles.section}><Text style={[styles.sectionLabel, { color: theme.dim, fontFamily: fonts.display }]}>NOTIFICATIONS</Text><GlassView style={styles.sectionCard}><ToggleRow label="Quest Reminders" sublabel="Notify when quest time arrives" value={notificationsEnabled} onChange={setNotificationsEnabled} /><Divider /><ToggleRow testID="settings-sound-effects" label="Sound Effects" sublabel="Play sound on completion" value={soundEffectsEnabled} onChange={value => { void setSoundEffectsEnabled(value); }} disabled={!soundEffectsLoaded} /></GlassView></View>
     <View style={styles.section}><Text style={[styles.sectionLabel, { color: theme.dim, fontFamily: fonts.display }]}>PROGRESS</Text><GlassView style={styles.sectionCard}><ActionRow label="Quest History" sublabel="Calendar of past completions" onPress={() => { onClose?.(); router.push('/history'); }} /></GlassView></View>
     {!embedded && <View style={styles.section}><Text style={[styles.sectionLabel, { color: theme.dim, fontFamily: fonts.display }]}>ACCOUNT</Text><GlassView style={styles.sectionCard}><ActionRow label="Export Data" sublabel="Download your progress as JSON" onPress={() => Alert.alert('Exporting data...')} /><Divider /><ActionRow label={signOutPending ? 'Signing Out…' : 'Sign Out'} danger onPress={() => void logout()} />{signOutError && <Text accessibilityRole="alert" style={styles.error}>{signOutError}</Text>}</GlassView></View>}
-    <Text style={[styles.version, { color: theme.dim }]}>Eiyu System v0.1.0</Text>
+    <Text style={[styles.version, { color: theme.dim }]}>{appVersion ? `Eiyu System v${appVersion}` : 'Eiyu System'}</Text>
   </Screen>;
 }
 

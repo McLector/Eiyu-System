@@ -5,7 +5,9 @@ import {
   STAT_COLORS,
   formatError,
   isStageDescriptionWithinLimit,
+  normalizeNameBoundaries,
   stageSequenceState,
+  validateQuestName,
   type Stat,
 } from '@eiyu/shared';
 import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, NoteIcon } from '../Icons';
@@ -443,7 +445,8 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
   const filledEditStages = editStages
     .map(s => ({ ...s, name: s.name.trim() }))
     .filter(s => s.name.length > 0);
-  const editValid = editName.trim().length > 0 && filledEditStages.length >= MIN_STAGES;
+  const editNameError = editName === lq.name ? null : validateQuestName(editName);
+  const editValid = !editNameError && filledEditStages.length >= MIN_STAGES;
 
   const saveEdit = async () => {
     if (!editValid || saving) return;
@@ -452,7 +455,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
     try {
       await saveLongQuest(
         {
-          name: editName.trim(),
+          name: editName === lq.name ? editName : normalizeNameBoundaries(editName),
           stat: editStat,
           description: editDescription.trim() || undefined,
           stages: filledEditStages.map(s => ({ id: s.id, name: s.name, description: s.description })),
@@ -601,7 +604,8 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
         <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 0 24px' }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>EDIT LONG QUEST</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <input className="field" placeholder="Quest name..." value={editName} onChange={e => setEditName(e.target.value)} />
+            <input aria-label="Quest name" aria-invalid={!!editNameError} aria-describedby={editNameError ? 'long-quest-edit-name-error' : undefined} className="field" placeholder="Quest name..." value={editName} onChange={e => setEditName(e.target.value)} />
+            {editNameError && <p id="long-quest-edit-name-error" role="alert" aria-live="polite" style={{ color: '#f87171', fontSize: 12, margin: 0 }}>{editNameError}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(['STR','INT','DEX','WIS','CHA'] as const).map(s => (
                 <button key={s} onClick={() => setEditStat(s)} className="btn-ghost" style={{ padding: '5px 12px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: editStat === s ? STAT_COLORS[s] : 'var(--c-muted-flat)', borderColor: editStat === s ? STAT_COLORS[s] + '55' : 'var(--c-accent-border)' }}>
@@ -684,9 +688,10 @@ export default function WebLongQuests() {
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const newNameError = validateQuestName(newName);
 
   const addLongQuest = async () => {
-    if (!newName.trim() || creating) return;
+    if (newNameError || creating) return;
     const stages = newStages
       .map((stageName, index) => ({ name: stageName.trim(), description: newStageDescriptions[index] }))
       .filter(stage => stage.name.length > 0);
@@ -695,7 +700,7 @@ export default function WebLongQuests() {
     setCreateError(null);
     try {
       await saveLongQuest({
-        name: newName.trim(),
+        name: normalizeNameBoundaries(newName),
         stat: newStat,
         description: newDescription.trim() || undefined,
         stages,
@@ -729,7 +734,8 @@ export default function WebLongQuests() {
         <div style={{ padding: '16px 0 20px', borderTop: '1px solid var(--c-divider-flat)', borderBottom: '1px solid var(--c-divider-flat)', marginBottom: 20 }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>NEW LONG QUEST</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <input className="field" placeholder="Quest name..." value={newName} onChange={e => setNewName(e.target.value)} />
+            <input aria-label="Quest name" aria-invalid={!!newNameError} aria-describedby={newNameError ? 'long-quest-new-name-error' : undefined} className="field" placeholder="Quest name..." value={newName} onChange={e => setNewName(e.target.value)} />
+            {newNameError && <p id="long-quest-new-name-error" role="alert" aria-live="polite" style={{ color: '#f87171', fontSize: 12, margin: 0 }}>{newNameError}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {(['STR','INT','DEX','WIS','CHA'] as const).map(s => (
                 <button key={s} onClick={() => setNewStat(s)} className="btn-ghost" style={{ padding: '5px 12px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: newStat === s ? STAT_COLORS[s] : 'var(--c-muted-flat)', borderColor: newStat === s ? STAT_COLORS[s] + '55' : 'var(--c-accent-border)' }}>
@@ -767,7 +773,7 @@ export default function WebLongQuests() {
             </button>
             {createError && <p style={{ color: '#f87171', fontSize: 12 }}>{createError}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button onClick={() => void addLongQuest()} className="btn-ghost" style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>CREATE</button>
+              <button onClick={() => void addLongQuest()} disabled={!!newNameError || creating} className="btn-ghost" style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: newNameError || creating ? 0.5 : 1 }}>CREATE</button>
               <button onClick={() => setShowNew(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>

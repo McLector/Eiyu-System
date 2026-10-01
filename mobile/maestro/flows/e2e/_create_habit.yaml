@@ -1,0 +1,19 @@
+appId: com.mclector.eiyusystem
+---
+# Create a habit quest from the Board. Env: HABIT_NAME (required).
+# Optional: HABIT_TARGET (target count, makes it a quantity habit).
+- tapOn: "ADD A QUEST"
+- tapOn: "HABIT QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: ${HABIT_NAME}
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "one minute version"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
+- tapOn: "CREATE QUEST"
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertVisible: ${HABIT_NAME}

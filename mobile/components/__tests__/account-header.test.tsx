@@ -57,7 +57,7 @@ describe('native account header', () => {
     expect(screen.getByText('EDIT DETAILS')).toBeOnTheScreen();
   });
 
-  it('asks before discarding edits through the native Back or Cancel path', async () => {
+  it('uses an in-app discard confirmation and preserves or discards the draft intentionally', async () => {
     const user = userEvent.setup();
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     await render(<AccountHeader />);
@@ -65,12 +65,30 @@ describe('native account header', () => {
     await user.press(screen.getByRole('button', { name: 'Edit details' }));
     await user.type(screen.getByLabelText('Display name'), ' X');
     await user.press(screen.getByRole('button', { name: 'Cancel' }));
-    expect(alert).toHaveBeenCalledWith('Discard changes?', expect.any(String), expect.any(Array));
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Discard changes?')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Display name').props.value).toBe('Yuki Tanaka X');
+    await user.press(screen.getByRole('button', { name: 'Keep Editing' }));
+    expect(screen.queryByLabelText('Discard changes?')).toBeNull();
     expect(screen.getByText('EDIT DETAILS')).toBeOnTheScreen();
-    const actions = alert.mock.calls[0][2] as Array<{ text: string; onPress?: () => void }>;
-    expect(actions.map(action => action.text)).toEqual(['Keep editing', 'Discard']);
-    await act(async () => actions[1].onPress?.());
+    expect(screen.getByLabelText('Display name').props.value).toBe('Yuki Tanaka X');
+    await user.press(screen.getByRole('button', { name: 'Cancel' }));
+    await user.press(screen.getByRole('button', { name: 'Discard Changes' }));
     expect(screen.queryByText('EDIT DETAILS')).toBeNull();
+  });
+
+  it('makes system Back dismiss the discard prompt without discarding the profile sheet', async () => {
+    const user = userEvent.setup();
+    await render(<AccountHeader />);
+    await user.press(screen.getByRole('button', { name: /Yuki Tanaka.*rank C/i }));
+    await user.press(screen.getByRole('button', { name: 'Edit details' }));
+    await user.type(screen.getByLabelText('Display name'), ' X');
+    await user.press(screen.getByRole('button', { name: 'Cancel' }));
+    const prompt = screen.getByTestId('profile-discard-modal');
+    await act(async () => prompt.props.onRequestClose());
+    expect(screen.queryByRole('dialog', { name: 'Discard changes?' })).toBeNull();
+    expect(screen.getByText('EDIT DETAILS')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Display name').props.value).toBe('Yuki Tanaka X');
   });
 
   it('holds a pending profile sheet and shows a late save failure', async () => {
@@ -95,6 +113,8 @@ describe('native account header', () => {
     mockParams = { account: 'settings' };
     await render(<AccountHeader />);
     expect(screen.getByText('SETTINGS')).toBeOnTheScreen();
+    expect(screen.getAllByText('SETTINGS')).toHaveLength(1);
+    expect(screen.getByText('SETTINGS').props.accessibilityRole).toBe('header');
     expect(mockRouter.setParams).toHaveBeenCalledWith({ account: undefined });
   });
 });

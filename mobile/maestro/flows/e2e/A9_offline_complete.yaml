@@ -1,0 +1,33 @@
+# A9: completing a quest while offline must fail visibly and leave no ghost
+# state. Env: E2E_EMAIL, E2E_PASSWORD. Airplane mode is restored at the end.
+appId: com.mclector.eiyusystem
+---
+- runFlow: ../_helpers/login.yaml
+- runFlow:
+    file: _create_habit.yaml
+    env:
+      HABIT_NAME: "E2E Offline A"
+- setAirplaneMode: enabled
+- waitForAnimationToEnd:
+    timeout: 4000
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- extendedWaitUntil:
+    visible: "You're offline. Your update wasn't saved. Your saved quests are still shown."
+    timeout: 30000
+- assertVisible: "E2E Offline A"
+- assertNotVisible: "Network request failed"
+- assertVisible:
+    text: "E2E Offline A"
+    checked: false
+- takeScreenshot: a9-offline-after-tap
+- setAirplaneMode: disabled
+- waitForAnimationToEnd:
+    timeout: 8000
+- assertNotVisible: "You're offline. Your update wasn't saved. Your saved quests are still shown."
+- assertVisible: "E2E Offline A"
+- assertVisible:
+    text: "E2E Offline A"
+    checked: false
+- takeScreenshot: a9-back-online

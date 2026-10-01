@@ -17,6 +17,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import * as Network from 'expo-network';
 import {
   createContext,
   useCallback,
@@ -50,6 +51,8 @@ import {
   getNotificationsEnabled,
   setNotificationsEnabled as persistNotificationsEnabled,
 } from '@/lib/notification-prefs';
+import { getSoundEffectsEnabled, setSoundEffectsEnabled as persistSoundEffectsEnabled } from '@/lib/sound-effects-prefs';
+import { useCompletionSound } from '@/lib/completion-sound';
 import {
   cancelAllHabitReminders,
   ensureNotificationSetup,
@@ -93,6 +96,30 @@ export const persister = createAsyncStoragePersister({ storage: AsyncStorage });
 const habitsTodayKey = (userId?: string) => ['habits', 'today', userId ?? null] as const;
 const longQuestsKey = (userId?: string) => ['longQuests', userId ?? null] as const;
 
+function isOfflineNetworkFailure(error: unknown): boolean {
+  const message = error instanceof Error
+    ? error.message
+    : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+      ? error.message
+      : String(error);
+  return /network request failed|failed to fetch|networkerror|load failed/i.test(message);
+}
+
+function formatQuestActionError(error: unknown): string {
+  return isOfflineNetworkFailure(error)
+    ? "You're offline. Your update wasn't saved. Your saved quests are still shown."
+    : formatError(error);
+}
+
+function formatQuestLoadError(error: unknown, hasCachedData: boolean): string {
+  return isOfflineNetworkFailure(error)
+    ? hasCachedData
+      ? "You're offline. Your saved quests are still shown. Check your connection or retry."
+      : "You're offline. Your quests couldn't be loaded. Check your connection or retry."
+    : formatError(error);
+}
+const offlineActionMessage = "You're offline. Your update wasn't saved. Your saved quests are still shown.";
+
 interface EiyuStore {
   user: UserProfile;
   theme: EiyuTheme;
@@ -100,6 +127,8 @@ interface EiyuStore {
   setDarkMode: (v: boolean) => void;
   questsLoading: boolean;
   questsError: string | null;
+  /** True when a previously loaded quest list is available, including an empty list. */
+  questsHaveCachedData: boolean;
   /** Re-fetch today's quests after a load failure (e.g. a transient network/auth error). */
   retryQuests: () => Promise<void>;
   /** Full completion if not yet done, undo if already done (R-05, R-07). */
@@ -130,6 +159,9 @@ interface EiyuStore {
   /** R-42: global reminder toggle. */
   notificationsEnabled: boolean;
   setNotificationsEnabled: (enabled: boolean) => void;
+  soundEffectsEnabled: boolean;
+  soundEffectsLoaded: boolean;
+  setSoundEffectsEnabled: (enabled: boolean) => Promise<void>;
   /** R-30/R-31: this week's auto-generated quest, null until the first load resolves. */
   weeklyQuest: WeeklyQuest | null;
   saveProfile: (input: { displayName: string; userClass: string }) => Promise<void>;
@@ -149,31 +181,66 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [notificationPreferenceLoaded, setNotificationPreferenceLoaded] = useState(false);
+  const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState(false);
+  const [soundEffectsLoaded, setSoundEffectsLoaded] = useState(false);
   const [reminderWarning, setReminderWarning] = useState<string | null>(null);
   const reminderOperation = useRef(0);
   const preferenceOperation = useRef(0);
   const preferenceWriteQueue = useRef<Promise<unknown>>(Promise.resolve());
   const preferenceReadFailed = useRef(false);
+  const soundPreferenceOperation = useRef(0);
+  const soundPreferenceWriteQueue = useRef<Promise<unknown>>(Promise.resolve());
   const reminderTaskQueue = useRef<Promise<unknown>>(Promise.resolve());
   const [accountDayRevision, setAccountDayRevision] = useState(0);
   const lifecycleRequests = useRef(new Map<string, Promise<void>>());
   const deletedHabitIds = useRef(new Set<string>());
+  const quantitySoundTransitions = useRef(new Set<string>());
   const explicitPermissionRequest = useRef(false);
   const activeUserId = useRef(userId);
+  const offlineFailurePending = useRef(false);
+  const lastConnectivity = useRef<boolean | null>(null);
+  const connectivityEventRevision = useRef(0);
+  const playCompletionSound = useCompletionSound();
+
+  const trackOfflineFailure = useCallback(async <T,>(request: () => Promise<T>): Promise<T> => {
+    try {
+      return await request();
+    } catch (error) {
+      if (isOfflineNetworkFailure(error)) offlineFailurePending.current = true;
+      throw error;
+    }
+  }, []);
+  const formatTrackedQuestActionError = useCallback((error: unknown): string => {
+    if (isOfflineNetworkFailure(error)) offlineFailurePending.current = true;
+    return formatQuestActionError(error);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const operation = soundPreferenceOperation.current;
+    void getSoundEffectsEnabled().then(enabled => {
+      if (!active || soundPreferenceOperation.current !== operation) return;
+      setSoundEffectsEnabledState(enabled);
+      setSoundEffectsLoaded(true);
+    }).catch(() => {
+      if (active && soundPreferenceOperation.current === operation) setSoundEffectsLoaded(true);
+    });
+    return () => { active = false; };
+  }, []);
 
   const habitsQuery = useQuery({
     queryKey: habitsTodayKey(userId),
-    queryFn: () => fetchTodayHabits(userId!),
+    queryFn: () => trackOfflineFailure(() => fetchTodayHabits(userId!)),
     enabled: !!userId,
   });
   const profileQuery = useQuery({
     queryKey: ['profile', userId ?? null],
-    queryFn: () => fetchProfile(userId!),
+    queryFn: () => trackOfflineFailure(() => fetchProfile(userId!)),
     enabled: !!userId,
   });
   const statsQuery = useQuery({
     queryKey: ['stats', userId ?? null],
-    queryFn: () => fetchStats(userId!),
+    queryFn: () => trackOfflineFailure(() => fetchStats(userId!)),
     enabled: !!userId,
   });
   // Depends on fresh stats (fetch-or-create writes a row server-side).
@@ -181,21 +248,22 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     queryKey: ['weeklyQuest', userId ?? null],
     // Self-fetches stats so create-or-fetch can never seed against stale data
     // even when invalidations below are dispatched in parallel.
-    queryFn: async () =>
+    queryFn: () => trackOfflineFailure(async () =>
       fetchOrCreateWeeklyQuest(
         userId!,
         await fetchStats(userId!),
         profileQuery.data!.timeZone
-      ),
+      )),
     enabled: !!userId && !!profileQuery.data,
   });
   const longQuestsQuery = useQuery({
     queryKey: longQuestsKey(userId),
-    queryFn: () => fetchLongQuests(userId!),
+    queryFn: () => trackOfflineFailure(() => fetchLongQuests(userId!)),
     enabled: !!userId,
   });
 
   const quests = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
+  const questsHaveCachedData = habitsQuery.data !== undefined;
   const longQuests = useMemo(() => longQuestsQuery.data ?? [], [longQuestsQuery.data]);
   const stats = useMemo(() => statsQuery.data ?? initialUser.stats, [statsQuery.data]);
   const profile = profileQuery.data ?? null;
@@ -237,7 +305,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     statsQuery.error,
     weeklyQuestQuery.error,
   ].find((e): e is Error => !!e);
-  const questsError = questsLoadError ? formatError(questsLoadError) : questActionError;
+  const questsError = questsLoadError ? formatQuestLoadError(questsLoadError, questsHaveCachedData) : questActionError;
   const longQuestsError = longQuestsQuery.isPending || retryingLongQuests ? null : longQuestsQuery.error ? formatError(longQuestsQuery.error) : lqActionError;
 
   // Sign-out/account-switch hygiene: no user-scoped query or persisted cache
@@ -252,6 +320,44 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     deletedHabitIds.current.clear();
     lifecycleRequests.current.clear();
     setReminderWarning(null);
+  }, [qc, userId]);
+
+  useEffect(() => {
+    offlineFailurePending.current = false;
+    lastConnectivity.current = null;
+    connectivityEventRevision.current += 1;
+    const startingRevision = connectivityEventRevision.current;
+    let active = true;
+    void Network.getNetworkStateAsync().then(state => {
+      if (active && connectivityEventRevision.current === startingRevision) {
+        lastConnectivity.current = state.isConnected ?? null;
+      }
+    }).catch(() => {});
+    const subscription = Network.addNetworkStateListener(state => {
+      connectivityEventRevision.current += 1;
+      const wasOffline = lastConnectivity.current === false;
+      lastConnectivity.current = state.isConnected ?? null;
+      if (!wasOffline || state.isConnected !== true || !offlineFailurePending.current || !userId) return;
+      offlineFailurePending.current = false;
+      const habitsRefresh = qc.invalidateQueries(
+        { queryKey: habitsTodayKey(userId), refetchType: 'active' },
+        { throwOnError: true }
+      ).then(() => {
+        if (active && activeUserId.current === userId) {
+          setQuestActionError(message => message === offlineActionMessage ? null : message);
+        }
+      });
+      return Promise.all([
+        habitsRefresh,
+        qc.invalidateQueries({ queryKey: ['profile', userId], refetchType: 'active' }, { throwOnError: true }),
+        qc.invalidateQueries({ queryKey: ['stats', userId], refetchType: 'active' }, { throwOnError: true }),
+        qc.invalidateQueries({ queryKey: ['weeklyQuest', userId], refetchType: 'active' }, { throwOnError: true }),
+      ]).catch(() => {});
+    });
+    return () => {
+      active = false;
+      subscription?.remove?.();
+    };
   }, [qc, userId]);
   // Frozen-recovery notifications (R-41): notify only on the transition into
   // frozen while the app is open. The first observed snapshot of a session -
@@ -403,6 +509,20 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     });
   }, [notificationsEnabled]);
 
+  const setSoundEffectsEnabled = useCallback(async (enabled: boolean) => {
+    const operation = ++soundPreferenceOperation.current;
+    const write = soundPreferenceWriteQueue.current.then(() => persistSoundEffectsEnabled(enabled));
+    soundPreferenceWriteQueue.current = write.catch(() => {});
+    await write;
+    if (soundPreferenceOperation.current !== operation) return;
+    setSoundEffectsEnabledState(enabled);
+    setSoundEffectsLoaded(true);
+  }, []);
+
+  const playSuccessfulCompletionSound = useCallback(() => {
+    if (soundEffectsEnabled) playCompletionSound();
+  }, [soundEffectsEnabled, playCompletionSound]);
+
   /** Optimistic completion with rollback (same semantics as the pre-Phase-3 store). */
   const runCompletion = useCallback(
     async (id: string, action: () => Promise<void>, optimisticCompleted: boolean) => {
@@ -413,6 +533,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       );
       try {
         await action();
+        if (optimisticCompleted) playSuccessfulCompletionSound();
         // Recompute streaks/XP/weekly progress from fresh server state.
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
@@ -424,10 +545,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         qc.setQueryData<Quest[]>(key, qs =>
           qs?.map(q => (q.id === id ? { ...q, completed: !optimisticCompleted } : q))
         );
-        setQuestActionError(formatError(err));
+        setQuestActionError(formatTrackedQuestActionError(err));
       }
     },
-    [userId, qc]
+    [userId, qc, formatTrackedQuestActionError, playSuccessfulCompletionSound]
   );
 
   const toggleQuest = useCallback(
@@ -492,6 +613,17 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.setQueryData<Quest[]>(key, qs =>
             qs?.map(q => (q.id === id ? { ...q, progressCount: serverCount, completed: serverCount >= target } : q))
           );
+          if (
+            soundEffectsEnabled &&
+            !quest.completed &&
+            prevProgress < target &&
+            serverCount >= target &&
+            !quantitySoundTransitions.current.has(id)
+          ) {
+            quantitySoundTransitions.current.add(id);
+            playSuccessfulCompletionSound();
+            setTimeout(() => quantitySoundTransitions.current.delete(id), 0);
+          }
           await Promise.all([
             qc.invalidateQueries({ queryKey: ['stats', userId] }),
             qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
@@ -502,10 +634,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.setQueryData<Quest[]>(key, qs =>
             qs?.map(q => (q.id === id ? { ...q, progressCount: prevProgress, completed: prevCompleted } : q))
           );
-          setQuestActionError(formatError(err));
+          setQuestActionError(formatTrackedQuestActionError(err));
         });
     },
-    [quests, userId, qc, profile?.timeZone]
+    [quests, userId, qc, profile?.timeZone, formatTrackedQuestActionError, soundEffectsEnabled, playSuccessfulCompletionSound]
   );
 
   const completeRecovery = useCallback(
@@ -514,6 +646,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       if (!quest || !userId || !quest.frozen) return;
       try {
         await completeHabitRecovery(id);
+        playSuccessfulCompletionSound();
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
@@ -521,10 +654,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         ]);
         setQuestActionError(null);
       } catch (err) {
-        setQuestActionError(formatError(err));
+        setQuestActionError(formatTrackedQuestActionError(err));
       }
     },
-    [quests, userId, qc]
+    [quests, userId, qc, formatTrackedQuestActionError, playSuccessfulCompletionSound]
   );
 
   const saveHabit = useCallback(
@@ -534,7 +667,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         throw new Error('This quest was deleted. Close this editor and reload the board.');
       }
       if (existingId) {
-        await updateHabit(existingId, input);
+        await updateHabit(existingId, input, quests.find(quest => quest.id === existingId)?.name);
       } else {
         await createHabit(userId, input);
       }
@@ -550,7 +683,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       };
       void syncAllReminders(true).catch(reminderFailure);
     },
-    [userId, qc, notificationsEnabled, syncAllReminders]
+    [userId, qc, quests, notificationsEnabled, syncAllReminders]
   );
 
   const runLifecycle = useCallback(
@@ -566,7 +699,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           if (operation === 'restore') await restoreHabit(id);
           if (operation === 'delete') await deleteHabit(id);
         } catch (err) {
-          setQuestActionError(formatError(err));
+          setQuestActionError(formatTrackedQuestActionError(err));
           throw err;
         }
 
@@ -598,7 +731,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       );
       return request;
     },
-    [notificationsEnabled, qc, syncAllReminders]
+    [notificationsEnabled, qc, syncAllReminders, formatTrackedQuestActionError]
   );
 
   const archiveQuest = useCallback((id: string) => runLifecycle(id, 'archive'), [runLifecycle]);
@@ -659,7 +792,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     async (input: LongQuestInput, existingId?: string) => {
       if (!userId) return;
       if (existingId) {
-        await updateLongQuest(existingId, { name: input.name, stat: input.stat, description: input.description });
+        await updateLongQuest(
+          existingId,
+          { name: input.name, stat: input.stat, description: input.description },
+          longQuests.find(quest => quest.id === existingId)?.name
+        );
         await reconcileLongQuestStages(existingId, input.stages);
       } else {
         await createLongQuest(userId, input);
@@ -667,7 +804,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
-    [userId, qc]
+    [userId, qc, longQuests]
   );
 
   const removeLongQuest = useCallback(
@@ -719,6 +856,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         retryingQuests,
       retryingLongQuests,
       questsError,
+      questsHaveCachedData,
       retryQuests,
       toggleQuest,
       completeEasy,
@@ -738,6 +876,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       removeLongQuest,
       notificationsEnabled,
       setNotificationsEnabled,
+      soundEffectsEnabled,
+      soundEffectsLoaded,
+      setSoundEffectsEnabled,
       weeklyQuest,
       saveProfile,
     }),
@@ -751,6 +892,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       retryingQuests,
       retryingLongQuests,
       questsError,
+      questsHaveCachedData,
       retryQuests,
       toggleQuest,
       completeEasy,
@@ -770,6 +912,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       removeLongQuest,
       notificationsEnabled,
       setNotificationsEnabled,
+      soundEffectsEnabled,
+      soundEffectsLoaded,
+      setSoundEffectsEnabled,
       weeklyQuest,
       saveProfile,
     ]

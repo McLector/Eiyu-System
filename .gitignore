@@ -37,6 +37,11 @@ yarn-error.*
 !.env.example
 artifacts/repair-e/*.local.json
 
+# Local emulator evidence and personal observation logs must stay untracked.
+/artifacts/phase-06/
+/artifacts/repair-a/
+/skill-observations/
+
 # typescript
 *.tsbuildinfo
 

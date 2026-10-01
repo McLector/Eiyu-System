@@ -121,6 +121,49 @@ describe('createHabit / updateHabit — scheduled_date column mapping', () => {
 
     expect(inserted).toHaveBeenCalledWith(expect.objectContaining({ target_count: null }));
   });
+
+  it('rejects an 81-code-point create before timezone initialization or database access', async () => {
+    (supabase.from as jest.Mock).mockReturnValue({ insert: jest.fn() });
+    await expect(createHabit('user-1', {
+      name: '😀'.repeat(81), stat: 'INT', difficulty: 'Medium', time: '09:00', days: [0, 1, 2, 3, 4, 5, 6],
+    })).rejects.toThrow(/80 characters/);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('accepts an 80-code-point create and validates edits before any write', async () => {
+    const inserted = jest.fn(() => chainable({ data: { id: 'h-boundary' }, error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return { insert: inserted };
+      throw new Error(`unexpected table ${table}`);
+    });
+    const input = { name: '😀'.repeat(80), stat: 'INT' as const, difficulty: 'Medium' as const, time: '09:00', days: [0, 1, 2, 3, 4, 5, 6] };
+    await expect(createHabit('user-1', input)).resolves.toBe('h-boundary');
+    expect(inserted).toHaveBeenCalledWith(expect.objectContaining({ name: input.name }));
+
+    (supabase.from as jest.Mock).mockClear();
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return { update: jest.fn(() => chainable({ data: { id: 'h-boundary' }, error: null })) };
+      throw new Error(`unexpected table ${table}`);
+    });
+    (supabase.rpc as jest.Mock).mockClear();
+    await expect(updateHabit('h-boundary', { ...input, name: '😀'.repeat(81) })).rejects.toThrow(/80 characters/);
+    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('allows an unchanged over-limit legacy name only when its persisted value is supplied', async () => {
+    const updated = jest.fn(() => chainable({ data: { id: 'legacy' }, error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return { update: updated };
+      throw new Error(`unexpected table ${table}`);
+    });
+    const legacyName = '🧭'.repeat(81);
+    await expect((updateHabit as (...args: any[]) => Promise<void>)('legacy', {
+      name: legacyName, stat: 'STR', difficulty: 'Easy', time: '08:00', days: [1, 3, 5],
+    }, legacyName)).resolves.toBeUndefined();
+    expect(updated).toHaveBeenCalledWith(expect.objectContaining({ name: legacyName }));
+  });
 });
 
 describe('fetchTodayHabits — quantity-habit progress join', () => {

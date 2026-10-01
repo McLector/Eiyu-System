@@ -5,6 +5,8 @@ import {
   authErrorMessage,
   confirmEmailMessage,
   LEGAL_DOCUMENTS,
+  MIN_PASSWORD_LENGTH,
+  normalizeNameBoundaries,
   passwordStrength,
   resetLinkSentMessage,
   validateConfirmPassword,
@@ -34,6 +36,8 @@ const NOTICE_TINT = {
 function PasswordStrength({ password }: { password: string }) {
   if (!password) return null;
   const score = passwordStrength(password);
+  const label = password.length < MIN_PASSWORD_LENGTH ? 'Too short' : STRENGTH_LABELS[score];
+  const color = password.length < MIN_PASSWORD_LENGTH ? '#f87171' : STRENGTH_COLORS[score];
   return (
     <div style={{ marginTop: 6 }}>
       <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
@@ -41,7 +45,7 @@ function PasswordStrength({ password }: { password: string }) {
           <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= score ? STRENGTH_COLORS[score] : 'var(--c-glass-border)', transition: 'background 0.2s' }} />
         ))}
       </div>
-      <span style={{ fontFamily: 'Inter', fontSize: 11, color: STRENGTH_COLORS[score] }}>{STRENGTH_LABELS[score]}</span>
+      <span style={{ fontFamily: 'Inter', fontSize: 11, color }}>{label}</span>
     </div>
   );
 }
@@ -70,6 +74,7 @@ export default function WebAuth({ onLogin }: Props) {
   const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const legalTriggerRef = useRef<HTMLButtonElement | null>(null);
   const legalCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -131,6 +136,7 @@ export default function WebAuth({ onLogin }: Props) {
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
+    setAttempted(false);
     setPassword('');
     setConfirmPw('');
     setTerms(false);
@@ -150,6 +156,7 @@ export default function WebAuth({ onLogin }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAttempted(true);
     if (!valid || submitting) return;
     setError(null);
     setSubmitting(true);
@@ -164,7 +171,7 @@ export default function WebAuth({ onLogin }: Props) {
         const { data, error: authError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { display_name: name.trim(), time_zone: deviceTimeZone() } },
+          options: { data: { display_name: normalizeNameBoundaries(name), time_zone: deviceTimeZone() } },
         });
         if (authError) throw authError;
         if (!data.session) {
@@ -225,17 +232,20 @@ export default function WebAuth({ onLogin }: Props) {
               {mode === 'signup' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DISPLAY NAME</label>
-                  <input aria-label="Display name" className="field" placeholder="Kaito Mizuru" value={name} onChange={e => setName(e.target.value)} />
+                  <input aria-label="Display name" aria-invalid={attempted && !!nameError} aria-describedby={attempted && nameError ? 'signup-name-error' : undefined} className="field" placeholder="Kaito Mizuru" value={name} onChange={e => setName(e.target.value)} />
+                  {attempted && nameError && <p id="signup-name-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{nameError}</p>}
                 </div>
               )}
               <div>
                 <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>EMAIL</label>
-                <input aria-label="Email address" className="field" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+                <input aria-label="Email address" aria-invalid={attempted && !!emailError} aria-describedby={attempted && emailError ? 'auth-email-error' : undefined} className="field" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+                {attempted && emailError && <p id="auth-email-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{emailError}</p>}
               </div>
               {mode !== 'forgot' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>PASSWORD</label>
-                  <input aria-label="Password" className="field" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+                  <input aria-label="Password" aria-invalid={attempted && !!passwordError} aria-describedby={attempted && passwordError ? 'auth-password-error' : undefined} className="field" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+                  {attempted && passwordError && <p id="auth-password-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{passwordError}</p>}
                   {mode === 'signup' && <PasswordStrength password={password} />}
                 </div>
               )}
@@ -243,9 +253,7 @@ export default function WebAuth({ onLogin }: Props) {
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>CONFIRM PASSWORD</label>
                   <input aria-label="Confirm password" className="field" type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
-                  {confirmPw.length > 0 && confirmPw !== password && (
-                    <p style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', marginTop: 6 }}>Passwords don&apos;t match</p>
-                  )}
+                  {attempted && confirmError && <p id="signup-confirm-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', marginTop: 6 }}>{confirmError}</p>}
                 </div>
               )}
               {mode === 'signup' && (
@@ -282,6 +290,7 @@ export default function WebAuth({ onLogin }: Props) {
                       Terms of Use
                     </button>.
                   </span>
+                  {attempted && !terms && <span role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171' }}>Accept the Privacy Policy and Terms to continue.</span>}
                 </div>
               )}
               {mode === 'login' && (
@@ -292,7 +301,7 @@ export default function WebAuth({ onLogin }: Props) {
                 </div>
               )}
               {error && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171' }}>{error}</p>}
-              <button type="submit" disabled={!valid || submitting} className="btn-ghost" style={{ width: '100%', padding: '14px', marginTop: 4, fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', opacity: !valid || submitting ? 0.6 : 1 }}>
+              <button type="submit" disabled={submitting} className="btn-ghost" style={{ width: '100%', padding: '14px', marginTop: 4, fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', opacity: submitting ? 0.6 : 1 }}>
                 {submitting ? 'WORKING…' : mode === 'login' ? 'ENTER SYSTEM' : mode === 'signup' ? 'BEGIN JOURNEY' : 'SEND RECOVERY LINK'}
               </button>
             </form>
