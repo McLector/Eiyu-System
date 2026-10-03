@@ -45,7 +45,7 @@ describe('web registration legal documents', () => {
     expect(screen.getByRole('dialog', { name: 'Privacy Policy' })).toBeInTheDocument();
     const closePrivacy = screen.getByRole('button', { name: 'Close Privacy Policy' });
     const privacyContent = screen.getByLabelText('Privacy Policy content');
-    expect(privacyContent).toHaveStyle({ overflowY: 'auto' });
+    expect(privacyContent.closest('.compact-dialog-body')).not.toBeNull();
     expect(closePrivacy).toHaveFocus();
     expect(screen.getByText('DATA WE COLLECT')).toBeInTheDocument();
     expect(consent).not.toBeChecked();

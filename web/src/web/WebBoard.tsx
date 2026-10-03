@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Quest,
   FULL_XP,
@@ -21,7 +20,7 @@ import SignaturePanel from '../SignaturePanel';
 import FireStreak from '../FireStreak';
 import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
-import { announceArchive } from '../components/ArchiveNotice';
+import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 
 interface Props {
   onNewQuest: (type: 'habit' | 'one_time') => void;
@@ -40,45 +39,6 @@ export function BoardDeleteDialog({ quest, onCancel, onDelete }: {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const overlay = useRef<HTMLDivElement>(null);
-  const dialog = useRef<HTMLDivElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
-  const trigger = useRef(document.activeElement as HTMLElement | null);
-
-  useEffect(() => {
-    cancel.current?.focus();
-    const background = Array.from(document.body.children).filter(node => node !== overlay.current) as HTMLElement[];
-    const previous = background.map(node => ({ node, inert: node.inert, ariaHidden: node.getAttribute('aria-hidden') }));
-    for (const node of background) { node.inert = true; node.setAttribute('aria-hidden', 'true'); }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        if (!inFlight.current) onCancel();
-      }
-      if (event.key !== 'Tab') return;
-      const buttons = Array.from(dialog.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
-      if (!buttons.length) { event.preventDefault(); dialog.current?.focus(); return; }
-      const first = buttons[0], last = buttons[buttons.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !dialog.current?.contains(document.activeElement))) {
-        event.preventDefault(); last.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !dialog.current?.contains(document.activeElement))) {
-        event.preventDefault(); first.focus();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    const originalTrigger = trigger.current;
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      for (const state of previous) {
-        state.node.inert = state.inert;
-        if (state.ariaHidden === null) state.node.removeAttribute('aria-hidden');
-        else state.node.setAttribute('aria-hidden', state.ariaHidden);
-      }
-      if (originalTrigger?.isConnected) originalTrigger.focus();
-      else document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-    };
-  }, [onCancel]);
-
   const confirm = async () => {
     if (inFlight.current) return;
     inFlight.current = true;
@@ -94,19 +54,11 @@ export function BoardDeleteDialog({ quest, onCancel, onDelete }: {
     }
   };
 
-  return createPortal(
-    <div ref={overlay} data-eiyu-dialog data-theme={document.querySelector<HTMLElement>('.surface-flat[data-theme]')?.dataset.theme} className="board-delete-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !inFlight.current) onCancel(); }}>
-      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="board-delete-title" aria-describedby="board-delete-description" tabIndex={-1} className="panel-flat board-delete-dialog">
-        <strong id="board-delete-title">Delete {quest.name} permanently?</strong>
-        <p id="board-delete-description">This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</p>
-        {error && <p role="alert" className="board-delete-error">{error}</p>}
-        <div className="board-delete-actions">
-          <button ref={cancel} type="button" className="btn-ghost" onClick={() => { if (!inFlight.current) onCancel(); }} disabled={pending}>Cancel</button>
-          <button type="button" className="board-edit-button is-danger" onClick={() => void confirm()} disabled={pending}>{pending ? 'DELETING…' : 'Confirm permanent delete'}</button>
-        </div>
-      </div>
-    </div>, document.body
-  );
+  return <Dialog title={`Delete ${quest.name} permanently?`} onClose={onCancel} pending={pending} initialFocus="[data-cancel-delete]">
+    <p>This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</p>
+    {error && <p role="alert">{error}</p>}
+    <div className="action-footer"><button data-cancel-delete className="btn-secondary" onClick={onCancel} disabled={pending}>Cancel</button><button className="btn-destructive" onClick={() => void confirm()} disabled={pending}>{pending ? 'DELETING...' : 'Confirm permanent delete'}</button></div>
+  </Dialog>;
 }
 
 function XpBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -346,6 +298,11 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     }
   };
 
+  const archive = (quest: Quest) => {
+    const owner = getNotificationOwner();
+    queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType, owner); });
+  };
+
   if (questsLoading) return <div className="board-state" role="status">Reading the board…</div>;
   if (questsError) {
     return (
@@ -412,13 +369,13 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
       </section>
 
         <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} storageKey={`${storagePrefix}:daily-quest-scroll`} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or check All Habits.' : false} action={<button onClick={() => onNewQuest('habit')} className="btn-ghost board-add-button"><PlusIcon /> ADD QUEST</button>}>
-          {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType); })} onDelete={() => confirmDelete(quest)} />)}
+          {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
         <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} storageKey={`${storagePrefix}:one-time-quest-scroll`} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today.' : false} action={<button onClick={() => onNewQuest('one_time')} className="btn-ghost board-add-button"><PlusIcon /> ADD QUEST</button>}>
-          {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType); })} onDelete={() => confirmDelete(quest)} />)}
+          {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
         <BoardLane id="all-habits" title="All Habits" count={allHabits.length} active={activeLane === 'all-habits'} storageKey={`${storagePrefix}:all-habits-scroll`} empty={allHabits.length === 0 ? 'No saved habits yet. Add a recurring quest to build your catalog.' : false}>
-          {allHabits.map(quest => <CatalogCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => onEditQuest(quest.id)} onArchive={() => queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType); })} onDelete={() => confirmDelete(quest)} />)}
+          {allHabits.map(quest => <CatalogCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => onEditQuest(quest.id)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
 
       </section>

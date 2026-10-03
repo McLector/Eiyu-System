@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import Dialog from '../components/Dialog';
 
 import { supabase } from '../lib/supabase';
 import {
@@ -21,7 +22,7 @@ import {
 import { CheckIcon, MailIcon } from '../Icons';
 import SignaturePanel from '../SignaturePanel';
 
-interface Props { onLogin: () => void; }
+interface Props { onLogin: () => void; logoutWarning?: string | null; onDismissLogoutWarning?: () => void; }
 
 interface Notice { icon: 'mail' | 'check'; title: string; message: string; }
 
@@ -64,7 +65,7 @@ function NoticeBadge({ icon }: { icon: Notice['icon'] }) {
   );
 }
 
-export default function WebAuth({ onLogin }: Props) {
+export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning }: Props) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,54 +77,8 @@ export default function WebAuth({ onLogin }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const legalTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const legalCloseRef = useRef<HTMLButtonElement | null>(null);
   const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
-
-  useEffect(() => {
-    if (!legalDocument) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    legalCloseRef.current?.focus();
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setLegalDocument(null);
-        return;
-      }
-      if (event.key !== 'Tab') return;
-
-      const dialog = legalCloseRef.current?.closest('[role="dialog"]');
-      if (!dialog) return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>('button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')
-      );
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (!first || !last) return;
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', closeOnEscape);
-
-    return () => {
-      document.removeEventListener('keydown', closeOnEscape);
-      document.body.style.overflow = previousOverflow;
-      legalTriggerRef.current?.focus();
-    };
-  }, [legalDocument]);
-
-  const openLegalDocument = (id: LegalDocumentId, trigger: HTMLButtonElement) => {
-    legalTriggerRef.current = trigger;
-    setLegalDocument(id);
-  };
+  const openLegalDocument = (id: LegalDocumentId) => setLegalDocument(id);
 
   /** Switch auth mode without leaking submit-state, stale errors, or secrets
    * across forms. Password/confirm/terms are cleared deliberately: a login-
@@ -215,6 +170,10 @@ export default function WebAuth({ onLogin }: Props) {
 
         {/* Card — the only signature panel on this screen (spec 8.4) */}
         <SignaturePanel style={{ padding: '28px 28px 24px' }}>
+          {logoutWarning && <div className="auth-signout-warning" role="alert">
+            <p>Signed out on this device. Server sign-out could not be confirmed: {logoutWarning}</p>
+            <button type="button" className="phase4-close" aria-label="Dismiss sign-out warning" onClick={onDismissLogoutWarning}>×</button>
+          </div>}
           {/* Accent line */}
           <div style={{ height: 2, background: 'var(--c-accent)', borderRadius: 1, marginBottom: 22, opacity: 0.7 }} />
 
@@ -278,14 +237,14 @@ export default function WebAuth({ onLogin }: Props) {
                     I agree to the{' '}
                     <button
                       type="button"
-                      onClick={event => openLegalDocument('privacy', event.currentTarget)}
+                      onClick={() => openLegalDocument('privacy')}
                       style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                       Privacy Policy
                     </button>{' '}
                     and{' '}
                     <button
                       type="button"
-                      onClick={event => openLegalDocument('terms', event.currentTarget)}
+                      onClick={() => openLegalDocument('terms')}
                       style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                       Terms of Use
                     </button>.
@@ -329,46 +288,11 @@ export default function WebAuth({ onLogin }: Props) {
       </div>
 
       {activeLegalDocument && (
-        <div
-          role="presentation"
-          onMouseDown={event => {
-            if (event.target === event.currentTarget) setLegalDocument(null);
-          }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 20, padding: 16,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.72)',
-          }}>
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={`legal-dialog-title-${activeLegalDocument.id}`}
-            style={{
-              width: 'min(640px, 100%)', maxHeight: 'min(82svh, 760px)',
-              display: 'flex', flexDirection: 'column', gap: 16,
-              padding: '22px clamp(18px, 4vw, 30px)', borderRadius: 18,
-              background: 'var(--c-panel-flat)', border: '1px solid var(--c-glass-border)',
-              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-            }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-              <h2
-                id={`legal-dialog-title-${activeLegalDocument.id}`}
-                style={{ margin: 0, fontFamily: 'Rajdhani', fontSize: 'clamp(20px, 4vw, 26px)', color: 'var(--c-text)', letterSpacing: '0.05em' }}>
-                {activeLegalDocument.title}
-              </h2>
-              <button
-                ref={legalCloseRef}
-                type="button"
-                aria-label={`Close ${activeLegalDocument.title}`}
-                onClick={() => setLegalDocument(null)}
-                style={{ minWidth: 44, minHeight: 44, borderRadius: 22, border: '1px solid var(--c-glass-border)', background: 'none', color: 'var(--c-text)', cursor: 'pointer', fontSize: 22 }}>
-                ×
-              </button>
-            </div>
+        <Dialog title={activeLegalDocument.title} onClose={() => setLegalDocument(null)}>
             <div
               tabIndex={0}
               aria-label={`${activeLegalDocument.title} content`}
-              style={{ overflowY: 'auto', overscrollBehavior: 'contain', paddingRight: 8 }}>
+              style={{ paddingRight: 8 }}>
               {activeLegalDocument.sections.map(section => (
                 <section key={section.heading} style={{ marginBottom: 20 }}>
                   <h3 style={{ margin: '0 0 7px', fontFamily: 'Rajdhani', fontSize: 13, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>
@@ -380,8 +304,7 @@ export default function WebAuth({ onLogin }: Props) {
                 </section>
               ))}
             </div>
-          </section>
-        </div>
+        </Dialog>
       )}
     </div>
   );

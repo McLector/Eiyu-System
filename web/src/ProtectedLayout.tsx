@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import ArchiveNotice from './components/ArchiveNotice';
+import { NavigationGuard } from './components/NavigationGuard';
 import AccountShell, { type AccountOverlay } from './web/AccountShell';
 
 export interface LayoutContext {
@@ -43,7 +44,7 @@ export default function ProtectedLayout() {
   };
 
   return (
-    <div
+    <NavigationGuard><div
       data-theme={darkMode ? 'dark' : 'light'}
       className="surface-flat"
       style={{ minHeight: '100svh', position: 'relative' }}
@@ -64,6 +65,6 @@ export default function ProtectedLayout() {
       <main className="protected-main" style={{ padding: '12px clamp(12px, 2vw, 28px) 16px' }}>
         <Outlet context={context} />
       </main>
-    </div>
+    </div></NavigationGuard>
   );
 }

@@ -2,7 +2,7 @@
 
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
@@ -28,15 +28,7 @@ import ProtectedLayout from '../ProtectedLayout';
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 function renderLayout() {
-  return render(
-    <MemoryRouter initialEntries={['/status']}>
-      <Routes>
-        <Route element={<ProtectedLayout />}>
-          <Route path="*" element={<Outlet />} />
-        </Route>
-      </Routes>
-    </MemoryRouter>
-  );
+  return render(<RouterProvider router={createMemoryRouter([{ element: <ProtectedLayout />, children: [{ path: '*', element: <p>Content</p> }] }], { initialEntries: ['/status'] })} />);
 }
 
 describe('Phase 4 account navigation', () => {

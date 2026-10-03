@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useRef, useState } from 'react';
+import Dialog from '../components/Dialog';
+import { useEditorGuard } from '../components/NavigationGuard';
 import { accountDateKey, DEFAULT_HABIT_DAYS, Quest, Stat, Difficulty, STATS, HabitInput, formatError, normalizeNameBoundaries, suggestEasyVersions, validateQuestName } from '@eiyu/shared';
 import { STAT_COLORS } from '@eiyu/shared';
 import { SparkleIcon, StatIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
-import { announceArchive } from '../components/ArchiveNotice';
+import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 
 interface Props {
   editingQuest?: Quest | null;
@@ -34,11 +35,8 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const lifecycleInFlight = useRef(false);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
-  const deleteDialog = useRef<HTMLDivElement>(null);
-  const cancelDeleteButton = useRef<HTMLButtonElement>(null);
-  const savingRef = useRef(saving);
-  savingRef.current = saving;
-  const hadDeleteDialog = useRef(false);
+  const initial = useRef(JSON.stringify({ name, note, easyVer, time, scheduledDate, targetCount, days, stat, difficulty }));
+  const closeEditor = useEditorGuard(JSON.stringify({ name, note, easyVer, time, scheduledDate, targetCount, days, stat, difficulty }) !== initial.current, saving);
 
   const toggleDay = (d: number) => setDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d]);
 
@@ -70,82 +68,24 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
         targetCount: questType === 'habit' && targetCount ? Number(targetCount) : null,
       };
       await saveHabit(input, editingQuest?.id);
-      onClose();
+      closeEditor.committed(onClose);
     } catch (err) {
       setSaveError(formatError(err));
       setSaving(false);
     }
   };
 
-  useEffect(() => {
-    if (!confirmDelete) {
-      if (hadDeleteDialog.current) deleteTrigger.current?.focus();
-      hadDeleteDialog.current = false;
-      return;
-    }
-    hadDeleteDialog.current = true;
-    cancelDeleteButton.current?.focus();
-    const overlay = deleteDialog.current?.parentElement;
-    const background = Array.from(document.body.children).filter(element => element !== overlay) as HTMLElement[];
-    const previousBackgroundState = background.map(element => ({
-      element,
-      inert: element.inert,
-      ariaHidden: element.getAttribute('aria-hidden'),
-    }));
-    for (const element of background) {
-      element.inert = true;
-      element.setAttribute('aria-hidden', 'true');
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        if (!savingRef.current) setConfirmDelete(false);
-        return;
-      }
-      if (event.key !== 'Tab') return;
-
-      const focusable = Array.from(
-        deleteDialog.current?.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        ) ?? []
-      );
-      if (focusable.length === 0) {
-        event.preventDefault();
-        deleteDialog.current?.focus();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !deleteDialog.current?.contains(document.activeElement))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (document.activeElement === last || !deleteDialog.current?.contains(document.activeElement))) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      for (const state of previousBackgroundState) {
-        state.element.inert = state.inert;
-        if (state.ariaHidden === null) state.element.removeAttribute('aria-hidden');
-        else state.element.setAttribute('aria-hidden', state.ariaHidden);
-      }
-    };
-  }, [confirmDelete]);
-
   const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
     if (!editingQuest || saving || lifecycleInFlight.current) return;
+    const notificationOwner = getNotificationOwner();
     lifecycleInFlight.current = true;
     setSaving(true);
     setSaveError(null);
     try {
-      if (operation === 'archive') { await archiveQuest(editingQuest.id); announceArchive(editingQuest.questType); }
+      if (operation === 'archive') { await archiveQuest(editingQuest.id); announceArchive(editingQuest.questType, notificationOwner); }
       if (operation === 'restore') await restoreQuest(editingQuest.id);
       if (operation === 'delete') await deleteQuest(editingQuest.id);
-      onClose();
+      closeEditor.committed(onClose);
     } catch (err) {
       setSaveError(formatError(err));
       setSaving(false);
@@ -171,29 +111,8 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const diffColors: Record<Difficulty, string> = { Easy: '#4ade80', Medium: '#fbbf24', Hard: '#f87171' };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 50,
-      background: 'var(--c-overlay)',
-      backdropFilter: 'blur(10px)',
-      WebkitBackdropFilter: 'blur(10px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 24,
-    }} onClick={e => { if (e.target === e.currentTarget && !confirmDelete && !saving) onClose(); }}>
-      <div className="panel-flat" style={{
-        width: '100%', maxWidth: 480,
-        boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
-        overflow: 'hidden',
-      }}>
-        {/* Header */}
-        <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>
-            {editingQuest ? 'EDIT QUEST' : questType === 'onetime' ? 'NEW ONE TIME QUEST' : 'NEW DAILY QUEST'}
-          </h2>
-          <button onClick={() => { if (!confirmDelete && !saving) onClose(); }} disabled={confirmDelete || saving} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
-        </div>
-        <div style={{ height: 2, background: 'var(--c-accent)', margin: '16px 24px 0', borderRadius: 1, opacity: 0.7 }} />
-
-        <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16, maxHeight: '75vh', overflowY: 'auto' }}>
+    <Dialog title={editingQuest ? 'EDIT QUEST' : questType === 'onetime' ? 'NEW ONE TIME QUEST' : 'NEW DAILY QUEST'} onClose={() => { if (!confirmDelete) closeEditor(onClose); }} pending={saving}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Name */}
           <div>
             <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>QUEST NAME</label>
@@ -314,8 +233,8 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
             <div style={{ display: 'flex', gap: 6 }}>
               {STATS.map(s => (
                 <button key={s} onClick={() => setStat(s)} style={{
-                  flex: 1, padding: '8px 4px',
-                  borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+                  padding: '8px 4px',
+                  borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
                   background: stat === s ? STAT_COLORS[s] + '18' : 'transparent',
                   border: `1px solid ${stat === s ? STAT_COLORS[s] + '55' : 'var(--c-glass-border)'}`,
                   cursor: 'pointer', transition: 'all 0.15s',
@@ -333,8 +252,8 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
             <div style={{ display: 'flex', gap: 6 }}>
               {DIFFICULTIES.map(d => (
                 <button key={d} onClick={() => setDifficulty(d)} style={{
-                  flex: 1, padding: '9px',
-                  borderRadius: 10,
+                  padding: '9px',
+                  borderRadius: 8,
                   background: difficulty === d ? diffColors[d] + '18' : 'transparent',
                   border: `1px solid ${difficulty === d ? diffColors[d] + '55' : 'var(--c-glass-border)'}`,
                   fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em',
@@ -349,10 +268,10 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-            <button onClick={() => void handleSave()} disabled={saving || !valid} className="btn-ghost" style={{ flex: 1, padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: saving || !valid ? 0.6 : 1 }}>
+            <button onClick={() => void handleSave()} disabled={saving || !valid} className="btn-primary" style={{ padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-bg)', letterSpacing: '0.08em', opacity: saving || !valid ? 0.6 : 1 }}>
               {saving ? 'SAVING…' : editingQuest ? 'SAVE CHANGES' : 'CREATE QUEST'}
             </button>
-            <button onClick={() => { if (!confirmDelete && !saving) onClose(); }} disabled={confirmDelete || saving} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
+            <button onClick={() => { if (!confirmDelete && !saving) closeEditor(onClose); }} disabled={confirmDelete || saving} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 6, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
               Cancel
             </button>
           </div>
@@ -366,7 +285,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
                     onClick={() => void handleLifecycle('restore')}
                     disabled={saving}
                     className="btn-ghost"
-                    style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
+                    style={{ padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
                     RESTORE QUEST
                   </button>
                 ) : (
@@ -374,7 +293,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
                     onClick={() => void handleLifecycle('archive')}
                     disabled={saving}
                     className="btn-ghost"
-                    style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-muted-flat)', letterSpacing: '0.08em' }}>
+                    style={{ padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-muted-flat)', letterSpacing: '0.08em' }}>
                     ARCHIVE QUEST
                   </button>
                 )}
@@ -382,50 +301,19 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
                   ref={deleteTrigger}
                   onClick={() => { setConfirmDelete(true); setSaveError(null); }}
                   disabled={saving}
-                  style={{ flex: 1, padding: '10px', borderRadius: 10, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(248,113,113,0.25)', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em' }}>
+                  style={{ padding: '10px', borderRadius: 8, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(248,113,113,0.25)', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em' }}>
                   DELETE PERMANENTLY
                 </button>
               </div>
 
-              {confirmDelete && createPortal(
-                <div
-                  data-theme={document.querySelector<HTMLElement>('.surface-flat[data-theme]')?.dataset.theme}
-                  onClick={event => {
-                    if (event.target === event.currentTarget && !savingRef.current) setConfirmDelete(false);
-                  }}
-                  style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'grid', placeItems: 'center', padding: 24, background: 'var(--c-overlay)', backdropFilter: 'blur(8px)' }}
-                >
-                <div
-                  ref={deleteDialog}
-                  role="dialog"
-                  aria-modal="true"
-                  aria-labelledby="delete-quest-title"
-                  aria-describedby="delete-quest-description"
-                  tabIndex={-1}
-                  className="panel-flat"
-                  style={{ width: '100%', maxWidth: 440, padding: 20, border: '1px solid rgba(248,113,113,0.35)', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
-                  <strong id="delete-quest-title" style={{ display: 'block', fontFamily: 'Rajdhani', fontSize: 14, color: 'var(--c-text)' }}>
-                    Delete {editingQuest?.name} permanently?
-                  </strong>
-                  <p id="delete-quest-description" style={{ margin: '8px 0 16px', fontFamily: 'Inter', fontSize: 13, lineHeight: 1.5, color: 'var(--c-muted-flat)' }}>
-                    This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.
-                  </p>
-                  {saveError && <p role="alert" style={{ margin: '0 0 12px', fontFamily: 'Inter', fontSize: 12, lineHeight: 1.5, color: '#f87171' }}>{saveError}</p>}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button ref={cancelDeleteButton} onClick={() => setConfirmDelete(false)} disabled={saving} className="btn-ghost" style={{ padding: '8px 14px', fontFamily: 'Inter', fontSize: 13 }}>
-                      Cancel
-                    </button>
-                    <button onClick={() => void handleLifecycle('delete')} disabled={saving} style={{ padding: '8px 14px', borderRadius: 8, cursor: 'pointer', background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.45)', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: '#f87171' }}>
-                      {saving ? 'DELETING…' : 'Confirm permanent delete'}
-                    </button>
-                  </div>
-                </div>
-                </div>, document.body
-              )}
+              {confirmDelete && <Dialog title={`Delete ${editingQuest?.name} permanently?`} onClose={() => setConfirmDelete(false)} pending={saving} initialFocus="[data-cancel-delete]">
+                <p>This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</p>
+                {saveError && <p role="alert">{saveError}</p>}
+                <div className="action-footer"><button data-cancel-delete onClick={() => setConfirmDelete(false)} disabled={saving} className="btn-secondary">Cancel</button><button onClick={() => void handleLifecycle('delete')} disabled={saving} className="btn-destructive">{saving ? 'DELETING...' : 'Confirm permanent delete'}</button></div>
+              </Dialog>}
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

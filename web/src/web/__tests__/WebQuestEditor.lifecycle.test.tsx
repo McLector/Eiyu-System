@@ -111,7 +111,11 @@ describe('WebQuestEditor lifecycle controls', () => {
     const confirm = within(dialog).getByRole('button', { name: 'Confirm permanent delete' });
     expect(cancel).toHaveFocus();
     await user.keyboard('{Shift>}{Tab}{/Shift}');
+    expect(within(dialog).getByRole('button', { name: /Close Delete/ })).toHaveFocus();
+    await user.keyboard('{Shift>}{Tab}{/Shift}');
     expect(confirm).toHaveFocus();
+    await user.keyboard('{Tab}');
+    expect(within(dialog).getByRole('button', { name: /Close Delete/ })).toHaveFocus();
     await user.keyboard('{Tab}');
     expect(cancel).toHaveFocus();
     await user.keyboard('{Escape}');

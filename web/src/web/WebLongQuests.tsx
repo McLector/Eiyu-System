@@ -1,4 +1,8 @@
-import PaginatedList from '../components/PaginatedList';
+import JourneyMap from '../components/JourneyMap';
+import FlowList from '../components/FlowList';
+import Dialog from '../components/Dialog';
+import RewardFeedback from '../components/RewardFeedback';
+import { useEditorGuard } from '../components/NavigationGuard';
 import { useState } from 'react';
 import {
   LongQuest,
@@ -10,399 +14,17 @@ import {
   stageSequenceState,
   validateQuestName,
   type Stat,
+  UncertainSaveError,
 } from '@eiyu/shared';
 import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, NoteIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
-
-// ── SVG assets ──────────────────────────────────────────
-
-type DungeonProps = { color: string; isDone: boolean; isNext: boolean };
-
-function getTheme({ color, isDone, isNext }: DungeonProps) {
-  return {
-    stroke: isDone ? color : isNext ? color : 'rgba(103,232,249,0.18)',
-    fill: isDone ? color + '28' : isNext ? color + '12' : 'rgba(6,20,40,0.65)',
-    dark: isDone ? color + '55' : '#060e1c',
-    glow: isDone ? `drop-shadow(0 0 7px ${color}99)` : isNext ? `drop-shadow(0 0 5px ${color}44)` : 'none',
-  };
-}
-
-/* 0 — Castle tower */
-function CastleTower({ color, isDone, isNext }: DungeonProps) {
-  const t = getTheme({ color, isDone, isNext });
-  return (
-    <svg width="38" height="46" viewBox="0 0 38 46" fill="none" style={{ filter: t.glow, transition: 'filter 0.3s' }}>
-      <rect x="2"  y="10" width="8"  height="9"  rx="1.5" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      <rect x="14" y="5"  width="10" height="14" rx="1.5" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      <rect x="28" y="10" width="8"  height="9"  rx="1.5" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      <rect x="4"  y="17" width="30" height="29" rx="1.5" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      <rect x="7"  y="23" width="4"  height="8"  rx="1"   fill={t.dark} opacity="0.9"/>
-      <rect x="27" y="23" width="4"  height="8"  rx="1"   fill={t.dark} opacity="0.9"/>
-      <path d="M14 46 L14 32 Q19 23 24 32 L24 46Z" fill={t.dark} stroke={t.stroke} strokeWidth="1.5"/>
-      {isDone && <path d="M14 46 L14 32 Q19 23 24 32 L24 46Z" fill={color} opacity="0.3"/>}
-    </svg>
-  );
-}
-
-/* 1 — Mountain cave */
-function MountainCave({ color, isDone, isNext }: DungeonProps) {
-  const t = getTheme({ color, isDone, isNext });
-  return (
-    <svg width="38" height="46" viewBox="0 0 38 46" fill="none" style={{ filter: t.glow, transition: 'filter 0.3s' }}>
-      {/* Main mountain */}
-      <path d="M19 3 L37 42 L1 42 Z" fill={t.fill} stroke={t.stroke} strokeWidth="1.5" strokeLinejoin="round"/>
-      {/* Snow cap */}
-      <path d="M19 3 L27 19 L11 19 Z" fill={isDone ? color + '40' : 'rgba(255,255,255,0.07)'} stroke={t.stroke} strokeWidth="1"/>
-      {/* Left rock shoulder */}
-      <path d="M1 42 L9 28 L16 38 Z" fill={t.fill} stroke={t.stroke} strokeWidth="1"/>
-      {/* Cave arch */}
-      <path d="M13 42 L13 32 Q19 23 25 32 L25 42Z" fill={t.dark} stroke={t.stroke} strokeWidth="1.5"/>
-      {isDone && <path d="M13 42 L13 32 Q19 23 25 32 L25 42Z" fill={color} opacity="0.25"/>}
-      {/* Cave glow inside */}
-      {(isDone || isNext) && <ellipse cx="19" cy="36" rx="4" ry="3" fill={color} opacity={isDone ? 0.3 : 0.15}/>}
-      {/* Rock cracks */}
-      <line x1="10" y1="30" x2="14" y2="42" stroke={t.stroke} strokeWidth="1" opacity="0.5"/>
-      <line x1="26" y1="26" x2="30" y2="38" stroke={t.stroke} strokeWidth="1" opacity="0.5"/>
-      {/* Ground line */}
-      <line x1="1" y1="42" x2="37" y2="42" stroke={t.stroke} strokeWidth="1.5"/>
-    </svg>
-  );
-}
-
-/* 2 — Mine shaft */
-function MineShaft({ color, isDone, isNext }: DungeonProps) {
-  const t = getTheme({ color, isDone, isNext });
-  const wood = isDone ? color : isNext ? color + 'bb' : 'rgba(120,80,40,0.6)';
-  return (
-    <svg width="38" height="46" viewBox="0 0 38 46" fill="none" style={{ filter: t.glow, transition: 'filter 0.3s' }}>
-      {/* Ground */}
-      <rect x="0" y="38" width="38" height="3" rx="1" fill={t.fill} stroke={t.stroke} strokeWidth="1"/>
-      {/* Shaft darkness */}
-      <rect x="10" y="10" width="18" height="29" fill={t.dark}/>
-      {/* Left post */}
-      <rect x="7"  y="8" width="5" height="31" rx="1.5" fill={wood} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Right post */}
-      <rect x="26" y="8" width="5" height="31" rx="1.5" fill={wood} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Top beam */}
-      <rect x="5" y="5" width="28" height="5" rx="1.5" fill={wood} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Mid brace */}
-      <rect x="7" y="21" width="24" height="3" rx="1" fill={wood} stroke={t.stroke} strokeWidth="1"/>
-      {/* Cross supports */}
-      <line x1="7"  y1="8"  x2="28" y2="21" stroke={t.stroke} strokeWidth="1.2" opacity="0.6"/>
-      <line x1="31" y1="8"  x2="10" y2="21" stroke={t.stroke} strokeWidth="1.2" opacity="0.6"/>
-      <line x1="7"  y1="24" x2="28" y2="38" stroke={t.stroke} strokeWidth="1.2" opacity="0.6"/>
-      <line x1="31" y1="24" x2="10" y2="38" stroke={t.stroke} strokeWidth="1.2" opacity="0.6"/>
-      {/* Rail tracks */}
-      <rect x="13" y="34" width="3" height="7" rx="0.5" fill={t.stroke} opacity="0.7"/>
-      <rect x="22" y="34" width="3" height="7" rx="0.5" fill={t.stroke} opacity="0.7"/>
-      <rect x="12" y="35" width="14" height="2" rx="0.5" fill={t.stroke} opacity="0.5"/>
-      <rect x="12" y="38" width="14" height="2" rx="0.5" fill={t.stroke} opacity="0.5"/>
-      {/* Glow inside */}
-      {(isDone || isNext) && <rect x="10" y="10" width="18" height="29" fill={color} opacity={isDone ? 0.18 : 0.08}/>}
-      {isDone && <ellipse cx="19" cy="24" rx="5" ry="6" fill={color} opacity="0.2"/>}
-    </svg>
-  );
-}
-
-/* 3 — Ancient ruins */
-function AncientRuins({ color, isDone, isNext }: DungeonProps) {
-  const t = getTheme({ color, isDone, isNext });
-  return (
-    <svg width="38" height="46" viewBox="0 0 38 46" fill="none" style={{ filter: t.glow, transition: 'filter 0.3s' }}>
-      {/* Ground rubble line */}
-      <line x1="1" y1="43" x2="37" y2="43" stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Left pillar — full */}
-      <rect x="3" y="13" width="9" height="30" rx="1" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Left capital */}
-      <rect x="1" y="10" width="13" height="5"  rx="1" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Left pillar flutes */}
-      <line x1="6"  y1="15" x2="6"  y2="42" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      <line x1="9"  y1="15" x2="9"  y2="42" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      {/* Right pillar — broken top */}
-      <rect x="26" y="18" width="9" height="25" rx="1" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Right broken edge (jagged) */}
-      <path d="M26 18 L28 12 L30 17 L32 10 L35 18Z" fill={t.fill} stroke={t.stroke} strokeWidth="1.5" strokeLinejoin="round"/>
-      {/* Right pillar flutes */}
-      <line x1="29" y1="20" x2="29" y2="42" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      <line x1="32" y1="20" x2="32" y2="42" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      {/* Partial lintel (broken) */}
-      <rect x="12" y="18" width="15" height="4" rx="1" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Gap in lintel */}
-      <rect x="21" y="17" width="4" height="6" rx="0.5" fill="transparent" stroke="none"/>
-      {/* Rubble chunks */}
-      <rect x="14" y="39" width="5"  height="4" rx="1" fill={t.fill} stroke={t.stroke} strokeWidth="1"/>
-      <rect x="21" y="41" width="4"  height="3" rx="1" fill={t.fill} stroke={t.stroke} strokeWidth="1"/>
-      {/* Portal glow between pillars */}
-      {(isDone || isNext) && (
-        <rect x="12" y="22" width="14" height="21" fill={color} opacity={isDone ? 0.15 : 0.07}/>
-      )}
-      {isDone && <ellipse cx="19" cy="32" rx="5" ry="7" fill={color} opacity="0.2"/>}
-    </svg>
-  );
-}
-
-/* 4 — Vault / iron hatch */
-function VaultDoor({ color, isDone, isNext }: DungeonProps) {
-  const t = getTheme({ color, isDone, isNext });
-  const metal = isDone ? color + '55' : 'rgba(50,65,85,0.8)';
-  return (
-    <svg width="38" height="46" viewBox="0 0 38 46" fill="none" style={{ filter: t.glow, transition: 'filter 0.3s' }}>
-      {/* Stone wall background */}
-      <rect x="1" y="4" width="36" height="42" rx="2" fill={t.fill} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Stone block grid */}
-      <line x1="1"  y1="18" x2="37" y2="18" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      <line x1="1"  y1="31" x2="37" y2="31" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      <line x1="13" y1="4"  x2="13" y2="18" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      <line x1="25" y1="18" x2="25" y2="31" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      <line x1="10" y1="31" x2="10" y2="46" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      <line x1="27" y1="31" x2="27" y2="46" stroke={t.stroke} strokeWidth="0.8" opacity="0.4"/>
-      {/* Circular vault door */}
-      <circle cx="19" cy="25" r="13" fill={metal} stroke={t.stroke} strokeWidth="2"/>
-      {/* Door ring detail */}
-      <circle cx="19" cy="25" r="10" fill="none" stroke={t.stroke} strokeWidth="1" opacity="0.6"/>
-      {/* Locking bolts (4 corners) */}
-      <circle cx="10" cy="16" r="2" fill={isDone ? color : '#1e293b'} stroke={t.stroke} strokeWidth="1.2"/>
-      <circle cx="28" cy="16" r="2" fill={isDone ? color : '#1e293b'} stroke={t.stroke} strokeWidth="1.2"/>
-      <circle cx="10" cy="34" r="2" fill={isDone ? color : '#1e293b'} stroke={t.stroke} strokeWidth="1.2"/>
-      <circle cx="28" cy="34" r="2" fill={isDone ? color : '#1e293b'} stroke={t.stroke} strokeWidth="1.2"/>
-      {/* Wheel spokes */}
-      <line x1="19" y1="13" x2="19" y2="37" stroke={t.stroke} strokeWidth="1.5" opacity="0.7"/>
-      <line x1="7"  y1="25" x2="31" y2="25" stroke={t.stroke} strokeWidth="1.5" opacity="0.7"/>
-      <line x1="10" y1="16" x2="28" y2="34" stroke={t.stroke} strokeWidth="1.2" opacity="0.5"/>
-      <line x1="28" y1="16" x2="10" y2="34" stroke={t.stroke} strokeWidth="1.2" opacity="0.5"/>
-      {/* Center hub */}
-      <circle cx="19" cy="25" r="3.5" fill={isDone ? color : '#0f172a'} stroke={t.stroke} strokeWidth="1.5"/>
-      {/* Glow when done */}
-      {isDone && <circle cx="19" cy="25" r="13" fill={color} opacity="0.1"/>}
-      {isDone && <circle cx="19" cy="25" r="3.5" fill={color} opacity="0.6"/>}
-    </svg>
-  );
-}
-
-function stableRandom(seed: string): number {
-  const s = seed ?? '0';
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  }
-  return Math.abs(h) % 5;
-}
-
-function DungeonIcon({ color, isDone, isNext, seed }: DungeonProps & { seed: string }) {
-  const type = stableRandom(seed);
-  if (type === 1) return <MountainCave color={color} isDone={isDone} isNext={isNext} />;
-  if (type === 2) return <MineShaft    color={color} isDone={isDone} isNext={isNext} />;
-  if (type === 3) return <AncientRuins color={color} isDone={isDone} isNext={isNext} />;
-  if (type === 4) return <VaultDoor    color={color} isDone={isDone} isNext={isNext} />;
-  return <CastleTower color={color} isDone={isDone} isNext={isNext} />;
-}
-
-function WarriorIcon({ color }: { color: string }) {
-  return (
-    <svg width="30" height="44" viewBox="0 0 30 44" fill="none">
-      {/* Ground shadow */}
-      <ellipse cx="15" cy="43" rx="9" ry="2" fill={color} opacity="0.25"/>
-      {/* Left leg */}
-      <rect x="8" y="30" width="5" height="12" rx="2" fill="#475569"/>
-      {/* Right leg */}
-      <rect x="17" y="30" width="5" height="12" rx="2" fill="#475569"/>
-      {/* Armor skirt */}
-      <path d="M7 29 Q15 33 23 29 L21 38 H9 Z" fill="#334155"/>
-      {/* Body/chest */}
-      <rect x="6" y="16" width="18" height="15" rx="3" fill="#475569"/>
-      {/* Chest plate */}
-      <rect x="8" y="18" width="14" height="11" rx="2" fill="#64748b"/>
-      {/* Chest line detail */}
-      <line x1="15" y1="18" x2="15" y2="29" stroke="#334155" strokeWidth="1.5"/>
-      {/* Left pauldron */}
-      <ellipse cx="5" cy="19" rx="5" ry="4" fill="#374151"/>
-      {/* Right pauldron */}
-      <ellipse cx="25" cy="19" rx="5" ry="4" fill="#374151"/>
-      {/* Neck */}
-      <rect x="12" y="13" width="6" height="5" rx="1" fill="#475569"/>
-      {/* Helmet */}
-      <rect x="8" y="4" width="14" height="12" rx="5" fill="#374151"/>
-      {/* Helmet ridge */}
-      <rect x="13" y="2" width="4" height="6" rx="1" fill="#475569"/>
-      {/* Visor slot */}
-      <rect x="9" y="11" width="12" height="4" rx="1" fill="#0f172a"/>
-      {/* Visor glow */}
-      <rect x="10" y="12" width="10" height="2" rx="1" fill={color} opacity="0.9"/>
-      <rect x="10" y="12" width="10" height="2" rx="1" fill={color} opacity="0.4" style={{ filter: `blur(2px)` }}/>
-      {/* Sword blade */}
-      <rect x="27" y="2" width="2.5" height="20" rx="1" fill="#94a3b8"/>
-      {/* Crossguard */}
-      <rect x="23" y="13" width="10" height="2.5" rx="1" fill="#64748b"/>
-      {/* Sword hilt */}
-      <rect x="27.5" y="22" width="1.5" height="5" rx="0.5" fill="#92400e"/>
-      {/* Shield */}
-      <path d="M1 17 L6 17 L6 27 L3.5 30 L1 27 Z" fill="#334155" stroke="#475569" strokeWidth="1"/>
-      {/* Shield emblem */}
-      <path d="M2.5 19 L5 19 L5 26 L3.5 28 L2.5 26 Z" fill={color} opacity="0.35"/>
-    </svg>
-  );
-}
-
-// ── Milestone track ──────────────────────────────────────
-
-const ROAD_Y = 100;
-const DUNGEON_H = 46;
-const WARRIOR_H = 44;
-const TRACK_L = 5;   // % from left edge to first node
-const TRACK_R = 5;   // % from right edge to last node
-
-function nodeXPct(i: number, total: number): number {
-  if (total === 1) return 50;
-  return TRACK_L + (i / (total - 1)) * (100 - TRACK_L - TRACK_R);
-}
-
-function warriorXPct(done: number, total: number): number {
-  if (total <= 1) return 50;
-  const span = 100 - TRACK_L - TRACK_R;
-  if (done === 0) return TRACK_L;
-  if (done >= total) return TRACK_L + span;
-  const frac = (done - 0.5) / (total - 1);
-  return TRACK_L + frac * span;
-}
-
-function MilestoneTrack({ lq }: { lq: LongQuest }) {
-  const color = STAT_COLORS[lq.stat];
-  const total = lq.stages.length;
-  const done = lq.stages.filter(s => s.done).length;
-
-  const warriorX = warriorXPct(done, total);
-  const fillW = total <= 1 ? 0 : done === 0 ? 0 : done >= total
-    ? 100
-    : ((done - 0.5) / (total - 1)) * 100;
-
-  // How far into the track span the fill goes (as % of the track span)
-  const fillPct = fillW;
-
-  return (
-    <div style={{ padding: '20px 0 0', position: 'relative' }}>
-      <div style={{ position: 'relative', height: ROAD_Y + DUNGEON_H / 2 + 36, overflow: 'visible' }}>
-
-        {/* Road base line */}
-        <div style={{
-          position: 'absolute',
-          top: ROAD_Y - 1,
-          left: `${TRACK_L}%`,
-          right: `${TRACK_R}%`,
-          height: 3,
-          borderRadius: 2,
-          background: 'var(--c-divider-flat)',
-        }}>
-          {/* Progress fill */}
-          <div style={{
-            position: 'absolute', top: 0, left: 0, bottom: 0,
-            width: `${fillPct}%`,
-            background: color,
-            borderRadius: 2,
-            boxShadow: `0 0 8px ${color}66`,
-            transition: 'width 0.5s ease',
-          }} />
-        </div>
-
-        {/* Road texture dots */}
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} style={{
-            position: 'absolute',
-            top: ROAD_Y - 1,
-            left: `${TRACK_L + (i + 0.5) * (100 - TRACK_L - TRACK_R) / 12}%`,
-            width: 3, height: 3,
-            borderRadius: '50%',
-            background: 'var(--c-divider-flat)',
-            opacity: 0.4,
-            transform: 'translateY(-0.5px)',
-          }} />
-        ))}
-
-        {/* Warrior — above the road */}
-        <div style={{
-          position: 'absolute',
-          top: ROAD_Y - WARRIOR_H - DUNGEON_H / 2 - 4,
-          left: `${warriorX}%`,
-          transform: 'translateX(-50%)',
-          transition: 'left 0.6s cubic-bezier(0.34,1.56,0.64,1)',
-          zIndex: 10,
-          filter: `drop-shadow(0 0 10px ${color}66)`,
-        }}>
-          <WarriorIcon color={color} />
-        </div>
-
-        {/* Dungeon nodes + labels */}
-        {lq.stages.map((stage, i) => {
-          const isDone = stage.done;
-          const isNext = !isDone && (i === 0 || lq.stages[i - 1].done);
-          const xPct = nodeXPct(i, total);
-          const labelAlign = i === 0 ? 'left' : i === total - 1 ? 'right' : 'center';
-          const labelLeft = i === 0 ? 0 : i === total - 1 ? 'auto' : '50%';
-          const labelRight = i === total - 1 ? 0 : 'auto';
-          const labelTransform = i === 0 || i === total - 1 ? 'none' : 'translateX(-50%)';
-
-          return (
-            <div key={i} style={{
-              position: 'absolute',
-              top: ROAD_Y - DUNGEON_H / 2,
-              left: `${xPct}%`,
-              transform: 'translateX(-50%)',
-              zIndex: 5,
-            }}>
-              <DungeonIcon color={color} isDone={isDone} isNext={isNext} seed={String(lq.id ?? '') + i} />
-              {/* Stage label */}
-              <div style={{
-                position: 'absolute',
-                top: DUNGEON_H + 6,
-                left: labelLeft,
-                right: labelRight,
-                transform: labelTransform,
-                whiteSpace: 'nowrap',
-                maxWidth: 100,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                fontFamily: 'Inter',
-                fontSize: 10.5,
-                fontWeight: isNext ? 600 : 400,
-                color: isDone ? 'var(--c-dim-flat)' : isNext ? 'var(--c-text)' : 'var(--c-dim-flat)',
-                textDecoration: isDone ? 'line-through' : 'none',
-                textAlign: labelAlign,
-                transition: 'color 0.3s',
-                letterSpacing: isNext ? '0.01em' : 0,
-              }}>
-                {stage.name}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Progress footer */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0 20px' }}>
-        <span style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>
-          {done === 0
-            ? 'Not started'
-            : done === total
-              ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color, fontWeight: 600 }}>
-                  <CheckIcon size={12} /> Complete
-                </span>
-              )
-              : `${done} of ${total} stages cleared`}
-        </span>
-        <span style={{ fontFamily: 'JetBrains Mono', fontSize: 13, color, fontWeight: 600 }}>
-          {Math.round((done / total) * 100)}%
-        </span>
-      </div>
-    </div>
-  );
-}
 
 // ── Quest card ───────────────────────────────────────────
 
 function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
   lq: LongQuest; isFirst: boolean; expanded: boolean; onToggleExpand: () => void;
 }) {
-  const { toggleStage: toggleStageAction, removeLongQuest, saveLongQuest } = useEiyu();
+  const { toggleStage: toggleStageAction, removeLongQuest, saveLongQuest, pendingStageIds = [] } = useEiyu();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(lq.name);
@@ -412,6 +34,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
     lq.stages.map(s => ({ id: s.id, name: s.name, description: s.description }))
   );
   const [saving, setSaving] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const color = STAT_COLORS[lq.stat];
 
@@ -428,7 +51,9 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
     setEditing(true);
   };
 
-  const MIN_STAGES = 2;
+  const MIN_STAGES = 1;
+  const closeEditor = useEditorGuard(editing && (editName !== lq.name || editStat !== lq.stat || editDescription !== (lq.description ?? '') || JSON.stringify(editStages) !== JSON.stringify(lq.stages.map(s => ({ id: s.id, name: s.name, description: s.description })))), saving || uncertain);
+  const [deletePending, setDeletePending] = useState(false);
 
   const setEditStageNameAt = (i: number, value: string) => {
     setEditStages(prev => prev.map((s, idx) => (idx === i ? { ...s, name: value } : s)));
@@ -439,7 +64,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
   };
 
   const removeEditStage = (i: number) => {
-    if (editStages.length <= MIN_STAGES) return;
+    if (editStages.length <= MIN_STAGES || lq.stages.find(s => s.id === editStages[i].id)?.done) return;
     setEditStages(prev => prev.filter((_, idx) => idx !== i));
   };
 
@@ -463,8 +88,9 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
         },
         lq.id
       );
-      setEditing(false);
+      setUncertain(false); setEditing(false);
     } catch (err) {
+      setUncertain(err instanceof UncertainSaveError);
       setSaveError(`The System couldn't save that change — ${formatError(err)}`);
     } finally {
       setSaving(false);
@@ -473,8 +99,9 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
 
   return (
     <div style={{ borderTop: isFirst ? 'none' : '1px solid var(--c-divider-flat)', paddingTop: isFirst ? 0 : 8 }}>
+      <JourneyMap quest={lq} expanded={expanded} onSelect={id => { if (!expanded) onToggleExpand(); requestAnimationFrame(() => document.getElementById(`stage-${id}`)?.focus()); }} />
       {/* Header */}
-      <button onClick={onToggleExpand} style={{
+      <button onClick={() => closeEditor(onToggleExpand)} style={{
         width: '100%', padding: '22px 0 16px', display: 'flex', alignItems: 'center', gap: 16,
         background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
       }}>
@@ -503,10 +130,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
         </div>
       </button>
 
-      {/* Milestone track — always visible */}
-      <div style={{ borderTop: '1px solid var(--c-divider-flat)' }}>
-        <MilestoneTrack lq={lq} />
-      </div>
+      <p className="journey-summary">{lq.stat} · {lq.stages.filter(s => s.done).length} / {lq.stages.length} stages completed</p>
 
       {/* Stage checklist — expanded, hidden while editing */}
       {expanded && !editing && (
@@ -521,13 +145,15 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
               return (
               <button
                 key={stage.id}
-                onClick={() => toggleStage(stage.id)}
-                disabled={sequence.locked}
+                id={`stage-${stage.id}`}
+                onClick={() => { if (!sequence.locked) toggleStage(stage.id); }}
+                disabled={pendingStageIds.includes(stage.id)}
+                aria-disabled={sequence.locked}
                 aria-label={`${stage.name}. ${sequence.locked ? lockedReason : stage.done ? 'Completed' : 'Available'}`}
                 title={sequence.locked ? lockedReason : undefined}
                 style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
-                borderRadius: 10, cursor: sequence.locked ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%',
+                borderRadius: 8, cursor: sequence.locked ? 'not-allowed' : 'pointer', textAlign: 'left', width: '100%',
                 background: stage.done ? 'rgba(74,222,128,0.05)' : 'var(--c-accent-glass)',
                 border: `1px solid ${stage.done ? 'rgba(74,222,128,0.15)' : 'var(--c-glass-border)'}`,
                 opacity: sequence.locked ? 0.58 : 1,
@@ -573,20 +199,16 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
               onClick={startEditing}
               className="btn-ghost"
               style={{
-                flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700,
+                padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700,
                 color: 'var(--c-accent)', letterSpacing: '0.08em',
               }}
             >
               EDIT
             </button>
             <button
-              onClick={() => {
-                if (!confirmDelete) { setConfirmDelete(true); return; }
-                removeLongQuest(lq.id);
-              }}
-              onMouseLeave={() => setConfirmDelete(false)}
+              onClick={() => setConfirmDelete(true)}
               style={{
-                flex: 1, padding: '10px', borderRadius: 10,
+                padding: '10px', borderRadius: 8,
                 cursor: 'pointer', transition: 'all 0.15s',
                 background: confirmDelete ? 'rgba(248,113,113,0.12)' : 'transparent',
                 border: `1px solid ${confirmDelete ? 'rgba(248,113,113,0.45)' : 'rgba(248,113,113,0.2)'}`,
@@ -594,17 +216,19 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
                 color: '#f87171', letterSpacing: '0.08em',
               }}
             >
-              {confirmDelete ? 'CONFIRM DELETE' : 'DELETE LONG QUEST'}
+              DELETE LONG QUEST
             </button>
           </div>
         </div>
       )}
 
+      {confirmDelete && <Dialog title="Delete Long Quest" pending={deletePending} onClose={() => setConfirmDelete(false)}><p>Delete {lq.name} and its stages? Earned XP remains.</p>{saveError && <p role="alert">{saveError}</p>}<div className="action-footer"><button className="btn-secondary" disabled={deletePending} onClick={() => setConfirmDelete(false)}>Cancel</button><button className="btn-destructive" disabled={deletePending} onClick={async () => { setDeletePending(true); try { await removeLongQuest(lq.id); setConfirmDelete(false); } catch (err) { setSaveError(formatError(err)); } finally { setDeletePending(false); } }}>Delete Long Quest</button></div></Dialog>}
       {/* Edit form — replaces the stage checklist while editing */}
       {expanded && editing && (
         <div style={{ borderTop: '1px solid var(--c-divider-flat)', padding: '16px 0 24px' }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>EDIT LONG QUEST</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <fieldset disabled={saving || uncertain} className="editor-fields">
             <input aria-label="Quest name" aria-invalid={!!editNameError} aria-describedby={editNameError ? 'long-quest-edit-name-error' : undefined} className="field" placeholder="Quest name..." value={editName} onChange={e => setEditName(e.target.value)} />
             {editNameError && <p id="long-quest-edit-name-error" role="alert" aria-live="polite" style={{ color: '#f87171', fontSize: 12, margin: 0 }}>{editNameError}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -646,6 +270,9 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
                 </div>
                 {editStages.length > MIN_STAGES && (
                   <button
+                    aria-label={`Remove stage ${i + 1}`}
+                    className="phase4-close"
+                    disabled={!!lq.stages.find(s => s.id === st.id)?.done}
                     onClick={() => removeEditStage(i)}
                     style={{ background: 'none', border: 'none', color: 'var(--c-dim-flat)', fontSize: 18, cursor: 'pointer', padding: '0 6px' }}
                   >
@@ -657,17 +284,18 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
             <button onClick={() => setEditStages([...editStages, { id: null, name: '', description: null }])} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', cursor: 'pointer' }}>
               + Add stage
             </button>
-            {saveError && <p style={{ color: '#f87171', fontSize: 12 }}>{saveError}</p>}
+            </fieldset>
+            {saveError && <p role="alert" style={{ color: '#f87171', fontSize: 12 }}>{saveError}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               <button
                 onClick={() => void saveEdit()}
                 disabled={!editValid || saving}
                 className="btn-ghost"
-                style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: !editValid || saving ? 0.5 : 1 }}
+                style={{ padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: !editValid || saving ? 0.5 : 1 }}
               >
-                {saving ? 'SAVING…' : 'SAVE CHANGES'}
+                {saving ? 'SAVING…' : uncertain ? 'CHECK SAVE RESULT' : 'SAVE CHANGES'}
               </button>
-              <button onClick={() => setEditing(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => closeEditor(() => setEditing(false))} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 6, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         </div>
@@ -679,7 +307,7 @@ function LongQuestCard({ lq, isFirst, expanded, onToggleExpand }: {
 // ── Page ─────────────────────────────────────────────────
 
 export default function WebLongQuests() {
-  const { user, stageRewardNotice, longQuestsLoading, longQuestsError, retryLongQuests, saveLongQuest } = useEiyu();
+  const { user, stageRewardNotice, rewardReceipt, longQuestsLoading, longQuestsError, retryLongQuests, saveLongQuest } = useEiyu();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
@@ -688,8 +316,10 @@ export default function WebLongQuests() {
   const [newStageDescriptions, setNewStageDescriptions] = useState(['', '']);
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const newNameError = validateQuestName(newName);
+  const closeNew = useEditorGuard(showNew && (!!newName || !!newDescription || newStat !== 'INT' || newStages.some(Boolean) || newStageDescriptions.some(Boolean)), creating || uncertain);
 
   const addLongQuest = async () => {
     if (newNameError || creating) return;
@@ -706,12 +336,13 @@ export default function WebLongQuests() {
         description: newDescription.trim() || undefined,
         stages,
       });
-      setShowNew(false);
+      setUncertain(false); setShowNew(false);
       setNewName('');
       setNewDescription('');
       setNewStages(['', '']);
       setNewStageDescriptions(['', '']);
     } catch (err) {
+      setUncertain(err instanceof UncertainSaveError);
       setCreateError(`The System couldn't create that quest — ${formatError(err)}`);
     } finally {
       setCreating(false);
@@ -720,13 +351,13 @@ export default function WebLongQuests() {
 
   return (
     <div className="long-quests-page">
-      {stageRewardNotice && <p role="status">{stageRewardNotice}</p>}
+      {stageRewardNotice && <p role="status">{stageRewardNotice}</p>}<RewardFeedback receipt={rewardReceipt} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h2 style={{ fontFamily: 'Rajdhani', fontSize: 22, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>LONG QUESTS</h2>
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginTop: 4 }}>20 XP per phase · 20 XP completion bonus</p>
         </div>
-        <button onClick={() => setShowNew(!showNew)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
+        <button onClick={() => showNew ? closeNew(() => setShowNew(false)) : setShowNew(true)} className="btn-ghost" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
           <PlusIcon />
           NEW QUEST
         </button>
@@ -736,6 +367,7 @@ export default function WebLongQuests() {
         <div style={{ padding: '16px 0 20px', borderTop: '1px solid var(--c-divider-flat)', borderBottom: '1px solid var(--c-divider-flat)', marginBottom: 20 }}>
           <div style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', marginBottom: 14 }}>NEW LONG QUEST</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <fieldset disabled={creating || uncertain} className="editor-fields">
             <input aria-label="Quest name" aria-invalid={!!newNameError} aria-describedby={newNameError ? 'long-quest-new-name-error' : undefined} className="field" placeholder="Quest name..." value={newName} onChange={e => setNewName(e.target.value)} />
             {newNameError && <p id="long-quest-new-name-error" role="alert" aria-live="polite" style={{ color: '#f87171', fontSize: 12, margin: 0 }}>{newNameError}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -773,25 +405,27 @@ export default function WebLongQuests() {
             <button onClick={() => { setNewStages([...newStages, '']); setNewStageDescriptions([...newStageDescriptions, '']); }} style={{ background: 'none', border: '1px dashed var(--c-glass-border)', borderRadius: 8, padding: '8px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', cursor: 'pointer' }}>
               + Add stage
             </button>
-            {createError && <p style={{ color: '#f87171', fontSize: 12 }}>{createError}</p>}
+            </fieldset>
+            {createError && <p role="alert" style={{ color: '#f87171', fontSize: 12 }}>{createError}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button onClick={() => void addLongQuest()} disabled={!!newNameError || creating} className="btn-ghost" style={{ flex: 1, padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: newNameError || creating ? 0.5 : 1 }}>CREATE</button>
-              <button onClick={() => setShowNew(false)} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 50, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => void addLongQuest()} disabled={!!newNameError || creating} className="btn-ghost" style={{ padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em', opacity: newNameError || creating ? 0.5 : 1 }}>{uncertain ? 'CHECK SAVE RESULT' : 'CREATE'}</button>
+              <button onClick={() => closeNew(() => setShowNew(false))} style={{ padding: '10px 18px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 6, fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {longQuestsLoading ? (
+      {longQuestsError && user.longQuests.length > 0 && <div role="alert"><p>{longQuestsError}</p><button className="btn-secondary" onClick={() => void retryLongQuests()}>Retry refresh</button></div>}
+      {longQuestsLoading && !user.longQuests.length ? (
         <div style={{ padding: 40, textAlign: 'center', fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Reading your quest log…</div>
-      ) : longQuestsError ? (
+      ) : longQuestsError && !user.longQuests.length ? (
         <div style={{ padding: 40, textAlign: 'center' }}>
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171', marginBottom: 12 }}>{longQuestsError}</p>
           <button onClick={() => void retryLongQuests()} className="btn-ghost" style={{ padding: '8px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700 }}>RETRY</button>
         </div>
       ) : (
         <div className="long-quest-list">
-        <PaginatedList label="Long Quests">
+        <FlowList label="Long Quests" size={2} protectEditors>
           {user.longQuests.length === 0 ? (
             <div style={{ padding: '32px 0', textAlign: 'center' }}>
               <div style={{ fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-dim-flat)', letterSpacing: '0.06em', marginBottom: 6 }}>NO LONG QUESTS</div>
@@ -806,7 +440,7 @@ export default function WebLongQuests() {
               />
             ))
           )}
-        </PaginatedList>
+        </FlowList>
         </div>
       )}
     </div>

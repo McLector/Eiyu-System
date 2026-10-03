@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Dialog from '../components/Dialog';
 import { useQuery } from '@tanstack/react-query';
 import { accountDateKey, fetchMonthHistory, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
 
@@ -51,26 +52,7 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
   const todayCompletions = isCurrentMonth ? (data[dateKey(year, month, today)]?.completions ?? []) : [];
 
   return (
-    <div role="presentation" style={{
-      position: 'fixed', inset: 0, zIndex: 60,
-      background: 'var(--c-overlay)',
-      backdropFilter: 'blur(8px)',
-      WebkitBackdropFilter: 'blur(8px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 24,
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="panel-flat history-dialog" role="dialog" aria-modal="true" aria-labelledby="history-dialog-title" style={{
-        width: '100%', maxWidth: 440,
-        boxShadow: '0 24px 80px rgba(0,0,0,0.4)',
-        overflowX: 'hidden',
-        overflowY: 'auto',
-      }}>
-        {/* Header */}
-        <div className="history-dialog-header" style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 id="history-dialog-title" style={{ fontFamily: 'Rajdhani', fontSize: 20, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.06em', margin: 0 }}>HISTORY</h2>
-          <button aria-label="Close history" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-dim-flat)', fontSize: 22, lineHeight: 1 }}>×</button>
-        </div>
-
+    <Dialog title="HISTORY" onClose={onClose}>
         <div className="history-dialog-body" style={{ padding: '16px 24px 24px' }}>
           {/* Month nav */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -158,7 +140,6 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

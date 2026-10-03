@@ -41,7 +41,11 @@ it('uses a contained Cancel-first confirmation from an archived card', async () 
   expect(cancel).toHaveFocus();
   expect((document.body.firstElementChild as HTMLElement).inert).toBe(true);
   await user.keyboard('{Shift>}{Tab}{/Shift}');
+  expect(within(dialog).getByRole('button', { name: /Close Delete/ })).toHaveFocus();
+  await user.keyboard('{Shift>}{Tab}{/Shift}');
   expect(confirm).toHaveFocus();
+  await user.keyboard('{Tab}');
+  expect(within(dialog).getByRole('button', { name: /Close Delete/ })).toHaveFocus();
   await user.keyboard('{Tab}');
   expect(cancel).toHaveFocus();
   await user.keyboard('{Escape}');
@@ -59,7 +63,7 @@ it('holds the dialog during a pending delete and sends one request', async () =>
   await user.click(screen.getByRole('button', { name: 'Confirm permanent delete' }));
   await user.keyboard('{Escape}');
   expect(screen.getByRole('dialog', { name: /Delete/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'DELETING…' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'DELETING...' })).toBeDisabled();
   await user.keyboard('{Tab}');
   expect(screen.getByRole('dialog', { name: /Delete/ })).toHaveFocus();
   expect(store.deleteQuest).toHaveBeenCalledTimes(1);

@@ -16,7 +16,6 @@ import {
   completeHabit,
   completeHabitRecovery,
   createHabit,
-  createLongQuest,
   deleteLongQuest,
   fetchLongQuests,
   fetchProfile,
@@ -27,15 +26,15 @@ import {
   incrementHabitProgress,
   initialUser,
   rankFromStats,
-  reconcileLongQuestStages,
-  setStageDone,
+  setStageDoneWithReceipt,
+  saveAtomicLongQuest,
+  type RewardReceipt,
   accountDateKey,
   deviceTimeZone,
   millisecondsUntilNextAccountDay,
   undoCompletion,
   updateHabit,
   restoreHabit,
-  updateLongQuest,
   type HabitInput,
   type LongQuest,
   type LongQuestInput,
@@ -74,6 +73,8 @@ interface EiyuStore {
   deleteQuest: (id: string) => Promise<void>;
   toggleStage: (lqId: string, stageId: string) => void;
   stageRewardNotice: string | null;
+  rewardReceipt: RewardReceipt | null;
+  pendingStageIds: string[];
   longQuestsLoading: boolean;
   longQuestsError: string | null;
   retryLongQuests: () => Promise<void>;
@@ -93,6 +94,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [retryingQuests, setRetryingQuests] = useState(false);
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
   const [stageRewardNotice, setStageRewardNotice] = useState<string | null>(null);
+  const [rewardReceipt, setRewardReceipt] = useState<RewardReceipt | null>(null);
+  const [pendingStageIds, setPendingStageIds] = useState<string[]>([]);
+  const rewardRequests = useRef(new Map<string, string>());
+  const definitionRequests = useRef(new Map<string, { id: string; request: string }>());
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const lifecycleRequests = useRef(new Map<string, Promise<void>>());
   const deletedHabitIds = useRef(new Set<string>());
@@ -149,6 +154,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     deletedHabitIds.current.clear();
     stageRequests.current.clear();
     setStageRewardNotice(null);
+    setRewardReceipt(null);
+    setPendingStageIds([]);
+    rewardRequests.current.clear();
+    definitionRequests.current.clear();
   }, [userId]);
   useEffect(() => {
     const previousUserId = activeUserId.current;
@@ -369,21 +378,19 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       stageRequests.current.add(lqId);
       const nextDone = !stage.done;
       const key = longQuestsKey(userId);
-      const previous = qc.getQueryData<LongQuest[]>(key);
-      qc.setQueryData<LongQuest[]>(key, lqs =>
-        lqs?.map(q =>
-          q.id === lqId
-            ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: nextDone } : s)) }
-            : q
-        )
-      );
+      setPendingStageIds(ids => [...ids, stageId]);
+      const operation = stageId + ':' + nextDone;
+      const requestId = rewardRequests.current.get(operation) ?? crypto.randomUUID();
+      rewardRequests.current.set(operation, requestId);
       try {
-        await setStageDone(stageId, nextDone);
+        const receipt = await setStageDoneWithReceipt(stageId, nextDone, requestId);
+        rewardRequests.current.delete(operation);
+        qc.setQueryData<LongQuest[]>(key, lqs => lqs?.map(q => q.id === lqId ? { ...q, stages: q.stages.map(s => s.id === stageId ? { ...s, done: receipt.done } : s) } : q));
         if (activeUserId.current !== userId) return;
         setLqActionError(null);
-        setStageRewardNotice(nextDone ? 'Stage completed. Hero attributes updated.' : 'Stage undone. Hero attributes updated.');
+        setRewardReceipt(receipt.replayed ? null : receipt);
+        setStageRewardNotice(receipt.replayed ? 'Stage save reconciled.' : receipt.changed ? nextDone ? 'Stage completed.' : 'Stage undone.' : 'Stage already saved.');
       } catch (err) {
-        qc.setQueryData<LongQuest[]>(key, previous);
         if (activeUserId.current === userId) {
           setLqActionError(formatError(err));
           setStageRewardNotice(null);
@@ -392,6 +399,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         await qc.invalidateQueries({ queryKey: key });
         await qc.invalidateQueries({ queryKey: ['stats', userId] });
         stageRequests.current.delete(lqId);
+        setPendingStageIds(ids => ids.filter(id => id !== stageId));
       }
     },
     [longQuests, userId, qc]
@@ -400,16 +408,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const saveLongQuest = useCallback(
     async (input: LongQuestInput, existingId?: string) => {
       if (!userId) return;
-      if (existingId) {
-        await updateLongQuest(
-          existingId,
-          { name: input.name, stat: input.stat, description: input.description },
-          longQuests.find(quest => quest.id === existingId)?.name
-        );
-        await reconcileLongQuestStages(existingId, input.stages);
-      } else {
-        await createLongQuest(userId, input);
-      }
+      const operation = existingId ?? 'new';
+      const stable = definitionRequests.current.get(operation) ?? { id: existingId ?? crypto.randomUUID(), request: crypto.randomUUID() };
+      definitionRequests.current.set(operation, stable);
+      await saveAtomicLongQuest(stable.id, stable.request, input, !existingId, longQuests.find(q => q.id === existingId)?.name);
+      definitionRequests.current.delete(operation);
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
@@ -464,6 +467,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       deleteQuest,
       toggleStage,
       stageRewardNotice,
+      rewardReceipt,
+      pendingStageIds,
       longQuestsLoading: longQuestsQuery.isLoading || retryingLongQuests,
       longQuestsError,
       retryLongQuests,
@@ -488,6 +493,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       deleteQuest,
       toggleStage,
       stageRewardNotice,
+      rewardReceipt,
+      pendingStageIds,
       longQuestsQuery.isLoading,
       retryingLongQuests,
       longQuestsError,
