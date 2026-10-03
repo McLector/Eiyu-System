@@ -5,11 +5,11 @@ set search_path = public, extensions;
 select plan(18);
 
 select lives_ok(
-  $$select extensions.dblink_connect('phase5_a', 'host=host.docker.internal port=55322 dbname=postgres user=postgres password=postgres application_name=phase5_a options=-csearch_path=')$$,
+  $$select extensions.dblink_connect('phase5_a', 'dbname=postgres user=supabase_admin application_name=phase5_a options=-csearch_path=')$$,
   'opens the first independent database connection'
 );
 select lives_ok(
-  $$select extensions.dblink_connect('phase5_b', 'host=host.docker.internal port=55322 dbname=postgres user=postgres password=postgres application_name=phase5_b options=-csearch_path=')$$,
+  $$select extensions.dblink_connect('phase5_b', 'dbname=postgres user=supabase_admin application_name=phase5_b options=-csearch_path=')$$,
   'opens the second independent database connection'
 );
 select lives_ok(

@@ -5,11 +5,11 @@ set search_path = public, extensions;
 select plan(37);
 
 select lives_ok(
-  $$select extensions.dblink_connect('lifecycle_a', 'host=host.docker.internal port=55322 dbname=postgres user=postgres password=postgres application_name=lifecycle_a options=-csearch_path=')$$,
+  $$select extensions.dblink_connect('lifecycle_a', 'dbname=postgres user=supabase_admin application_name=lifecycle_a options=-csearch_path=')$$,
   'opens the first independent lifecycle connection'
 );
 select lives_ok(
-  $$select extensions.dblink_connect('lifecycle_b', 'host=host.docker.internal port=55322 dbname=postgres user=postgres password=postgres application_name=lifecycle_b options=-csearch_path=')$$,
+  $$select extensions.dblink_connect('lifecycle_b', 'dbname=postgres user=supabase_admin application_name=lifecycle_b options=-csearch_path=')$$,
   'opens the second independent lifecycle connection'
 );
 

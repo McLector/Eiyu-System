@@ -262,6 +262,27 @@ with checks(marker, ok) as (
       and allowed_mime_types @> array['image/gif','video/mp4'])
     and exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects'
       and policyname = 'gym_media_read')
+  union all select '035 gym: protected tombstones, cleanup and historical previous weights',
+    exists (select 1 from information_schema.columns where table_schema='public' and table_name='gym_exercises' and column_name='rir_max')
+    and not has_column_privilege('authenticated','public.gym_routines','deleted_at','UPDATE')
+    and not has_table_privilege('authenticated','public.gym_exercises','INSERT')
+    and not has_table_privilege('authenticated','public.gym_media_cleanup','SELECT')
+    and has_function_privilege('authenticated','public.delete_gym_routine(uuid,boolean)','EXECUTE')
+    and has_function_privilege('authenticated','public.previous_gym_weights(uuid)','EXECUTE')
+    and not has_function_privilege('anon','public.save_gym_exercise(uuid,jsonb)','EXECUTE')
+  union all select '036 rewards: private owner receipts and no client stats writes',
+    to_regclass('private.long_quest_reward_receipts') is not null
+    and (select relrowsecurity from pg_class where oid = to_regclass('private.long_quest_reward_receipts'))
+    and not has_table_privilege('authenticated','private.long_quest_reward_receipts','SELECT')
+    and not has_table_privilege('authenticated','public.stats','UPDATE')
+    and has_function_privilege('authenticated','public.set_long_quest_stage_done_receipt(uuid,boolean,uuid)','EXECUTE')
+    and not has_function_privilege('anon','public.set_long_quest_stage_done_receipt(uuid,boolean,uuid)','EXECUTE')
+  union all select '037 quests: atomic definition saves and private reconciliation receipts',
+    to_regclass('private.long_quest_definition_receipts') is not null
+    and (select relrowsecurity from pg_class where oid = to_regclass('private.long_quest_definition_receipts'))
+    and not has_table_privilege('authenticated','private.long_quest_definition_receipts','SELECT')
+    and has_function_privilege('authenticated','public.save_long_quest_definition(uuid,uuid,jsonb,boolean)','EXECUTE')
+    and not has_function_privilege('anon','public.save_long_quest_definition(uuid,uuid,jsonb,boolean)','EXECUTE')
 )
 select marker, ok from checks order by marker;
 ```
@@ -273,7 +294,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–034
+re-run an old file over a newer definition. This query covers migrations 001–037
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -313,3 +334,9 @@ Apply 032, 033 and 034 in order after confirming the existing 001–031 capabili
 033 persists Gym routines, exercises and immutable completed session snapshots. Gym does not award XP. 034 creates the private GIF/MP4 bucket (20 MiB per file); playback uses short-lived signed URLs. Uploaded media cleanup is best effort and failures remain visible to the user.
 
 Run all 19 rollback/cleanup SQL test files in `supabase/tests` on a disposable local stack, including the connection-aware concurrency cases. Do not reset an existing personal database to test this release. Browser acceptance can be repeated with `scripts/verify-board-gym-browser.cjs` against its explicitly isolated local origins.
+
+## Plan 012 Rollout
+
+Verify prerequisites through 034, then apply **035 → 036 → 037** in order, verifying each phase before deploying the web client. Keep 036 immutable after application; atomic definitions are a separate 037 migration. Existing completion and mobile definition interfaces remain supported. 035 removes direct exercise-definition writes in favor of parent-locked RPCs; older web Gym clients must upgrade. Completed sessions are retained behind server-controlled routine tombstones.
+
+Media cleanup uses an owner-only durable manifest. Acknowledge only successful deletion of confirmed unreferenced paths; failed cleanup remains queued. Never delete an upload whose definition save remains uncertain. Migration capability checks do not replace owner/concurrency/Storage acceptance on a confirmed disposable Supabase stack. No production rollout has been performed.
