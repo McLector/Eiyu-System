@@ -2,26 +2,14 @@ import { supabase } from '../supabase/client';
 import { LongQuest, QuestStage, Stat } from '../types/eiyu';
 import { normalizeStageDescription } from '../logic/stage-description';
 import { normalizeEditableQuestName } from '../logic/validation';
+import { readBatches } from './pagination';
+import { isConfirmedFailure, UncertainSaveError } from './save-outcome';
 
 /** R-32/R-33: real Long Quests, replacing the mock data that shipped with the UI. */
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
-  const { data: quests, error } = await supabase
-    .from('long_quests')
-    .select('id, name, stat, description, completed_at')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  if (!quests || quests.length === 0) return [];
-
-  const { data: stages, error: stagesError } = await supabase
-    .from('long_quest_stages')
-    .select('id, long_quest_id, name, done, position, description')
-    .in(
-      'long_quest_id',
-      quests.map(q => q.id)
-    )
-    .order('position', { ascending: true });
-  if (stagesError) throw stagesError;
+  const quests = await readBatches((from, to) => supabase.from('long_quests').select('id, name, stat, description, completed_at').eq('user_id', userId).order('created_at').order('id').range(from, to));
+  if (!quests.length) return [];
+  const stages = await readBatches((from, to) => supabase.from('long_quest_stages').select('id, long_quest_id, name, done, position, description').eq('user_id', userId).order('long_quest_id').order('position').order('id').range(from, to));
 
   const stagesByQuest = new Map<string, QuestStage[]>();
   for (const s of stages ?? []) {
@@ -126,4 +114,44 @@ export async function setStageDone(stageId: string, done: boolean) {
 export async function deleteLongQuest(id: string) {
   const { error } = await supabase.from('long_quests').delete().eq('id', id);
   if (error) throw error;
+}
+
+export interface RewardReceipt {
+  id: string; stage_id: string; done: boolean; changed: boolean; replayed: boolean;
+  components: { kind: 'stage' | 'bonus'; stat: Stat; delta: number }[];
+  totals: { stat: Stat; before: number; after: number; delta: number }[];
+}
+const uncertainDefinitions = new Map<string, string>();
+const uncertainRewards = new Set<string>();
+export async function setStageDoneWithReceipt(stageId: string, done: boolean, requestId: string): Promise<RewardReceipt> {
+  if (uncertainRewards.has(requestId)) {
+    const prior = await supabase.rpc('get_long_quest_reward_receipt', { p_request_id: requestId });
+    if (prior.error) throw new UncertainSaveError();
+    if (prior.data) { uncertainRewards.delete(requestId); return { ...prior.data as unknown as RewardReceipt, replayed: true }; }
+  }
+  const { data, error } = await supabase.rpc('set_long_quest_stage_done_receipt', { p_stage_id: stageId, p_done: done, p_request_id: requestId });
+  if (!error) { uncertainRewards.delete(requestId); return data as unknown as RewardReceipt; }
+  if (isConfirmedFailure(error)) throw error;
+  const check = await supabase.rpc('get_long_quest_reward_receipt', { p_request_id: requestId });
+  if (!check.error && check.data) return { ...check.data as unknown as RewardReceipt, replayed: true };
+  uncertainRewards.add(requestId);
+  throw new UncertainSaveError();
+}
+export async function saveAtomicLongQuest(id: string, requestId: string, input: LongQuestInput, create: boolean, originalName?: string): Promise<string> {
+  const normalized = { ...input, name: normalizeEditableQuestName(input.name, originalName), description: input.description?.trim() || null,
+    stages: input.stages.map(s => ({ id: s.id ?? null, name: normalizeEditableQuestName(s.name, s.id ? s.name : undefined), description: normalizeStageDescription(s.description) })) };
+  const signature = JSON.stringify(normalized);
+  if (uncertainDefinitions.has(requestId)) {
+    if (uncertainDefinitions.get(requestId) !== signature) throw new UncertainSaveError();
+    const prior = await supabase.rpc('get_long_quest_definition_receipt', { p_request_id: requestId });
+    if (prior.error) throw new UncertainSaveError();
+    if (prior.data === id) { uncertainDefinitions.delete(requestId); return id; }
+  }
+  const { data, error } = await supabase.rpc('save_long_quest_definition', { p_id: id, p_request_id: requestId, p_create: create, p_input: normalized });
+  if (!error) { uncertainDefinitions.delete(requestId); return data; }
+  const check = await supabase.rpc('get_long_quest_definition_receipt', { p_request_id: requestId });
+  if (!check.error && check.data === id) return id;
+  if (isConfirmedFailure(error) && !check.error) throw error;
+  uncertainDefinitions.set(requestId, signature);
+  throw new UncertainSaveError();
 }

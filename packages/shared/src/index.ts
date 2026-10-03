@@ -30,3 +30,4 @@ export * from './constants/eiyu-data';
 export * from './types/gym';
 export * from './logic/gym';
 export * from './data/gym';
+export * from './data/save-outcome';

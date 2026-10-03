@@ -7,6 +7,7 @@ function chainable(result: { data?: unknown; error: unknown }) {
     eq: jest.fn(() => builder),
     in: jest.fn(() => builder),
     order: jest.fn(() => builder),
+    range: jest.fn(() => builder),
     insert: jest.fn(() => builder),
     update: jest.fn(() => builder),
     single: jest.fn(() => Promise.resolve(result)),

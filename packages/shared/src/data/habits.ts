@@ -5,9 +5,25 @@ import { Database } from '../types/database';
 import { Difficulty, Quest, QuestType, Stat } from '../types/eiyu';
 import { initializeAccountTimeZone } from './profile';
 import { normalizeEditableQuestName } from '../logic/validation';
+import { readBatches } from './pagination';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
 type RecoveryRow = Database['public']['Functions']['get_open_habit_recoveries']['Returns'][number];
+
+/** Ids per request: keeps an .in() list well under the request-URL limit. */
+const HABIT_ID_CHUNK = 100;
+/** Reads per-habit rows for any number of habits: id lists are chunked and each chunk is read in bounded batches. */
+async function readForHabits<T>(
+  ids: string[],
+  read: (chunk: string[], from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let start = 0; start < ids.length; start += HABIT_ID_CHUNK) {
+    const chunk = ids.slice(start, start + HABIT_ID_CHUNK);
+    rows.push(...(await readBatches((from, to) => read(chunk, from, to))));
+  }
+  return rows;
+}
 
 function toQuest(
   row: HabitRow,
@@ -71,10 +87,11 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   // The RPC materializes unique eligible occurrences and returns only habits
   // joined to today's occurrence. Mobile and web therefore share the exact
   // same authoritative schedule result, including after schedule edits.
-  const { data: habits, error } = await supabase.rpc('get_habits_for_date', {
-    p_date: todayStr,
-  });
-  if (error) throw error;
+  // Every read below is bounded: the API caps a response at 1,000 rows, so an unpaged read would silently drop
+  // habits, and an unbounded .in() list would exceed the request-URL limit. Stable ordering keeps pages disjoint.
+  const todayItems = await readBatches((from, to) =>
+    supabase.rpc('get_habits_for_date', { p_date: todayStr }).order('id').range(from, to)
+  );
 
   const { data: recoveries, error: recoveriesError } = await supabase.rpc(
     'get_open_habit_recoveries',
@@ -82,7 +99,6 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   );
   if (recoveriesError) throw recoveriesError;
 
-  const todayItems = habits ?? [];
   const openRecoveries = recoveries ?? [];
   const dailyIds = new Set(
     todayItems.filter(item => item.quest_type === 'habit').map(habit => habit.id)
@@ -92,12 +108,10 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   // Active recurring habits stay in the catalog; archived definitions of either
   // type stay reachable for Restore/Delete. Active one-time quests are admitted
   // only from today's authoritative RPC result.
-  const { data: catalog, error: catalogError } = await supabase
-    .from('habits')
-    .select('*')
-    .eq('user_id', userId);
-  if (catalogError) throw catalogError;
-  const catalogHabits = (catalog ?? []).filter(
+  const catalog = await readBatches((from, to) =>
+    supabase.from('habits').select('*').eq('user_id', userId).order('id').range(from, to)
+  );
+  const catalogHabits = catalog.filter(
     habit => habit.archived || habit.quest_type === 'habit'
   ).sort(
     (a, b) => Number(a.archived) - Number(b.archived) || a.reminder_time.localeCompare(b.reminder_time)
@@ -110,36 +124,38 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   const allHabitIds = boardItems.map(habit => habit.id);
   const recoveryByHabit = new Map(openRecoveries.map(recovery => [recovery.habit_id, recovery]));
 
-  const { data: completions, error: completionsError } = await supabase
-    .from('habit_completions')
-    .select('habit_id, completed_on')
-    .eq('user_id', userId)
-    .in(
-      'habit_id',
-      allHabitIds
-    );
-  if (completionsError) throw completionsError;
+  const completions = await readForHabits(allHabitIds, (ids, from, to) =>
+    supabase
+      .from('habit_completions')
+      .select('habit_id, completed_on')
+      .eq('user_id', userId)
+      .in('habit_id', ids)
+      .order('habit_id')
+      .order('completed_on')
+      .range(from, to)
+  );
 
   const completedToday = new Set<string>();
   const datesByHabit = new Map<string, Set<string>>();
-  for (const c of completions ?? []) {
+  for (const c of completions) {
     if (c.completed_on === todayStr) completedToday.add(c.habit_id);
     if (!datesByHabit.has(c.habit_id)) datesByHabit.set(c.habit_id, new Set());
     datesByHabit.get(c.habit_id)!.add(c.completed_on);
   }
 
-  const { data: occurrences, error: occurrencesError } = await supabase
-    .from('habit_occurrences')
-    .select('habit_id, occurrence_date')
-    .eq('user_id', userId)
-    .in(
-      'habit_id',
-      allHabitIds
-    )
-    .lte('occurrence_date', todayStr);
-  if (occurrencesError) throw occurrencesError;
+  const occurrences = await readForHabits(allHabitIds, (ids, from, to) =>
+    supabase
+      .from('habit_occurrences')
+      .select('habit_id, occurrence_date')
+      .eq('user_id', userId)
+      .in('habit_id', ids)
+      .lte('occurrence_date', todayStr)
+      .order('habit_id')
+      .order('occurrence_date')
+      .range(from, to)
+  );
   const occurrencesByHabit = new Map<string, Set<string>>();
-  for (const occurrence of occurrences ?? []) {
+  for (const occurrence of occurrences) {
     if (!occurrencesByHabit.has(occurrence.habit_id)) {
       occurrencesByHabit.set(occurrence.habit_id, new Set());
     }
@@ -147,18 +163,18 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   }
 
   // Slice 5: today's running count for any quantity habit in this batch.
-  const { data: progress, error: progressError } = await supabase
-    .from('habit_progress')
-    .select('habit_id, progress_count')
-    .eq('user_id', userId)
-    .eq('progress_date', todayStr)
-    .in(
-      'habit_id',
-      allHabitIds
-    );
-  if (progressError) throw progressError;
+  const progress = await readForHabits(allHabitIds, (ids, from, to) =>
+    supabase
+      .from('habit_progress')
+      .select('habit_id, progress_count')
+      .eq('user_id', userId)
+      .eq('progress_date', todayStr)
+      .in('habit_id', ids)
+      .order('habit_id')
+      .range(from, to)
+  );
   const progressByHabit = new Map<string, number>();
-  for (const p of progress ?? []) progressByHabit.set(p.habit_id, p.progress_count);
+  for (const p of progress) progressByHabit.set(p.habit_id, p.progress_count);
 
   return boardItems.map(h =>
     toQuest(

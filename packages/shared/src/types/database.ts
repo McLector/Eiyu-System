@@ -306,6 +306,12 @@ export interface Database {
       save_gym_session: { Args: { p_session_id: string; p_weights: Json; p_finish: boolean }; Returns: undefined };
       discard_gym_session: { Args: { p_session_id: string }; Returns: undefined };
       reorder_gym_exercises: { Args: { p_routine_id: string; p_ids: string[] }; Returns: undefined };
+      delete_gym_routine: { Args: { p_routine_id: string; p_discard_draft: boolean }; Returns: undefined };
+      save_gym_exercise: { Args: { p_id: string; p_input: Json }; Returns: string };
+      remove_gym_exercise: { Args: { p_id: string }; Returns: undefined };
+      previous_gym_weights: { Args: { p_routine_id: string }; Returns: import('./gym').GymPreviousWeight[] };
+      list_gym_media_cleanup: { Args: { p_after: string; p_limit: number }; Returns: { path: string }[] };
+      ack_gym_media_cleanup: { Args: { p_path: string }; Returns: undefined };
       increment_stat_xp: {
         Args: { p_stat: StatKey; p_delta: number };
         Returns: undefined;
@@ -338,6 +344,10 @@ export interface Database {
         Args: { p_stage_id: string; p_done: boolean };
         Returns: undefined;
       };
+      set_long_quest_stage_done_receipt: { Args: { p_stage_id: string; p_done: boolean; p_request_id: string }; Returns: Json };
+      get_long_quest_reward_receipt: { Args: { p_request_id: string }; Returns: Json };
+      save_long_quest_definition: { Args: { p_id: string; p_request_id: string; p_input: Json; p_create: boolean }; Returns: string };
+      get_long_quest_definition_receipt: { Args: { p_request_id: string }; Returns: string | null };
       /** Slice 5: atomically adjust a quantity habit's today progress; auto-crosses complete_habit/undo_habit_completion. */
       increment_habit_progress: {
         Args: { p_habit_id: string; p_date: string; p_delta: number };

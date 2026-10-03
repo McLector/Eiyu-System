@@ -5,6 +5,8 @@ function chainable(result: { data?: unknown; error: unknown }) {
   const builder: any = {
     select: jest.fn(() => builder),
     eq: jest.fn(() => builder),
+    order: jest.fn(() => builder),
+    range: jest.fn(() => builder),
     insert: jest.fn(() => builder),
     update: jest.fn(() => builder),
     maybeSingle: jest.fn(() => Promise.resolve(result)),
@@ -17,6 +19,16 @@ function chainable(result: { data?: unknown; error: unknown }) {
 jest.mock('../../supabase/client', () => ({
   supabase: { from: jest.fn(), rpc: jest.fn() },
 }));
+
+/** The board reads today's habits in ordered, ranged pages; wrap an RPC mock so that one call chains like PostgREST. */
+function pageable(impl: (name: string, args: unknown) => Promise<unknown>) {
+  return (name: string, args: unknown) => {
+    const result = impl(name, args);
+    if (name !== 'get_habits_for_date') return result;
+    const builder: any = { order: () => builder, range: () => result };
+    return builder;
+  };
+}
 
 function mockTimeZoneInitialization() {
   (supabase.rpc as jest.Mock).mockReset().mockImplementation(async (name: string) => {
@@ -189,28 +201,34 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
         scheduled_date: null, target_count: null, schedule_start_on: '2026-09-01',
       },
     ];
-    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+    (supabase.rpc as jest.Mock).mockImplementation(pageable(async (name: string) => {
       if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
       if (name === 'get_habits_for_date') return { data: habitRows, error: null };
       if (name === 'get_open_habit_recoveries') return { data: [], error: null };
       throw new Error(`unexpected RPC ${name}`);
-    });
+    }));
     const completionsBuilder: any = {
       select: jest.fn(() => completionsBuilder),
       eq: jest.fn(() => completionsBuilder),
       in: jest.fn(() => completionsBuilder),
+      order: jest.fn(() => completionsBuilder),
+      range: jest.fn(() => Promise.resolve({ data: [], error: null })),
       gte: jest.fn(() => Promise.resolve({ data: [], error: null })),
     };
     const progressBuilder: any = {
       select: jest.fn(() => progressBuilder),
       eq: jest.fn(() => progressBuilder),
-      in: jest.fn(() => Promise.resolve({ data: [{ habit_id: 'h1', progress_count: 3 }], error: null })),
+      in: jest.fn(() => progressBuilder),
+      order: jest.fn(() => progressBuilder),
+      range: jest.fn(() => Promise.resolve({ data: [{ habit_id: 'h1', progress_count: 3 }], error: null })),
     };
     const occurrencesBuilder: any = {
       select: jest.fn(() => occurrencesBuilder),
       eq: jest.fn(() => occurrencesBuilder),
       in: jest.fn(() => occurrencesBuilder),
-      lte: jest.fn(() =>
+      lte: jest.fn(() => occurrencesBuilder),
+      order: jest.fn(() => occurrencesBuilder),
+      range: jest.fn(() =>
         Promise.resolve({
           data: [
             { habit_id: 'h1', occurrence_date: '2026-09-01' },
@@ -244,7 +262,7 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
 
   it('requests the account-local date returned by persisted timezone initialization', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-09-11T00:30:00.000Z'));
-    (supabase.rpc as jest.Mock).mockImplementation(async (name: string, args: unknown) => {
+    (supabase.rpc as jest.Mock).mockImplementation(pageable(async (name: string, args: unknown) => {
       if (name === 'initialize_account_time_zone') {
         return { data: 'America/Los_Angeles', error: null };
       }
@@ -254,7 +272,7 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       }
       if (name === 'get_open_habit_recoveries') return { data: [], error: null };
       throw new Error(`unexpected RPC ${name}`);
-    });
+    }));
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') return chainable({ data: [], error: null });
       throw new Error(`unexpected table ${table}`);
@@ -272,7 +290,7 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
       scheduled_date: null, target_count: null, schedule_start_on: '2026-09-01',
     };
-    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+    (supabase.rpc as jest.Mock).mockImplementation(pageable(async (name: string) => {
       if (name === 'initialize_account_time_zone') return { data: 'Asia/Manila', error: null };
       if (name === 'get_habits_for_date') return { data: [], error: null };
       if (name === 'get_open_habit_recoveries') {
@@ -286,12 +304,14 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
         };
       }
       throw new Error(`unexpected RPC ${name}`);
-    });
+    }));
 
     const habitsBuilder: any = {
       select: jest.fn(() => habitsBuilder),
       eq: jest.fn(() => habitsBuilder),
       in: jest.fn(() => Promise.resolve({ data: [recoveryHabit], error: null })),
+      order: jest.fn(() => habitsBuilder),
+      range: jest.fn(() => habitsBuilder),
       then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
         Promise.resolve({ data: [recoveryHabit], error: null }).then(resolve),
     };
@@ -299,7 +319,9 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       select: jest.fn(() => emptyBuilder),
       eq: jest.fn(() => emptyBuilder),
       in: jest.fn(() => emptyBuilder),
-      lte: jest.fn(() => Promise.resolve({ data: [], error: null })),
+      lte: jest.fn(() => emptyBuilder),
+      order: jest.fn(() => emptyBuilder),
+      range: jest.fn(() => Promise.resolve({ data: [], error: null })),
       then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
         Promise.resolve({ data: [], error: null }).then(resolve),
     };
@@ -340,12 +362,12 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
     const futureOneTime = {
       ...oneTime, id: 'one-future', name: 'Future one-time', scheduled_date: '2026-09-12',
     };
-    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
+    (supabase.rpc as jest.Mock).mockImplementation(pageable(async (name: string) => {
       if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
       if (name === 'get_habits_for_date') return { data: [oneTime], error: null };
       if (name === 'get_open_habit_recoveries') return { data: [], error: null };
       throw new Error(`unexpected RPC ${name}`);
-    });
+    }));
     // The authenticated table read includes all owned definitions. The board
     // must retain archived rows, exclude active one-time quests off today, and
     // deduplicate today's active one-time row returned by both transports.
@@ -354,7 +376,9 @@ describe('fetchTodayHabits — quantity-habit progress join', () => {
       select: jest.fn(() => emptyBuilder),
       eq: jest.fn(() => emptyBuilder),
       in: jest.fn(() => emptyBuilder),
-      lte: jest.fn(() => Promise.resolve({ data: [], error: null })),
+      lte: jest.fn(() => emptyBuilder),
+      order: jest.fn(() => emptyBuilder),
+      range: jest.fn(() => Promise.resolve({ data: [], error: null })),
       then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
         Promise.resolve({ data: [], error: null }).then(resolve),
     };
