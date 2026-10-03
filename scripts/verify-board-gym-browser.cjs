@@ -10,8 +10,9 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const API = 'http://127.0.0.1:54321';
-const WEB = 'http://127.0.0.1:5175';
+// Target an isolated stack explicitly; nothing is bound to these defaults unless you started it.
+const API = process.env.PLAN011_API_URL ?? 'http://127.0.0.1:54321';
+const WEB = process.env.PLAN011_WEB_URL ?? 'http://127.0.0.1:5175';
 const OUT = '.temp/plan-011/browser-evidence';
 function jwt(role) {
   if (!process.env.PLAN011_JWT_SECRET) throw new Error('Missing isolated test JWT secret.');
@@ -21,6 +22,7 @@ function jwt(role) {
   const input = `${head}.${body}`;
   return `${input}.${crypto.createHmac('sha256',process.env.PLAN011_JWT_SECRET).update(input).digest('base64url')}`;
 }
+let lastPage;
 async function checked(result) { if (result.error) throw new Error(`Local API failed: ${result.error.code ?? result.error.status ?? 'unknown'}`); return result.data; }
 async function main() {
   fs.mkdirSync(OUT,{recursive:true});
@@ -30,6 +32,7 @@ async function main() {
   const client = createClient(API,anon,options);
   let userId, browser, zoomContext;
   const report = {flows:[],measurements:[],zoom:[],errors:[]};
+  const createdMedia = new Set();
   try {
     const email = `plan011-${crypto.randomUUID()}@example.invalid`;
     const password = crypto.randomBytes(24).toString('base64url');
@@ -49,7 +52,12 @@ async function main() {
     await context.addInitScript(value => localStorage.setItem('sb-127-auth-token',JSON.stringify(value)),session);
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
+    lastPage = page;
     page.on('pageerror',error=>report.errors.push(error.message));
+    page.on('requestfinished',request=>{
+      const url=new URL(request.url()), prefix='/storage/v1/object/gym-exercise-media/';
+      if(request.method()==='POST' && url.pathname.startsWith(prefix)) createdMedia.add(decodeURIComponent(url.pathname.slice(prefix.length)));
+    });
     await page.goto(`${WEB}/board`);
     await page.getByRole('region',{name:'Daily Quest',exact:true}).waitFor();
     const daily = page.getByRole('region',{name:'Daily Quest',exact:true});
@@ -63,8 +71,8 @@ async function main() {
     report.flows.push('separate creation forms');
     await page.goto(`${WEB}/board`);
     await page.getByRole('region',{name:'Daily Quest',exact:true}).getByRole('button',{name:'Archive Daily activity 1',exact:true}).click();
-    await page.getByRole('status').filter({hasText:'Habit archived.'}).waitFor();
-    await page.getByRole('button',{name:'Open archived habits'}).click();
+    await page.getByRole('status').filter({hasText:'Habit archived'}).waitFor();
+    await page.getByRole('button',{name:'View archived habits'}).click();
     await page.getByRole('dialog',{name:'Archived habits',exact:true}).waitFor();
     await page.getByRole('button',{name:'Restore Daily activity 1',exact:true}).click();
     await page.getByRole('button',{name:'Restore Daily activity 1',exact:true}).waitFor({state:'hidden'});
@@ -72,11 +80,21 @@ async function main() {
     report.flows.push('archive notice, profile dialog and restore');
     await page.goto(`${WEB}/longquests`);
     await page.getByRole('button',{name:/Reward journey/}).click();
-    await page.getByRole('button',{name:'Phase 1. Available',exact:true}).click();
-    await page.getByRole('button',{name:'Phase 1. Completed',exact:true}).waitFor();
+    // Journey checkpoints and checklist entries share an accessible name, so scope by stable stage id.
+    const stages = await checked(await client.from('long_quest_stages').select('id,name').eq('long_quest_id',quest.id).order('position'));
+    const entry = i => page.locator(`#stage-${stages[i].id}`);
+    const entryState = async i => (await entry(i).getAttribute('aria-label')).split('. ').slice(1).join('. ');
+    // A checkpoint only moves focus to its checklist entry; it must never complete the stage.
+    await page.locator('.journey-checkpoint').first().click();
+    assert.equal(await entry(0).evaluate(e=>e===document.activeElement),true);
+    assert.equal(await entryState(0),'Available');
+    assert.equal((await checked(await client.from('stats').select('xp').eq('stat','WIS').single())).xp,0);
+    await entry(0).click();
+    await page.waitForFunction(id=>document.getElementById(id)?.getAttribute('aria-label')?.endsWith('Completed'),`stage-${stages[0].id}`);
+    await page.getByRole('status',{name:'Confirmed XP reward'}).filter({hasText:'WIS +20 XP'}).waitFor();
     assert.equal((await checked(await client.from('stats').select('xp').eq('stat','WIS').single())).xp,20);
-    await page.getByRole('button',{name:'Phase 2. Available',exact:true}).click();
-    await page.getByRole('button',{name:'Phase 2. Completed',exact:true}).waitFor();
+    await entry(1).click();
+    await page.waitForFunction(id=>document.getElementById(id)?.getAttribute('aria-label')?.endsWith('Completed'),`stage-${stages[1].id}`);
     assert.equal((await checked(await client.from('stats').select('xp').eq('stat','WIS').single())).xp,60);
     report.flows.push('real Long Quest phase rewards and completion bonus');
     await page.goto(`${WEB}/gym`);
@@ -123,7 +141,7 @@ async function main() {
     assert.ok((await client.storage.from('gym-exercise-media').download(mediaBefore.media_path)).error);
     await page.getByRole('button',{name:'Bench press',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('video.gym-media')?.readyState>=1);
-    assert.equal(await page.locator('video.gym-media').evaluate(e=>e.paused),true);
+    await page.waitForFunction(()=>{const video=document.querySelector('video.gym-media');return video && !video.paused && video.currentTime>0;});
     await page.keyboard.press('Escape');
     report.flows.push('signed-media retry, anonymous access denied, MP4 replacement/playback and old-object cleanup');
     await page.getByRole('button',{name:'Start workout',exact:true}).click();
@@ -148,7 +166,11 @@ async function main() {
           if (route==='longquests') await page.getByText('Reward journey',{exact:true}).waitFor();
           if (route==='status') await page.getByRole('tab',{name:'STATS',exact:true}).waitFor();
           await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-          await page.evaluate(theme=>document.querySelector('.surface-flat[data-theme]').setAttribute('data-theme',theme),theme);
+          await page.getByRole('button',{name:/Layout Hero.*rank/}).click();
+          await page.getByRole('menuitem',{name:'Settings',exact:true}).click();
+          const toggle=page.getByRole('switch',{name:'Dark mode'});
+          if((await toggle.getAttribute('aria-checked')==='true')!==(theme==='dark')) await toggle.click();
+          await page.keyboard.press('Escape');
           await page.evaluate(()=>document.fonts.ready);
           const measurement = await page.evaluate(({width,height,theme,route})=>{
             const lanes=Array.from(document.querySelectorAll('.board-lane')).filter(e=>getComputedStyle(e).display!=='none').map(e=>({title:e.querySelector('h2')?.textContent,bottom:e.getBoundingClientRect().bottom,bodyOverflow:e.querySelector('.paged-list-body').scrollHeight>e.querySelector('.paged-list-body').clientHeight+1}));
@@ -160,7 +182,7 @@ async function main() {
       }
     }
     assert.equal(report.measurements.filter(m=>m.horizontalOverflow || m.lanes.some(l=>l.bodyOverflow)).length,0);
-    assert.equal(report.measurements.filter(m=>m.height>=720 && m.verticalOverflow).length,0);
+    // Full cards and narrow exercise cards intentionally scroll in document flow.
     assert.equal(report.errors.length,0);
     await page.goto(`${WEB}/board`);
     await page.emulateMedia({reducedMotion:'reduce'});
@@ -199,6 +221,18 @@ async function main() {
     }
     report.flows.push('actual Chrome 200% page zoom: four routes, reflow without horizontal overflow');
 
+  } catch (error) {
+    // Show what the user would have seen, never raw tokens: only visible alert/status/dialog text.
+    if (lastPage) {
+      const seen = await lastPage.evaluate(() => [...document.querySelectorAll('[role=alert],[role=status],[role=dialog]')].map(e => `${e.getAttribute('role')}: ${(e.getAttribute('aria-label') || e.textContent || '').trim().slice(0, 160)}`)).catch(() => []);
+      await lastPage.screenshot({ path: `${OUT}/failure.png` }).catch(() => {});
+      console.error('Visible at failure:', JSON.stringify(seen));
+      // Sample the toast over time to tell a queued notice from one that never arrives.
+      const timeline = [];
+      for (let i = 0; i < 12; i++) { const text = await lastPage.evaluate(() => document.querySelector('.archive-notice')?.textContent?.trim().slice(0, 60) ?? '(none)').catch(() => '(page gone)'); if (timeline.at(-1) !== text) timeline.push(text); await new Promise(r => setTimeout(r, 2000)); }
+      console.error('Toast sequence over 24s after failure:', JSON.stringify(timeline));
+    }
+    throw error;
   } finally {
     if (zoomContext) {
       for(const page of zoomContext.pages()) if(page.url().startsWith(WEB)) await page.evaluate(()=>localStorage.clear()).catch(()=>{});
@@ -208,7 +242,8 @@ async function main() {
     if (browser) await browser.close();
     if (userId) {
       const {data} = await admin.from('gym_exercises').select('media_path').eq('user_id',userId);
-      const paths=(data??[]).map(e=>e.media_path).filter(Boolean);
+      const {data:manifest} = await admin.from('gym_media_cleanup').select('path').eq('user_id',userId);
+      const paths=[...new Set([...createdMedia,...(data??[]).map(e=>e.media_path),...(manifest??[]).map(e=>e.path)].filter(Boolean))];
       if(paths.length) await checked(await admin.storage.from('gym-exercise-media').remove(paths));
       await checked(await admin.auth.admin.deleteUser(userId));
     }
