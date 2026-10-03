@@ -96,3 +96,8 @@ backend/supabase/.temp/
 # Maestro test run artifacts
 maestro/report/
 maestro-logs/
+
+# Private local MCP configuration
+.mcp.json
+# Style-reference art kept locally only (third-party look, public repo)
+docs/assets/0012/reference-*.png
