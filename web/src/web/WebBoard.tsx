@@ -14,14 +14,15 @@ import {
   boardSummaryLine,
   formatError,
 } from '@eiyu/shared';
-import { StatIcon, CheckIcon, PlusIcon, SnowflakeIcon } from '../Icons';
+import { StatIcon, PlusIcon, SnowflakeIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import SignaturePanel from '../SignaturePanel';
-import FireStreak from '../FireStreak';
 import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
 import StateBlock from '../components/StateBlock';
 import ActionMenu from '../components/ActionMenu';
+import QuestCard from './QuestCard';
+import QuestDetailsDialog from './QuestDetailsDialog';
 import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 
 interface Props {
@@ -69,82 +70,6 @@ function XpBar({ value, max, color }: { value: number; max: number; color: strin
     <div style={{ height: 4, borderRadius: 4, background: 'var(--c-bar-track)', overflow: 'hidden' }}>
       <div style={{ height: '100%', width: '100%', transform: `scaleX(${pct / 100})`, transformOrigin: 'left', background: color, borderRadius: 4, transition: 'transform var(--dur-slow) var(--ease-in-out)' }} />
     </div>
-  );
-}
-
-function QuestCard({
-  quest,
-  onToggle,
-  onEdit,
-  onAdjustProgress,
-  onArchive,
-  onDelete,
-  pending,
-}: {
-  quest: Quest;
-  onToggle: () => void;
-  onEdit: () => void;
-  onAdjustProgress: (delta: number) => void;
-  onArchive: () => void;
-  onDelete: () => void;
-  pending: boolean;
-}) {
-  const color = STAT_COLORS[quest.stat];
-  const completedLabel = quest.completed ? 'Undo' : 'Complete';
-  const schedule = quest.questType === 'one_time'
-    ? 'Today only'
-    : quest.days.length === 7
-      ? 'Every day'
-      : quest.days.map(day => DAYS[day]).join(', ');
-
-  return (
-    <article className="board-quest-card" data-testid={`quest-card-${quest.id}`}>
-      <div className="board-card-topline">
-        <span className="board-card-stat" style={{ color }}>
-          <StatIcon stat={quest.stat} size={12} /> {quest.stat}
-        </span>
-        <span className="board-card-difficulty">{quest.difficulty}</span>
-        {quest.questType === 'one_time' && <span className="board-card-type">ONE TIME</span>}
-      </div>
-      <button type="button" className="board-card-title" aria-label={`Edit ${quest.name}`} onClick={onEdit}>
-        {quest.name}
-      </button>
-      <div className="board-card-meta">
-        <span>{schedule}</span>
-        <span>{quest.time}</span>
-        {quest.streak > 0 && <span className="board-card-streak"><FireStreak size={11} /> {quest.streak}</span>}
-        {quest.frozen && <SnowflakeIcon size={12} />}
-      </div>
-      {quest.description && <button type="button" className="btn-quiet btn-compact" onClick={onEdit}>Edit note</button>}
-      <div className="board-card-actions">
-        {quest.targetCount == null ? (
-          <button
-            type="button"
-            className={`btn-secondary btn-compact${quest.completed ? ' is-complete' : ''}`}
-            onClick={onToggle}
-            aria-label={`${completedLabel} ${quest.name}`}
-            aria-pressed={quest.completed}
-          >
-            {quest.completed ? <CheckIcon /> : null}
-            {completedLabel}
-          </button>
-        ) : (
-          <div className="board-progress-stepper" aria-label={`${quest.name} progress`}>
-            <button type="button" className="btn-secondary btn-compact" aria-label={`Decrease progress for ${quest.name}`} onClick={() => onAdjustProgress(-1)} disabled={quest.progressCount <= 0}>−</button>
-            <span>{quest.progressCount}/{quest.targetCount}</span>
-            <button type="button" className="btn-secondary btn-compact" aria-label={`Increase progress for ${quest.name}`} onClick={() => onAdjustProgress(1)} disabled={quest.progressCount >= quest.targetCount}>+</button>
-          </div>
-        )}
-        <ActionMenu
-          label={`More actions for ${quest.name}`} disabled={pending} busy={pending}
-          items={[
-            { label: 'Details', ariaLabel: `Open ${quest.name} details`, onSelect: onEdit },
-            { label: 'Archive', ariaLabel: `Archive ${quest.name}`, onSelect: onArchive },
-            { label: 'Delete', ariaLabel: `Delete ${quest.name}`, onSelect: onDelete, danger: true },
-          ]}
-        />
-      </div>
-    </article>
   );
 }
 
@@ -248,6 +173,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     adjustProgress,
     completeRecovery,
     archiveQuest,
+    restoreQuest,
     deleteQuest,
   } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
@@ -258,6 +184,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
   useEffect(() => () => window.clearTimeout(xpToastTimer.current), []);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Quest | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<Quest | null>(null);
   const [pendingLifecycleIds, setPendingLifecycleIds] = useState<Set<string>>(() => new Set());
   const lifecycleInFlight = useRef(new Set<string>());
   const storagePrefix = `eiyu:${storageScope}`;
@@ -311,7 +238,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
 
   const archive = (quest: Quest) => {
     const owner = getNotificationOwner();
-    queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType, owner); });
+    queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType, owner, () => restoreQuest(quest.id)); });
   };
 
   if (questsLoading) return <StateBlock kind="loading">Reading the board…</StateBlock>;
@@ -373,10 +300,10 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
       </section>
 
         <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} storageKey={`${storagePrefix}:daily-quest-scroll`} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or check All Habits.' : false} action={<button onClick={() => onNewQuest('habit')} className="btn-secondary board-add-button"><PlusIcon /> ADD QUEST</button>}>
-          {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
+          {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onOpen={() => setDetailsTarget(quest)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
         <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} storageKey={`${storagePrefix}:one-time-quest-scroll`} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today.' : false} action={<button onClick={() => onNewQuest('one_time')} className="btn-secondary board-add-button"><PlusIcon /> ADD QUEST</button>}>
-          {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
+          {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onOpen={() => setDetailsTarget(quest)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
         <BoardLane id="all-habits" title="All Habits" count={allHabits.length} active={activeLane === 'all-habits'} storageKey={`${storagePrefix}:all-habits-scroll`} empty={allHabits.length === 0 ? 'No saved habits yet. Add a recurring quest to build your catalog.' : false}>
           {allHabits.map(quest => <CatalogCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => onEditQuest(quest.id)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
@@ -390,6 +317,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
           <button className="btn-secondary" onClick={() => completeRecovery(quest.id)}>MARK RECOVERY COMPLETE</button>
         </article>)}
       </Dialog>}
+      {detailsTarget && <QuestDetailsDialog quest={detailsTarget} onClose={() => setDetailsTarget(null)} onEdit={() => { const id = detailsTarget.id; setDetailsTarget(null); onEditQuest(id); }} />}
       {deleteTarget && <BoardDeleteDialog quest={deleteTarget} onCancel={() => setDeleteTarget(null)} onDelete={deleteQuest} />}
     </div>
   );

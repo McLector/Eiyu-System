@@ -193,4 +193,13 @@ describe('ActionMenu', () => {
     expect(screen.queryByRole('menu')).toBeNull();
     expect(() => fireEvent.scroll(window)).not.toThrow();
   });
+
+  it('renders an icon and a tone on an item for the redesigned menu', async () => {
+    const user = userEvent.setup();
+    render(<ActionMenu label="More actions for Walk" items={[{ label: 'Archive', onSelect: vi.fn(), icon: <svg data-testid="icon" />, tone: 'warn' }]} />);
+    await user.click(screen.getByRole('button', { name: 'More actions for Walk' }));
+    const item = screen.getByRole('menuitem', { name: 'Archive' });
+    expect(item).toHaveAttribute('data-tone', 'warn');
+    expect(within(item).getByTestId('icon')).toBeInTheDocument();
+  });
 });

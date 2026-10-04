@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const store = vi.hoisted(() => ({ useEiyu: vi.fn() }));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
-import WebBoard, { ArchivedCard } from '../WebBoard';
+import WebBoard from '../WebBoard';
 
 afterEach(cleanup);
 
@@ -38,31 +38,23 @@ describe('Board card actions', () => {
 
   it('shows one prominent action and one menu button on a daily card, nothing else competing', () => {
     renderBoard([quest()]);
-    const row = within(card()).getByRole('button', { name: 'Complete Walk' }).closest('.board-card-actions')!;
-    expect(within(row as HTMLElement).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['Complete Walk', 'More actions for Walk']);
+    const controls = within(card()).getByRole('button', { name: 'Complete Walk' }).closest('.quest-card-controls')!;
+    expect(within(controls as HTMLElement).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['Complete Walk', 'More actions for Walk']);
     expect(within(card()).queryByRole('button', { name: 'Delete Walk' })).toBeNull();
     expect(within(card()).queryByRole('menuitem')).toBeNull();
   });
 
-  it('keeps Details, Archive and Delete inside the menu, with the same accessible names as before', async () => {
+  it('keeps Edit Quest, Archive and Delete inside the menu', async () => {
     const user = userEvent.setup();
     renderBoard([quest()]);
     const menu = await openMenu(user);
-    expect(within(menu).getAllByRole('menuitem').map(i => i.getAttribute('aria-label'))).toEqual(['Open Walk details', 'Archive Walk', 'Delete Walk']);
+    expect(within(menu).getAllByRole('menuitem').map(i => i.getAttribute('aria-label'))).toEqual(['Edit Walk', 'Archive Walk', 'Delete Walk']);
     expect(within(menu).getByRole('menuitem', { name: 'Delete Walk' })).toHaveClass('is-danger');
   });
 
-  it('gives the card buttons the shared compact control class', () => {
-    renderBoard([quest({ targetCount: 3 })]);
-    for (const button of within(card()).getAllByRole('button')) {
-      if (button.classList.contains('board-card-title')) continue;
-      expect(button.className, button.getAttribute('aria-label') ?? button.textContent ?? '').toMatch(/btn-compact/);
-    }
-  });
-
-  it('labels the note shortcut for what it does: it opens the editor, so it says Edit note', () => {
+  it('has no Edit note shortcut: the note lives in the Details dialog', () => {
     renderBoard([quest()]);
-    expect(within(card()).getByRole('button', { name: 'Edit note' })).toBeInTheDocument();
+    expect(within(card()).queryByRole('button', { name: 'Edit note' })).toBeNull();
     expect(within(card()).queryByRole('button', { name: 'Show note' })).toBeNull();
   });
 
@@ -84,7 +76,7 @@ describe('Board card actions', () => {
     expect(within(card()).getByRole('button', { name: 'More actions for Walk' })).toHaveAttribute('aria-busy', 'true');
   });
 
-  it('opens the details from the menu', async () => {
+  it('opens the read-only details from the card, and Edit Quest from the menu opens the editor', async () => {
     const user = userEvent.setup();
     const onEditQuest = vi.fn();
     store.useEiyu.mockReturnValue({
@@ -93,24 +85,14 @@ describe('Board card actions', () => {
       completeRecovery: vi.fn(), archiveQuest: vi.fn(), deleteQuest: vi.fn(),
     });
     render(<WebBoard onNewQuest={vi.fn()} onEditQuest={onEditQuest} darkMode />);
+    await user.click(within(card()).getByRole('button', { name: 'View Walk details' }));
+    const dialog = screen.getByRole('dialog', { name: 'Quest details' });
+    expect(dialog).toHaveTextContent('Bring water');
+    expect(onEditQuest).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Quest' }));
+    expect(onEditQuest).toHaveBeenCalledWith('q1');
     await openMenu(user);
-    await user.click(screen.getByRole('menuitem', { name: 'Open Walk details' }));
-    expect(onEditQuest).toHaveBeenCalledOnce();
-  });
-});
-
-describe('Catalog and archived card actions', () => {
-  it('uses the same menu in the All Habits catalog, with Archive and Delete', async () => {
-    const user = userEvent.setup();
-    renderBoard([quest({ dailyEligible: false })]);
-    const catalog = document.querySelector('.board-catalog-card') as HTMLElement;
-    const menu = await openMenu(user, catalog);
-    expect(within(menu).getAllByRole('menuitem').map(i => i.getAttribute('aria-label'))).toEqual(['Archive Walk', 'Delete Walk']);
-  });
-
-  it('keeps Restore and Delete visible on the archived card, since that is only two actions', () => {
-    render(<ArchivedCard quest={quest({ archived: true })} pending={false} onEdit={vi.fn()} onRestore={vi.fn()} onDelete={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'Restore Walk' })).toHaveClass('btn-quiet', 'btn-compact');
-    expect(screen.getByRole('button', { name: 'Delete Walk' })).toHaveClass('btn-destructive', 'btn-compact');
+    await user.click(screen.getByRole('menuitem', { name: 'Edit Walk' }));
+    expect(onEditQuest).toHaveBeenCalledTimes(2);
   });
 });

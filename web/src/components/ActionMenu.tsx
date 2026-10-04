@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
-export interface ActionMenuItem { label: string; ariaLabel?: string; onSelect: () => void; danger?: boolean; disabled?: boolean }
+export interface ActionMenuItem { label: string; ariaLabel?: string; onSelect: () => void; danger?: boolean; disabled?: boolean; icon?: ReactNode; tone?: 'edit' | 'warn' | 'danger' }
 
 const CLOSE_OTHERS = 'eiyu:action-menu-open';
 const ITEM_HEIGHT = 40;
@@ -90,8 +90,9 @@ export default function ActionMenu({ label, items, disabled = false, busy = fals
           {items.map(item => (
             <button
               key={item.label} type="button" role="menuitem" aria-label={item.ariaLabel} disabled={item.disabled}
+              data-tone={item.tone ?? (item.danger ? 'danger' : undefined)}
               className={`btn-quiet action-menu-item${item.danger ? ' is-danger' : ''}`} onClick={() => select(item)}
-            >{item.label}</button>
+            >{item.icon}<span>{item.label}</span></button>
           ))}
         </div>,
         host,

@@ -605,19 +605,8 @@ select.field option {
 .board-lane-tabs::-webkit-scrollbar { display: block; width: 8px; height: 8px; }
 .board-lane-tabs::-webkit-scrollbar-thumb { background: var(--c-muted-flat); border-radius: 8px; }
 .board-lane-tabs::-webkit-scrollbar-track { background: transparent; }
-.board-quest-card, .board-catalog-card { flex: 0 0 auto; min-width: 0; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; }
-.board-quest-card { padding: 12px; }
-.board-card-topline, .board-card-meta, .board-card-actions { display: flex; align-items: center; gap: 8px; }
-.board-card-topline { margin-bottom: 8px; }
-.board-card-stat, .board-card-difficulty, .board-card-type { font: 700 11px Rajdhani, sans-serif; letter-spacing: .08em; }
-.board-card-stat { display: inline-flex; align-items: center; gap: 4px; }
-.board-card-difficulty { color: var(--c-muted-flat); }
-.board-card-type { margin-left: auto; color: var(--c-warning); }
-.board-card-title { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: var(--c-text); text-align: left; font: 600 14px/1.3 Inter, sans-serif; cursor: pointer; overflow-wrap: anywhere; }
-.board-card-title:hover, .board-card-title:focus-visible { color: var(--c-accent-text); }
-.board-card-meta { flex-wrap: wrap; margin-top: 8px; color: var(--c-muted-flat); font: 11px Inter, sans-serif; }
+.board-catalog-card { flex: 0 0 auto; min-width: 0; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; }
 .board-card-streak { display: inline-flex; align-items: center; gap: 3px; color: var(--c-warning); }
-.board-card-actions { flex-wrap: wrap; justify-content: space-between; margin-top: 12px; }
 .btn-secondary.is-complete { border-color: var(--c-success-border); color: var(--c-success); }
 .board-progress-stepper { display: inline-flex; align-items: center; gap: 6px; color: var(--c-text); font: 12px 'JetBrains Mono', monospace; }
 .board-progress-stepper button { width: 28px; padding: 0; font-size: 15px; }
@@ -654,6 +643,44 @@ select.field option {
 }
 
 /* Board composition, pagination and compact dialogs */
+/* Quest cards: compact and a fixed 80px, so a lane's page size is predictable (4 from a 600px-tall viewport).
+   Stat identity is the whole-border tint and the stat chip, never a one-sided stripe. */
+.quest-card { position: relative; display: grid; flex: 0 0 auto; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 80px; padding: 8px 8px 8px 12px; border: 1px solid color-mix(in srgb, var(--quest-stat, var(--c-accent)) 38%, var(--c-glass-border)); border-radius: 4px; background: transparent; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
+.quest-card:hover { background: var(--c-accent-glass); }
+.quest-card.is-backlog { border-style: dashed; }
+.quest-card.has-grip { grid-template-columns: auto minmax(0, 1fr) auto; padding-left: 4px; }
+.quest-card:has(.quest-card-open:focus-visible) { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+.quest-card-open { display: grid; min-width: 0; gap: 6px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.quest-card-open:focus-visible { outline: none; }
+.quest-card-open::after { content: ''; position: absolute; inset: 0; }
+.quest-card-title { overflow: hidden; color: var(--c-text); font: 700 15px/1.2 Rajdhani, sans-serif; letter-spacing: .04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.quest-card-meta { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; color: var(--c-muted-flat); font: 11px Inter, sans-serif; white-space: nowrap; }
+.quest-card-when { overflow: hidden; text-overflow: ellipsis; }
+.quest-card-controls { position: relative; z-index: 1; display: flex; align-items: center; gap: 4px; }
+.quest-card-grip { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 40px; color: var(--c-dim-flat); cursor: grab; }
+.quest-card-grip:active { cursor: grabbing; }
+.quest-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--c-accent-border); border-radius: 3px; color: var(--c-muted-flat); font: 600 11px Inter, sans-serif; white-space: nowrap; }
+.quest-chip.is-stat { border-color: color-mix(in srgb, var(--quest-stat) 45%, transparent); color: var(--quest-stat); font: 700 11px Rajdhani, sans-serif; letter-spacing: .08em; }
+.quest-complete { width: 32px; min-height: 32px; padding: 0; border-radius: 50%; }
+.quest-complete.is-popping { animation: quest-complete-pop var(--dur-slow) var(--ease-out); }
+@keyframes quest-complete-pop { 0% { transform: scale(.88); } 55% { transform: scale(1.1); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .quest-complete.is-popping { animation: none; } }
+/* Read-only details */
+.details { display: grid; gap: 12px; min-width: 0; }
+.details-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.details-title { margin: 0; color: color-mix(in srgb, var(--quest-stat, var(--c-accent)) 45%, var(--c-text)); font: 700 22px/1.15 Rajdhani, sans-serif; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; }
+.details-schedule { margin: 0; color: var(--c-muted-flat); font: 13px Inter, sans-serif; }
+.details-note { margin: 4px 0 0; color: var(--c-text); font: 13px/1.5 Inter, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* Action menu items: icon and tone (compositor-only motion: no layout slide on hover). */
+.action-menu-item { gap: 9px; }
+.action-menu-item svg { flex: none; }
+.action-menu-item[data-tone='edit'] svg { color: var(--c-accent-text); }
+.action-menu-item[data-tone='warn'] svg { color: var(--c-warning); }
+.action-menu-item[data-tone='danger'] svg { color: var(--c-danger); }
+.action-menu-item[data-tone='warn']:hover:not(:disabled) { background: var(--c-warning-glass); color: var(--c-warning); }
+@media (prefers-reduced-motion: no-preference) {
+  .action-menu-item { transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease; }
+}
 .board-lanes { grid-template-columns: minmax(220px, .9fr) repeat(3, minmax(0, 1fr)); overflow: visible; gap: 12px; }
 .board-profile-column { min-width: 0; }
 .board-profile-column .web-board-attributes { margin-top: 14px; }
@@ -665,8 +692,7 @@ select.field option {
 .list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px; color: var(--c-muted-flat); font-size: 12px; }
 .list-pagination button { min-height: 32px; padding: 5px 8px; font-size: 11px; }
 .list-pagination button:disabled { opacity: .45; cursor: default; }
-.board-card-title, .board-catalog-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.board-quest-card { padding: 10px; }
+.board-catalog-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .archive-list .board-lane { height: 60svh; }
 .btn-secondary.board-recovery-trigger { color: var(--c-ice); margin: 12px 0; width: 100%; }
 @media (max-width: 1199px) {
