@@ -37,7 +37,7 @@ describe('web copy voice', () => {
     for (const line of everyLine()) expect(line).not.toMatch(/\.\.\./);
   });
   it('keeps a plain sentence ending on every state line', () => {
-    for (const line of [GYM_COPY.emptyHistory, GYM_COPY.noRoutine, GYM_COPY.refreshFailed, GYM_COPY.uploadHeld]) expect(line).toMatch(/[.…]$/);
+    for (const line of [GYM_COPY.emptyHistory, GYM_COPY.noRoutine, GYM_COPY.refreshFailed, GYM_COPY.uploadHeld, GYM_COPY.exerciseRemoved]) expect(line).toMatch(/[.…]$/);
   });
 });
 

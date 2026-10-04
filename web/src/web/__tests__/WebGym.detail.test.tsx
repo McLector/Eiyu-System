@@ -133,3 +133,38 @@ it('pages the list to a blank weight beyond the first page and focuses it from "
   const calf = await screen.findByRole('spinbutton', { name: 'Current weight for Calf raise in kg' });
   await waitFor(() => expect(calf).toHaveFocus());
 }, 15000);
+
+it('says when a draft exercise was removed from the routine and still takes its weight', async () => {
+  const start = mocks.start.getMockImplementation()!;
+  mocks.start.mockImplementation(async (...args: unknown[]) => {
+    const id = await start(...args);
+    mocks.data.exercises = mocks.data.exercises.filter(e => e.id !== 'squat');
+    return id;
+  });
+  const user = userEvent.setup(); setup();
+  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
+  await waitFor(() => expect(mocks.fetchGym).toHaveBeenCalledTimes(2));
+  await pick(user, 'Squat');
+  const detail = await screen.findByRole('region', { name: 'Squat details' });
+  expect(await within(detail).findByText('This exercise was removed from the routine. Its saved workout details remain.')).toBeInTheDocument();
+  expect(within(detail).queryByText('No video guide attached.')).toBeNull();
+  expect(within(detail).queryByRole('button', { name: 'Attach a video guide' })).toBeNull();
+  const weight = within(detail).getByRole('spinbutton', { name: 'Current weight for Squat in kg' });
+  await waitFor(() => expect(weight).toBeEnabled());
+  await user.type(weight, '60');
+  expect(weight).toHaveValue(60);
+});
+
+it('names the exercise list and says which exercises already have a weight', async () => {
+  const user = userEvent.setup(); setup();
+  expect(await screen.findByRole('group', { name: 'Leg day exercises' })).toBeInTheDocument();
+  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
+  const bench = await screen.findByRole('spinbutton', { name: 'Current weight for Bench press in kg' });
+  await waitFor(() => expect(bench).toBeEnabled());
+  expect(screen.getByRole('button', { name: /^\d+\s*Bench press/ })).not.toHaveAccessibleName(/weight entered/);
+  await user.type(bench, '40');
+  const item = screen.getByRole('button', { name: /^\d+\s*Bench press/ });
+  expect(item).toHaveAccessibleName(/weight entered/);
+  expect(screen.getByRole('button', { name: /^\d+\s*Squat/ })).not.toHaveAccessibleName(/weight entered/);
+  expect(item.querySelector('svg')!.closest('[aria-hidden="true"]')).not.toBeNull();
+});

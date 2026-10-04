@@ -14,6 +14,7 @@ vi.mock('@eiyu/shared', async importOriginal => ({
 }));
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ user: { id: 'owner' } }) }));
 import WebGym from '../WebGym';
+import { RestoreIcon } from '../../Icons';
 import { NavigationGuard } from '../../components/NavigationGuard';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -80,4 +81,6 @@ it('keeps the routine actions disabled for an archived routine where they were b
   expect(await screen.findByRole('button', { name: 'Add exercise' })).toBeDisabled();
   await user.click(screen.getByRole('button', { name: 'Routine actions for Upper body' }));
   expect(screen.getByRole('menuitem', { name: 'Restore routine' })).toBeEnabled();
+  const restoreIcon = render(<RestoreIcon />).container.innerHTML;
+  expect(screen.getByRole('menuitem', { name: 'Restore routine' }).querySelector('svg')!.outerHTML).toBe(restoreIcon);
 });

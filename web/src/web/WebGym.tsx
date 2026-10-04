@@ -12,7 +12,7 @@ import { GYM_COPY, gymCleanupPending, gymSavedRefreshFailed, isGymCleanupNotice 
 import { useSession } from '../store/session-context';
 import Dialog from '../components/Dialog';
 import ActionMenu from '../components/ActionMenu';
-import { ArchiveIcon, ChevronIcon, CheckIcon, EditIcon, PlayIcon, TrashIcon } from '../Icons';
+import { ArchiveIcon, ChevronIcon, CheckIcon, EditIcon, PlayIcon, RestoreIcon, TrashIcon } from '../Icons';
 import FlowList from '../components/FlowList';
 import StateBlock from '../components/StateBlock';
 import { announceFeedback } from '../components/ArchiveNotice';
@@ -128,8 +128,9 @@ function ExerciseMedia({ exercise, canEdit, onEdit }: { exercise: GymExercise | 
     const timer = window.setInterval(renew, 240000);
     return () => { active = false; window.clearInterval(timer); };
   }, [path, retry]);
-  if (!exercise || !path) {
-    return <div className="gym-media-empty"><PlayIcon size={20} /><p>No video guide attached.</p>{exercise && canEdit && <button type="button" className="btn-secondary btn-compact" onClick={onEdit}>Attach a video guide</button>}</div>;
+  if (!exercise) return <div className="gym-media-empty"><p>{GYM_COPY.exerciseRemoved}</p></div>;
+  if (!path) {
+    return <div className="gym-media-empty"><PlayIcon size={20} /><p>No video guide attached.</p>{canEdit && <button type="button" className="btn-secondary btn-compact" onClick={onEdit}>Attach a video guide</button>}</div>;
   }
   if (error) return <div className="gym-media-empty" role="alert"><p>{error}</p><button type="button" className="btn-secondary btn-compact" onClick={() => setRetry(n => n + 1)}>Reload video guide</button></div>;
   if (!url) return <p className="gym-media-empty" role="status">Loading video guide…</p>;
@@ -157,7 +158,7 @@ function GymExercisePane({ row, index, total, exercise, unit, previous, weight, 
           ]}
         />
       </div>
-      <ExerciseMedia exercise={exercise} canEdit={canEditDefinition} onEdit={onEdit} />
+      <ExerciseMedia key={exercise?.id ?? row.id} exercise={exercise} canEdit={canEditDefinition} onEdit={onEdit} />
       <dl className="gym-kv">
         <div><dt>Sets × reps</dt><dd>{row.sets} × {row.reps}</dd></div>
         <div><dt>Rest</dt><dd>{row.rest_seconds}s</dd></div>
@@ -292,20 +293,20 @@ function GymWorkspace({ userId }: { userId: string }) {
           label={`Routine actions for ${routine.name}`} disabled={pending || uncertain}
           items={[
             { label: 'Edit routine', onSelect: () => setRoutineEditor('edit'), icon: <EditIcon />, tone: 'edit' },
-            { label: routine.archived ? 'Restore routine' : 'Archive routine', onSelect: () => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); }), icon: <ArchiveIcon />, tone: 'warn', disabled: dirty },
+            { label: routine.archived ? 'Restore routine' : 'Archive routine', onSelect: () => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); }), icon: routine.archived ? <RestoreIcon /> : <ArchiveIcon />, tone: 'warn', disabled: dirty },
             { label: 'Delete routine', onSelect: () => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Completed history remains.${draft ? ' This also discards the unfinished workout.' : ''}`, action: () => void run(async () => { await deleteGymRoutine(routine.id, !!draft); setWeights({}); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }) }), icon: <TrashIcon />, danger: true, tone: 'danger' },
           ]}
         />
       </div></div>
       <div className="gym-split">
-        <div className="gym-list" aria-label={`${routine.name} exercises`}>
+        <div className="gym-list" role="group" aria-label={`${routine.name} exercises`}>
           <FlowList label="Exercises" size={8} narrowSize={5} revealId={reveal} onRevealed={() => { setReveal(null); window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.gym-detail .gym-weight')?.focus()); }}>
             {rows.map((row, index) => <div key={row.id} data-item-id={row.id}>
               <button type="button" className={`gym-list-item${current?.id === row.id ? ' is-active' : ''}`} aria-current={current?.id === row.id ? 'true' : undefined} onClick={() => setSelectedExercise(row.id)}>
                 <span className="gym-list-index">{index + 1}</span>
                 <span className="gym-list-name">{row.name}</span>
                 <span className="gym-list-sets">{row.sets} × {row.reps}</span>
-                {draft && inputWeight(row.id).trim() && <CheckIcon size={13} />}
+                {draft && inputWeight(row.id).trim() && <><span aria-hidden="true"><CheckIcon size={13} /></span><span className="sr-only">, weight entered</span></>}
               </button>
             </div>)}
           </FlowList>

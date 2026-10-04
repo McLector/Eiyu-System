@@ -15,6 +15,7 @@ export const GYM_COPY = {
   refreshFailed: "The System couldn't refresh. Your saved progress is safe.",
   confirmSave: 'Confirm save result',
   uploadHeld: 'Your upload is held until the save is confirmed.',
+  exerciseRemoved: 'This exercise was removed from the routine. Its saved workout details remain.',
 } as const;
 
 /** "<what>. The System couldn't refresh — <cause>" for a save that succeeded but whose reload failed. */
