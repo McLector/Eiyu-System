@@ -48,8 +48,19 @@ alter table public.habits add constraint habits_genre_scope
 -- reminder_time stays NOT NULL (installed mobile builds read it); untimed quests store 08:00.
 alter table public.habits add column if not exists time_set boolean not null default true;
 alter table public.habits drop constraint if exists habits_backlog_shape;
+-- A Backlog row is an undated idea: no date, weekdays, count, penalty or set time. On a re-apply
+-- over an earlier, looser 038, bring any existing Backlog row into this shape first (a first apply
+-- finds none: the old quest_type check forbade 'backlog').
+update public.habits
+set easy_version = null, time_set = false,
+    reminder_time = case when time_set then time '08:00' else reminder_time end
+where quest_type = 'backlog' and (easy_version is not null or time_set);
 alter table public.habits add constraint habits_backlog_shape
-  check (quest_type <> 'backlog' or (scheduled_date is null and days = '{}' and target_count is null));
+  check (
+    quest_type <> 'backlog'
+    or (scheduled_date is null and days = '{}' and target_count is null
+        and easy_version is null and not time_set)
+  );
 
 -- 4. The retained-history ledger may describe a quest that is now in Backlog.
 do $$
@@ -96,12 +107,15 @@ $$;
 
 -- 6. Rollover settings: only quests dated on or after this day are ever swept into Backlog, so
 --    One-time quests that were already abandoned do not flood it the first time the board loads.
+--    The cutover is the day after the migration's UTC date: an account ahead of UTC can already be
+--    on the next local day, so a plain current_date could sweep a quest dated before the migration.
+--    The first sweep happens on the second local day after the apply. A re-apply keeps the row.
 create table if not exists private.backlog_rollover_settings (
   singleton boolean primary key default true check (singleton),
   cutover date not null
 );
 insert into private.backlog_rollover_settings (singleton, cutover)
-values (true, current_date)
+values (true, current_date + 1)
 on conflict (singleton) do nothing;
 alter table private.backlog_rollover_settings enable row level security;
 revoke all on table private.backlog_rollover_settings from public, anon, authenticated, service_role;
@@ -132,7 +146,8 @@ begin
 
   update public.habits h
   set quest_type = 'backlog', scheduled_date = null, days = '{}', target_count = null,
-      time_set = false, updated_at = statement_timestamp()
+      easy_version = null, time_set = false, reminder_time = time '08:00',
+      updated_at = statement_timestamp()
   where h.user_id = v_user_id
     and h.quest_type = 'one_time'
     and not h.archived
@@ -163,7 +178,7 @@ begin
 
   update public.habits
   set quest_type = 'one_time', scheduled_date = v_today, time_set = false,
-      updated_at = statement_timestamp()
+      reminder_time = time '08:00', updated_at = statement_timestamp()
   where id = p_id and user_id = v_user_id and quest_type = 'backlog' and not archived;
   if not found then raise exception 'backlog quest % not found for calling user', p_id; end if;
 end;
@@ -200,7 +215,8 @@ begin
   where habit_id = p_id and user_id = v_user_id and occurrence_date >= v_today;
   update public.habits
   set quest_type = 'backlog', scheduled_date = null, days = '{}', target_count = null,
-      time_set = false, updated_at = statement_timestamp()
+      easy_version = null, time_set = false, reminder_time = time '08:00',
+      updated_at = statement_timestamp()
   where id = p_id and user_id = v_user_id;
 end;
 $$;
