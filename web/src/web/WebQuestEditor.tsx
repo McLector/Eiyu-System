@@ -229,7 +229,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
                 aria-describedby={editingQuest ? 'quest-date-hint' : undefined}
                 onChange={e => setScheduledDate(e.target.value)}
               />
-              {editingQuest && <p id="quest-date-hint" className="field-hint">The date can't be changed after creation.</p>}
+              {editingQuest && <p id="quest-date-hint" className="field-hint">The date can&apos;t be changed after creation.</p>}
             </div>
             {timeField}
           </div>
