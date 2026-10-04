@@ -879,8 +879,10 @@ button:disabled { opacity: .45; cursor: default; }
 .gym-row { padding: 12px; }
 .gym-row [data-label='Rest'], .gym-row [data-label='RIR'], .gym-row [data-label='Previous Weight'], .gym-weight { font-family: 'JetBrains Mono', monospace; }
 .gym-history { height: auto; gap: 12px; }
-.gym-upload-preview { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--c-divider-flat); padding: 12px; }
-.gym-upload-preview img, .gym-upload-preview video { width: 100%; height: 160px; object-fit: contain; }
+.gym-upload-preview { display: grid; grid-template-columns: minmax(0, 1fr) 120px; align-items: center; gap: 8px 12px; border: 1px solid var(--c-divider-flat); padding: 8px 12px; }
+.gym-upload-preview > span { min-width: 0; overflow-wrap: anywhere; }
+.gym-upload-preview img, .gym-upload-preview video { grid-column: 2; grid-row: 1 / span 2; width: 120px; height: 88px; object-fit: contain; }
+.gym-upload-preview button { grid-column: 1; justify-self: start; }
 .flow-list { min-width: 0; }
 .flow-list-body { display: flex; flex-direction: column; gap: 10px; }
 .flow-list .list-pagination { position: static; margin-top: 12px; border-top: 1px solid var(--c-divider-flat); }

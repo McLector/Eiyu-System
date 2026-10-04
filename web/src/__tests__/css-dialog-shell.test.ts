@@ -23,4 +23,8 @@ describe('dialog shell stylesheet', () => {
   it('styles dialog footers as pill buttons', () => {
     expect(css).toMatch(/\.phase4-dialog \.action-footer \.btn-primary[^{]*\{[^}]*border-radius:\s*999px/);
   });
+  it('keeps the Gym upload preview a compact row so the exercise form fits', () => {
+    expect(css).toMatch(/\.gym-upload-preview\s*\{[^}]*grid-template-columns/);
+    expect(css).toMatch(/\.gym-upload-preview img, \.gym-upload-preview video\s*\{[^}]*height:\s*88px/);
+  });
 });

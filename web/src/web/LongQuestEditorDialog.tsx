@@ -95,7 +95,7 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
                   value={st.description ?? ''}
                   onChange={e => { if (isStageDescriptionWithinLimit(e.target.value)) setStageAt(i, { description: e.target.value }); }}
                   aria-label={`Stage ${i + 1} description. Maximum ${STAGE_DESCRIPTION_MAX_LENGTH} characters.`}
-                  rows={3}
+                  rows={2}
                 />
               </div>
               {editing && stages.length > MIN_STAGES && (
