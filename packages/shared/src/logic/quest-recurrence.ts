@@ -55,14 +55,20 @@ function compareNameAndId(a: Quest, b: Quest): number {
   return compareCodePoints(a.name, b.name) || compareCodePoints(a.id, b.id);
 }
 
+/** A quest with no set time sorts after the ones that have one. */
+function compareTimeSet(a: Quest, b: Quest): number {
+  return Number(a.timeSet === false) - Number(b.timeSet === false);
+}
+
 function compareActionable(a: Quest, b: Quest): number {
   return Number(a.completed) - Number(b.completed)
+    || compareTimeSet(a, b)
     || compareCodePoints(a.time, b.time)
     || compareNameAndId(a, b);
 }
 
 function compareCatalog(a: Quest, b: Quest): number {
-  return compareCodePoints(a.time, b.time) || compareNameAndId(a, b);
+  return compareTimeSet(a, b) || compareCodePoints(a.time, b.time) || compareNameAndId(a, b);
 }
 
 export function boardTodayProgress(sections: Pick<BoardQuestSections, 'dailyQuests' | 'oneTimeQuests'>): { completed: number; total: number } {

@@ -1,4 +1,5 @@
 import type { GymRoutine, GymExercise, GymSession, GymEntry } from './gym';
+import type { QuestGenre } from './eiyu';
 type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 type GymTable<T> = { Row: { [K in keyof T]: T[K] }; Insert: Partial<T>; Update: Partial<T>; Relationships: [] };
 // Hand-written to match backend/supabase/*.sql. Regenerate with
@@ -10,7 +11,7 @@ export type DifficultyKey = 'Easy' | 'Medium' | 'Hard';
 export type CompletionKind = 'full' | 'easy';
 export type ThemeKey = 'dark' | 'light';
 /** Recurring habit vs one-time (today-only) quest — see 011_quest_types.sql. */
-export type QuestTypeKey = 'habit' | 'one_time';
+export type QuestTypeKey = 'habit' | 'one_time' | 'backlog';
 
 export interface Database {
   public: {
@@ -69,6 +70,8 @@ export interface Database {
           scheduled_date: string | null;
           target_count: number | null;
           schedule_start_on: string;
+          genre: QuestGenre | null;
+          time_set: boolean;
         };
         Insert: Partial<Omit<Database['public']['Tables']['habits']['Row'], 'user_id'>> & {
           user_id: string;
@@ -400,6 +403,18 @@ export interface Database {
       };
       delete_habit: {
         Args: { p_habit_id: string };
+        Returns: undefined;
+      };
+      move_backlog_to_one_time: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+      move_one_time_to_backlog: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+      rollover_unfinished_one_time_quests: {
+        Args: Record<string, never>;
         Returns: undefined;
       };
       read_history_range: {

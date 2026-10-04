@@ -1,18 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckIcon } from '../Icons';
+import type { QuestType } from '@eiyu/shared';
 import { useSession } from '../store/session-context';
 
 let activeOwner: string | null = null;
 export const getNotificationOwner = () => activeOwner;
-export function announceArchive(type: 'habit' | 'one_time', owner = activeOwner) {
+export function announceArchive(type: QuestType, owner = activeOwner) {
   window.dispatchEvent(new CustomEvent('eiyu:archived', { detail: { id: crypto.randomUUID(), owner, type } }));
 }
 export type FeedbackTone = 'info' | 'success' | 'warning' | 'danger';
 export function announceFeedback(message: string, owner = activeOwner, tone: FeedbackTone = 'success') {
   window.dispatchEvent(new CustomEvent('eiyu:archived', { detail: { id: crypto.randomUUID(), owner, message, tone } }));
 }
-interface Notice { id: string; owner: string; type?: 'habit' | 'one_time'; message?: string; tone?: FeedbackTone }
+interface Notice { id: string; owner: string; type?: QuestType; message?: string; tone?: FeedbackTone }
 export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   const { user } = useSession();
   const owner = user?.id ?? null;
