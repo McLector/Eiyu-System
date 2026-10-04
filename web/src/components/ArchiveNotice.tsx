@@ -68,6 +68,9 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
+  // Moving between a dialog and the page remounts the notice; the old node never gets mouseleave or blur,
+  // so a pause it held would otherwise last forever and the notice would never dismiss itself.
+  useEffect(() => { setHovered(false); setFocused(false); }, [target]);
   const undo = async () => {
     const run = notice?.undo;
     setQueue(q => q.slice(1));
