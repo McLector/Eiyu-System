@@ -57,8 +57,11 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   // One-time and Backlog quests and quantity habits (target count set) have no penalty — every other habit requires one
   // (the DB enforces this with habits_easy_version_present, which exempts all three cases).
   const targetCountValid = !targetCount || Number(targetCount) > 1;
-  const nameError = editingQuest?.name === name ? null : validateQuestName(name);
-  const valid = !nameError && (type !== 'habit' || easyVer.trim().length > 0 || !!targetCount) && targetCountValid;
+  // Shown only once the name has been typed in; an untouched form is incomplete, not wrong.
+  const [nameTouched, setNameTouched] = useState(false);
+  const nameProblem = editingQuest?.name === name ? null : validateQuestName(name);
+  const nameError = nameTouched ? nameProblem : null;
+  const valid = !nameProblem && (type !== 'habit' || easyVer.trim().length > 0 || !!targetCount) && targetCountValid;
   const showPenalty = type === 'habit' && !targetCount;
 
   const handleSave = async () => {
@@ -148,7 +151,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
 
         <div>
           <label className="field-label">QUEST NAME</label>
-          <input aria-label="Quest name" aria-invalid={!!nameError} aria-describedby={nameError ? 'quest-name-error' : undefined} className="field" placeholder="e.g. Morning run for 30 min" value={name} onChange={e => setName(e.target.value)} />
+          <input aria-label="Quest name" aria-invalid={!!nameError} aria-describedby={nameError ? 'quest-name-error' : undefined} className="field" placeholder="e.g. Morning run for 30 min" value={name} onChange={e => { setName(e.target.value); setNameTouched(true); }} />
           {nameError && <p id="quest-name-error" role="alert" aria-live="polite" className="phase4-error">{nameError}</p>}
         </div>
 

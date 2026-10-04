@@ -42,6 +42,18 @@ describe('web Long Quest name validation', () => {
     expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ name: '😀'.repeat(80) }));
   });
 
+  it('does not flag the name of a fresh New Long Quest before it is typed in', async () => {
+    const user = userEvent.setup();
+    render(<WebLongQuests />);
+    await user.click(screen.getByRole('button', { name: /NEW QUEST/ }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'CREATE' })).toBeDisabled();
+    const name = screen.getByLabelText('Quest name');
+    await user.type(name, 'Vault');
+    await user.clear(name);
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a quest name.');
+  });
+
   it('allows an unchanged over-limit legacy name during an unrelated edit', async () => {
     const legacyName = '🧭'.repeat(81);
     setup([{
