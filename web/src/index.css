@@ -253,12 +253,34 @@ body {
 .phase4-account-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 190px; padding: 6px; border: 1px solid var(--c-panel-border); border-radius: 4px; background: var(--c-modal); box-shadow: 0 16px 44px color-mix(in srgb, black 28%, transparent); }
 .phase4-account-menu button { display: block; width: 100%; padding: 10px 12px; border: 0; border-radius: 4px; color: var(--c-text); background: transparent; cursor: pointer; text-align: left; font: 600 12px Rajdhani, sans-serif; letter-spacing: .08em; }
 .phase4-account-menu button:hover, .phase4-account-menu button:focus-visible { color: var(--c-accent-text); background: var(--c-accent-glass); }
-.phase4-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(20px, 4vh) 16px; background: var(--c-overlay); overflow-y: auto; }
-.phase4-dialog { width: min(560px, 100%); max-height: min(760px, 92svh); overflow-y: auto; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--c-panel-border); border-radius: 4px; background: var(--c-modal); box-shadow: 0 12px 32px color-mix(in srgb, black 28%, transparent); }
-.phase4-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
-.phase4-dialog-heading h2 { margin: 0; color: var(--c-text); font: 700 22px Rajdhani, sans-serif; letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
-.phase4-close { width: 34px; height: 34px; border: 1px solid var(--c-glass-border); border-radius: 50%; color: var(--c-muted-flat); background: transparent; cursor: pointer; font-size: 22px; line-height: 1; }
-.phase4-close:hover, .phase4-close:focus-visible { color: var(--c-accent-text); border-color: var(--c-accent-border); }
+/* Dialog shell: one definition. The dialog never exceeds the viewport; its body scrolls only when the content cannot fit. */
+.phase4-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: clamp(8px, 2.5svh, 24px) 12px; background: var(--c-overlay); overflow-y: auto; }
+.phase4-dialog {
+  position: relative; display: flex; flex-direction: column; width: min(560px, 100%);
+  max-height: min(760px, calc(100svh - 2 * clamp(8px, 2.5svh, 24px)));
+  overflow: hidden; border: 1px solid var(--c-accent-border); border-radius: 4px; background: var(--c-modal);
+  box-shadow: 0 12px 32px color-mix(in srgb, black 28%, transparent);
+}
+.phase4-dialog::before, .phase4-dialog::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid var(--c-accent); pointer-events: none; }
+.phase4-dialog::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.phase4-dialog::after { right: -1px; bottom: -1px; border-left: 0; border-top: 0; }
+.phase4-dialog-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 8px 8px 20px; }
+.phase4-dialog-heading h2 { margin: 0; color: var(--c-text); font: 700 20px Rajdhani, sans-serif; letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
+.dialog-rule { position: relative; flex-shrink: 0; height: 2px; margin: 0 20px; background: var(--c-divider-flat); }
+.dialog-rule::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 38%; background: var(--c-accent); }
+.phase4-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 0; background: transparent; color: var(--c-muted-flat); cursor: pointer; font-size: 22px; line-height: 1; }
+.phase4-close:hover, .phase4-close:focus-visible { color: var(--c-accent-text); }
+.compact-dialog-body { min-height: 0; overflow-y: auto; padding: 14px 20px 18px; }
+/* Footer: a quiet Cancel and a tinted pill call to action. */
+.phase4-dialog .action-footer { flex-wrap: nowrap; align-items: center; gap: 10px; padding: 4px 0 0; border-top: 0; }
+.phase4-dialog .action-footer .btn-primary, .phase4-dialog .action-footer .btn-secondary, .phase4-dialog .action-footer .btn-destructive { min-height: 40px; padding-inline: 20px; border-radius: 999px; }
+.phase4-dialog .action-footer .btn-primary { flex: 1 1 auto; background: color-mix(in srgb, var(--c-accent) 14%, var(--c-modal)); border-color: var(--c-accent-strong); color: var(--c-accent-text); }
+.phase4-dialog .action-footer .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--c-accent) 24%, var(--c-modal)); }
+.phase4-dialog .action-footer .btn-secondary { border-color: var(--c-glass-border); color: var(--c-muted-flat); }
+.phase4-dialog .action-footer .btn-secondary:hover:not(:disabled) { border-color: var(--c-accent-border); color: var(--c-accent-text); }
+.phase4-dialog .action-footer .btn-destructive { flex: 1 1 auto; }
+@media (max-width: 479px) { .phase4-dialog .action-footer { flex-wrap: wrap; } .phase4-dialog .action-footer > * { flex: 1 1 auto; } }
+
 .phase4-form { display: grid; gap: 16px; }
 .phase4-form label { display: grid; gap: 7px; color: var(--c-muted-flat); font: 600 12px Rajdhani, sans-serif; letter-spacing: .08em; }
 .phase4-form input { width: 100%; padding: 11px 12px; border: 1px solid var(--c-glass-border); border-radius: 4px; color: var(--c-text); background: var(--c-track); font: 14px Inter, sans-serif; }
@@ -645,7 +667,6 @@ select.field option {
 .list-pagination button:disabled { opacity: .45; cursor: default; }
 .board-card-title, .board-catalog-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .board-quest-card { padding: 10px; }
-.compact-dialog-body { padding: 14px 18px; max-height: 75svh; overflow: auto; }
 .archive-list .board-lane { height: 60svh; }
 .btn-secondary.board-recovery-trigger { color: var(--c-ice); margin: 12px 0; width: 100%; }
 @media (max-width: 1199px) {
@@ -714,7 +735,6 @@ input, textarea { caret-color: var(--c-accent); }
 .surface-flat :disabled, .phase4-overlay :disabled { cursor: default !important; }
 .phase4-brand-mark { text-shadow: 0 0 2px var(--c-accent), 0 0 10px var(--c-accent-border); }
 .protected-main .long-quests-page { max-width: none; }
-.phase4-dialog { max-height: 92svh; }
 .phase4-primary-nav { gap: clamp(4px,1vw,18px); }
 .phase4-nav-link { padding-inline: 10px; }
 @media (max-width: 767px) {
@@ -784,10 +804,6 @@ button:disabled { opacity: .45; cursor: default; }
 .stat-chip { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
 .choice-chip { padding: 9px; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease; }
 .action-footer { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--c-divider-flat); }
-.phase4-dialog { display: flex; flex-direction: column; overflow: hidden; }
-.phase4-close { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; border: 0; border-radius: 0; }
-.compact-dialog-body { min-height: 0; max-height: none; overflow-y: auto; }
-.phase4-dialog-heading { flex-shrink: 0; }
 .phase4-form { padding: 0; }
 .phase4-dialog-actions > button { flex: none; }
 .phase4-account-menu button { display: flex; gap: 10px; align-items: center; min-height: 44px; font-size: 13px; text-transform: uppercase; }
@@ -807,7 +823,7 @@ button:disabled { opacity: .45; cursor: default; }
 .field, .phase4-form input { font: 400 14px/1.5 Inter, sans-serif; border-radius: 6px; }
 .editor-fields { display: flex; flex-direction: column; gap: 12px; min-width: 0; border: 0; padding: 0; margin: 0; }
 @media (max-width: 1199px) { .gym-page { height: auto; min-height: 0; } }
-@media (max-width: 479px) { .gym-toolbar > label:first-child { display: block; flex: 1 1 100%; } .gym-fields { grid-template-columns: 1fr; } .phase4-dialog { max-height: 94svh; } .phase4-overlay { padding: 10px; } }
+@media (max-width: 479px) { .gym-toolbar > label:first-child { display: block; flex: 1 1 100%; } .gym-fields { grid-template-columns: 1fr; } }
 .reward-feedback { position: fixed; bottom: 20px; right: 20px; width: 300px; max-width: calc(100vw - 40px); padding: 14px; z-index: 40; }
 .reward-stat { display: grid; gap: 6px; padding: 6px 0; }
 .reward-stat strong { font: 700 18px Rajdhani,sans-serif; letter-spacing: .06em; }

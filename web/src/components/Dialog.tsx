@@ -51,6 +51,7 @@ export default function Dialog({ title, onClose, children, pending = false, init
   return createPortal(<div ref={overlay} data-eiyu-dialog data-theme={theme} className="phase4-overlay" onMouseDown={event => { if (event.target === event.currentTarget && !pending) onClose(); }}>
     <section ref={panel} className="phase4-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
       <div className="phase4-dialog-heading"><h2 id={titleId}>{title}</h2><button ref={close} type="button" className="phase4-close" aria-label={`Close ${title}`} disabled={pending} onClick={onClose}>×</button></div>
+      <div className="dialog-rule" aria-hidden="true" />
       <div className="compact-dialog-body">{children}</div>
     </section>
   </div>, document.body);
