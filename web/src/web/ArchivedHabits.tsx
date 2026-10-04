@@ -25,14 +25,14 @@ export default function ArchivedHabits({ onClose }: { onClose: () => void }) {
     <Dialog title="Archived habits" onClose={onClose} pending={pending !== null || target !== null}>
       {questsLoading ? <StateBlock kind="loading">Reading archived habits…</StateBlock> : questsError ? <StateBlock kind="error" onRetry={() => void retryQuests()}>{questsError}</StateBlock> :
         <div className="archive-list"><PaginatedList label="Archived habits" empty="No archived habits. Your archived definitions and their history stay here.">
-          {partitionBoardQuests(user.quests ?? []).archivedQuests.map(quest => <ArchivedCard key={quest.id} quest={quest} pending={pending !== null} onOpen={() => setDetails(quest)} onRestore={() => void restore(quest.id)} onDelete={() => setTarget(quest)} />)}
+          {partitionBoardQuests(user.quests ?? []).archivedQuests.map(quest => <ArchivedCard key={quest.id} quest={quest} pending={pending !== null} restoring={pending === quest.id} onOpen={() => setDetails(quest)} onRestore={() => void restore(quest.id)} onDelete={() => setTarget(quest)} />)}
         </PaginatedList></div>}
       {error && <p role="alert" className="phase4-error">{error}</p>}
     </Dialog>
     {details && <QuestDetailsDialog
       quest={details}
       onClose={() => setDetails(null)}
-      archived={{ pending: pending !== null, onRestore: () => { const id = details.id; void restore(id).then(ok => { if (ok) setDetails(null); }); }, onDelete: () => { setTarget(details); setDetails(null); } }}
+      archived={{ pending: pending !== null, onRestore: () => { const id = details.id; void restore(id).then(() => setDetails(null)); }, onDelete: () => { setTarget(details); setDetails(null); } }}
     />}
     {target && <BoardDeleteDialog quest={target} onCancel={() => setTarget(null)} onDelete={deleteQuest} />}
   </>;

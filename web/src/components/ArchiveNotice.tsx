@@ -14,6 +14,11 @@ export function announceFeedback(message: string, owner = activeOwner, tone: Fee
   window.dispatchEvent(new CustomEvent('eiyu:archived', { detail: { id: crypto.randomUUID(), owner, message, tone } }));
 }
 interface Notice { id: string; owner: string; type?: QuestType; message?: string; tone?: FeedbackTone; undo?: () => Promise<void> }
+/** The bar mounts with a negative delay equal to the time already elapsed, so a remount (portal target change) never restarts it. */
+function NoticeTimer({ paused, elapsed }: { paused: boolean; elapsed: () => number }) {
+  const [delay] = useState(() => -elapsed());
+  return <i className={`archive-notice-timer${paused ? ' is-paused' : ''}`} style={{ animationDelay: `${delay}ms` }} aria-hidden="true" />;
+}
 export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   const { user } = useSession();
   const owner = user?.id ?? null;
@@ -22,6 +27,9 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   const [focused, setFocused] = useState(false);
   const paused = hovered || focused;
   const remaining = useRef(8000);
+  const runStart = useRef<number | null>(null);
+  const timerFor = useRef<string | null>(null);
+  const elapsed = (id: string) => timerFor.current !== id ? 0 : 8000 - remaining.current + (runStart.current === null ? 0 : Date.now() - runStart.current);
   const notice = queue[0];
   const [target, setTarget] = useState<Element | null>(null);
   useEffect(() => {
@@ -45,12 +53,13 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
     window.addEventListener('eiyu:archived', show);
     return () => { window.removeEventListener('eiyu:archived', show); if (activeOwner === owner) activeOwner = null; };
   }, [owner]);
-  useEffect(() => { remaining.current = 8000; }, [notice?.id]);
+  useEffect(() => { remaining.current = 8000; runStart.current = null; timerFor.current = notice?.id ?? null; }, [notice?.id]);
   useEffect(() => {
     if (!notice || paused) return;
     const start = Date.now();
+    runStart.current = start;
     const timer = window.setTimeout(() => setQueue(q => q.slice(1)), remaining.current);
-    return () => { window.clearTimeout(timer); remaining.current = Math.max(0, remaining.current - (Date.now() - start)); };
+    return () => { window.clearTimeout(timer); runStart.current = null; remaining.current = Math.max(0, remaining.current - (Date.now() - start)); };
   }, [notice, paused]);
   useEffect(() => {
     const update = () => setTarget(Array.from(document.querySelectorAll('[data-eiyu-dialog] .compact-dialog-body')).at(-1) ?? null);
@@ -74,7 +83,7 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
       <button type="button" className="btn-secondary btn-compact" onClick={() => { setQueue(q => q.slice(1)); onOpen(); }}>View archived habits</button>
     </>}
     <button className="phase4-close" aria-label="Dismiss archive notice" onClick={() => setQueue(q => q.slice(1))}>×</button>
-    {!notice.message && <i key={notice.id} className={`archive-notice-timer${paused ? ' is-paused' : ''}`} aria-hidden="true" />}
+    {!notice.message && <NoticeTimer key={notice.id} paused={paused} elapsed={() => elapsed(notice.id)} />}
   </div>;
   return target ? createPortal(content, target) : content;
 }

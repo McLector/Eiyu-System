@@ -35,6 +35,7 @@ describe('archive notice Undo', () => {
     act(() => announceArchive('habit', 'owner-1', () => Promise.reject(new Error('offline'))));
     await user.click(await screen.findByRole('button', { name: /Undo/ }));
     expect(await screen.findByText(/Could not undo that/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'View archived habits' })).toBeNull();
   });
 
   it('still opens the archived list from View archived habits', async () => {
@@ -44,5 +45,24 @@ describe('archive notice Undo', () => {
     act(() => announceArchive('one_time', 'owner-1'));
     await user.click(await screen.findByRole('button', { name: 'View archived habits' }));
     expect(onOpen).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the timer bar in step with the real remaining time when a dialog opens mid-notice', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<ArchiveNotice onOpen={vi.fn()} />);
+      act(() => announceArchive('habit', 'owner-1'));
+      const before = document.querySelector('.archive-notice-timer')!;
+      expect(before).toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(3000); });
+      const dialog = document.createElement('div');
+      dialog.setAttribute('data-eiyu-dialog', '');
+      dialog.innerHTML = '<div class="compact-dialog-body"></div>';
+      await act(async () => { document.body.appendChild(dialog); await Promise.resolve(); });
+      const after = document.querySelector('.archive-notice-timer') as HTMLElement;
+      expect(dialog.contains(after)).toBe(true);
+      expect(after.style.animationDelay).toBe('-3000ms');
+      dialog.remove();
+    } finally { vi.useRealTimers(); }
   });
 });

@@ -3,8 +3,8 @@ import { STAT_COLORS, questGenreLabel, type Quest } from '@eiyu/shared';
 import { RestoreIcon, StatIcon } from '../Icons';
 
 /** An archived quest in the same compact card as the board, with Restore and Delete always one tap away. */
-export default function ArchivedCard({ quest, onOpen, onRestore, onDelete, pending }: {
-  quest: Quest; onOpen: () => void; onRestore: () => void; onDelete: () => void; pending: boolean;
+export default function ArchivedCard({ quest, onOpen, onRestore, onDelete, pending, restoring = pending }: {
+  quest: Quest; onOpen: () => void; onRestore: () => void; onDelete: () => void; pending: boolean; restoring?: boolean;
 }) {
   const genre = questGenreLabel(quest.genre);
   return (
@@ -19,7 +19,7 @@ export default function ArchivedCard({ quest, onOpen, onRestore, onDelete, pendi
       </button>
       <div className="quest-card-controls">
         <button type="button" className="btn-quiet btn-compact" onClick={onRestore} aria-label={`Restore ${quest.name}`} disabled={pending}>
-          {pending ? 'RESTORING…' : <><RestoreIcon size={14} /> RESTORE</>}
+          {restoring ? 'RESTORING…' : <><RestoreIcon size={14} /> RESTORE</>}
         </button>
         <button type="button" className="btn-destructive btn-compact" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
       </div>

@@ -53,4 +53,14 @@ describe('ArchivedHabits', () => {
     render(<ArchivedHabits onClose={vi.fn()} />);
     expect(screen.getByText(/No archived habits/)).toBeInTheDocument();
   });
+
+  it('surfaces a failed restore from the details view instead of hiding it behind the dialog', async () => {
+    store.restoreQuest.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    render(<ArchivedHabits onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'View Walk details' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Quest details' })).getByRole('button', { name: 'Restore' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Quest details' })).toBeNull());
+    expect(await screen.findByRole('alert')).toHaveTextContent(/offline/);
+  });
 });

@@ -36,4 +36,11 @@ describe('ArchivedCard', () => {
     expect(screen.getByRole('button', { name: 'Restore Walk' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Delete Walk' })).toBeDisabled();
   });
+
+  it('labels only the quest being restored as RESTORING, but disables the others too', () => {
+    render(<ArchivedCard quest={quest} pending restoring={false} onOpen={vi.fn()} onRestore={vi.fn()} onDelete={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Restore Walk' })).toHaveTextContent('RESTORE');
+    expect(screen.getByRole('button', { name: 'Restore Walk' })).not.toHaveTextContent('RESTORING');
+    expect(screen.getByRole('button', { name: 'Restore Walk' })).toBeDisabled();
+  });
 });
