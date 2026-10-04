@@ -49,6 +49,8 @@ describe('WebQuestEditor name validation and default days', () => {
     await user.clear(name);
     expect(screen.getByRole('alert')).toHaveTextContent('Enter a quest name.');
     expect(name).toHaveAttribute('aria-invalid', 'true');
+    // Beside the label, not under the field: an error must not add a line to a dialog that may not scroll.
+    expect(screen.getByRole('alert').closest('.field-label-row')).toHaveTextContent('QUEST NAME');
   });
 
   it('accepts 80 code points and rejects 81 before saving', async () => {

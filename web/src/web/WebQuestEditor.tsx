@@ -150,9 +150,12 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
         )}
 
         <div>
-          <label className="field-label">QUEST NAME</label>
+          {/* The error sits beside the label so showing it never adds a line to a dialog that must not scroll. */}
+          <div className="field-label-row">
+            <label className="field-label">QUEST NAME</label>
+            {nameError && <p id="quest-name-error" role="alert" aria-live="polite" className="phase4-error field-label-error">{nameError}</p>}
+          </div>
           <input aria-label="Quest name" aria-invalid={!!nameError} aria-describedby={nameError ? 'quest-name-error' : undefined} className="field" placeholder="e.g. Morning run for 30 min" value={name} onChange={e => { setName(e.target.value); setNameTouched(true); }} />
-          {nameError && <p id="quest-name-error" role="alert" aria-live="polite" className="phase4-error">{nameError}</p>}
         </div>
 
         <div>

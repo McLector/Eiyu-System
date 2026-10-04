@@ -816,6 +816,8 @@ button:disabled { opacity: .45; cursor: default; }
 .form-row > * { min-width: 0; }
 .field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
 .field-label-row .field-label { margin-bottom: 0; }
+.field-label-row > .field-label { flex: none; white-space: nowrap; }
+.field-label-row .field-label-error { margin: 0; text-align: right; }
 .field-label-row .btn-compact { min-height: 24px; padding-block: 2px; }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .choice-chip[aria-pressed='true'] { border-color: var(--c-accent-strong); background: var(--c-accent-glass); color: var(--c-accent-text); }
@@ -831,10 +833,27 @@ button:disabled { opacity: .45; cursor: default; }
 @media (max-width: 520px) { .habit-schedule { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "time target" "days days"; } }
 /* Short viewports get tighter rhythm before any content is removed: forms must still show everything at once. */
 @media (max-height: 720px) {
-  .phase4-dialog { --field-gap: 8px; }
+  .phase4-dialog { --field-gap: 6px; }
+  .phase4-dialog-heading { padding: 6px 6px 2px 20px; }
+  .phase4-dialog .phase4-close { width: 36px; height: 36px; }
   .compact-dialog-body { padding-block: 10px 12px; }
   .phase4-dialog .field-label, .phase4-dialog .field-label-row { margin-bottom: 4px; }
   .phase4-dialog .field { padding-block: 6px; }
+  .phase4-dialog .field-label-row .btn-compact { min-height: 18px; padding-block: 0; }
+  .phase4-dialog .seg .choice-chip { padding-block: 5px; }
+  /* Stat pickers lay icon and name side by side instead of stacking them. */
+  .phase4-dialog .stat-chip { flex-direction: row; justify-content: center; gap: 5px; padding-block: 6px; }
+  .phase4-dialog .habit-schedule { gap: 8px 12px; }
+  .phase4-dialog .gym-upload-preview { grid-template-columns: minmax(0, 1fr) 96px; padding-block: 6px; }
+  .phase4-dialog .gym-upload-preview img, .phase4-dialog .gym-upload-preview video { width: 96px; height: 64px; }
+  /* Phones: Archive and Delete share a row instead of stacking. */
+  @media (max-width: 479px) { .phase4-dialog .action-footer .btn-secondary, .phase4-dialog .action-footer .btn-destructive { padding-inline: 12px; } }
+}
+/* Wide enough: Time, Days and the optional target share one row. */
+@media (max-height: 720px) and (min-width: 521px) {
+  .phase4-dialog .habit-schedule { grid-template-columns: minmax(0, 140px) auto minmax(0, 1fr); grid-template-areas: "time days target"; }
+  .phase4-dialog .habit-schedule .day-chips { gap: 3px; }
+  .phase4-dialog .habit-schedule .day-chip { width: 26px; }
 }
 .stat-chip { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
 .choice-chip { padding: 9px; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease; }
@@ -858,7 +877,9 @@ button:disabled { opacity: .45; cursor: default; }
 .field, .phase4-form input { font: 400 14px/1.5 Inter, sans-serif; border-radius: 6px; }
 .editor-fields { display: flex; flex-direction: column; gap: 12px; min-width: 0; border: 0; padding: 0; margin: 0; }
 @media (max-width: 1199px) { .gym-page { height: auto; min-height: 0; } }
-@media (max-width: 479px) { .gym-toolbar > label:first-child { display: block; flex: 1 1 100%; } .gym-fields { grid-template-columns: 1fr; } }
+@media (max-width: 479px) { .gym-toolbar > label:first-child { display: block; flex: 1 1 100%; } }
+/* Sets, reps, rest and RIR stay two by two on phones: four stacked rows made the exercise editor scroll. */
+@media (max-width: 339px) { .gym-fields { grid-template-columns: 1fr; } }
 .reward-feedback { position: fixed; bottom: 20px; right: 20px; width: 300px; max-width: calc(100vw - 40px); padding: 14px; z-index: 40; }
 .reward-stat { display: grid; gap: 6px; padding: 6px 0; }
 .reward-stat strong { font: 700 18px Rajdhani,sans-serif; letter-spacing: .06em; }
