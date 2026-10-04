@@ -56,6 +56,30 @@ describe('quest editor types', () => {
     expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', time: '09:30', timeSet: true, genre: 'article' }), 'o1');
   });
 
+  it('keeps the stored date of an edited One-time quest and locks the date input', async () => {
+    const dated = { ...oneTimeQuest, scheduledDate: '2026-10-10' };
+    setup(dated);
+    const user = userEvent.setup();
+    render(<WebQuestEditor editingQuest={dated} onClose={vi.fn()} />);
+    const date = screen.getByLabelText('DATE');
+    expect(date).toBeDisabled();
+    expect(date).toHaveValue('2026-10-10');
+    expect(screen.getByText(/date can.t be changed after creation/i)).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
+    await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
+    await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', scheduledDate: '2026-10-10' }), 'o1');
+  });
+
+  it('still lets the user pick the date while creating a One-time quest', async () => {
+    render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);
+    const date = screen.getByLabelText('DATE');
+    expect(date).toBeEnabled();
+    fireEvent.change(date, { target: { value: '2099-01-02' } });
+    expect(date).toHaveValue('2099-01-02');
+    expect(screen.queryByText(/date can.t be changed/i)).toBeNull();
+  });
+
   it('offers no type switch when editing, and no Penalty, Days or Time for Backlog', () => {
     setup(backlogQuest);
     render(<WebQuestEditor editingQuest={backlogQuest} onClose={vi.fn()} />);

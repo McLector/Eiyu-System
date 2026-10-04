@@ -31,7 +31,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const [note, setNote] = useState(editingQuest?.description ?? '');
   const [easyVer, setEasyVer] = useState(editingQuest?.easyVersion ?? '');
   const [time, setTime] = useState(editingQuest?.time ?? '07:00');
-  const [scheduledDate, setScheduledDate] = useState(() => accountDateKey(new Date(), user.timeZone));
+  const [scheduledDate, setScheduledDate] = useState(() => editingQuest?.scheduledDate ?? accountDateKey(new Date(), user.timeZone));
   const [targetCount, setTargetCount] = useState(editingQuest?.targetCount != null ? String(editingQuest.targetCount) : '');
   const [days, setDays] = useState<number[]>(editingQuest?.days ?? [...DEFAULT_HABIT_DAYS]);
   const [stat, setStat] = useState<Stat>(editingQuest?.stat ?? 'INT');
@@ -224,9 +224,12 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
                 className="field"
                 type="date"
                 value={scheduledDate}
-                min={accountDateKey(new Date(), user.timeZone)}
+                min={editingQuest ? undefined : accountDateKey(new Date(), user.timeZone)}
+                disabled={!!editingQuest}
+                aria-describedby={editingQuest ? 'quest-date-hint' : undefined}
                 onChange={e => setScheduledDate(e.target.value)}
               />
+              {editingQuest && <p id="quest-date-hint" className="field-hint">The date can't be changed after creation.</p>}
             </div>
             {timeField}
           </div>

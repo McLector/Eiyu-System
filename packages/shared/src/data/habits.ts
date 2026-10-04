@@ -57,6 +57,7 @@ function toQuest(
     questType: row.quest_type,
     genre: row.genre ?? null,
     timeSet: row.time_set ?? true,
+    scheduledDate: row.scheduled_date,
     createdAt: row.created_at,
     archived: row.archived,
     time: row.reminder_time.slice(0, 5),

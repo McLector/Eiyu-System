@@ -26,6 +26,8 @@ export interface Quest {
   genre?: QuestGenre | null;
   /** False when a One-time quest has no set time (the stored time is a placeholder). Defaults to true. */
   timeSet?: boolean;
+  /** One-time quests only: the stored "YYYY-MM-DD" scheduled date; null/absent otherwise. */
+  scheduledDate?: string | null;
   /** Row creation time, used to list Backlog newest first. */
   createdAt?: string;
   /** Catalog lifecycle state; archived habits remain visible in All Habits. */

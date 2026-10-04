@@ -270,6 +270,7 @@ body {
 .phase4-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
 .phase4-dialog-actions button { padding: 8px 18px; font: 700 12px Rajdhani, sans-serif; letter-spacing: .08em; }
 .phase4-error { margin: 8px 0 0; color: var(--c-danger); font: 12px/1.4 Inter, sans-serif; }
+.field-hint { margin: 6px 0 0; color: var(--c-dim-flat); font: 12px/1.4 Inter, sans-serif; }
 
 @media (max-width: 1023px) {
   .phase4-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "brand account" "nav nav"; gap: 4px 10px; min-height: 68px; padding-inline: 12px; }

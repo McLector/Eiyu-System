@@ -546,6 +546,22 @@ describe('Backlog, genre and optional time', () => {
     expect(quests[0]).toMatchObject({ questType: 'backlog', genre: 'concept', timeSet: false, days: [], completed: false, easyVersion: null });
   });
 
+  it('maps the stored scheduled_date onto the quest so an edit can keep it', async () => {
+    const created = '2026-10-03T00:00:00Z';
+    const row = (scheduled: string | null) => ({
+      id: 'q', user_id: 'user-1', name: 'q', easy_version: null, description: null, quest_type: 'one_time', stat: 'INT', difficulty: 'Easy',
+      reminder_time: '08:00:00', days: [], archived: false, created_at: created, updated_at: created,
+      scheduled_date: scheduled, target_count: null, schedule_start_on: '2026-10-01', genre: null, time_set: true,
+    });
+    for (const scheduled of ['2026-10-10', null]) {
+      const builder = chainable({ data: [row(scheduled)], error: null });
+      builder.range = jest.fn(() => Promise.resolve({ data: [row(scheduled)], error: null }));
+      (supabase.from as jest.Mock).mockReturnValue(builder);
+      const quests = await fetchBacklogQuests('user-1');
+      expect(quests[0].scheduledDate).toBe(scheduled);
+    }
+  });
+
   it('calls the server functions for the two moves and surfaces their errors', async () => {
     (supabase.rpc as jest.Mock).mockReset().mockResolvedValue({ data: null, error: null });
     await moveBacklogToOneTime('h1');
