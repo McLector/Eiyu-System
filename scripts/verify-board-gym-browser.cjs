@@ -80,14 +80,13 @@ async function main() {
     await page.keyboard.press('Escape');
     report.flows.push('archive notice, profile dialog and restore');
     await page.goto(`${WEB}/longquests`);
-    await page.getByRole('button',{name:/Reward journey/}).click();
-    // Journey checkpoints and checklist entries share an accessible name, so scope by stable stage id.
+    // The first chain opens by default; open it only if it is closed. Stage rows are scoped by stable stage id.
+    const chain = page.getByRole('button',{name:/Reward journey/}).first();
+    if((await chain.getAttribute('aria-expanded'))!=='true') await chain.click();
     const stages = await checked(await client.from('long_quest_stages').select('id,name').eq('long_quest_id',quest.id).order('position'));
     const entry = i => page.locator(`#stage-${stages[i].id}`);
     const entryState = async i => (await entry(i).getAttribute('aria-label')).split('. ').slice(1).join('. ');
-    // A checkpoint only moves focus to its checklist entry; it must never complete the stage.
-    await page.locator('.journey-checkpoint').first().click();
-    assert.equal(await entry(0).evaluate(e=>e===document.activeElement),true);
+    // Opening the chain must never complete a stage.
     assert.equal(await entryState(0),'Available');
     assert.equal((await checked(await client.from('stats').select('xp').eq('stat','WIS').single())).xp,0);
     await entry(0).click();
@@ -114,20 +113,20 @@ async function main() {
     await page.getByLabel('Notes',{exact:true}).fill('Keep a controlled tempo.');
     await page.getByRole('button',{name:'Save exercise',exact:true}).click();
     await page.getByRole('dialog').waitFor({state:'hidden'});
-    await page.getByRole('button',{name:'Bench press',exact:true}).click();
+    await page.locator('.gym-list-item',{hasText:'Bench press'}).click();
     await page.locator('.gym-media').waitFor();
     await page.waitForFunction(()=>document.querySelector('.gym-media')?.naturalWidth>0);
     await page.screenshot({path:`${OUT}/demonstration.png`});
-    await page.keyboard.press('Escape');
     // Reproduce an expired/unavailable signed object, then obtain fresh access.
     const signedObject = '**/storage/v1/object/sign/gym-exercise-media/**?token=*';
+    // The guide is signed when the detail pane mounts, so reload the page to sign it again under the failing route.
     await page.route(signedObject,route=>route.fulfill({status:410,body:'Expired'}));
-    await page.getByRole('button',{name:'Bench press',exact:true}).click();
-    await page.getByRole('button',{name:'Reload demonstration',exact:true}).waitFor();
+    await page.reload();
+    await page.locator('.gym-list-item',{hasText:'Bench press'}).click();
+    await page.getByRole('button',{name:'Reload video guide',exact:true}).waitFor();
     await page.unroute(signedObject);
-    await page.getByRole('button',{name:'Reload demonstration',exact:true}).click();
+    await page.getByRole('button',{name:'Reload video guide',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('.gym-media')?.naturalWidth>0);
-    await page.keyboard.press('Escape');
     const mediaBefore = await checked(await client.from('gym_exercises').select('media_path').single());
     const outsider = createClient(API,anon,options);
     assert.ok((await outsider.storage.from('gym-exercise-media').createSignedUrl(mediaBefore.media_path,60)).error);
@@ -135,16 +134,19 @@ async function main() {
     const clip = path.resolve('.temp/plan-011/demonstration.mp4');
     require('node:child_process').execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','lavfi','-i','color=c=cyan:s=64x64:d=1','-c:v','libx264','-pix_fmt','yuv420p',clip]);
     const mp4 = fs.readFileSync(clip);
-    await page.getByRole('button',{name:'Edit',exact:true}).click();
+    await page.getByRole('button',{name:/^Exercise actions for /}).click();
+    await page.getByRole('menuitem',{name:'Edit exercise'}).click();
     await page.locator('input[type=file]').setInputFiles({name:'demonstration.mp4',mimeType:'video/mp4',buffer:mp4});
     await page.getByRole('button',{name:'Save exercise',exact:true}).click();
     await Promise.race([page.getByRole('dialog').waitFor({state:'hidden'}),page.getByRole('alert').waitFor().then(async()=>{throw new Error(await page.getByRole('alert').innerText());})]);
     assert.ok((await client.storage.from('gym-exercise-media').download(mediaBefore.media_path)).error);
-    await page.getByRole('button',{name:'Bench press',exact:true}).click();
+    await page.locator('.gym-list-item',{hasText:'Bench press'}).click();
     await page.waitForFunction(()=>document.querySelector('video.gym-media')?.readyState>=1);
+    // The guide no longer autoplays: it is muted, inline and has controls.
+    assert.ok(await page.locator('video.gym-media').evaluate(v=>v.muted && v.controls && v.playsInline && v.paused));
+    await page.locator('video.gym-media').evaluate(v=>v.play());
     await page.waitForFunction(()=>{const video=document.querySelector('video.gym-media');return video && !video.paused && video.currentTime>0;});
-    await page.keyboard.press('Escape');
-    report.flows.push('signed-media retry, anonymous access denied, MP4 replacement/playback and old-object cleanup');
+    report.flows.push('signed-media retry, anonymous access denied, MP4 replacement/playback on demand and old-object cleanup');
     await page.getByRole('button',{name:'Start workout',exact:true}).click();
     const weight = page.getByRole('spinbutton',{name:'Current weight for Bench press in kg',exact:true});
     await weight.fill('40');
