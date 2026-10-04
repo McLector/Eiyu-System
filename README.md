@@ -45,7 +45,7 @@ eiyu-system/
 │       └── lib/                  # Web-specific Supabase client, cache adapter
 ├── packages/shared/             # @eiyu/shared — XP/level/rank/streak logic and DB types,
 │                                 # consumed by both mobile and web
-├── backend/supabase/            # SQL migrations (001–022, run in order) + Edge Functions
+├── backend/supabase/            # SQL migrations (001–038, run in order) + Edge Functions
 │   ├── README.md                 # How to apply migrations + verify what's applied
 │   └── functions/ai-proxy/       # Gemini-backed weekly-summary Edge Function
 └── docs/                        # Requirements doc, design/migration plans
@@ -70,7 +70,7 @@ eiyu-system/
    ```
 
 2. Run every Supabase migration in filename order from `backend/supabase/`:
-   `001_profiles.sql` → `022_habit_recovery_state_machine.sql`
+   `001_profiles.sql` → `038_backlog_genre_optional_time.sql`
    See [`backend/supabase/README.md`](./backend/supabase/README.md) for how to apply them and verify they landed.
 
 3. Copy the environment file for whichever client you're running and fill in your Supabase credentials:

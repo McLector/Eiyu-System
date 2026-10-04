@@ -141,5 +141,19 @@ with checks(marker, ok) as (
 )
 select ok(ok, marker) from checks;
 
+-- Migration 038: Backlog quests, genre, optional time and the server-owned moves.
+select ok(coalesce(exists (select 1 from pg_constraint where conrelid = 'public.habits'::regclass
+      and conname = 'habits_quest_type_check' and pg_get_constraintdef(oid) ilike '%backlog%')
+    and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'habits' and column_name = 'genre')
+    and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'habits' and column_name = 'time_set')
+    and to_regclass('private.backlog_rollover_settings') is not null
+    and has_function_privilege('authenticated', to_regprocedure('public.move_backlog_to_one_time(uuid)'), 'EXECUTE')
+    and has_function_privilege('authenticated', to_regprocedure('public.move_one_time_to_backlog(uuid)'), 'EXECUTE')
+    and has_function_privilege('authenticated', to_regprocedure('public.rollover_unfinished_one_time_quests()'), 'EXECUTE')
+    and not has_function_privilege('anon', to_regprocedure('public.move_backlog_to_one_time(uuid)'), 'EXECUTE')
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%rollover_unfinished_one_time_quests%'
+      from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false), false),
+  '038 Backlog quests, genre, optional time and server-owned moves are in place');
+
 select * from finish();
 rollback;
