@@ -239,7 +239,8 @@ body {
 .phase4-dialog {
   position: relative; display: flex; flex-direction: column; width: min(560px, 100%);
   max-height: min(760px, calc(100svh - 2 * clamp(8px, 2.5svh, 24px)));
-  overflow: hidden; border: 1px solid var(--c-accent-border); border-radius: 4px; background: var(--c-modal);
+  /* No overflow clipping here: it would cut the corner brackets back to half width and round them off. The body scrolls instead. */
+  border: 1px solid var(--c-accent-border); border-radius: 4px; background: var(--c-modal);
   box-shadow: 0 12px 32px color-mix(in srgb, black 28%, transparent);
 }
 .phase4-dialog::before, .phase4-dialog::after { content: ''; position: absolute; width: 14px; height: 14px; border: 2px solid var(--c-accent); pointer-events: none; }

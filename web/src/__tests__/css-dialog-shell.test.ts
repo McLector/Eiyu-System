@@ -20,6 +20,11 @@ describe('dialog shell stylesheet', () => {
     expect(css).toMatch(/\.phase4-dialog::after/);
     expect(css).toMatch(/\.dialog-rule::before/);
   });
+  it('does not clip the corner brackets: the dialog box itself never hides overflow', () => {
+    const shell = css.match(/(?:^|\n)\.phase4-dialog\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(shell).toMatch(/max-height/);
+    expect(shell).not.toMatch(/overflow\s*:/);
+  });
   it('styles dialog footers as pill buttons', () => {
     expect(css).toMatch(/\.phase4-dialog \.action-footer \.btn-primary[^{]*\{[^}]*border-radius:\s*999px/);
   });
