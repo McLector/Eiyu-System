@@ -4,7 +4,6 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { RewardReceipt } from '@eiyu/shared';
 import WebSettings from '../web/WebSettings';
-import JourneyMap from '../components/JourneyMap';
 import FireStreak from '../FireStreak';
 import RewardFeedback from '../components/RewardFeedback';
 
@@ -25,24 +24,6 @@ it('slides the dark-mode knob with a transform and never animates its left offse
   expect(knob().style.transition).not.toMatch(/\bleft\b|\ball\b/);
   fireEvent.click(screen.getByRole('switch', { name: 'Dark mode' }));
   expect(props.onToggleDark).toHaveBeenCalledOnce();
-});
-
-const quest = (done: number) => ({
-  id: 'q', name: 'Vault', stat: 'INT', description: null, completedAt: null,
-  stages: Array.from({ length: 5 }, (_, i) => ({ id: `s${i}`, name: `Step ${i + 1}`, done: i < done, description: null })),
-}) as never;
-
-it('places the hero by translating a full-size wrapper, so the move can run on the compositor', () => {
-  const { container, rerender } = render(<JourneyMap quest={quest(0)} expanded onSelect={() => {}} />);
-  const track = container.querySelector('.journey-hero-track') as HTMLElement;
-  expect(track).not.toBeNull();
-  const first = track.style.transform;
-  expect(first).toMatch(/^translate\(10%, 46%\)$/);
-  const hero = track.querySelector('img.journey-hero') as HTMLElement;
-  expect(hero.style.left).toBe('');
-  expect(hero.style.top).toBe('');
-  rerender(<JourneyMap quest={quest(1)} expanded onSelect={() => {}} />);
-  expect((container.querySelector('.journey-hero-track') as HTMLElement).style.transform).toBe('translate(31%, 35%)');
 });
 
 it('keeps the streak flame glow static and animates only the flame shapes', () => {

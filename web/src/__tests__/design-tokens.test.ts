@@ -17,8 +17,8 @@ function readCssVar(blockRegex: RegExp, varName: string): string {
 }
 
 describe('every text colour used in the stylesheet reaches AA (4.5:1) on the page, in both themes', () => {
-  // Tokens that only ever sit on their own fill (a button, the painted map) are checked against that fill elsewhere.
-  const ON_OWN_FILL = new Set(['c-on-accent', 'c-journey-route']);
+  // Tokens that only ever sit on their own fill (a button, the current stage mark) are checked against that fill elsewhere.
+  const ON_OWN_FILL = new Set(['c-on-accent']);
   const used = [...new Set([...css.matchAll(/(?<![\w-])color:\s*var\(--(c-[\w-]+)\)/g)].map(m => m[1]))].filter(t => !ON_OWN_FILL.has(t));
 
   const resolve = (block: RegExp, name: string): string => {

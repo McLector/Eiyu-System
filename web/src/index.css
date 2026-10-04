@@ -60,7 +60,7 @@
   --c-fire-outer: #f87171;
   --c-fire-inner: #fb923c;
   --c-fire-core: #fde68a;
-  /* Control, semantic, journey and motion tokens */
+  /* Control, semantic and motion tokens */
   --c-on-accent: #050b14;
   --c-danger: #f87171;
   --c-danger-border: rgba(248, 113, 113, 0.4);
@@ -71,17 +71,7 @@
   --c-warning: #fbbf24;
   --c-warning-border: rgba(251, 191, 36, 0.4);
   --c-warning-glass: rgba(251, 191, 36, 0.1);
-  /* The journey chrome sits on the painted terrain, which is the same in both themes. */
-  --c-journey-route: #e8faff;
-  --c-checkpoint-label-bg: #082e36;
   --c-bar-track: rgba(103, 232, 249, 0.16);
-  --c-journey-overlay: linear-gradient(180deg, rgba(5, 11, 20, 0.4), rgba(5, 11, 20, 0.08) 45%, rgba(5, 11, 20, 0.5));
-  --c-checkpoint-done-bg: #155e3c;
-  --c-checkpoint-done-border: #86efac;
-  --c-checkpoint-available-bg: #155e75;
-  --c-checkpoint-available-border: #67e8f9;
-  --c-checkpoint-locked-bg: #313c43;
-  --c-checkpoint-locked-border: #c3cbd0;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -140,16 +130,7 @@
   --c-warning: #92400e;
   --c-warning-border: rgba(146, 64, 14, 0.4);
   --c-warning-glass: rgba(146, 64, 14, 0.12);
-  --c-journey-route: #e8faff;
-  --c-checkpoint-label-bg: #082e36;
   --c-bar-track: rgba(8, 145, 178, 0.2);
-  --c-journey-overlay: linear-gradient(180deg, rgba(232, 244, 251, 0.5), rgba(232, 244, 251, 0.18) 45%, rgba(232, 244, 251, 0.55));
-  --c-checkpoint-done-bg: #155e3c;
-  --c-checkpoint-done-border: #86efac;
-  --c-checkpoint-available-bg: #155e75;
-  --c-checkpoint-available-border: #67e8f9;
-  --c-checkpoint-locked-bg: #313c43;
-  --c-checkpoint-locked-border: #c3cbd0;
 }
 
 * {
@@ -899,44 +880,6 @@ button:disabled { opacity: .45; cursor: default; }
 .reward-stat progress::-webkit-progress-bar { background: var(--c-bar-track); border-radius: 3px; }
 .reward-stat progress::-webkit-progress-value { background: currentColor; border-radius: 3px; }
 .reward-stat progress::-moz-progress-bar { background: currentColor; border-radius: 3px; }
-.journey { --journey-color: var(--c-accent); width: 100%; }
-.journey-map { position: relative; height: 120px; overflow: hidden; isolation: isolate; }
-.journey.is-expanded .journey-map { height: 240px; border: 1px solid var(--c-panel-border); border-radius: 4px; }
-/* HUD corner brackets, expanded map only (the collapsed strip stays quiet). */
-.journey.is-expanded .journey-map::before { content: ''; position: absolute; inset: 0; z-index: 5; pointer-events: none; background: linear-gradient(var(--c-accent), var(--c-accent)) top left / 14px 2px no-repeat, linear-gradient(var(--c-accent), var(--c-accent)) top left / 2px 14px no-repeat, linear-gradient(var(--c-accent), var(--c-accent)) top right / 14px 2px no-repeat, linear-gradient(var(--c-accent), var(--c-accent)) top right / 2px 14px no-repeat, linear-gradient(var(--c-accent), var(--c-accent)) bottom left / 14px 2px no-repeat, linear-gradient(var(--c-accent), var(--c-accent)) bottom left / 2px 14px no-repeat, linear-gradient(var(--c-accent), var(--c-accent)) bottom right / 14px 2px no-repeat, linear-gradient(var(--c-accent), var(--c-accent)) bottom right / 2px 14px no-repeat; }
-/* The painting sits under the UI: a per-theme tint keeps it from being the darkest (or brightest) block on the page. */
-.journey-map::after { content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; background: var(--c-journey-overlay); }
-.journey-terrain { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 55%; }
-.journey-route { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--c-journey-route); pointer-events: none; opacity: .9; z-index: 1; }
-.journey-hero-track { position: absolute; inset: 0; z-index: 3; pointer-events: none; transition: transform 600ms var(--ease-in-out); }
-.journey-hero { position: absolute; left: 0; top: 0; width: 25px; height: 32px; object-fit: contain; transform: translate(-50%,-100%); }
-.journey.is-expanded .journey-hero { width: 36px; height: 48px; }
-.journey-checkpoint { position: absolute; transform: translate(-50%,-20%); z-index: 2; display: flex; flex-direction: column; align-items: center; width: 64px; padding: 0; border: 0; background: transparent; color: var(--c-journey-route); gap: 2px; }
-.journey-checkpoint-icon { position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--c-checkpoint-label-bg); border: 2px solid var(--c-journey-route); border-radius: 50%; font: 600 13px 'JetBrains Mono',monospace; }
-.journey-checkpoint small { font: 600 11px Inter,sans-serif; padding: 2px 4px; background: var(--c-checkpoint-label-bg); border-radius: 3px; }
-.journey-checkpoint.completed .journey-checkpoint-icon { background: var(--c-checkpoint-done-bg); border-color: var(--c-checkpoint-done-border); }
-.journey-checkpoint.available .journey-checkpoint-icon { background: var(--c-checkpoint-available-bg); border-color: var(--c-checkpoint-available-border); }
-.journey-checkpoint.available .journey-checkpoint-icon::after { content: ''; position: absolute; inset: -2px; border-radius: 50%; box-shadow: 0 0 8px var(--c-checkpoint-available-border); opacity: .3; animation: checkpoint-light 2400ms ease-in-out infinite; pointer-events: none; }
-.journey-checkpoint.locked .journey-checkpoint-icon { background: var(--c-checkpoint-locked-bg); border-color: var(--c-checkpoint-locked-border); }
-.journey.is-paused *, .journey.is-paused *::after { animation-play-state: paused !important; }
-.journey-repair { position: absolute; z-index: 4; inset: 30% 10%; background: var(--c-modal); padding: 12px; text-align: center; }
-.stage-list-wrap { border-top: 1px solid var(--c-divider-flat); padding: 16px 0 24px; }
-.stage-list { display: flex; flex-direction: column; }
-.stage-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 2px; border: 0; border-bottom: 1px solid var(--c-divider-flat); background: transparent; color: var(--c-text); text-align: left; cursor: pointer; }
-.stage-row:hover:not(.is-locked) { background-color: var(--c-accent-glass); }
-.stage-row.is-locked { cursor: not-allowed; opacity: .58; }
-.stage-box { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 20px; height: 20px; border: 1.5px solid color-mix(in srgb, var(--stat, var(--c-accent)) 45%, transparent); border-radius: 4px; }
-.stage-row.is-done .stage-box { background: var(--c-success-glass); border-color: var(--c-success-border); }
-.stage-text { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
-.stage-name { font: 13px Inter, sans-serif; }
-.stage-row.is-done .stage-name { color: var(--c-muted-flat); text-decoration: line-through; }
-.stage-note { color: var(--c-dim-flat); font: 11px Inter, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
-.stage-flag { color: var(--c-dim-flat); font: 700 11px Rajdhani, sans-serif; letter-spacing: .08em; }
-.journey-summary { font: 12px 'JetBrains Mono',monospace; color: var(--c-muted-flat); }
-@keyframes checkpoint-light { 50% { opacity: 1; } }
-@media (max-width: 767px) { .journey-map { height: 96px; } .journey-checkpoint { width: 48px; } .journey-checkpoint-icon { width: 36px; height: 36px; } .journey-checkpoint small { font-size: 11px; } }
-/* On phones the five labels would collide; the icon shape and the accessible name still carry the state. */
-@media (max-width: 479px) { .journey-checkpoint small { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; padding: 0; } }
 
 /* Motion: entrances are transitions (interruptible) started from @starting-style; exits stay instant. */
 .phase4-overlay { transition: opacity var(--dur-base) var(--ease-out); }
@@ -968,6 +911,38 @@ button:disabled { opacity: .45; cursor: default; }
 @media (prefers-reduced-motion: no-preference) { .reward-stat .is-level-up { animation: level-pulse 600ms var(--ease-out) 1; } }
 @media (prefers-reduced-motion: reduce) {
   .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled), .btn-quiet:active:not(:disabled), .btn-destructive:active:not(:disabled), .btn-ghost:active:not(:disabled), .stat-chip:active, .choice-chip:active { transform: none; }
-  .journey-hero-track { transition: none; }
-  .journey-checkpoint.available .journey-checkpoint-icon::after { animation: none; }
 }
+/* Chain Progression */
+.chain-card { padding-block: 8px 12px; border-top: 1px solid var(--c-divider-flat); }
+.chain-card:first-child { border-top: 0; }
+.chain-head { display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.chain-icon { display: grid; place-items: center; width: 40px; height: 40px; border: 1.5px solid color-mix(in srgb, var(--quest-stat) 45%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--quest-stat) 10%, transparent); }
+.chain-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--c-text); font: 700 18px/1.2 Rajdhani, sans-serif; letter-spacing: .04em; overflow-wrap: anywhere; }
+.chain-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; color: var(--c-muted-flat); font: 12px 'JetBrains Mono', monospace; }
+.chain-bar { height: 6px; margin: 0 0 4px; overflow: hidden; border: 1px solid var(--c-divider-flat); border-radius: 3px; background: var(--c-bar-track); }
+/* The fill scales rather than resizing, so progress changes run on the compositor. */
+.chain-bar > i { display: block; height: 100%; background: var(--quest-stat, var(--c-accent)); transform-origin: left center; transition: transform var(--dur-slow) var(--ease-in-out); }
+.chain-body { display: grid; gap: 14px; padding: 4px 0 12px; }
+.chain-description { margin: 0; color: var(--c-text); font: 13px/1.5 Inter, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chain-description.is-clamped { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.chain-stats { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; }
+.chain-stats div { display: grid; gap: 2px; }
+.chain-stats dt { color: var(--c-muted-flat); font: 700 11px Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+.chain-stats dd { margin: 0; color: var(--c-text); font: 700 18px Rajdhani, sans-serif; letter-spacing: .04em; }
+.chain-stage { border: 1px solid var(--c-divider-flat); border-radius: 4px; }
+.chain-stage.is-current { border-color: var(--c-accent-strong); background: var(--c-accent-glass); }
+.chain-stage.is-locked { opacity: .7; }
+.chain-stage-row { display: grid; width: 100%; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: var(--c-text); text-align: left; cursor: pointer; }
+.chain-stage-row[aria-disabled='true'] { cursor: not-allowed; }
+.chain-stage-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--c-accent-border); border-radius: 50%; color: var(--c-muted-flat); font: 700 12px Rajdhani, sans-serif; }
+.chain-stage.is-done .chain-stage-mark { border-color: var(--c-success-border); background: var(--c-success-glass); color: var(--c-success); }
+.chain-stage.is-current .chain-stage-mark { border-color: var(--c-accent); background: var(--c-accent); color: var(--c-on-accent); }
+.chain-stage-name { overflow: hidden; font: 600 14px Inter, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.chain-stage.is-done .chain-stage-name { color: var(--c-muted-flat); text-decoration: line-through; }
+.chain-stage-more { margin: 0 8px 8px 46px; }
+.chain-stage-description { margin: 0; padding: 0 12px 12px 48px; color: var(--c-muted-flat); font: 13px/1.5 Inter, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.quest-chip.is-done { border-color: var(--c-success-border); background: var(--c-success-glass); color: var(--c-success); }
+.quest-chip.is-cur { border-color: var(--c-accent-strong); background: var(--c-accent-glass); color: var(--c-accent-text); }
+.quest-chip.is-locked { color: var(--c-dim-flat); }
+/* After the chain rules so it wins the cascade. */
+@media (prefers-reduced-motion: reduce) { .chain-bar > i { transition: none; } }

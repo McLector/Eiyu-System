@@ -108,7 +108,7 @@ describe('Long Quest edit dialog', () => {
   it('edits in a dialog seeded from the quest, saves with the quest id and restores focus to Edit', async () => {
     setup([quest('lq', 'Ship it')]);
     const user = userEvent.setup();
-    await user.click(screen.getByText('Ship it').closest('button')!);
+    expect(screen.getByText('Ship it').closest('button')).toHaveAttribute('aria-expanded', 'true');
     const edit = screen.getByRole('button', { name: 'EDIT' });
     await user.click(edit);
     const dialog = screen.getByRole('dialog', { name: 'Edit Long Quest' });
@@ -123,7 +123,7 @@ describe('Long Quest edit dialog', () => {
   it('re-seeds from the quest each time it opens, discarding an abandoned draft', async () => {
     setup([quest('lq', 'Ship it')]);
     const user = userEvent.setup();
-    await user.click(screen.getByText('Ship it').closest('button')!);
+    expect(screen.getByText('Ship it').closest('button')).toHaveAttribute('aria-expanded', 'true');
     await user.click(screen.getByRole('button', { name: 'EDIT' }));
     fireEvent.change(screen.getByLabelText('Quest name'), { target: { value: 'Scrapped' } });
     await user.keyboard('{Escape}');
@@ -135,7 +135,7 @@ describe('Long Quest edit dialog', () => {
   it('opens the editor for a quest on the second page of the list', async () => {
     setup([quest('a', 'Alpha'), quest('b', 'Beta'), quest('c', 'Gamma')]);
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Next Long Quests page' }));
+    await user.click(screen.getByRole('button', { name: 'Next Chains page' }));
     expect(screen.getByText('Gamma')).toBeInTheDocument();
     await user.click(screen.getByText('Gamma').closest('button')!);
     await user.click(screen.getByRole('button', { name: 'EDIT' }));

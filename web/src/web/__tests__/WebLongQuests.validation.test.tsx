@@ -50,7 +50,7 @@ describe('web Long Quest name validation', () => {
     }]);
     const user = userEvent.setup();
     render(<WebLongQuests />);
-    await user.click(screen.getByText(legacyName).closest('button')!);
+    expect(screen.getByText(legacyName).closest('button')).toHaveAttribute('aria-expanded', 'true');
     await user.click(screen.getByRole('button', { name: 'EDIT' }));
     await user.click(screen.getByRole('button', { name: 'DEX' }));
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));

@@ -39,7 +39,7 @@ describe('stylesheet hygiene', () => {
 
   it('keeps !important to the few places that must beat an inline style (ratchet: lower, never raise)', () => {
     const count = (bare.match(/!important/g) ?? []).length;
-    expect(count).toBeLessThanOrEqual(5);
+    expect(count).toBeLessThanOrEqual(4);
   });
   it('marks severity with the whole border, not a thick one-sided accent stripe (a known generated-UI tell)', () => {
     expect(bare).not.toMatch(/border-(left|right):\s*[3-9]px solid/);

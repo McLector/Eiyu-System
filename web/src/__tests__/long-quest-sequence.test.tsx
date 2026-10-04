@@ -16,17 +16,21 @@ vi.mock('../store/eiyu-store', () => ({ useEiyu: () => ({
 import WebLongQuests from '../web/WebLongQuests';
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe('Long Quest sequence controls', () => {
-  it('keeps locked checkpoints focusable without completing them and disables pending saves', async () => {
+  it('keeps locked stages focusable without completing them and disables pending saves', async () => {
     const user = userEvent.setup();
     render(<WebLongQuests />);
-    await user.click(screen.getByRole('button', { name: /Campaign/ }));
+    // The first chain opens by default.
+    expect(screen.getByRole('button', { name: /Campaign/ })).toHaveAttribute('aria-expanded', 'true');
     const locked = document.getElementById('stage-s2')!;
     expect(locked).toHaveAttribute('aria-disabled', 'true');
     await user.click(locked);
     expect(toggleStage).not.toHaveBeenCalled();
     expect(document.getElementById('stage-s1')).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: /Build. Locked/ }));
     await waitFor(() => expect(locked).toHaveFocus());
+    expect(locked).toHaveAccessibleName('Build. Complete earlier stages first.');
+    // A locked stage keeps its details one click away.
+    expect(screen.queryByText('Complete planning first.')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Show details for Build' }));
     expect(screen.getByText('Complete planning first.')).toBeVisible();
   });
 });
