@@ -192,7 +192,7 @@ describe('semantic colours are tokens, not literals', () => {
   });
   it('does not grow the pile of colour literals outside the theme blocks (ratchet: lower this number, never raise it)', () => {
     const literals = cssOutsideThemeBlocks.match(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g) ?? [];
-    expect(literals.length).toBeLessThanOrEqual(8);
+    expect(literals.length).toBeLessThanOrEqual(2);
   });
   it('no component sets inline text smaller than 11px', () => {
     const small = tsxSources().flatMap(({ file, text }) =>

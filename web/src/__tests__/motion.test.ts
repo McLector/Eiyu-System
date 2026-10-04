@@ -81,6 +81,10 @@ describe('entrances', () => {
     expect(bodiesFor(/^\.phase4-account-menu$/)).toMatch(/transform-origin:\s*top right/);
     expect(chunks.join('\n')).toMatch(/\.phase4-account-menu\s*\{[^}]*scale\(0\.97\)/);
   });
+  it('grows the row action menu from its trigger corner, the same way', () => {
+    expect(bodiesFor(/^\.action-menu$/)).toMatch(/transform-origin:\s*top right/);
+    expect(chunks.join('\n')).toMatch(/\.action-menu\s*\{[^}]*scale\(0\.97\)/);
+  });
   it('slides feedback cards in with transitions, and the reward card from below on the drawer curve', () => {
     expect(bodiesFor(/^\.feedback-card$/)).toMatch(/transition:[^;]*var\(--ease-out\)/);
     expect(bodiesFor(/^\.reward-feedback$/)).toMatch(/transition:[^;]*500ms var\(--ease-drawer\)/);

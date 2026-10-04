@@ -70,7 +70,8 @@ async function main() {
     assert.equal(await page.getByRole('button',{name:'Monday',exact:true}).count(),0);
     report.flows.push('separate creation forms');
     await page.goto(`${WEB}/board`);
-    await page.getByRole('region',{name:'Daily Quest',exact:true}).getByRole('button',{name:'Archive Daily activity 1',exact:true}).click();
+    await page.getByRole('region',{name:'Daily Quest',exact:true}).getByRole('button',{name:'More actions for Daily activity 1',exact:true}).click();
+    await page.getByRole('menuitem',{name:'Archive Daily activity 1',exact:true}).click();
     await page.getByRole('status').filter({hasText:'Habit archived'}).waitFor();
     await page.getByRole('button',{name:'View archived habits'}).click();
     await page.getByRole('dialog',{name:'Archived habits',exact:true}).waitFor();

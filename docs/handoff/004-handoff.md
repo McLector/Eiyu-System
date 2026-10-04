@@ -116,6 +116,14 @@ Started 2026-10-04. Source: `docs/plans/astra_opus_plans/0013-eiyu-web-theme-mot
 - `web/DESIGN.md` written (kept untracked on purpose; the repo is public).
 - Not run: DevTools hands-on feel check (replaced by the CDP slow-motion assertion).
 
+## Follow-up after the critique (user chose: Board first, overflow menu)
+- Board card actions: Complete (or the stepper) is the single prominent action; Details, Archive and Delete moved into a new `ActionMenu` (`web/src/components/ActionMenu.tsx`, 18 unit tests), on both the daily and the All Habits cards. Archived cards keep Restore and Delete visible. Accessible names are unchanged (`Archive X`, `Delete X`, `Open X details`), now as `menuitem`s.
+- Real-browser bug jsdom could not see: focusing the first item scrolled the page at 320px, which fired the menu's own dismiss-on-scroll handler, so the menu closed with focus still inside it and focus fell to `<body>`. Fixed (focus with `preventScroll`; a scroll or resize that closes the menu with focus inside returns focus to the trigger), with unit tests, and a harness flow now checks the menu inside the viewport at 320 and 1440 in both themes and that Escape returns focus.
+- Selecting an item returns focus to the trigger before the action runs, so the Delete confirmation dialog restores focus correctly.
+- Colour literals outside the theme blocks dropped from 8 to 2 (black shadows and the recovery tint now use `color-mix`); the ratchet is now 2. The account menu radius is 4px.
+- `web/DESIGN.md` made the detector check the stylesheet against it. It reports `design-system-*` drift: 19 radii (5 to 14px, older chrome), 4 off-ramp font sizes, about 10 tint colours. These are the deferred type/radius scale work, not regressions; DESIGN.md says so instead of claiming 4px everywhere.
+- Not done: the second critique P1, the Gym control cluster (overflow menu and draft status chip). Next up if wanted.
+
 ## Remaining work
 
 Decisions only: approve or edit the copy table, decide the `Show note` label, delete the possible stray Maestro account, and say go on commits (one per phase on a feature branch, Conventional Commits, no Co-Authored-By trailer).

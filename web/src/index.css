@@ -250,11 +250,11 @@ body {
 .phase4-account-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 14px/1.2 Rajdhani, sans-serif; }
 .phase4-account-copy small { margin-top: 2px; color: var(--c-muted-flat); font: 11px Inter, sans-serif; }
 .phase4-rank { display: grid; width: 30px; height: 30px; flex-shrink: 0; place-items: center; border: 1.5px solid; border-radius: 8px; font: 700 15px Rajdhani, sans-serif; }
-.phase4-account-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 190px; padding: 6px; border: 1px solid var(--c-panel-border); border-radius: 6px; background: var(--c-modal); box-shadow: 0 16px 44px rgba(0,0,0,.28); }
+.phase4-account-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; width: 190px; padding: 6px; border: 1px solid var(--c-panel-border); border-radius: 4px; background: var(--c-modal); box-shadow: 0 16px 44px color-mix(in srgb, black 28%, transparent); }
 .phase4-account-menu button { display: block; width: 100%; padding: 10px 12px; border: 0; border-radius: 4px; color: var(--c-text); background: transparent; cursor: pointer; text-align: left; font: 600 12px Rajdhani, sans-serif; letter-spacing: .08em; }
 .phase4-account-menu button:hover, .phase4-account-menu button:focus-visible { color: var(--c-accent-text); background: var(--c-accent-glass); }
 .phase4-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(20px, 4vh) 16px; background: var(--c-overlay); overflow-y: auto; }
-.phase4-dialog { width: min(560px, 100%); max-height: min(760px, 92svh); overflow-y: auto; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--c-panel-border); border-radius: 4px; background: var(--c-modal); box-shadow: 0 12px 32px rgba(0,0,0,.28); }
+.phase4-dialog { width: min(560px, 100%); max-height: min(760px, 92svh); overflow-y: auto; padding: clamp(20px, 4vw, 32px); border: 1px solid var(--c-panel-border); border-radius: 4px; background: var(--c-modal); box-shadow: 0 12px 32px color-mix(in srgb, black 28%, transparent); }
 .phase4-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .phase4-dialog-heading h2 { margin: 0; color: var(--c-text); font: 700 22px Rajdhani, sans-serif; letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
 .phase4-close { width: 34px; height: 34px; border: 1px solid var(--c-glass-border); border-radius: 50%; color: var(--c-muted-flat); background: transparent; cursor: pointer; font-size: 22px; line-height: 1; }
@@ -464,7 +464,7 @@ body {
   color: var(--c-text);
   font: 600 14px 'JetBrains Mono', monospace;
   text-align: center;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  text-shadow: 0 1px 2px color-mix(in srgb, black 25%, transparent);
 }
 
 @media (max-width: 1050px) {
@@ -555,7 +555,7 @@ select.field option {
 .web-board-today p { margin: 4px 0 0; color: var(--c-muted-flat); font: 12px Inter, sans-serif; }
 
 /* One feedback surface (XP toast, archive/save notices, reward card): hairline HUD card, tone from data-tone. */
-.feedback-card { --tone: var(--c-accent); --tone-border: var(--c-accent-border); border: 1px solid var(--tone-border); border-radius: 4px; background: var(--c-modal); color: var(--c-text); box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+.feedback-card { --tone: var(--c-accent); --tone-border: var(--c-accent-border); border: 1px solid var(--tone-border); border-radius: 4px; background: var(--c-modal); color: var(--c-text); box-shadow: 0 8px 24px color-mix(in srgb, black 20%, transparent); }
 .feedback-card[data-tone="success"] { --tone: var(--c-success); --tone-border: var(--c-success-border); }
 .feedback-card[data-tone="warning"] { --tone: var(--c-warning); --tone-border: var(--c-warning-border); }
 .feedback-card[data-tone="danger"] { --tone: var(--c-danger); --tone-border: var(--c-danger-border); }
@@ -565,7 +565,7 @@ select.field option {
 .paged-list-body > .state-block { margin: auto 0; }
 .state-block.is-error p { margin-bottom: 12px; color: var(--c-danger); }
 .state-block-title { display: block; margin-bottom: 6px; font: 700 16px Rajdhani, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--c-dim-flat); }
-.board-recovery-card { padding: 14px 16px; border: 1px solid var(--c-ice-border); border-radius: 4px; background: rgba(59,130,246,.1); }
+.board-recovery-card { padding: 14px 16px; border: 1px solid var(--c-ice-border); border-radius: 4px; background: color-mix(in srgb, var(--c-ice) 10%, transparent); }
 .board-recovery-card > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .board-recovery-card strong { display: flex; align-items: center; gap: 6px; color: var(--c-ice); font: 700 12px Rajdhani, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
 .board-recovery-card span, .board-recovery-card small { color: var(--c-muted-flat); font: 11px 'JetBrains Mono', monospace; }
@@ -596,7 +596,6 @@ select.field option {
 .board-card-meta { flex-wrap: wrap; margin-top: 8px; color: var(--c-muted-flat); font: 11px Inter, sans-serif; }
 .board-card-streak { display: inline-flex; align-items: center; gap: 3px; color: var(--c-warning); }
 .board-card-actions { flex-wrap: wrap; justify-content: space-between; margin-top: 12px; }
-.board-card-secondary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; margin-left: auto; }
 .btn-secondary.is-complete { border-color: var(--c-success-border); color: var(--c-success); }
 .board-progress-stepper { display: inline-flex; align-items: center; gap: 6px; color: var(--c-text); font: 12px 'JetBrains Mono', monospace; }
 .board-progress-stepper button { width: 28px; padding: 0; font-size: 15px; }
@@ -776,8 +775,8 @@ input, textarea { caret-color: var(--c-accent); }
 .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled), .btn-quiet:active:not(:disabled), .btn-destructive:active:not(:disabled), .btn-ghost:active:not(:disabled), .stat-chip:active, .choice-chip:active { transform: scale(0.97); }
 /* Compact: card and row actions. Must follow the shared block so equal-specificity rules resolve in its favour. */
 .btn-compact { min-height: 30px; padding: 5px 8px; font-size: 11px; gap: 5px; }
-.board-card-secondary .btn-destructive, .board-catalog-actions .btn-destructive, .gym-row-actions .btn-destructive { border-color: transparent; background: transparent; }
-.board-card-secondary .btn-destructive:hover, .board-catalog-actions .btn-destructive:hover, .gym-row-actions .btn-destructive:hover { border-color: var(--c-danger); }
+.board-catalog-actions .btn-destructive, .gym-row-actions .btn-destructive { border-color: transparent; background: transparent; }
+.board-catalog-actions .btn-destructive:hover, .gym-row-actions .btn-destructive:hover { border-color: var(--c-danger); }
 button:disabled { opacity: .45; cursor: default; }
 .page-title { margin: 0; color: var(--c-text); font: 700 22px Rajdhani, sans-serif; letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
 .field-label, .phase4-form label, .gym-form label:not(.gym-checkbox), .gym-toolbar > label:first-child, .gym-table-header { color: var(--c-muted-flat); font: 700 11px/1.2 Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
@@ -870,17 +869,24 @@ button:disabled { opacity: .45; cursor: default; }
 .phase4-account-menu { transform-origin: top right; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
 .feedback-card { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
 .reward-feedback { transition: transform 500ms var(--ease-drawer), opacity var(--dur-base) var(--ease-out); }
+/* Row action menu: portalled into the app root, so it keeps the theme and cursor. */
+.action-menu { position: fixed; z-index: 45; min-width: 168px; padding: 4px; border: 1px solid var(--c-panel-border); border-radius: 4px; background: var(--c-modal); box-shadow: 0 8px 24px color-mix(in srgb, black 20%, transparent); transform-origin: top right; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+.btn-quiet.action-menu-item { display: flex; width: 100%; justify-content: flex-start; min-height: 40px; }
+.action-menu-item.is-danger { color: var(--c-danger); }
+.action-menu-item.is-danger:hover:not(:disabled) { background: var(--c-danger-glass); }
+.action-menu-trigger { min-width: 32px; padding-inline: 6px; }
 @starting-style { .phase4-overlay { opacity: 0; } }
 @media (prefers-reduced-motion: no-preference) {
   @starting-style {
     .phase4-dialog { opacity: 0; transform: scale(0.96); }
     .phase4-account-menu { opacity: 0; transform: scale(0.97); }
+    .action-menu { opacity: 0; transform: scale(0.97); }
     .feedback-card { opacity: 0; transform: translateY(-100%); }
     .reward-feedback { opacity: 0; transform: translateY(100%); }
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  @starting-style { .phase4-dialog, .phase4-account-menu, .feedback-card, .reward-feedback { opacity: 0; } }
+  @starting-style { .phase4-dialog, .phase4-account-menu, .action-menu, .feedback-card, .reward-feedback { opacity: 0; } }
 }
 @keyframes level-pulse { 40% { transform: scale(1.06); } }
 .reward-stat .is-level-up { display: inline-block; transform-origin: left center; }

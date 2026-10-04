@@ -544,6 +544,29 @@ async function main() {
       await page.keyboard.press('Escape'); await dialog.waitFor({state:'hidden'}); await cdp.detach();
       report.flows.push('slow-motion: dialog is mid-transition at 10% speed and settles to opacity 1, no transform');
     }
+    // Board row action menu: stays inside the viewport at phone and desktop widths, themed in light, Escape returns focus.
+    {
+      await page.goto(WEB+'/board'); await page.getByRole('region',{name:'Daily Quest',exact:true}).waitFor();
+      for(const dark of [false,true]) {
+        await theme(page,dark);
+        for(const [w,h] of [[320,568],[1440,900]]) {
+          await page.setViewportSize({width:w,height:h});
+          const opener=page.getByRole('region',{name:'Daily Quest',exact:true}).getByRole('button',{name:/^More actions for /}).first();
+          await opener.waitFor(); await opener.click();
+          const menu=page.getByRole('menu'); await menu.waitFor();
+          await page.waitForTimeout(260);
+          const probe=await menu.evaluate(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {inside:r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight,bg:s.backgroundColor,color:getComputedStyle(el.querySelector('[role=menuitem]')).color,focusOnItem:document.activeElement?.getAttribute('role')==='menuitem'};});
+          assert.equal(probe.inside,true,`menu inside viewport at ${w}x${h}`);
+          assert.notEqual(probe.bg,'rgba(0, 0, 0, 0)','menu has a themed background'); assert.equal(probe.focusOnItem,true);
+          await screenshot(page,`board-menu-${w}-${h}-${dark?'dark':'light'}`,report);
+          await page.keyboard.press('Escape'); await menu.waitFor({state:'hidden'});
+          assert.equal(await opener.evaluate(el=>el===document.activeElement),true,`Escape returns focus to the trigger at ${w}x${h} ${dark?'dark':'light'}; focus is on: ${await page.evaluate(()=>document.activeElement?.outerHTML.slice(0,140))}`);
+        }
+      }
+      await page.setViewportSize({width:1440,height:900});
+      await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).waitFor();
+      report.flows.push('board row menu: inside viewport at 320 and 1440, themed in both themes, Escape returns focus');
+    }
     for(const [w,h] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {
       await page.setViewportSize({width:w,height:h});
       for(const dark of [true,false]) {

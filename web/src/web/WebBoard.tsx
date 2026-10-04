@@ -21,6 +21,7 @@ import FireStreak from '../FireStreak';
 import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
 import StateBlock from '../components/StateBlock';
+import ActionMenu from '../components/ActionMenu';
 import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 
 interface Props {
@@ -134,11 +135,14 @@ function QuestCard({
             <button type="button" className="btn-secondary btn-compact" aria-label={`Increase progress for ${quest.name}`} onClick={() => onAdjustProgress(1)} disabled={quest.progressCount >= quest.targetCount}>+</button>
           </div>
         )}
-        <div className="board-card-secondary">
-          <button type="button" className="btn-quiet btn-compact" onClick={onEdit} aria-label={`Open ${quest.name} details`}>DETAILS</button>
-          <button type="button" className="btn-quiet btn-compact" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
-          <button type="button" className="btn-destructive btn-compact" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
-        </div>
+        <ActionMenu
+          label={`More actions for ${quest.name}`} disabled={pending} busy={pending}
+          items={[
+            { label: 'Details', ariaLabel: `Open ${quest.name} details`, onSelect: onEdit },
+            { label: 'Archive', ariaLabel: `Archive ${quest.name}`, onSelect: onArchive },
+            { label: 'Delete', ariaLabel: `Delete ${quest.name}`, onSelect: onDelete, danger: true },
+          ]}
+        />
       </div>
     </article>
   );
@@ -162,8 +166,13 @@ function CatalogCard({ quest, onEdit, onArchive, onDelete, pending }: { quest: Q
         <span className={`board-catalog-status${quest.dailyEligible && quest.completed ? ' is-complete' : ''}`}>
           {quest.dailyEligible && quest.completed ? 'DONE' : status}
         </span>
-        <button type="button" className="btn-quiet btn-compact" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
-        <button type="button" className="btn-destructive btn-compact" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+        <ActionMenu
+          label={`More actions for ${quest.name}`} disabled={pending} busy={pending}
+          items={[
+            { label: 'Archive', ariaLabel: `Archive ${quest.name}`, onSelect: onArchive },
+            { label: 'Delete', ariaLabel: `Delete ${quest.name}`, onSelect: onDelete, danger: true },
+          ]}
+        />
       </div>
     </article>
   );
