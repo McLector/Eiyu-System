@@ -5,7 +5,6 @@ import {
   STAT_COLORS,
   RANK_CONFIG,
   STATS,
-  DAYS,
   partitionBoardQuests,
   profileInitials,
   boardTodayProgress,
@@ -13,26 +12,28 @@ import {
   tintSecondaryText,
   boardSummaryLine,
   formatError,
+  type QuestType,
 } from '@eiyu/shared';
-import { StatIcon, PlusIcon, SnowflakeIcon } from '../Icons';
+import { StatIcon, PlusIcon, SnowflakeIcon, ListIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import SignaturePanel from '../SignaturePanel';
 import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
 import StateBlock from '../components/StateBlock';
-import ActionMenu from '../components/ActionMenu';
+import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 import QuestCard from './QuestCard';
 import QuestDetailsDialog from './QuestDetailsDialog';
-import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
+import AllHabitsDialog from './AllHabitsDialog';
+import { hasQuestDrag, readQuestDrag } from './lane-drag';
 
 interface Props {
-  onNewQuest: (type: 'habit' | 'one_time') => void;
+  onNewQuest: (type: 'habit' | 'one_time' | 'backlog') => void;
   onEditQuest: (id: string) => void;
   darkMode: boolean;
   storageScope?: string;
 }
 
-type BoardLaneId = 'profile' | 'daily-quest' | 'one-time-quest' | 'all-habits';
+type BoardLaneId = 'profile' | 'daily-quest' | 'one-time-quest' | 'backlog';
 
 export function BoardDeleteDialog({ quest, onCancel, onDelete }: {
   quest: Quest;
@@ -73,36 +74,6 @@ function XpBar({ value, max, color }: { value: number; max: number; color: strin
   );
 }
 
-function CatalogCard({ quest, onEdit, onArchive, onDelete, pending }: { quest: Quest; onEdit: () => void; onArchive: () => void; onDelete: () => void; pending: boolean }) {
-  const schedule = quest.questType === 'one_time'
-    ? 'One-time quest'
-    : quest.days.length === 7
-      ? 'Every day'
-      : quest.days.map(day => DAYS[day]).join(', ');
-  const status = quest.dailyEligible ? 'TODAY' : 'OFF DAY';
-
-  return (
-    <article className="board-catalog-card">
-      <button type="button" aria-label={`Edit ${quest.name}`} onClick={onEdit}>
-        <span className="board-catalog-name">{quest.name}</span>
-        <span className="board-catalog-meta">{schedule} · {quest.time}{quest.dailyEligible && quest.targetCount != null ? ` · ${quest.progressCount}/${quest.targetCount}` : ''}</span>
-      </button>
-      <div className="board-catalog-actions">
-        <span className={`board-catalog-status${quest.dailyEligible && quest.completed ? ' is-complete' : ''}`}>
-          {quest.dailyEligible && quest.completed ? 'DONE' : status}
-        </span>
-        <ActionMenu
-          label={`More actions for ${quest.name}`} disabled={pending} busy={pending}
-          items={[
-            { label: 'Archive', ariaLabel: `Archive ${quest.name}`, onSelect: onArchive },
-            { label: 'Delete', ariaLabel: `Delete ${quest.name}`, onSelect: onDelete, danger: true },
-          ]}
-        />
-      </div>
-    </article>
-  );
-}
-
 export function ArchivedCard({ quest, onEdit, onRestore, onDelete, pending }: { quest: Quest; onEdit: () => void; onRestore: () => void; onDelete: () => void; pending: boolean }) {
   return (
     <article className="board-catalog-card is-archived">
@@ -127,6 +98,10 @@ function BoardLane({
   empty,
   action,
   active,
+  acceptsFrom,
+  onDropQuest,
+  dragFrom,
+  hint,
 }: {
   id: string;
   title: string;
@@ -135,10 +110,35 @@ function BoardLane({
   empty: string | false;
   action?: ReactNode;
   active?: boolean;
-  storageKey?: string;
+  /** A quest dragged from this type may be dropped here. */
+  acceptsFrom?: QuestType;
+  onDropQuest?: (id: string) => void;
+  /** The type of the quest currently being dragged, if any. */
+  dragFrom?: QuestType | null;
+  hint?: string;
 }) {
+  const [over, setOver] = useState(false);
+  const droppable = !!acceptsFrom && !!onDropQuest;
+  const ready = droppable && dragFrom === acceptsFrom;
   return (
-    <section className={`board-lane${active ? ' is-mobile-active' : ''}`} aria-labelledby={`${id}-heading`} data-testid={`board-lane-${id}`}>
+    <section
+      className={`board-lane${active ? ' is-mobile-active' : ''}${ready ? ' is-drop-ready' : ''}${over ? ' is-drop-target' : ''}`}
+      aria-labelledby={`${id}-heading`}
+      data-testid={`board-lane-${id}`}
+      onDragOver={droppable ? event => {
+        if (!hasQuestDrag(event.dataTransfer)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setOver(true);
+      } : undefined}
+      onDragLeave={droppable ? event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOver(false); } : undefined}
+      onDrop={droppable ? event => {
+        event.preventDefault();
+        setOver(false);
+        const payload = readQuestDrag(event.dataTransfer);
+        if (payload && payload.from === acceptsFrom) onDropQuest(payload.id);
+      } : undefined}
+    >
       <header className="board-lane-header">
         <div>
           <h2 id={`${id}-heading`}>{title}</h2>
@@ -147,6 +147,7 @@ function BoardLane({
         {action}
       </header>
       <PaginatedList label={title} empty={empty || undefined}>{children}</PaginatedList>
+      {ready && hint && <div className="lane-drop-hint">{hint}</div>}
     </section>
   );
 }
@@ -166,6 +167,8 @@ function recoveryDeadlineLabel(quest: Quest) {
 export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageScope = 'board' }: Props) {
   const {
     user,
+    backlog = [],
+    backlogLoading,
     questsLoading,
     questsError,
     retryQuests,
@@ -175,6 +178,8 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     archiveQuest,
     restoreQuest,
     deleteQuest,
+    moveToOneTime,
+    moveToBacklog,
   } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
   const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
@@ -183,14 +188,16 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
   const xpToastTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(xpToastTimer.current), []);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [allHabitsOpen, setAllHabitsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Quest | null>(null);
   const [detailsTarget, setDetailsTarget] = useState<Quest | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; from: QuestType } | null>(null);
   const [pendingLifecycleIds, setPendingLifecycleIds] = useState<Set<string>>(() => new Set());
   const lifecycleInFlight = useRef(new Set<string>());
   const storagePrefix = `eiyu:${storageScope}`;
   const [activeLane, setActiveLane] = useState<BoardLaneId>(() => {
     const saved = typeof window !== 'undefined' ? window.sessionStorage.getItem(`${storagePrefix}:lane`) : null;
-    return saved === 'one-time-quest' || saved === 'all-habits' || saved === 'profile' ? saved : 'daily-quest';
+    return saved === 'one-time-quest' || saved === 'backlog' || saved === 'profile' ? saved : 'daily-quest';
   });
 
   useEffect(() => {
@@ -241,6 +248,34 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType, owner, () => restoreQuest(quest.id)); });
   };
 
+  const move = (quest: Quest) => queueLifecycle(quest.id, () => (quest.questType === 'backlog' ? moveToOneTime(quest.id) : moveToBacklog(quest.id)));
+  // A drop names a quest by id; only a movable quest of the opposite type is moved, so a stale or forged id is a no-op.
+  const dropOn = (target: 'one_time' | 'backlog') => (id: string) => {
+    const quest = (target === 'one_time' ? backlog : oneTimeQuests).find(candidate => candidate.id === id);
+    // A finished One-time quest has a completion and cannot go back (no grip or menu item either).
+    if (quest && !(target === 'backlog' && quest.completed)) move(quest);
+  };
+
+  const card = (quest: Quest) => (
+    <QuestCard
+      key={quest.id}
+      quest={quest}
+      pending={pendingLifecycleIds.has(quest.id)}
+      onToggle={() => toggleQuest(quest.id)}
+      onOpen={() => setDetailsTarget(quest)}
+      onEdit={() => onEditQuest(quest.id)}
+      onAdjustProgress={delta => adjustProgress(quest.id, delta)}
+      onArchive={() => archive(quest)}
+      onDelete={() => confirmDelete(quest)}
+      onMove={quest.questType === 'habit' ? undefined : () => move(quest)}
+      onDragStart={q => setDragging({ id: q.id, from: q.questType })}
+      onDragEnd={() => setDragging(null)}
+    />
+  );
+  const addButton = (type: 'habit' | 'one_time' | 'backlog') => (
+    <button onClick={() => onNewQuest(type)} className="btn-secondary board-add-button"><PlusIcon /> ADD QUEST</button>
+  );
+
   if (questsLoading) return <StateBlock kind="loading">Reading the board…</StateBlock>;
   if (questsError) return <StateBlock kind="error" retryLabel="RETRY" onRetry={() => void retryQuests()}>{questsError}</StateBlock>;
 
@@ -253,7 +288,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
           ['profile', 'Profile', 5],
           ['daily-quest', 'Daily Quest', dailyQuests.length],
           ['one-time-quest', 'One Time Quest', oneTimeQuests.length],
-          ['all-habits', 'All Habits', allHabits.length],
+          ['backlog', 'Backlog', backlog.length],
         ] as const).map(([id, title, count]) => (
           <button key={id} type="button" role="tab" aria-selected={activeLane === id} onClick={() => selectLane(id)}>
             {title} <span>{count}</span>
@@ -261,7 +296,8 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
         ))}
       </nav>
 
-      <section className="board-lanes" aria-label="Quest board">
+      {/* A moved card unmounts before its dragend fires, so a drop also ends the drag. */}
+      <section className="board-lanes" aria-label="Quest board" onDropCapture={() => setDragging(null)}>
       <section className={`board-profile-column${activeLane === 'profile' ? ' is-mobile-active' : ''}`} aria-label="Board overview">
         <SignaturePanel style={{ padding: 14 }}>
           <div className="web-board-profile">
@@ -299,14 +335,21 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
         </SignaturePanel>
       </section>
 
-        <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} storageKey={`${storagePrefix}:daily-quest-scroll`} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or check All Habits.' : false} action={<button onClick={() => onNewQuest('habit')} className="btn-secondary board-add-button"><PlusIcon /> ADD QUEST</button>}>
-          {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onOpen={() => setDetailsTarget(quest)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
+        <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or open All Habits.' : false} action={
+          <div className="board-lane-actions">
+            <button type="button" className="btn-secondary btn-compact" onClick={() => setAllHabitsOpen(true)}><ListIcon size={14} /> ALL HABITS</button>
+            {addButton('habit')}
+          </div>
+        }>
+          {dailyQuests.map(card)}
         </BoardLane>
-        <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} storageKey={`${storagePrefix}:one-time-quest-scroll`} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today.' : false} action={<button onClick={() => onNewQuest('one_time')} className="btn-secondary board-add-button"><PlusIcon /> ADD QUEST</button>}>
-          {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onOpen={() => setDetailsTarget(quest)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
+        <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today. Drag one in from Backlog.' : false} action={addButton('one_time')}
+          acceptsFrom="backlog" onDropQuest={dropOn('one_time')} dragFrom={dragging?.from ?? null} hint="Drop to schedule for today">
+          {oneTimeQuests.map(card)}
         </BoardLane>
-        <BoardLane id="all-habits" title="All Habits" count={allHabits.length} active={activeLane === 'all-habits'} storageKey={`${storagePrefix}:all-habits-scroll`} empty={allHabits.length === 0 ? 'No saved habits yet. Add a recurring quest to build your catalog.' : false}>
-          {allHabits.map(quest => <CatalogCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => onEditQuest(quest.id)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
+        <BoardLane id="backlog" title="Backlog" count={backlog.length} active={activeLane === 'backlog'} empty={backlogLoading ? 'Reading Backlog…' : backlog.length === 0 ? 'Nothing parked yet. Add an idea you want to do later.' : false} action={addButton('backlog')}
+          acceptsFrom="one_time" onDropQuest={dropOn('backlog')} dragFrom={dragging?.from ?? null} hint="Drop to return to Backlog">
+          {backlog.map(card)}
         </BoardLane>
 
       </section>
@@ -317,6 +360,15 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
           <button className="btn-secondary" onClick={() => completeRecovery(quest.id)}>MARK RECOVERY COMPLETE</button>
         </article>)}
       </Dialog>}
+      {allHabitsOpen && <AllHabitsDialog
+        habits={allHabits}
+        pendingIds={pendingLifecycleIds}
+        onClose={() => setAllHabitsOpen(false)}
+        onOpen={quest => { setAllHabitsOpen(false); setDetailsTarget(quest); }}
+        onEdit={quest => { setAllHabitsOpen(false); onEditQuest(quest.id); }}
+        onArchive={archive}
+        onDelete={confirmDelete}
+      />}
       {detailsTarget && <QuestDetailsDialog quest={detailsTarget} onClose={() => setDetailsTarget(null)} onEdit={() => { const id = detailsTarget.id; setDetailsTarget(null); onEditQuest(id); }} />}
       {deleteTarget && <BoardDeleteDialog quest={deleteTarget} onCancel={() => setDeleteTarget(null)} onDelete={deleteQuest} />}
     </div>
