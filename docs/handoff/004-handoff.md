@@ -71,7 +71,7 @@ Started 2026-10-04. Source: `docs/plans/astra_opus_plans/0013-eiyu-web-theme-mot
 - Not screenshot-reviewed: the Long Quest dialog itself at 320px (the harness does not open it with a screenshot).
 
 ### Phase 4 - Board and Gym layout consistency
-- Source: the user's screenshot plus the worktree renders. Plan: `C:\Users\morad\.claude\plans\the-web-is-almost-cosmic-breeze.md`.
+- Source: the user's screenshot plus the worktree renders. The phase plan was kept in the session's local planning notes.
 - Tests first (red, then green): `WebBoard.cards.test.tsx`, `WebGym.layout.test.tsx`, and a `board and gym layout consistency` block in `css-tokens.test.ts` (no board/gym type under 11px, 4px radius on lanes and cards, `.btn-compact` after the shared block, bespoke board button rules retired, accent checkbox).
 - Board: card actions are now one row (primary left, Details/Archive/Delete right) using `btn-quiet`/`btn-destructive` + the new `btn-compact` modifier; catalog and archived cards use the same idiom. Sub-11px type raised, lane/card radius 4px, XP bar uses a visible `--c-bar-track` token (both themes), lane empty states use `StateBlock`.
 - Gym: archived toggle sits beside the routine select as a styled checkbox; routine actions are grouped Add (secondary), Edit/Archive (quiet), Delete (destructive, set apart); per-row actions are a compact quiet group; exercise names are text-coloured (accent on hover), notes muted; session footer is right-aligned with DOM order Discard, Save, Finish (Tab order equals visual order) and sticks to the bottom only at >=768px wide and >=700px tall.
