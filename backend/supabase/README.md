@@ -290,6 +290,11 @@ with checks(marker, ok) as (
       and table_name = 'habits' and column_name = 'genre')
     and exists (select 1 from information_schema.columns where table_schema = 'public'
       and table_name = 'habits' and column_name = 'time_set')
+    and exists (select 1 from pg_constraint where conrelid = 'public.habits'::regclass
+      and conname = 'habits_backlog_shape' and coalesce(pg_get_constraintdef(oid) ilike '%easy_version IS NULL%', false)
+      and coalesce(pg_get_constraintdef(oid) ilike '%time_set%', false))
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%backlog%'
+      from pg_proc p where p.oid = to_regprocedure('public.archive_habit(uuid)')), false)
     and to_regclass('private.backlog_rollover_settings') is not null
     and has_function_privilege('authenticated',to_regprocedure('public.move_backlog_to_one_time(uuid)'),'EXECUTE')
     and has_function_privilege('authenticated',to_regprocedure('public.move_one_time_to_backlog(uuid)'),'EXECUTE')
