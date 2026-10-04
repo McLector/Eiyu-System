@@ -25,6 +25,20 @@ describe('QuestDetailsDialog', () => {
     expect(dialog.querySelectorAll('input, textarea, select')).toHaveLength(0);
   });
 
+  it('labels a One-time quest with its real date unless it is scheduled for today and live', () => {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }).format(new Date());
+    const one = (over: Partial<Quest>) => quest({ questType: 'one_time', days: [], easyVersion: null, timeSet: true, time: '09:30', streak: 0, ...over });
+    const { unmount } = render(<QuestDetailsDialog quest={one({ scheduledDate: today })} onClose={vi.fn()} />);
+    expect(screen.getByRole('dialog')).toHaveTextContent('Today at 09:30');
+    unmount();
+    const past = render(<QuestDetailsDialog quest={one({ scheduledDate: '2026-01-02', archived: true })} onClose={vi.fn()} />);
+    expect(screen.getByRole('dialog')).toHaveTextContent('2026-01-02 at 09:30');
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('Today');
+    past.unmount();
+    render(<QuestDetailsDialog quest={one({ scheduledDate: today, archived: true, timeSet: false })} onClose={vi.fn()} />);
+    expect(screen.getByRole('dialog')).toHaveTextContent(`${today}, any time`);
+  });
+
   it('opens the editor from Edit Quest', async () => {
     const onEdit = vi.fn();
     render(<QuestDetailsDialog quest={quest()} onClose={vi.fn()} onEdit={onEdit} />);

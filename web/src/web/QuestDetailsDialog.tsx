@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { DAYS, STAT_COLORS, questGenreLabel, type Quest } from '@eiyu/shared';
+import { accountDateKey, DAYS, STAT_COLORS, questGenreLabel, type Quest } from '@eiyu/shared';
 import Dialog from '../components/Dialog';
 import { EditIcon, RestoreIcon, StatIcon } from '../Icons';
 
@@ -7,7 +7,12 @@ const TYPE_LABEL = { habit: 'Habit', one_time: 'One-time', backlog: 'Backlog' } 
 
 function scheduleLabel(quest: Quest): string {
   if (quest.questType === 'backlog') return 'No date yet';
-  if (quest.questType === 'one_time') return quest.timeSet === false ? 'Today, any time' : `Today at ${quest.time}`;
+  if (quest.questType === 'one_time') {
+    const today = accountDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const isToday = !quest.archived && (!quest.scheduledDate || quest.scheduledDate === today);
+    const when = isToday ? 'Today' : quest.scheduledDate ?? 'Past date';
+    return quest.timeSet === false ? `${when}, any time` : `${when} at ${quest.time}`;
+  }
   const days = quest.days.length === 7 ? 'Every day' : quest.days.map(day => DAYS[day]).join(', ');
   return `${days} at ${quest.time}`;
 }
