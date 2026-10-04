@@ -322,14 +322,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         throw new Error('This quest was deleted. Close this editor and reload the board.');
       }
       if (existingId) {
-        await updateHabit(existingId, input, quests.find(quest => quest.id === existingId)?.name);
+        await updateHabit(existingId, input, (quests.find(quest => quest.id === existingId) ?? backlog.find(quest => quest.id === existingId))?.name);
       } else {
         await createHabit(userId, input);
       }
       await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
       setQuestActionError(null);
     },
-    [userId, qc, quests]
+    [userId, qc, quests, backlog]
   );
 
   const runLifecycle = useCallback(
