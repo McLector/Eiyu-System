@@ -11,7 +11,8 @@ import {
 import { GYM_COPY, gymCleanupPending, gymSavedRefreshFailed, isGymCleanupNotice } from '@eiyu/shared';
 import { useSession } from '../store/session-context';
 import Dialog from '../components/Dialog';
-import { ChevronIcon } from '../Icons';
+import ActionMenu from '../components/ActionMenu';
+import { ArchiveIcon, ChevronIcon, CheckIcon, EditIcon, PlayIcon, TrashIcon } from '../Icons';
 import FlowList from '../components/FlowList';
 import StateBlock from '../components/StateBlock';
 import { announceFeedback } from '../components/ArchiveNotice';
@@ -110,23 +111,67 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
   </Dialog>;
 }
 
-function Demonstration({ exercise, onClose, onEdit }: { exercise: GymExercise; onClose: () => void; onEdit: () => void }) {
+type GymRow = { id: string; name: string; sets: number; reps: string; rest_seconds: number; rir: number; rir_max?: number | null; notes?: string | null };
+
+/** The video guide, shown beside the numbers instead of in a dialog. The signed URL is renewed before it lapses. */
+function ExerciseMedia({ exercise, canEdit, onEdit }: { exercise: GymExercise | undefined; canEdit: boolean; onEdit: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const video = useRef<HTMLVideoElement>(null);
-  const [blocked, setBlocked] = useState(false);
-  useEffect(() => { const player = video.current; if (url && player) void player.play().catch(() => setBlocked(true)); return () => player?.pause(); }, [url]);
+  const path = exercise?.media_path ?? null;
   useEffect(() => {
-    let active = true; setUrl(null); setError(null);
-    const renew = () => { if (exercise.media_path) void signGymMedia(exercise.media_path).then(value => { if (active) { setUrl(value); setError(null); setBlocked(false); } }).catch(err => { if (active) setError(formatError(err)); }); };
+    let active = true;
+    setUrl(null); setError(null);
+    if (!path) return () => undefined;
+    const renew = () => { void signGymMedia(path).then(value => { if (active) { setUrl(value); setError(null); } }).catch(err => { if (active) setError(formatError(err)); }); };
     renew();
     const timer = window.setInterval(renew, 240000);
     return () => { active = false; window.clearInterval(timer); };
-  }, [exercise.media_path, retry]);
-  return <Dialog title={exercise.name} onClose={onClose}>
-    {!exercise.media_path ? <><p>No demonstration uploaded for this exercise.</p><button className="btn-secondary" onClick={onEdit}>Edit exercise</button></> : error ? <div role="alert"><p>{error}</p><button className="btn-secondary" onClick={() => setRetry(n => n + 1)}>Reload demonstration</button></div> : !url ? <p role="status">Loading demonstration…</p> : exercise.media_mime === 'image/gif' ? <img className="gym-media" src={url} alt={`${exercise.name} demonstration`} onError={() => setError('Demonstration could not load. Reload to refresh access.')} /> : <><video ref={video} className="gym-media" src={url} controls muted autoPlay playsInline preload="metadata" onError={() => setError('Video could not load. Reload to refresh access.')} />{blocked && <button className="btn-primary" onClick={() => void video.current?.play().then(() => setBlocked(false)).catch(() => setBlocked(true))}>Play demonstration</button>}</>}
-  </Dialog>;
+  }, [path, retry]);
+  if (!exercise || !path) {
+    return <div className="gym-media-empty"><PlayIcon size={20} /><p>No video guide attached.</p>{exercise && canEdit && <button type="button" className="btn-secondary btn-compact" onClick={onEdit}>Attach a video guide</button>}</div>;
+  }
+  if (error) return <div className="gym-media-empty" role="alert"><p>{error}</p><button type="button" className="btn-secondary btn-compact" onClick={() => setRetry(n => n + 1)}>Reload video guide</button></div>;
+  if (!url) return <p className="gym-media-empty" role="status">Loading video guide…</p>;
+  return exercise.media_mime === 'image/gif'
+    ? <img className="gym-media" src={url} alt={`${exercise.name} video guide`} onError={() => setError('The guide could not load. Reload to refresh access.')} />
+    : <video className="gym-media" src={url} controls muted playsInline preload="metadata" onError={() => setError('The video could not load. Reload to refresh access.')} />;
+}
+
+function GymExercisePane({ row, index, total, exercise, unit, previous, weight, weightInvalid, weightDisabled, canEditDefinition, pending, onWeightInput, onWeightChange, onEdit, onMove, onRemove }: {
+  row: GymRow; index: number; total: number; exercise: GymExercise | undefined; unit: string; previous: string; weight: string;
+  weightInvalid: boolean; weightDisabled: boolean; canEditDefinition: boolean; pending: boolean;
+  onWeightInput: (invalid: boolean) => void; onWeightChange: (value: string) => void; onEdit: () => void; onMove: (delta: -1 | 1) => void; onRemove: () => void;
+}) {
+  return (
+    <section className="gym-detail" aria-label={`${row.name} details`}>
+      <div className="gym-detail-head">
+        <h3>{row.name}</h3>
+        <ActionMenu
+          label={`Exercise actions for ${row.name}`} disabled={pending || !canEditDefinition}
+          items={[
+            { label: 'Edit exercise', onSelect: onEdit, icon: <EditIcon />, tone: 'edit', disabled: !exercise },
+            { label: 'Move up', ariaLabel: `Move ${row.name} up`, onSelect: () => onMove(-1), icon: <ChevronIcon direction="up" />, tone: 'edit', disabled: index === 0 },
+            { label: 'Move down', ariaLabel: `Move ${row.name} down`, onSelect: () => onMove(1), icon: <ChevronIcon direction="down" />, tone: 'edit', disabled: index === total - 1 },
+            { label: 'Remove', ariaLabel: `Remove ${row.name}`, onSelect: onRemove, icon: <TrashIcon />, danger: true, tone: 'danger', disabled: !exercise },
+          ]}
+        />
+      </div>
+      <ExerciseMedia exercise={exercise} canEdit={canEditDefinition} onEdit={onEdit} />
+      <dl className="gym-kv">
+        <div><dt>Sets × reps</dt><dd>{row.sets} × {row.reps}</dd></div>
+        <div><dt>Rest</dt><dd>{row.rest_seconds}s</dd></div>
+        <div><dt>RIR</dt><dd>{row.rir}{row.rir_max ? `-${row.rir_max}` : ''}</dd></div>
+        <div><dt>Previous</dt><dd>{previous} {unit}</dd></div>
+      </dl>
+      <label className="gym-weight-field">Current weight ({unit})
+        <input className="field gym-weight" aria-label={`Current weight for ${row.name} in ${unit}`} type="number" min={0} max={1000000} step="0.001"
+          value={weight} aria-invalid={weightInvalid} disabled={weightDisabled}
+          onInput={event => onWeightInput(event.currentTarget.validity.badInput)} onChange={event => onWeightChange(event.target.value)} />
+      </label>
+      {row.notes && <div><span className="field-label">NOTES</span><p className="details-note">{row.notes}</p></div>}
+    </section>
+  );
 }
 
 function WorkoutHistory({ userId, routines, onClose }: { userId: string; routines: GymRoutine[]; onClose: () => void }) {
@@ -158,8 +203,7 @@ function GymWorkspace({ userId }: { userId: string }) {
   const [selected, setSelected] = useState<string>('');
   const [routineEditor, setRoutineEditor] = useState<'new' | 'edit' | null>(null);
   const [exerciseEditor, setExerciseEditor] = useState<GymExercise | 'new' | null>(null);
-  const [demo, setDemo] = useState<GymExercise | null>(null);
-  const [note, setNote] = useState<string | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState('');
   const [history, setHistory] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [weights, setWeights] = useState<Record<string, string>>({});
@@ -180,11 +224,15 @@ function GymWorkspace({ userId }: { userId: string }) {
   const draftEntries = data.entries.filter(e => e.session_id === draft?.id);
   const rows = draft ? draftEntries.map(entry => ({ id: entry.exercise_id, ...entry.prescription })) : exercises;
   const unit = draft?.unit ?? routine?.unit ?? 'kg';
+  const current = rows.find(row => row.id === selectedExercise) ?? rows[0];
+  const currentIndex = current ? rows.findIndex(row => row.id === current.id) : -1;
   const dirty = draftEntries.some(entry => invalidWeights.has(entry.exercise_id) || (weights[entry.exercise_id] !== undefined && weights[entry.exercise_id] !== (entry.weight === null ? '' : String(entry.weight))));
   const requestSwitch = useEditorGuard(dirty, pending || uncertain);
   const [confirmation, setConfirmation] = useState<{ title: string; text: string; action: () => void } | null>(null);
   const [blankWeights, setBlankWeights] = useState<GymEntry[] | null>(null);
   const [reveal, setReveal] = useState<string | null>(null);
+  /** Select an exercise and page the list to it; FlowList focuses its row, then onRevealed moves focus to the weight. */
+  const revealExercise = (id: string) => { setSelectedExercise(id); setReveal(id); };
   const cleanup = async () => {
     let after = '';
     for (;;) {
@@ -209,7 +257,7 @@ function GymWorkspace({ userId }: { userId: string }) {
   const inputWeight = (id: string) => weights[id] ?? (draftEntries.find(e => e.exercise_id === id)?.weight == null ? '' : String(draftEntries.find(e => e.exercise_id === id)!.weight));
   const saveWorkout = (finish: boolean, blanksConfirmed = false) => {
     const invalid = draftEntries.find(entry => invalidWeights.has(entry.exercise_id));
-    if (invalid) { setError(`Enter a valid weight for ${invalid.prescription.name}.`); setReveal(invalid.exercise_id); return; }
+    if (invalid) { setError(`Enter a valid weight for ${invalid.prescription.name}.`); revealExercise(invalid.exercise_id); return; }
     try { draftEntries.forEach(entry => gymWeight(inputWeight(entry.exercise_id))); }
     catch (err) { setError(formatError(err)); return; }
     const blanks = draftEntries.filter(entry => !inputWeight(entry.exercise_id).trim());
@@ -238,32 +286,47 @@ function GymWorkspace({ userId }: { userId: string }) {
     </div>}
     {!routine ? <StateBlock kind="empty">{GYM_COPY.noRoutine}</StateBlock> : <>
       <div className="gym-routine-heading"><h2>{routine.name} <small>{unit}</small></h2><div className="gym-actions">
+        {draft && <span className="quest-chip is-cur">Workout draft · {draft.unit}</span>}
         <button className="btn-secondary" disabled={pending || uncertain || routine.archived} onClick={() => setExerciseEditor('new')}>Add exercise</button>
-        <button className="btn-quiet" disabled={pending || uncertain} onClick={() => setRoutineEditor('edit')}>Edit routine</button>
-        <button className="btn-quiet" disabled={pending || uncertain || dirty} onClick={() => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); })}>{routine.archived ? 'Restore routine' : 'Archive routine'}</button>
-        <button className="btn-destructive" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Completed history remains.${draft ? ' This also discards the unfinished workout.' : ''}`, action: () => void run(async () => { await deleteGymRoutine(routine.id, !!draft); setWeights({}); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }) })}>Delete routine</button>
+        <ActionMenu
+          label={`Routine actions for ${routine.name}`} disabled={pending || uncertain}
+          items={[
+            { label: 'Edit routine', onSelect: () => setRoutineEditor('edit'), icon: <EditIcon />, tone: 'edit' },
+            { label: routine.archived ? 'Restore routine' : 'Archive routine', onSelect: () => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); }), icon: <ArchiveIcon />, tone: 'warn', disabled: dirty },
+            { label: 'Delete routine', onSelect: () => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Completed history remains.${draft ? ' This also discards the unfinished workout.' : ''}`, action: () => void run(async () => { await deleteGymRoutine(routine.id, !!draft); setWeights({}); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }) }), icon: <TrashIcon />, danger: true, tone: 'danger' },
+          ]}
+        />
       </div></div>
-      <div className="gym-table" role="table" aria-label={routine.name}>
-        <div className="gym-table-header" role="row">{['#', 'Exercise', 'Sets × Reps', 'Rest', 'RIR', 'Notes', 'Previous Weight', 'Current Weight'].map(title => <span role="columnheader" key={title}>{title}</span>)}</div>
-        <FlowList label="Exercises" size={6} narrowSize={3} revealId={reveal} onRevealed={() => setReveal(null)}>
-          {rows.map((row, index) => <div className="gym-row" role="row" key={row.id} data-item-id={row.id}>
-            <span role="cell" data-label="#">{index + 1}</span>
-            <div role="cell" data-label="Exercise"><button className="gym-exercise-name" onClick={() => { const exercise = exercises.find(e => e.id === row.id); if (exercise) setDemo(exercise); else setNotice('This exercise was removed from the routine. Its saved workout details remain.'); }}>{row.name}</button>
-              {!draft && <div className="gym-row-actions"><button className="btn-quiet btn-compact" onClick={() => setExerciseEditor(exercises.find(e => e.id === row.id)!)} disabled={pending || uncertain}>Edit</button><button className="btn-quiet btn-compact" aria-label={`Move ${row.name} up`} disabled={index === 0 || pending} onClick={() => void run(async () => { const ids = exercises.map(e => e.id); [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]]; await moveGymExercises(routine, ids); })}><ChevronIcon direction="up" size={14} /></button><button className="btn-quiet btn-compact" aria-label={`Move ${row.name} down`} disabled={index === exercises.length - 1 || pending} onClick={() => void run(async () => { const ids = exercises.map(e => e.id); [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]]; await moveGymExercises(routine, ids); })}><ChevronIcon direction="down" size={14} /></button><button className="btn-destructive btn-compact" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${row.name}? Completed history remains.`, action: () => void run(async () => { await removeGymExercise(row.id); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed'))); }) })}>Remove</button></div>}
-            </div>
-            <span role="cell" data-label="Sets × Reps">{row.sets} × {row.reps}</span><span role="cell" data-label="Rest">{row.rest_seconds}s</span><span role="cell" data-label="RIR">{row.rir}{row.rir_max ? `-${row.rir_max}` : ''}</span><span role="cell" data-label="Notes">{row.notes ? <button className="gym-exercise-name gym-notes" onClick={() => setNote(row.notes)}>{row.notes}</button> : '—'}</span><span role="cell" data-label="Previous Weight">{previousWeight(row.id)} {unit}</span>
-            <div role="cell" data-label="Current Weight"><input className="field gym-weight" aria-label={`Current weight for ${row.name} in ${unit}`} type="number" min={0} max={1000000} step="0.001" value={inputWeight(row.id)} aria-invalid={invalidWeights.has(row.id)} disabled={!draft || pending || uncertain} onInput={e => { const invalid = e.currentTarget.validity.badInput; setInvalidWeights(prev => { const next = new Set(prev); if (invalid) next.add(row.id); else next.delete(row.id); return next; }); }} onChange={e => setWeights(prev => ({ ...prev, [row.id]: e.target.value }))} /></div>
-          </div>)}
-        </FlowList>
+      <div className="gym-split">
+        <div className="gym-list" aria-label={`${routine.name} exercises`}>
+          <FlowList label="Exercises" size={8} narrowSize={5} revealId={reveal} onRevealed={() => { setReveal(null); window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.gym-detail .gym-weight')?.focus()); }}>
+            {rows.map((row, index) => <div key={row.id} data-item-id={row.id}>
+              <button type="button" className={`gym-list-item${current?.id === row.id ? ' is-active' : ''}`} aria-current={current?.id === row.id ? 'true' : undefined} onClick={() => setSelectedExercise(row.id)}>
+                <span className="gym-list-index">{index + 1}</span>
+                <span className="gym-list-name">{row.name}</span>
+                <span className="gym-list-sets">{row.sets} × {row.reps}</span>
+                {draft && inputWeight(row.id).trim() && <CheckIcon size={13} />}
+              </button>
+            </div>)}
+          </FlowList>
+        </div>
+        {current && <GymExercisePane
+          row={current} index={currentIndex} total={rows.length} exercise={exercises.find(e => e.id === current.id)} unit={unit}
+          previous={String(previousWeight(current.id))} weight={inputWeight(current.id)} weightInvalid={invalidWeights.has(current.id)}
+          weightDisabled={!draft || pending || uncertain} canEditDefinition={!draft && !pending && !uncertain} pending={pending}
+          onWeightInput={invalid => setInvalidWeights(prev => { const next = new Set(prev); if (invalid) next.add(current.id); else next.delete(current.id); return next; })}
+          onWeightChange={value => setWeights(prev => ({ ...prev, [current.id]: value }))}
+          onEdit={() => { const definition = exercises.find(e => e.id === current.id); if (definition) setExerciseEditor(definition); }}
+          onMove={delta => void run(async () => { const ids = exercises.map(e => e.id); const at = ids.indexOf(current.id); [ids[at], ids[at + delta]] = [ids[at + delta], ids[at]]; await moveGymExercises(routine, ids); })}
+          onRemove={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${current.name}? Completed history remains.`, action: () => void run(async () => { await removeGymExercise(current.id); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed'))); }) })}
+        />}
       </div>
       <footer className="gym-session-actions">{draft ? <><span>Workout draft · {draft.unit}</span><button className="btn-destructive" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Discard workout', text: 'Discard this unfinished workout and its entered weights?', action: () => void run(async () => { await discardGymSession(draft.id); setWeights({}); }) })}>Discard draft</button><button className="btn-secondary" disabled={pending || uncertain} onClick={() => saveWorkout(false)}>Save draft</button><button className="btn-primary" disabled={pending || uncertain} onClick={() => saveWorkout(true)}>Finish workout</button></> : <button className="btn-primary" disabled={pending || uncertain || !exercises.length || routine.archived} onClick={() => void run(async () => { await startGymSession(routine.id); setWeights({}); })}>Start workout</button>}{pending && <span role="status">Saving…</span>}</footer>
     </>}
     {routineEditor && <RoutineEditor routine={routineEditor === 'edit' ? routine : undefined} userId={userId} onClose={() => setRoutineEditor(null)} onSaved={async id => { setSelected(id); try { await refresh(); setNotice('Routine saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Routine saved', err)); } }} />}
     {exerciseEditor && routine && <ExerciseEditor exercise={exerciseEditor === 'new' ? undefined : exerciseEditor} routine={routine} userId={userId} nextPosition={Math.max(-1, ...exercises.map(e => e.position)) + 1} onClose={() => setExerciseEditor(null)} onSaved={async warning => { try { await refresh(); setNotice(warning ?? 'Exercise saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Exercise saved', err)); } }} />}
-    {demo && <Demonstration exercise={demo} onClose={() => setDemo(null)} onEdit={() => { setExerciseEditor(demo); setDemo(null); }} />}
-    {note !== null && <Dialog title="Exercise notes" onClose={() => setNote(null)}><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{note}</p></Dialog>}
     {history && <WorkoutHistory userId={userId} routines={data.routines} onClose={() => setHistory(false)} />}
     {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)}><p>{confirmation.text}</p><div className="action-footer"><button className="btn-secondary" onClick={() => setConfirmation(null)}>Cancel</button><button className="btn-destructive" onClick={() => { const action = confirmation.action; setConfirmation(null); action(); }}>{confirmation.title}</button></div></Dialog>}
-    {blankWeights && <Dialog title="Finish with blank weights?" onClose={() => setBlankWeights(null)}><p>{blankWeights.length} blank weights: {blankWeights.map(e => e.prescription.name).join(', ')}</p><div className="action-footer"><button className="btn-secondary" onClick={() => { setReveal(blankWeights[0].exercise_id); setBlankWeights(null); }}>Review fields</button><button className="btn-primary" onClick={() => { setBlankWeights(null); saveWorkout(true, true); }}>Finish with blanks</button></div></Dialog>}
+    {blankWeights && <Dialog title="Finish with blank weights?" onClose={() => setBlankWeights(null)}><p>{blankWeights.length} blank weights: {blankWeights.map(e => e.prescription.name).join(', ')}</p><div className="action-footer"><button className="btn-secondary" onClick={() => { revealExercise(blankWeights[0].exercise_id); setBlankWeights(null); }}>Review fields</button><button className="btn-primary" onClick={() => { setBlankWeights(null); saveWorkout(true, true); }}>Finish with blanks</button></div></Dialog>}
   </div>;
 }

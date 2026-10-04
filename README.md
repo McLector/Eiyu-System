@@ -18,6 +18,7 @@ Your real-life habits translate directly into XP for your character's stats (STR
 * **Streak Freeze & Recovery**: Missing a day doesn't immediately reset your streak to zero. Instead, your streak freezes and generates a 24-hour "Recovery Quest." Complete it to save your streak!
 * **RPG Progression**: Complete habits to earn XP. Level up your stats and watch your radar chart grow in real-time.
 * **Long Quests**: Multi-stage goals that track progress across weeks, separate from daily habits. On the web they live on the Chain Progression page, where each stage reads Done, Current or Locked.
+* **Gym Progress (web)**: Routines of exercises with sets, reps, rest, RIR and an optional GIF or MP4 video guide. Pick an exercise from the list to see its guide, numbers and notes beside it, log the weight for each one in a workout draft, and finish the workout to carry those weights into the next session.
 * **AI Weekly Summary**: A Gemini-powered natural-language recap of the week's progress, generated server-side (the API key never reaches the client) — always a suggestion you can edit or discard, never auto-saved.
 * **Supabase Backend**: Full cloud sync — habits, stats, completions, streaks, and long quests are all persisted and synced across devices, shared between the mobile and web clients.
 * **Auth**: Email/password auth with session persistence, display-name sign-up, and password reset.

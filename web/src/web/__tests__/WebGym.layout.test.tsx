@@ -64,15 +64,13 @@ it('keeps the archived toggle labelled and reachable', async () => {
   expect(toggle.closest('.gym-toolbar')).not.toBeNull();
 });
 
-it('groups routine actions by intent with Delete last and destructive', async () => {
-  setup();
-  const del = await screen.findByRole('button', { name: 'Delete routine' });
-  const group = del.closest('.gym-actions')!;
-  const names = within(group as HTMLElement).getAllByRole('button').map(b => b.textContent);
-  expect(names).toEqual(['Add exercise', 'Edit routine', 'Archive routine', 'Delete routine']);
-  expect(del).toHaveClass('btn-destructive');
-  expect(within(group as HTMLElement).getByRole('button', { name: 'Archive routine' })).toHaveClass('btn-quiet');
-  expect(within(group as HTMLElement).getByRole('button', { name: 'Edit routine' })).toHaveClass('btn-quiet');
+it('keeps Add exercise as the one visible routine action and moves the rest into a menu', async () => {
+  const user = userEvent.setup(); setup();
+  const add = await screen.findByRole('button', { name: 'Add exercise' });
+  const group = add.closest('.gym-actions')!;
+  expect(within(group as HTMLElement).getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Add exercise', 'Routine actions for Upper body']);
+  await user.click(within(group as HTMLElement).getByRole('button', { name: 'Routine actions for Upper body' }));
+  expect(screen.getByRole('menuitem', { name: 'Delete routine' })).toHaveClass('is-danger');
 });
 
 it('keeps the routine actions disabled for an archived routine where they were before', async () => {
@@ -80,14 +78,6 @@ it('keeps the routine actions disabled for an archived routine where they were b
   const user = userEvent.setup(); setup();
   await user.click(await screen.findByRole('checkbox', { name: 'Include archived routines' }));
   expect(await screen.findByRole('button', { name: 'Add exercise' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Restore routine' })).toBeEnabled();
-});
-
-it('shows each exercise row actions as one compact quiet group with Remove still destructive', async () => {
-  setup();
-  const remove = await screen.findByRole('button', { name: 'Remove' });
-  const group = remove.closest('.gym-row-actions')!;
-  expect(within(group as HTMLElement).getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent)).toEqual(['Edit', 'Move Bench press up', 'Move Bench press down', 'Remove']);
-  for (const b of within(group as HTMLElement).getAllByRole('button')) expect(b).toHaveClass('btn-compact');
-  expect(remove).toHaveClass('btn-destructive');
+  await user.click(screen.getByRole('button', { name: 'Routine actions for Upper body' }));
+  expect(screen.getByRole('menuitem', { name: 'Restore routine' })).toBeEnabled();
 });
