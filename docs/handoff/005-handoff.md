@@ -54,7 +54,7 @@ Started and finished 2026-10-04, branch `web-redesign-0014`. Follows handoff 004
 - **Chain nav and page title were renamed on web only.** The empty state still says `NO LONG QUESTS`, because that copy is shared with mobile.
 - **The Gym video guide plays inline and no longer autoplays.**
 - **Short-viewport editor layout** (found in the first real-browser run, below): on short screens Time, Days and the habit target share one row, stat chips put icon and name side by side, and the name error sits beside its label. Every field is still there.
-- **ALL HABITS is icon-only in a narrow lane** (lanes under 380px wide, which covers 1280 to about 1440px windows). Its name stays "ALL HABITS" for assistive tech and as a tooltip. Without this the Daily header wrapped and the lane lost a card.
+- **ALL HABITS is icon-only in a narrow lane** (lanes under 380px wide). Measured: icon-only at 1280 (lane 306px) and 1366 (lane 327px), label shown at 1920 (lane 469px). By the lane grid the label returns at about a 1,570px-wide window. Below 1,200px one lane fills the width, so the label shows from a lane of 380px up; at 390px (lane 366px) it is icon-only. Its name stays "ALL HABITS" for assistive tech and as a tooltip. Without this the Daily header wrapped and the lane lost a card.
 
 ## Known limitations
 

@@ -264,7 +264,6 @@ async function questFlows(browser, report) {
   tables.long_quests.push({id:'quest-solo',user_id:uid,name:'Solo journey',stat:'DEX',description:null,completed_at:null,created_at:date});
   tables.long_quest_stages.push({id:'stage-solo-0',long_quest_id:'quest-solo',user_id:uid,name:'Only step',done:false,position:0,description:'Keep this description.'});
   const {context,page}=await openApp(browser); page.on('pageerror',e=>report.errors.push('[quest flows] '+e.message));
-  const card=name=>page.getByRole('button',{name:new RegExp(name)}).first();
   const pager=page.getByRole('navigation',{name:'Chains pages'});
   try {
     await page.goto(WEB+'/longquests');
