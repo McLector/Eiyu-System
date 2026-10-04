@@ -23,7 +23,7 @@ interface Props {
 const NAV = [
   { to: '/board', label: 'BOARD', Icon: BoardIcon },
   { to: '/status', label: 'STATUS', Icon: StatusIcon },
-  { to: '/longquests', label: 'LONG QUESTS', Icon: ScrollIcon },
+  { to: '/longquests', label: 'CHAIN PROGRESSION', Icon: ScrollIcon },
   { to: '/gym', label: 'GYM PROGRESS', Icon: DumbbellIcon },
 ] as const;
 

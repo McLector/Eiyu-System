@@ -29,7 +29,7 @@ export type HistoryEvidenceRow = {
   historical_date: string;
   habit_name: string;
   stat: Stat;
-  quest_type: 'habit' | 'one_time';
+  quest_type: 'habit' | 'one_time' | 'backlog';
   scheduled: boolean;
   completion_kind: CompletionKind | null;
 };

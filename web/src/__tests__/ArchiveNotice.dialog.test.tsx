@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, expect, it, vi } from 'vitest';
 vi.mock('../store/session-context', () => ({ useSession: () => ({ user: { id: 'owner-a' } }) }));
-import ArchiveNotice, { announceFeedback } from '../components/ArchiveNotice';
+import ArchiveNotice, { announceArchive, announceFeedback } from '../components/ArchiveNotice';
 import Dialog from '../components/Dialog';
 
 afterEach(cleanup);
@@ -40,6 +40,27 @@ it('uses the topmost dialog when dialogs are stacked', async () => {
   expect(await within(inner).findByRole('status')).toHaveTextContent('Saved.');
   const outer = screen.getByRole('dialog', { name: 'Outer', hidden: true });
   expect(within(outer).queryByRole('status', { hidden: true })).toBeNull();
+});
+
+it('does not stay paused when a hovered notice moves out of a closing dialog', async () => {
+  vi.useFakeTimers();
+  try {
+    const view = render(<>
+      <ArchiveNotice onOpen={vi.fn()} />
+      <Dialog title="Edit routine" onClose={vi.fn()}><p>body</p></Dialog>
+    </>);
+    act(() => announceArchive('habit', 'owner-a'));
+    const notice = within(screen.getByRole('dialog', { name: 'Edit routine' })).getByRole('status');
+    // The pointer rests on the notice; the dialog then closes (Escape), so the notice remounts
+    // outside it and the old node never receives mouseleave.
+    fireEvent.mouseEnter(notice);
+    view.rerender(<ArchiveNotice onOpen={vi.fn()} />);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole('status')).toHaveTextContent('Habit archived');
+    expect(screen.getByRole('status').querySelector('.archive-notice-timer')).not.toHaveClass('is-paused');
+    act(() => { vi.advanceTimersByTime(8100); });
+    expect(screen.queryByRole('status')).toBeNull();
+  } finally { vi.useRealTimers(); }
 });
 
 it('marks every notice with a severity tone and defaults messages to success', () => {

@@ -29,7 +29,7 @@ function setup(initial = '/board', draft = false) {
   const router = createMemoryRouter([{ path: '/', element: <ProtectedLayout />, children: [
     { path: '/board', element: draft ? <DraftWorkspace /> : <p>BOARD CONTENT</p> },
     { path: '/status', element: <p>STATUS CONTENT</p> },
-    { path: '/longquests', element: <p>LONG QUESTS CONTENT</p> },
+    { path: '/longquests', element: <p>CHAIN PROGRESSION CONTENT</p> },
     { path: '/history', element: <p>HISTORY CONTENT</p> },
     { path: '/settings', element: <SettingsPage /> },
   ] }], { initialEntries: [initial] });
@@ -140,7 +140,7 @@ it('keeps named routes active and the account menu keyboard reachable with a lon
   const router = setup();
   const board = screen.getByRole('link', { name: 'BOARD' });
   const status = screen.getByRole('link', { name: 'STATUS' });
-  const longQuests = screen.getByRole('link', { name: 'LONG QUESTS' });
+  const longQuests = screen.getByRole('link', { name: 'CHAIN PROGRESSION' });
   expect(board).toHaveAttribute('aria-current', 'page');
   expect(status).not.toHaveAttribute('aria-current', 'page');
   expect(longQuests).not.toHaveAttribute('aria-current', 'page');

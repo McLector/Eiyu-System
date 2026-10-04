@@ -38,9 +38,12 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
     : !!name || !!description || stat !== 'INT' || stages.some(s => s.name || s.description);
   const guardedClose = useEditorGuard(dirty, saving || uncertain);
 
-  const nameError = editing && name === quest.name ? null : validateQuestName(name);
+  // Shown only once the name has been typed in; an untouched form is incomplete, not wrong.
+  const [nameTouched, setNameTouched] = useState(false);
+  const nameProblem = editing && name === quest.name ? null : validateQuestName(name);
+  const nameError = nameTouched ? nameProblem : null;
   const filled = stages.map(s => ({ ...s, name: s.name.trim() })).filter(s => s.name.length > 0);
-  const valid = !nameError && filled.length >= MIN_STAGES;
+  const valid = !nameProblem && filled.length >= MIN_STAGES;
 
   const setStageAt = (i: number, patch: Partial<DraftStage>) => setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   const isDone = (id: string | null) => !!quest?.stages.find(s => s.id === id)?.done;
@@ -78,7 +81,7 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
     <Dialog title={editing ? 'Edit Long Quest' : 'New Long Quest'} pending={saving} initialFocus='input[aria-label="Quest name"]' onClose={() => guardedClose(onClose)}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <fieldset disabled={saving || uncertain} className="editor-fields">
-          <input aria-label="Quest name" aria-invalid={!!nameError} aria-describedby={nameError ? errorId : undefined} className="field" placeholder="Quest name..." value={name} onChange={e => setName(e.target.value)} />
+          <input aria-label="Quest name" aria-invalid={!!nameError} aria-describedby={nameError ? errorId : undefined} className="field" placeholder="Quest name..." value={name} onChange={e => { setName(e.target.value); setNameTouched(true); }} />
           {nameError && <p id={errorId} role="alert" aria-live="polite" className="phase4-error" style={{ margin: 0 }}>{nameError}</p>}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {STATS.map(s => <StatChip key={s} stat={s} selected={stat === s} onClick={() => setStat(s)} />)}
@@ -95,7 +98,7 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
                   value={st.description ?? ''}
                   onChange={e => { if (isStageDescriptionWithinLimit(e.target.value)) setStageAt(i, { description: e.target.value }); }}
                   aria-label={`Stage ${i + 1} description. Maximum ${STAGE_DESCRIPTION_MAX_LENGTH} characters.`}
-                  rows={3}
+                  rows={2}
                 />
               </div>
               {editing && stages.length > MIN_STAGES && (

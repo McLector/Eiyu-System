@@ -9,6 +9,7 @@ const shared = vi.hoisted(() => ({
   archiveHabit: vi.fn(),
   deleteHabit: vi.fn(),
   restoreHabit: vi.fn(),
+  fetchBacklogQuests: vi.fn(),
   fetchLongQuests: vi.fn(),
   fetchProfile: vi.fn(),
   fetchStats: vi.fn(),
@@ -83,6 +84,7 @@ beforeEach(() => {
   shared.fetchTodayHabits.mockResolvedValue([quest]);
   shared.fetchProfile.mockResolvedValue({ displayName: 'Test User', userClass: 'Ranger', timeZone: 'UTC' });
   shared.fetchStats.mockResolvedValue(initialUser.stats);
+  shared.fetchBacklogQuests.mockResolvedValue([]);
   shared.fetchLongQuests.mockResolvedValue([]);
 });
 
@@ -107,5 +109,14 @@ describe('web lifecycle store boundary', () => {
     expect(client.getQueryData(['habits', 'today', 'user-1'])).toEqual([]);
     await expect(latestStore!.saveHabit(input, 'habit-1')).rejects.toThrow('This quest was deleted');
     expect(shared.updateHabit).not.toHaveBeenCalled();
+  });
+
+  it('passes the stored name of a Backlog quest as originalName when saving it', async () => {
+    const backlogQuest: Quest = { ...quest, id: 'b-1', name: 'Old backlog name', questType: 'backlog', easyVersion: null, days: [] };
+    shared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
+    renderStore();
+    await waitFor(() => expect(latestStore?.backlog).toHaveLength(1));
+    await latestStore!.saveHabit({ ...input, questType: 'backlog', name: 'New name' }, 'b-1');
+    expect(shared.updateHabit).toHaveBeenCalledWith('b-1', expect.objectContaining({ name: 'New name' }), 'Old backlog name');
   });
 });

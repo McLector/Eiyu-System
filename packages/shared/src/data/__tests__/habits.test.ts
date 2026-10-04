@@ -1,4 +1,4 @@
-import { createHabit, updateHabit, fetchTodayOneTimeHabits, fetchUpcomingOneTimeHabits, fetchTodayHabits } from '../habits';
+import { createHabit, updateHabit, fetchTodayOneTimeHabits, fetchUpcomingOneTimeHabits, fetchTodayHabits, fetchAllActiveHabits, fetchBacklogQuests, moveBacklogToOneTime, moveOneTimeToBacklog } from '../habits';
 import { supabase } from '../../supabase/client';
 
 function chainable(result: { data?: unknown; error: unknown }) {
@@ -462,5 +462,113 @@ describe('fetchUpcomingOneTimeHabits', () => {
     expect(builder.eq).toHaveBeenCalledWith('quest_type', 'one_time');
     expect(builder.gte).toHaveBeenCalledWith('scheduled_date', expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
     expect(reminders).toEqual([{ id: 'future', name: 'Future task', time: '09:30', date: '2026-10-03' }]);
+  });
+});
+
+describe('Backlog, genre and optional time', () => {
+  beforeEach(() => {
+    (supabase.from as jest.Mock).mockReset();
+    mockTimeZoneInitialization();
+  });
+
+  const captured = (table = 'habits') => {
+    const inserted = jest.fn(() => chainable({ data: { id: 'h1' }, error: null }));
+    (supabase.from as jest.Mock).mockImplementation((name: string) => {
+      if (name === table) return { insert: inserted, update: inserted };
+      throw new Error(`unexpected table ${name}`);
+    });
+    return inserted;
+  };
+
+  it('writes a Backlog quest with no days, date, penalty or target', async () => {
+    const inserted = captured();
+    await createHabit('user-1', {
+      name: 'Try Obsidian', stat: 'INT', difficulty: 'Easy', time: '07:00', days: [1, 2, 3],
+      questType: 'backlog', easyVersion: 'ignored', scheduledDate: '2026-10-10', targetCount: 5, genre: 'tool', timeSet: true,
+    });
+    const row = (inserted.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(row).toMatchObject({
+      quest_type: 'backlog', days: [], scheduled_date: null, easy_version: null, target_count: null,
+      genre: 'tool', time_set: false, reminder_time: '07:00',
+    });
+  });
+
+  it('keeps a One-time quest genre and optional time', async () => {
+    const inserted = captured();
+    await createHabit('user-1', {
+      name: 'Read RFC', stat: 'WIS', difficulty: 'Medium', time: '08:00', days: [],
+      questType: 'one_time', scheduledDate: '2026-10-10', genre: 'article', timeSet: false,
+    });
+    expect((inserted.mock.calls[0] as unknown as [Record<string, unknown>])[0]).toMatchObject({
+      quest_type: 'one_time', genre: 'article', time_set: false, scheduled_date: '2026-10-10',
+    });
+  });
+
+  it('never gives a habit a genre and always marks its time as set', async () => {
+    const inserted = captured();
+    await createHabit('user-1', {
+      name: 'Run', stat: 'STR', difficulty: 'Easy', time: '07:00', days: [1], easyVersion: 'Walk', genre: 'tool', timeSet: false,
+    });
+    expect((inserted.mock.calls[0] as unknown as [Record<string, unknown>])[0]).toMatchObject({ genre: null, time_set: true });
+  });
+
+  it('does not send genre or time_set when a caller omits them, so an edit cannot reset them', async () => {
+    const updated = captured();
+    await updateHabit('h1', {
+      name: 'Read RFC', stat: 'WIS', difficulty: 'Medium', time: '08:00', days: [], questType: 'one_time', scheduledDate: '2026-10-10',
+    });
+    const row = (updated.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(row).not.toHaveProperty('genre');
+    expect(row).not.toHaveProperty('time_set');
+  });
+
+  it('lists only recurring habits for reminders', async () => {
+    const builder = chainable({ data: [], error: null });
+    (supabase.from as jest.Mock).mockReturnValue(builder);
+    await fetchAllActiveHabits('user-1');
+    expect(builder.eq).toHaveBeenCalledWith('quest_type', 'habit');
+    expect(builder.neq).toBeUndefined();
+  });
+
+  it('reads Backlog quests newest first and maps genre and time', async () => {
+    const row = (id: string, created: string) => ({
+      id, user_id: 'user-1', name: id, easy_version: null, description: 'note', quest_type: 'backlog', stat: 'INT', difficulty: 'Easy',
+      reminder_time: '08:00:00', days: [], archived: false, created_at: created, updated_at: created,
+      scheduled_date: null, target_count: null, schedule_start_on: '2026-10-01', genre: 'concept', time_set: false,
+    });
+    const builder = chainable({ data: [row('old', '2026-10-01T00:00:00Z'), row('new', '2026-10-03T00:00:00Z')], error: null });
+    builder.range = jest.fn(() => Promise.resolve({ data: [row('old', '2026-10-01T00:00:00Z'), row('new', '2026-10-03T00:00:00Z')], error: null }));
+    (supabase.from as jest.Mock).mockReturnValue(builder);
+    const quests = await fetchBacklogQuests('user-1');
+    expect(builder.eq).toHaveBeenCalledWith('quest_type', 'backlog');
+    expect(builder.eq).toHaveBeenCalledWith('archived', false);
+    expect(quests.map(q => q.id)).toEqual(['new', 'old']);
+    expect(quests[0]).toMatchObject({ questType: 'backlog', genre: 'concept', timeSet: false, days: [], completed: false, easyVersion: null });
+  });
+
+  it('maps the stored scheduled_date onto the quest so an edit can keep it', async () => {
+    const created = '2026-10-03T00:00:00Z';
+    const row = (scheduled: string | null) => ({
+      id: 'q', user_id: 'user-1', name: 'q', easy_version: null, description: null, quest_type: 'one_time', stat: 'INT', difficulty: 'Easy',
+      reminder_time: '08:00:00', days: [], archived: false, created_at: created, updated_at: created,
+      scheduled_date: scheduled, target_count: null, schedule_start_on: '2026-10-01', genre: null, time_set: true,
+    });
+    for (const scheduled of ['2026-10-10', null]) {
+      const builder = chainable({ data: [row(scheduled)], error: null });
+      builder.range = jest.fn(() => Promise.resolve({ data: [row(scheduled)], error: null }));
+      (supabase.from as jest.Mock).mockReturnValue(builder);
+      const quests = await fetchBacklogQuests('user-1');
+      expect(quests[0].scheduledDate).toBe(scheduled);
+    }
+  });
+
+  it('calls the server functions for the two moves and surfaces their errors', async () => {
+    (supabase.rpc as jest.Mock).mockReset().mockResolvedValue({ data: null, error: null });
+    await moveBacklogToOneTime('h1');
+    await moveOneTimeToBacklog('h2');
+    expect(supabase.rpc).toHaveBeenCalledWith('move_backlog_to_one_time', { p_id: 'h1' });
+    expect(supabase.rpc).toHaveBeenCalledWith('move_one_time_to_backlog', { p_id: 'h2' });
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: new Error('quest has a completion') });
+    await expect(moveOneTimeToBacklog('h2')).rejects.toThrow('quest has a completion');
   });
 });

@@ -104,23 +104,19 @@ describe('ambient loops', () => {
     expect(css).not.toMatch(/@keyframes fireGlow/);
     expect(css).not.toMatch(/animation:\s*eiyuStar/);
   });
-  it('pulses the available checkpoint by opacity on a pseudo-element, not by box-shadow', () => {
-    const k = keyframes.find(c => c.startsWith('@keyframes checkpoint-light'))!;
-    expect(k).toMatch(/opacity/);
-    expect(k).not.toMatch(/box-shadow/);
-    expect(css).toMatch(/\.journey-checkpoint\.available \.journey-checkpoint-icon::after/);
-  });
-  it('moves the hero with a transform on a wrapper, not left/top', () => {
-    expect(bodiesFor(/^\.journey-hero$/)).not.toMatch(/transition/);
-    expect(bodiesFor(/^\.journey-hero-track$/)).toMatch(/transition:\s*transform 600ms var\(--ease-in-out\)/);
+});
+
+describe('chain progress', () => {
+  it('fills the chain bar by scaling a full-width bar, not by resizing it', () => {
+    expect(bodiesFor(/^\.chain-bar > i$/)).toMatch(/transition:\s*transform var\(--dur-slow\) var\(--ease-in-out\)/);
+    expect(bodiesFor(/^\.chain-bar > i$/)).toMatch(/transform-origin:\s*left/);
   });
 });
 
 describe('reduced motion', () => {
   const reduce = chunks.filter(c => c.startsWith('@media (prefers-reduced-motion: reduce)')).join('\n');
-  it('drops the press scale, the hero travel and the checkpoint pulse', () => {
+  it('drops the press scale and the chain progress slide', () => {
     expect(reduce).toMatch(/\.btn-primary:active/);
-    expect(reduce).toMatch(/\.journey-hero-track\s*\{\s*transition:\s*none/);
-    expect(reduce).toMatch(/\.journey-checkpoint\.available \.journey-checkpoint-icon::after\s*\{\s*animation:\s*none/);
+    expect(reduce).toMatch(/\.chain-bar > i\s*\{\s*transition:\s*none/);
   });
 });

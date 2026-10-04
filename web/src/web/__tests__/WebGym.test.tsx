@@ -66,8 +66,9 @@ it('finishes a workout and carries its weight into the next session', async () =
 });
 it('names each destructive confirmation after the action it performs, not a generic "Confirm"', async () => {
   const user = userEvent.setup(); setup();
-  for (const [opener, title] of [['Delete routine', 'Delete routine'], ['Remove', 'Remove exercise']] as const) {
-    await user.click(await screen.findByRole('button', { name: opener }));
+  for (const [menu, opener, title] of [['Routine actions for Chest–Tricep–Shoulders', 'Delete routine', 'Delete routine'], ['Exercise actions for Bench press', 'Remove Bench press', 'Remove exercise']] as const) {
+    await user.click(await screen.findByRole('button', { name: menu }));
+    await user.click(screen.getByRole('menuitem', { name: opener }));
     const dialog = await screen.findByRole('dialog', { name: title });
     expect(within(dialog).getByRole('button', { name: title })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Confirm' })).toBeNull();
@@ -79,11 +80,9 @@ it('names each destructive confirmation after the action it performs, not a gene
   expect(within(discard).getByRole('button', { name: 'Discard workout' })).toBeInTheDocument();
   expect(within(discard).queryByRole('button', { name: 'Confirm' })).toBeNull();
 });
-it('shows an empty demonstration and keeps a failed save editable', async () => {
+it('shows an empty video guide and keeps a failed save editable', async () => {
   const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: 'Bench press' }));
-  expect(screen.getByRole('dialog')).toHaveTextContent('No demonstration uploaded');
-  await user.keyboard('{Escape}');
+  expect(await screen.findByRole('region', { name: 'Bench press details' })).toHaveTextContent('No video guide attached.');
   await user.click(screen.getByRole('button', { name: 'Start workout' }));
   await waitFor(() => expect(screen.getByRole('spinbutton')).toBeEnabled());
   mocks.save.mockRejectedValueOnce(new Error('Network unavailable'));
@@ -141,7 +140,8 @@ it('cleans replaced media only after a confirmed exercise save', async () => {
   let resolve!: (value: string) => void;
   mocks.saveExercise.mockImplementationOnce(() => new Promise<string>(r => { resolve = r; }));
   const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: /^Edit$/ }));
+  await user.click(await screen.findByRole('button', { name: 'Exercise actions for Bench press' }));
+  await user.click(screen.getByRole('menuitem', { name: 'Edit exercise' }));
   await user.upload(screen.getByLabelText(/Demonstration \(optional/), new File(['GIF89a'], 'new.gif', { type: 'image/gif' }));
   await user.click(screen.getByRole('button', { name: 'Save exercise' }));
   await waitFor(() => expect(mocks.saveExercise).toHaveBeenCalledOnce());
@@ -150,20 +150,30 @@ it('cleans replaced media only after a confirmed exercise save', async () => {
   await waitFor(() => expect(mocks.removeMedia).toHaveBeenCalledWith('owner/routine/previous.gif'));
 });
 
-it('offers a Play fallback after autoplay rejection and renews signed access', async () => {
+it('shows the video guide inline without autoplay and renews signed access', async () => {
   mocks.data.exercises[0].media_path = 'owner/routine/demo.mp4';
   mocks.data.exercises[0].media_mime = 'video/mp4';
-  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValueOnce(new Error('Autoplay blocked')).mockResolvedValue(undefined);
-  const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   const interval = vi.spyOn(window, 'setInterval');
-  const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: 'Bench press' }));
-  await user.click(await screen.findByRole('button', { name: 'Play demonstration' }));
-  expect(play).toHaveBeenCalledTimes(2);
-  expect(screen.queryByRole('button', { name: 'Play demonstration' })).not.toBeInTheDocument();
+  setup();
+  const detail = await screen.findByRole('region', { name: 'Bench press details' });
+  await waitFor(() => expect(detail.querySelector('video.gym-media')).toHaveAttribute('src', 'https://example.invalid/private-demo.mp4'));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(play).not.toHaveBeenCalled();
   const renewal = interval.mock.calls.find(call => call[1] === 240000)![0] as () => void;
   await act(async () => renewal());
   expect(mocks.sign).toHaveBeenCalledTimes(2);
-  await user.keyboard('{Escape}');
-  expect(pause).toHaveBeenCalled();
+});
+
+it('reports a failed video guide and reloads it on request', async () => {
+  mocks.data.exercises[0].media_path = 'owner/routine/demo.mp4';
+  mocks.data.exercises[0].media_mime = 'video/mp4';
+  mocks.sign.mockRejectedValueOnce(new Error('Signed access expired'));
+  const user = userEvent.setup(); setup();
+  const detail = await screen.findByRole('region', { name: 'Bench press details' });
+  expect(await within(detail).findByRole('alert')).toHaveTextContent('Signed access expired');
+  expect(detail.querySelector('video')).toBeNull();
+  await user.click(within(detail).getByRole('button', { name: 'Reload video guide' }));
+  await waitFor(() => expect(detail.querySelector('video.gym-media')).not.toBeNull());
+  expect(mocks.sign).toHaveBeenCalledTimes(2);
 });

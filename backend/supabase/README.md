@@ -283,6 +283,25 @@ with checks(marker, ok) as (
     and not has_table_privilege('authenticated','private.long_quest_definition_receipts','SELECT')
     and has_function_privilege('authenticated','public.save_long_quest_definition(uuid,uuid,jsonb,boolean)','EXECUTE')
     and not has_function_privilege('anon','public.save_long_quest_definition(uuid,uuid,jsonb,boolean)','EXECUTE')
+  union all select '038 backlog: quest type, genre, optional time and server-owned moves', coalesce(
+    exists (select 1 from pg_constraint where conrelid = 'public.habits'::regclass
+      and conname = 'habits_quest_type_check' and pg_get_constraintdef(oid) ilike '%backlog%')
+    and exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'habits' and column_name = 'genre')
+    and exists (select 1 from information_schema.columns where table_schema = 'public'
+      and table_name = 'habits' and column_name = 'time_set')
+    and exists (select 1 from pg_constraint where conrelid = 'public.habits'::regclass
+      and conname = 'habits_backlog_shape' and coalesce(pg_get_constraintdef(oid) ilike '%easy_version IS NULL%', false)
+      and coalesce(pg_get_constraintdef(oid) ilike '%time_set%', false))
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%backlog%'
+      from pg_proc p where p.oid = to_regprocedure('public.archive_habit(uuid)')), false)
+    and to_regclass('private.backlog_rollover_settings') is not null
+    and has_function_privilege('authenticated',to_regprocedure('public.move_backlog_to_one_time(uuid)'),'EXECUTE')
+    and has_function_privilege('authenticated',to_regprocedure('public.move_one_time_to_backlog(uuid)'),'EXECUTE')
+    and has_function_privilege('authenticated',to_regprocedure('public.rollover_unfinished_one_time_quests()'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.move_backlog_to_one_time(uuid)'),'EXECUTE')
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%rollover_unfinished_one_time_quests%'
+      from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -294,7 +313,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–037
+re-run an old file over a newer definition. This query covers migrations 001–038
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -340,3 +359,7 @@ Run all 19 rollback/cleanup SQL test files in `supabase/tests` on a disposable l
 Verify prerequisites through 034, then apply **035 → 036 → 037** in order, verifying each phase before deploying the web client. Keep 036 immutable after application; atomic definitions are a separate 037 migration. Existing completion and mobile definition interfaces remain supported. 035 removes direct exercise-definition writes in favor of parent-locked RPCs; older web Gym clients must upgrade. Completed sessions are retained behind server-controlled routine tombstones.
 
 Media cleanup uses an owner-only durable manifest. Acknowledge only successful deletion of confirmed unreferenced paths; failed cleanup remains queued. Never delete an upload whose definition save remains uncertain. Migration capability checks do not replace owner/concurrency/Storage acceptance on a confirmed disposable Supabase stack. No production rollout has been performed.
+
+## Backlog rollout (038)
+
+Verify prerequisites through 037, then apply **038** (`038_backlog_genre_optional_time.sql`) before deploying the web client that shows Backlog. 038 runs in one transaction: if the deployed schema has drifted, it rolls back without a partial change. It locates the original `quest_type` check by the column it constrains, not by name. Before applying it, compare the deployed `get_habits_for_date` and `archive_habit` bodies with 022 and 025; 038 re-issues both. The rollover only sweeps One-time quests dated on or after the day after 038 is applied (`private.backlog_rollover_settings.cutover`, the UTC apply date + 1, so accounts ahead of UTC are covered too); quests abandoned earlier stay where they are. Backlog rows hold no date, weekdays, count, penalty or set time; the moves and the rollover store untimed quests at 08:00. Installed mobile builds keep working: Backlog rows never appear in `get_habits_for_date` for today, and `reminder_time` stays NOT NULL. A past day can still show a quest that has since returned to Backlog, because its missed occurrence is kept for History.

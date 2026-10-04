@@ -108,16 +108,20 @@ describe('WebBoard recovery state', () => {
     expect(container).toHaveTextContent('0 / 2 quests');
     expect(container).toHaveTextContent('Daily Quest');
     expect(container).toHaveTextContent('One Time Quest');
-    expect(container).toHaveTextContent('All Habits');
-    expect(container).toHaveTextContent('Off-day habit');
-    expect(screen.queryByRole('button', { name: 'Edit Archived habit' })).not.toBeInTheDocument();
+    expect(container).toHaveTextContent('Backlog');
     expect(screen.getByRole('button', { name: 'Complete Daily habit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Complete Off-day habit' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Complete Archived habit' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit Off-day habit' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit Archived habit' })).not.toBeInTheDocument();
 
     await interaction.click(screen.getByRole('button', { name: 'Complete One-time item' }));
+    expect(store.toggleQuest).toHaveBeenCalledWith('one-time');
+
+    // The complete habit catalog now opens as a dialog from the Daily lane.
+    await interaction.click(screen.getByRole('button', { name: /ALL HABITS/ }));
+    const catalog = screen.getByRole('dialog', { name: 'All habits' });
+    expect(within(catalog).getByRole('button', { name: 'View Off-day habit details' })).toBeInTheDocument();
+    expect(within(catalog).queryByText('Archived habit')).not.toBeInTheDocument();
+    expect(within(catalog).queryByText('One-time item')).not.toBeInTheDocument();
     expect(store.toggleQuest).toHaveBeenCalledWith('one-time');
     expect(store.completeRecovery).not.toHaveBeenCalled();
   });
@@ -161,11 +165,13 @@ describe('WebBoard recovery state', () => {
     });
     rerender(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
     expect(screen.getByText(/No habits are scheduled for today/)).toBeInTheDocument();
-    expect(screen.getByText('No one-time quests scheduled for today.')).toBeInTheDocument();
-    expect(screen.getByText(/No saved habits yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No one-time quests scheduled for today\./)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing parked yet/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /ALL HABITS/ }));
+    expect(within(screen.getByRole('dialog', { name: 'All habits' })).getByText(/No saved habits yet/)).toBeInTheDocument();
   });
 
-  it('renders four named lanes and keeps archived definitions out of active catalog views', async () => {
+  it('renders the named lanes and keeps archived definitions out of the habit catalog', async () => {
     const interaction = userEvent.setup();
     const habit = {
       id: 'daily', name: 'Daily habit', stat: 'STR' as const, difficulty: 'Medium' as const,
@@ -193,13 +199,14 @@ describe('WebBoard recovery state', () => {
 
     const dailyLane = screen.getByRole('region', { name: 'Daily Quest' });
     const oneTimeLane = screen.getByRole('region', { name: 'One Time Quest' });
-    const allLane = screen.getByRole('region', { name: 'All Habits' });
+    expect(screen.getByRole('region', { name: 'Backlog' })).toBeInTheDocument();
     expect(within(dailyLane).getByText('Daily habit')).toBeInTheDocument();
-    expect(within(oneTimeLane).getByText('No one-time quests scheduled for today.')).toBeInTheDocument();
-    expect(within(allLane).getByText('Off-day habit')).toBeInTheDocument();
-    expect(within(allLane).queryByText('Archived habit')).not.toBeInTheDocument();
-    await interaction.click(within(allLane).getByRole('button', { name: 'Edit Off-day habit' }));
-    expect(screen.getByRole('region', { name: 'All Habits' })).toBeInTheDocument();
+    expect(within(oneTimeLane).getByText(/No one-time quests scheduled for today\./)).toBeInTheDocument();
+    await interaction.click(within(dailyLane).getByRole('button', { name: /ALL HABITS/ }));
+    const catalog = screen.getByRole('dialog', { name: 'All habits' });
+    expect(within(catalog).getByText('Off-day habit')).toBeInTheDocument();
+    expect(within(catalog).queryByText('Archived habit')).not.toBeInTheDocument();
+    expect(within(catalog).queryByText('Archived one-time')).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Archived' })).not.toBeInTheDocument();
   });
 });

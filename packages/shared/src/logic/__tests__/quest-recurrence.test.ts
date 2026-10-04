@@ -81,6 +81,20 @@ describe('partitionBoardQuests', () => {
     expect(sections.oneTimeQuests).toEqual([oneTime]);
     expect(sections.archivedQuests).toEqual([]);
   });
+
+  it('sorts an untimed One-time quest after timed ones, then by name', () => {
+    const timed = { ...base, id: 't', name: 'Zeta', questType: 'one_time' as const, time: '09:00', timeSet: true };
+    const untimedEarly = { ...base, id: 'u', name: 'Alpha', questType: 'one_time' as const, time: '08:00', timeSet: false };
+    const untimedLate = { ...base, id: 'v', name: 'Beta', questType: 'one_time' as const, time: '08:00', timeSet: false };
+    const { oneTimeQuests } = partitionBoardQuests([untimedLate, timed, untimedEarly]);
+    expect(oneTimeQuests.map(q => q.id)).toEqual(['t', 'u', 'v']);
+  });
+
+  it('keeps Backlog quests out of every board section', () => {
+    const backlog = { ...base, id: 'b', questType: 'backlog' as const, days: [], dailyEligible: false };
+    const sections = partitionBoardQuests([backlog]);
+    expect([...sections.dailyQuests, ...sections.oneTimeQuests, ...sections.allHabits, ...sections.recoveryRequired, ...sections.archivedQuests]).toEqual([]);
+  });
 });
 
 describe('splitQuestsByType', () => {

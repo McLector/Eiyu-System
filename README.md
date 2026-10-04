@@ -17,7 +17,9 @@ Your real-life habits translate directly into XP for your character's stats (STR
 * **Penalty Fallbacks**: Define a small two-minute-rule Penalty for every habit (e.g., 2 minutes of stretching instead of a 1-hour gym session) to maintain your streak for partial XP.
 * **Streak Freeze & Recovery**: Missing a day doesn't immediately reset your streak to zero. Instead, your streak freezes and generates a 24-hour "Recovery Quest." Complete it to save your streak!
 * **RPG Progression**: Complete habits to earn XP. Level up your stats and watch your radar chart grow in real-time.
-* **Long Quests**: Multi-stage goals that track progress across weeks, separate from daily habits.
+* **One-time quests and Backlog (web)**: Schedule a one-off quest for a day, with or without a set time, or park an idea in the Backlog with an optional genre (tool, concept, docs / article, software idea, to-do). Move it between Backlog and today's One-time lane from its menu or by dragging; a One-time quest left unfinished returns to the Backlog at midnight.
+* **Long Quests**: Multi-stage goals that track progress across weeks, separate from daily habits. On the web they live on the Chain Progression page, where each stage reads Done, Current or Locked.
+* **Gym Progress (web)**: Routines of exercises with sets, reps, rest, RIR and an optional GIF or MP4 video guide. Pick an exercise from the list to see its guide, numbers and notes beside it, log the weight for each one in a workout draft, and finish the workout to carry those weights into the next session.
 * **AI Weekly Summary**: A Gemini-powered natural-language recap of the week's progress, generated server-side (the API key never reaches the client) — always a suggestion you can edit or discard, never auto-saved.
 * **Supabase Backend**: Full cloud sync — habits, stats, completions, streaks, and long quests are all persisted and synced across devices, shared between the mobile and web clients.
 * **Auth**: Email/password auth with session persistence, display-name sign-up, and password reset.
@@ -45,7 +47,7 @@ eiyu-system/
 │       └── lib/                  # Web-specific Supabase client, cache adapter
 ├── packages/shared/             # @eiyu/shared — XP/level/rank/streak logic and DB types,
 │                                 # consumed by both mobile and web
-├── backend/supabase/            # SQL migrations (001–022, run in order) + Edge Functions
+├── backend/supabase/            # SQL migrations (001–038, run in order) + Edge Functions
 │   ├── README.md                 # How to apply migrations + verify what's applied
 │   └── functions/ai-proxy/       # Gemini-backed weekly-summary Edge Function
 └── docs/                        # Requirements doc, design/migration plans
@@ -70,7 +72,7 @@ eiyu-system/
    ```
 
 2. Run every Supabase migration in filename order from `backend/supabase/`:
-   `001_profiles.sql` → `022_habit_recovery_state_machine.sql`
+   `001_profiles.sql` → `038_backlog_genre_optional_time.sql`
    See [`backend/supabase/README.md`](./backend/supabase/README.md) for how to apply them and verify they landed.
 
 3. Copy the environment file for whichever client you're running and fill in your Supabase credentials:

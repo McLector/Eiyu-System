@@ -50,14 +50,8 @@ describe('themed tokens exist in both themes', () => {
     'c-danger', 'c-danger-border', 'c-danger-glass',
     'c-success', 'c-success-border', 'c-success-glass',
     'c-warning', 'c-warning-border', 'c-warning-glass',
-    'c-journey-route',
-    'c-checkpoint-done-bg', 'c-checkpoint-done-border',
-    'c-checkpoint-available-bg', 'c-checkpoint-available-border',
-    'c-checkpoint-locked-bg', 'c-checkpoint-locked-border',
-    'c-checkpoint-label-bg',
     'c-bar-track',
     'c-accent-text',
-    'c-journey-overlay',
   ];
   const dark = declaredIn(ROOT_BLOCK);
   const light = declaredIn(LIGHT_BLOCK);
@@ -145,43 +139,6 @@ describe('board and gym layout consistency', () => {
   });
 });
 
-describe('journey as a HUD window', () => {
-  const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(m => ({ selector: m[1].trim(), body: m[2] }));
-  const journey = rules.filter(r => /\.journey|\.stage-row/.test(r.selector));
-  const body = (needle: RegExp) => journey.filter(r => needle.test(r.selector)).map(r => r.body).join(';');
-
-  it('keeps every journey label at 11px or larger', () => {
-    const small = journey.flatMap(r => {
-      const sizes = [...r.body.matchAll(/font(?:-size)?:\s*(?:[\w-]+\s+)*?(\d+(?:\.\d+)?)px/g)].map(m => Number(m[1]));
-      return sizes.some(s => s < 11) ? [r.selector] : [];
-    });
-    expect(small).toEqual([]);
-  });
-  it('stops stretching the painting: terrain is cropped, never distorted', () => {
-    expect(body(/\.journey-terrain/)).toMatch(/object-fit:\s*cover/);
-    expect(body(/\.journey-terrain/)).not.toMatch(/object-fit:\s*fill/);
-  });
-  it('frames the expanded map with a hairline panel border and corner brackets', () => {
-    expect(body(/\.journey\.is-expanded \.journey-map(?!::)/)).toMatch(/border:\s*1px solid var\(--c-panel-border\)/);
-    expect(css).toMatch(/\.journey\.is-expanded \.journey-map::before/);
-  });
-  it('tints the painting per theme so the map sits under the UI', () => {
-    expect(css.match(/--c-journey-overlay:/g)?.length).toBe(2);
-    expect(css).toMatch(/\.journey-map::after[^{]*\{[^}]*var\(--c-journey-overlay\)/);
-  });
-  it('keeps route, checkpoints and hero above the overlay', () => {
-    for (const selector of [/\.journey-route/, /\.journey-checkpoint(?![-.:\w])/, /\.journey-hero/]) {
-      expect(Number(body(selector).match(/z-index:\s*(\d+)/)?.[1] ?? 0)).toBeGreaterThanOrEqual(1);
-    }
-  });
-  it('styles stage rows as plain checklist rows: a hairline, no card background, no radius', () => {
-    const row = body(/\.stage-row(?![-.:\w])/);
-    expect(row).toMatch(/border-bottom:\s*1px solid var\(--c-divider-flat\)/);
-    expect(row).not.toMatch(/border-radius:\s*[1-9]/);
-    expect(row).not.toMatch(/background:\s*var\(--c-accent-glass\)/);
-  });
-});
-
 describe('semantic colours are tokens, not literals', () => {
   // Red/green/amber were typed in ~40 times with no light-theme value (1.5-2.6:1 on the light page).
   const HUES = /#f87171|#4ade80|#fbbf24|rgba?\(\s*248\s*,\s*113\s*,\s*113|rgba?\(\s*74\s*,\s*222\s*,\s*128|rgba?\(\s*251\s*,\s*191\s*,\s*36/gi;
@@ -204,9 +161,9 @@ describe('semantic colours are tokens, not literals', () => {
     expect(status).not.toMatch(/#67e8f9|#0891b2|#dff0fb|#0b1e32|rgba\(\s*(103|8|5|237)\s*,/i);
     expect(status).toMatch(/var\(--c-accent-text\)/);
   });
-  it('keeps colour literals in components to the painted map halo and the landing glow (ratchet: lower, never raise)', () => {
+  it('keeps colour literals in components to the landing glow (ratchet: lower, never raise)', () => {
     const literals = tsxSources().flatMap(({ file, text }) => (text.match(/#[0-9a-fA-F]{6}\b|rgba?\(/g) ?? []).map(() => file));
-    expect(literals.length).toBeLessThanOrEqual(3);
+    expect(literals.length).toBeLessThanOrEqual(1);
   });
   it('components never set text in the fill accent, which fails AA on the light page', () => {
     const offenders = tsxSources().filter(({ text }) => /(?<![\w-])color:\s*(?:[^,;{}\n]*?\?\s*)?'var\(--c-accent\)'/.test(text)).map(({ file }) => file);

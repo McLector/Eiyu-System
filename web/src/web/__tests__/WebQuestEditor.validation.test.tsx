@@ -38,6 +38,21 @@ describe('WebQuestEditor name validation and default days', () => {
     expect(screen.getByRole('button', { name: 'CREATE QUEST' })).toBeDisabled();
   });
 
+  it('does not accuse an untouched form, but flags a name cleared after typing', async () => {
+    const user = userEvent.setup();
+    render(<WebQuestEditor onClose={vi.fn()} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Quest name' })).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.getByRole('button', { name: 'CREATE QUEST' })).toBeDisabled();
+    const name = screen.getByRole('textbox', { name: 'Quest name' });
+    await user.type(name, 'Run');
+    await user.clear(name);
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter a quest name.');
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    // Beside the label, not under the field: an error must not add a line to a dialog that may not scroll.
+    expect(screen.getByRole('alert').closest('.field-label-row')).toHaveTextContent('QUEST NAME');
+  });
+
   it('accepts 80 code points and rejects 81 before saving', async () => {
     const user = userEvent.setup();
     render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);

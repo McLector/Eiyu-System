@@ -220,3 +220,36 @@ export function SunIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+
+export function EditIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></svg>;
+}
+export function ArchiveIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></svg>;
+}
+export function TrashIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13" /></svg>;
+}
+export function MoveIcon({ size = 16, direction = 'right' }: { size?: number; direction?: 'right' | 'left' }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke} style={direction === 'left' ? { transform: 'scaleX(-1)' } : undefined}><path d="M4 12h14M13 6l6 6-6 6" /></svg>;
+}
+export function GripIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg>;
+}
+export function ListIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" /></svg>;
+}
+export function RestoreIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><path d="M4 12a8 8 0 1 0 8-8M4 4v5h5" /></svg>;
+}
+export function UndoIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>;
+}
+export function PlayIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><path d="M8 5l11 7-11 7z" /></svg>;
+}
+export function LockIcon({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" {...stroke}><rect x="5" y="11" width="14" height="9" rx="1.5" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>;
+}

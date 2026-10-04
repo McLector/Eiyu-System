@@ -8,6 +8,7 @@ const WEB = 'http://127.0.0.1:5176';
 const uid = '12000000-0000-4000-8000-000000000001';
 const rid = '12000000-0000-4000-8000-000000000002';
 const date = '2026-10-01T12:00:00Z';
+const TODAY = new Date().toISOString().slice(0, 10);
 const tables = {
   profiles: [{ user_id: uid, display_name: 'Layout Hero', user_class: 'Ranger', time_zone: 'UTC' }],
   stats: ['STR','DEX','CHA','INT','WIS'].map(stat => ({user_id:uid,stat,xp:stat === 'INT' ? 90 : 0})),
@@ -20,6 +21,10 @@ const tables = {
 };
 for(let q=0;q<5;q++) for(let i=0;i<(q ? 2 : 7);i++) tables.long_quest_stages.push({id:`stage-${q}-${i}`,long_quest_id:'quest-'+q,user_id:uid,name:['Find the gate','Cross the bridge','Enter the cave','Explore the mine','Reach the ruins','Open the vault','Return home'][i],done:false,position:i,description:'Prepare your equipment.\nKeep your companions close.'});
 for(let i=0;i<12;i++) tables.habits.push({id:'habit-'+i,user_id:uid,name:'Training activity '+(i+1),stat:'STR',difficulty:'Medium',easy_version:'One minute',description:'Move with attention and rest between efforts.',quest_type:'habit',archived:false,reminder_time:'07:00:00',days:[0,1,2,3,4,5,6],target_count:null,created_at:date});
+tables.habits.push(
+  {id:'one-0',user_id:uid,name:'Pay rent',stat:'WIS',difficulty:'Easy',easy_version:null,description:'Due this week.',quest_type:'one_time',archived:false,reminder_time:'08:00:00',days:[],target_count:null,scheduled_date:TODAY,genre:'todo',time_set:false,created_at:date},
+  {id:'idea-0',user_id:uid,name:'Try Obsidian',stat:'INT',difficulty:'Easy',easy_version:null,description:'A note app to try.',quest_type:'backlog',archived:false,reminder_time:'08:00:00',days:[],target_count:null,scheduled_date:null,genre:'tool',time_set:false,created_at:date},
+);
 for(let i=0;i<8;i++) tables.gym_exercises.push({id:'exercise-'+i,routine_id:rid,user_id:uid,name:['Bench press','Rows','Overhead press','Lat pulldown','Lateral raise','Tricep extension','Curls','Face pull'][i],sets:3,reps:'6-10',rest_seconds:150,rir:1,rir_max:2,notes:i===0?'Use a controlled tempo. Keep feet firmly on the ground.':null,position:i,media_path:i===0?'synthetic-demo.mp4':null,media_mime:i===0?'video/mp4':null,created_at:date});
 tables.gym_sessions.push({id:'history',routine_id:'deleted-routine',user_id:uid,routine_name:'Retired routine',unit:'lb',status:'completed',started_at:date,completed_at:date,created_at:date});
 tables.gym_entries.push({id:'history-entry',session_id:'history',routine_id:'deleted-routine',user_id:uid,exercise_id:'old-exercise',position:0,weight:45,prescription:{name:'Old press',sets:3,reps:'10',rest_seconds:90,rir:2,notes:null},created_at:date});
@@ -48,7 +53,7 @@ async function fixture(route) {
   if(url.pathname.includes('/rpc/')) {
     if(operation === 'initialize_account_time_zone') data='UTC';
     else if(operation === 'update_profile') { Object.assign(tables.profiles[0],{display_name:input.p_display_name,user_class:input.p_user_class}); data={displayName:input.p_display_name,userClass:input.p_user_class,timeZone:'UTC'}; }
-    else if(operation === 'get_habits_for_date') { const offset=+(url.searchParams.get('offset') || 0), limit=Math.min(1000,+(url.searchParams.get('limit') || 1000)); data=tables.habits.slice(offset,offset+limit); }
+    else if(operation === 'get_habits_for_date') { const offset=+(url.searchParams.get('offset') || 0), limit=Math.min(1000,+(url.searchParams.get('limit') || 1000)); data=tables.habits.filter(h=>h.quest_type!=='backlog').slice(offset,offset+limit); }
     else if(operation === 'read_history_range') data={rows:[],habits:[],recurring_totals:{}};
     else if(operation === 'previous_gym_weights') data=tables.gym_exercises.map(e=>({exercise_id:e.id,weight:20,unit:'kg',completed_at:date}));
     else if(operation === 'start_gym_session') {
@@ -74,6 +79,8 @@ async function fixture(route) {
     } else if(operation === 'discard_gym_session') {
       tables.gym_sessions=tables.gym_sessions.filter(s=>s.id!==input.p_session_id); tables.gym_entries=tables.gym_entries.filter(e=>e.session_id!==input.p_session_id); data=null;
     } else if(operation === 'get_long_quest_definition_receipt') data=null;
+    else if(operation === 'move_backlog_to_one_time') { Object.assign(tables.habits.find(h=>h.id===input.p_id),{quest_type:'one_time',scheduled_date:TODAY,time_set:false}); data=null; }
+    else if(operation === 'move_one_time_to_backlog') { Object.assign(tables.habits.find(h=>h.id===input.p_id),{quest_type:'backlog',scheduled_date:null,days:[],time_set:false}); data=null; }
     else data=[];
   } else if(request.method()==='DELETE') {
     if(failures.remove) { await route.fulfill({status:500,contentType:'application/json',body:JSON.stringify({message:'Fixture delete failed',code:'XX000'})}); return; }
@@ -130,9 +137,9 @@ async function screenshot(page,name,report) {
     fs.writeFileSync(path.join(OUT,name+'.png'),Buffer.from(shot.data,'base64'));
     await capture.detach();
   } else await page.screenshot({path:path.join(OUT,name+'.png'),fullPage:true});
-  const metrics=await page.evaluate(()=>({width:innerWidth,height:innerHeight,scroll:document.documentElement.scrollWidth,fonts:document.fonts.check('14px Inter') && document.fonts.check('700 18px Rajdhani') && document.fonts.check('12px "JetBrains Mono"'),images:[...document.querySelectorAll('.journey img')].every(i=>i.complete && i.naturalWidth>0)}));
+  const metrics=await page.evaluate(()=>({width:innerWidth,height:innerHeight,scroll:document.documentElement.scrollWidth,fonts:document.fonts.check('14px Inter') && document.fonts.check('700 18px Rajdhani') && document.fonts.check('12px "JetBrains Mono"')}));
   assert(metrics.scroll <= metrics.width+1, name+' horizontal overflow');
-  assert(metrics.fonts && metrics.images,name+' missing fonts/art');
+  assert(metrics.fonts,name+' missing fonts');
   report.measurements.push({name,...metrics});
 }
 async function edgeAcceptance(browser, report) {
@@ -167,11 +174,12 @@ async function edgeAcceptance(browser, report) {
     await page.keyboard.press('Escape');
     await weight.focus();
     await page.setViewportSize({ width: 390, height: 420 });
-    assert.equal(await page.getByRole('spinbutton').count(), 3, 'keyboard-height resize retains three cards');
+    // List and detail: one weight field (the selected exercise) instead of the old one-per-row table.
+    assert.equal(await page.getByRole('spinbutton').count(), 1, 'keyboard-height resize keeps the detail pane weight field');
     assert.equal(await weight.inputValue(), '25');
     assert.equal(await weight.evaluate(el => el === document.activeElement), true);
     await screenshot(page, 'edge-keyboard-height', report);
-    report.flows.push('keyboard-height resize preserves exercise capacity, weight and focus');
+    report.flows.push('keyboard-height resize keeps the weight field, its value and focus');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole('button', { name: /Layout Hero, Ranger, rank/ }).click();
     await page.getByRole('menuitem', { name: 'Logout', exact: true }).click();
@@ -199,7 +207,7 @@ function loadProfile(name) {
     tables.long_quest_stages=[];
     for(let q=1;q<600;q++) for(let i=0;i<2;i++) tables.long_quest_stages.push({id:`stage-${q}-${i}`,long_quest_id:'quest-'+q,user_id:uid,name:`Stage ${i+1}`,done:false,position:i,description:null});
     for(let i=0;i<12;i++) tables.long_quest_stages.push({id:`stage-0-${i}`,long_quest_id:'quest-0',user_id:uid,name:`Vault step ${i+1}`,done:false,position:i,description:null});
-    tables.habits=Array.from({length:1100},(_,i)=>({...BASE.habits[i%BASE.habits.length],id:'habit-'+i,name:'Training activity '+(i+1)}));
+    { const daily=BASE.habits.filter(h=>h.quest_type==='habit'); tables.habits=Array.from({length:1100},(_,i)=>({...daily[i%daily.length],id:'habit-'+i,name:'Training activity '+(i+1)})); }
     tables.gym_exercises=Array.from({length:1050},(_,i)=>({...BASE.gym_exercises[0],id:'exercise-'+i,name:'Exercise '+(i+1),position:i,media_path:null,media_mime:null,notes:null}));
     tables.gym_sessions=Array.from({length:120},(_,s)=>({id:'history-'+s,routine_id:rid,user_id:uid,routine_name:'Upper body',unit:'kg',status:'completed',started_at:date,completed_at:date,created_at:date}));
     tables.gym_entries=tables.gym_sessions.flatMap((s,si)=>Array.from({length:10},(_,i)=>({id:`h-${si}-${i}`,session_id:s.id,routine_id:rid,user_id:uid,exercise_id:'exercise-'+i,position:i,weight:20+i,prescription:{name:'Exercise '+(i+1),sets:3,reps:'6-10',rest_seconds:150,rir:2,notes:null},created_at:date})));
@@ -214,7 +222,7 @@ function loadProfile(name) {
 // Reports pairs of visible controls whose boxes genuinely overlap; nested pairs are not overlap.
 async function overlaps(page) {
   return page.evaluate(()=>{
-    const els=[...document.querySelectorAll('[id^="stage-"], .journey-checkpoint, .list-pagination button')].filter(e=>e.offsetParent!==null);
+    const els=[...document.querySelectorAll('.chain-stage-row, .chain-stage-more, .list-pagination button')].filter(e=>e.offsetParent!==null);
     const box=e=>e.getBoundingClientRect(), out=[];
     if(els.length<8) out.push(`detector saw only ${els.length} controls`);
     for(let i=0;i<els.length;i++) for(let j=i+1;j<els.length;j++) {
@@ -245,51 +253,44 @@ async function matrix(browser, profile, report) {
   } finally { await context.close(); }
 }
 async function guardDialog(page) { return page.getByRole('dialog',{name:'Unsaved changes',exact:true}); }
+async function openChain(page,name) {
+  const head=page.getByRole('button',{name:new RegExp(name)}).first();
+  if((await head.getAttribute('aria-expanded'))!=='true') await head.click();
+  return head;
+}
 async function questFlows(browser, report) {
   loadProfile('representative');
   tables.long_quests.unshift({id:'quest-zero',user_id:uid,name:'Empty journey',stat:'STR',description:null,completed_at:null,created_at:date});
   tables.long_quests.push({id:'quest-solo',user_id:uid,name:'Solo journey',stat:'DEX',description:null,completed_at:null,created_at:date});
   tables.long_quest_stages.push({id:'stage-solo-0',long_quest_id:'quest-solo',user_id:uid,name:'Only step',done:false,position:0,description:'Keep this description.'});
   const {context,page}=await openApp(browser); page.on('pageerror',e=>report.errors.push('[quest flows] '+e.message));
-  const card=name=>page.getByRole('button',{name:new RegExp(name)});
-  const pager=page.getByRole('navigation',{name:'Long Quests pages'});
+  const pager=page.getByRole('navigation',{name:'Chains pages'});
   try {
     await page.goto(WEB+'/longquests');
     // Zero-stage repair keeps the quest and gains a stage through the atomic save.
-    await card('Empty journey').click();
-    await page.locator('.journey-repair').waitFor();
+    await openChain(page,'Empty journey'); await page.getByText('This chain has no stages yet. Edit it to add the first one.').waitFor();
     await page.getByRole('button',{name:'EDIT',exact:true}).click();
     await page.getByRole('button',{name:'+ Add stage',exact:true}).click();
     await page.getByPlaceholder('Stage 1...').fill('First waypoint');
     await page.getByRole('button',{name:'SAVE CHANGES',exact:true}).click();
-    await page.getByText('0 / 1 stages completed').waitFor();
+    await page.getByRole('button',{name:/First waypoint/}).waitFor();
     assert.equal(tables.long_quest_stages.filter(s=>s.long_quest_id==='quest-zero').length,1);
     report.flows.push('R4 zero-stage repair saves a first stage atomically');
-    await card('Empty journey').click();
-    // Many-stage quest: five checkpoints per segment with labelled navigation.
-    await page.goto(WEB+'/longquests'); await page.getByRole('button',{name:/The crystal vault/}).click();
-    const checkpoints=page.locator('.journey.is-expanded .journey-checkpoint');
-    assert.equal(await checkpoints.count(),5);
-    await page.getByRole('button',{name:'Next segment',exact:true}).click();
-    await page.getByText('Segment 2 / 2').waitFor(); assert.equal(await checkpoints.count(),2);
-    await page.getByRole('button',{name:'Previous segment',exact:true}).click();
-    await page.getByText('Segment 1 / 2').waitFor();
-    report.flows.push('R4 more than five checkpoints navigate by labelled segments');
     // Self-test: the detector must report a forced overlap, otherwise a clean result means nothing.
-    const forced=await page.addStyleTag({content:'.journey-checkpoint{left:0!important;top:0!important}'});
+    await page.goto(WEB+'/longquests'); await openChain(page,'The crystal vault');
+    const forced=await page.addStyleTag({content:'.chain-stage-row,.chain-stage-more{position:fixed!important;left:0!important;top:0!important}'});
     assert.ok((await overlaps(page)).length>0,'overlap detector failed to see a forced overlap');
     await forced.evaluate(el=>el.remove());
-    // The named complaint: pagination controls must not sit on top of a phase checkbox when expanded.
     for(const [w,h] of [[320,568],[390,844],[768,1024],[1280,720],[1440,900],[1920,1080]]) {
       await page.setViewportSize({width:w,height:h});
       assert.deepEqual(await overlaps(page),[],`control overlap at ${w}x${h}`);
     }
     await page.setViewportSize({width:1440,height:900});
-    report.flows.push('R4 expanded journey: no control overlap at six sizes');
+    report.flows.push('Chain: no control overlap at six sizes');
     // Evidence for the HUD framing: the expanded map in both themes at phone and desktop widths.
     for(const dark of [true,false]) {
       await theme(page,dark);
-      for(const [w,h] of [[320,568],[390,844],[1440,900]]) { await page.setViewportSize({width:w,height:h}); await screenshot(page,`journey-expanded-${w}-${h}-${dark?'dark':'light'}`,report); }
+      for(const [w,h] of [[320,568],[390,844],[1440,900]]) { await page.setViewportSize({width:w,height:h}); await screenshot(page,`chain-expanded-${w}-${h}-${dark?'dark':'light'}`,report); }
     }
     await theme(page,true); await page.setViewportSize({width:1440,height:900});
     // The editor is a modal dialog: the list behind it is inert, and a dirty close asks first; Keep editing preserves input.
@@ -314,10 +315,10 @@ async function questFlows(browser, report) {
     assert.equal(await edit.evaluate(el=>el===document.activeElement),true,'focus returns to Edit');
     assert.equal(tables.long_quests.find(q=>q.id==='quest-0').name,'The crystal vault','abandoned edit must not save');
     // Single-stage quests stay editable without removal, and keep stage id/description.
-    await card('The crystal vault').click();
+    await openChain(page,'The crystal vault');
     const pagesBefore=+(await pager.getByText(/ \/ /).innerText()).split('/')[1];
-    for(let i=1;i<pagesBefore;i++) await pager.getByRole('button',{name:'Next Long Quests page'}).click();
-    await card('Solo journey').click();
+    for(let i=1;i<pagesBefore;i++) await pager.getByRole('button',{name:'Next Chains page'}).click();
+    await openChain(page,'Solo journey');
     await page.getByRole('button',{name:'EDIT',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:/Remove stage/}).count(),0);
     await page.getByPlaceholder('Stage 1...').fill('Only step, renamed');
@@ -345,14 +346,12 @@ async function questFlows(browser, report) {
     assert.ok(pagesAfter<=pagesBefore,'page count must not grow after deletion');
     assert.match(await pager.getByText(/ \/ /).innerText(),new RegExp(`^${pagesAfter} / ${pagesAfter}$`),'page clamps to the last page');
     report.flows.push('R4 deletion cancel restores focus, failure keeps dialog, retry deletes and page clamps');
-    // Artwork survives confirmed completion and undo.
-    await page.goto(WEB+'/longquests'); await page.getByRole('button',{name:/The crystal vault/}).click();
+    await page.goto(WEB+'/longquests'); await openChain(page,'The crystal vault');
     await page.locator('#stage-stage-0-0').click();
-    await page.waitForFunction(()=>document.querySelectorAll('.journey-checkpoint.completed').length===1);
+    await page.locator('.chain-stage.is-done').first().waitFor();
     await page.locator('#stage-stage-0-0').click();
-    await page.waitForFunction(()=>document.querySelectorAll('.journey-checkpoint.completed').length===0);
-    assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.journey img')].every(i=>i.complete && i.naturalWidth>0)),true);
-    report.flows.push('R4 artwork intact after confirmed completion and undo');
+    await page.waitForFunction(()=>document.querySelectorAll('.chain-stage.is-done').length===0);
+    report.flows.push('Chain: stage completes and undoes; Done and Current chips follow');
   } finally { await context.close(); }
 }
 async function gymFlows(browser, report) {
@@ -384,13 +383,14 @@ async function gymFlows(browser, report) {
     assert.equal(await weight.inputValue(),'25'); assert.equal(await weight.evaluate(el=>el===document.activeElement),true);
     report.flows.push(`R4 background refresh applied new data while typing retained input and focus (${gymReads-before} refresh requests)`);
     // Definitions cannot be edited while a snapshot draft exists.
-    assert.equal(await page.getByRole('button',{name:'Edit',exact:true}).count(),0);
+    assert.equal(await page.getByRole('button',{name:/^Exercise actions for /}).isDisabled(),true);
     await page.getByRole('button',{name:'Discard draft',exact:true}).click();
     await page.getByRole('dialog',{name:'Discard workout'}).getByRole('button',{name:'Discard workout',exact:true}).click();
     await page.getByRole('button',{name:'Start workout',exact:true}).waitFor();
     report.flows.push('R4 exercise definitions are not editable while a draft snapshot exists');
     // Clearing a numeric prescription must stay blank, never coerce to zero, and block saving.
-    await page.getByRole('button',{name:'Edit',exact:true}).first().click();
+    await page.getByRole('button',{name:/^Exercise actions for /}).click();
+    await page.getByRole('menuitem',{name:'Edit exercise'}).click();
     const sets=page.getByLabel('Sets',{exact:true});
     await sets.fill(''); await sets.blur();
     assert.equal(await sets.inputValue(),'');
@@ -398,6 +398,22 @@ async function gymFlows(browser, report) {
     assert.equal(await page.getByRole('dialog').count(),1,'invalid blank sets must keep the editor open');
     assert.equal(tables.gym_exercises[0].sets,3);
     report.flows.push('R4 cleared Sets stays blank (not zero) and blocks save');
+    await page.keyboard.press('Escape');
+    if(await (await guardDialog(page)).isVisible()) await page.getByRole('button',{name:'Leave without saving',exact:true}).click();
+    await page.locator('[data-eiyu-dialog]').waitFor({state:'hidden'});
+    for(const [w,h] of VIEWPORTS) {
+      await page.setViewportSize({width:w,height:h});
+      await page.getByRole('button',{name:'Create routine',exact:true}).click();
+      await page.getByRole('dialog',{name:'Create routine'}).waitFor();
+      await assertFits(page,`create routine ${w}x${h}`);
+      await page.keyboard.press('Escape'); await page.locator('[data-eiyu-dialog]').waitFor({state:'hidden'});
+      await page.getByRole('button',{name:'Add exercise',exact:true}).click();
+      await page.getByRole('dialog',{name:'Add exercise'}).waitFor();
+      await assertFits(page,`add exercise ${w}x${h}`);
+      await page.keyboard.press('Escape'); await page.locator('[data-eiyu-dialog]').waitFor({state:'hidden'});
+    }
+    await page.setViewportSize({width:1440,height:900});
+    report.flows.push('gym: routine and exercise dialogs fit at three viewports');
   } finally { await context.close(); }
 }
 async function profileAcceptance(browser, profile, report) {
@@ -417,24 +433,20 @@ async function profileAcceptance(browser, profile, report) {
       await page.getByText('0 / 12 stages completed').waitFor();
       report.flows.push(`R5 large catalog: ${tables.long_quests.length} quests paged ${pages}x; quest-0 keeps all 12 stages whose rows sit past the 1,000-row ceiling`);
       await page.goto(WEB+'/gym'); await page.getByRole('button',{name:'Start workout',exact:true}).click();
-      const gymPages=Math.ceil(tables.gym_exercises.length/6);
+      const gymPages=Math.ceil(tables.gym_exercises.length/8);
       await page.getByText(new RegExp(`^1 / ${gymPages}$`)).waitFor();
       report.flows.push(`R5 large Gym routine: ${tables.gym_exercises.length} exercises paged ${gymPages}x`);
       // The Board reads habits in bounded batches, so a 1,100-habit catalog must not be cut off at the 1,000-row API cap.
-      await page.goto(WEB+'/board'); await page.getByText(`${tables.habits.length} items`,{exact:true}).first().waitFor();
+      await page.goto(WEB+'/board'); await page.getByRole('region',{name:'Daily Quest'}).getByText(`${tables.habits.length} items`,{exact:true}).waitFor();
       report.flows.push(`R5 large Board: all ${tables.habits.length} habits shown, none cut off at the API cap`);
     }
     if(profile==='long') {
-      await page.getByRole('button',{name:/Q0 /}).click();
+      await openChain(page,'Q0 ');
       assert.deepEqual(await overlaps(page),[],'long names must not overlap controls');
       await page.goto(WEB+'/gym');
       await page.getByRole('button',{name:/Ünïcödé/}).first().waitFor();
-      await page.locator('.gym-notes').first().click();
-      const dialog=page.getByRole('dialog',{name:'Exercise notes'});
-      await dialog.waitFor();
-      assert.ok((await dialog.innerText()).length>=900,'full note is visible, not truncated');
-      assert.equal(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1),true,'note dialog does not scroll horizontally');
-      await page.keyboard.press('Escape');
+      await page.locator('.gym-list-item').first().click(); assert.ok((await page.locator('.gym-detail .details-note').innerText()).length>=900,'full note is visible, not truncated');
+      assert.equal(await page.locator('.gym-detail .details-note').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true,'note does not overflow horizontally');
       report.flows.push('R5 long Unicode names, descriptions and a 1,000-character note stay reachable without overlap');
     }
   } finally { await context.close(); }
@@ -473,21 +485,111 @@ async function keyboardAcceptance(browser, report) {
     assert.equal(await trigger.evaluate(el=>el===document.activeElement),true,'Escape restores focus to the account button');
     report.flows.push('R5 account menu: arrows, Home/End, Escape and focus restoration');
     // Nested confirmation: Escape closes only the topmost dialog and restores focus beneath it.
-    await page.goto(WEB+'/gym'); await page.getByRole('button',{name:'Delete routine',exact:true}).click();
+    await page.goto(WEB+'/gym');
+    await page.getByRole('button',{name:/^Routine actions for /}).click();
+    await page.getByRole('menuitem',{name:'Delete routine'}).click();
     await page.getByRole('dialog',{name:'Delete routine'}).waitFor();
     await page.keyboard.press('Escape'); await page.getByRole('dialog',{name:'Delete routine'}).waitFor({state:'hidden'});
-    assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'Delete routine');
-    report.flows.push('R5 confirmation dialog: Escape closes it and focus returns to its opener');
-    // Cursor fallbacks: text, disabled and resize semantics survive the sword cursor.
+    assert.match(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),/^Routine actions for /);
+    report.flows.push('R5 confirmation dialog: Escape closes it and focus returns to the menu that opened it');
+    // Cursors: native text cursor in fields, plain pointer on buttons, no custom cursor image.
     await page.getByRole('button',{name:'Create routine',exact:true}).click();
     const cursors=await page.evaluate(()=>{
       const css=e=>getComputedStyle(e).cursor;
       const input=document.querySelector('[data-eiyu-dialog] input[type=text], [data-eiyu-dialog] input:not([type])');
       return {text:input?css(input):null,button:css(document.querySelector('[data-eiyu-dialog] button'))};
     });
-    assert.equal(cursors.text,'text','text fields keep the native text cursor');
-    assert.match(cursors.button,/sword-action\.svg.*pointer/,'buttons use the sword with a pointer fallback');
+    assert.equal(cursors.text,'text','text fields keep the native text cursor'); assert.equal(cursors.button,'pointer','buttons use the default pointer'); assert.ok(!/url\(/.test(await page.evaluate(()=>getComputedStyle(document.body).cursor)),'no custom cursor image');
     report.cursors=cursors; report.flows.push('R5 text-field cursor fallback checked');
+  } finally { await context.close(); }
+}
+const VIEWPORTS=[[1366,650],[1280,600],[390,660]];
+async function assertFits(page,label) {
+  const m=await page.locator('[data-eiyu-dialog] .compact-dialog-body').last().evaluate(el=>({sh:el.scrollHeight,ch:el.clientHeight}));
+  assert.ok(m.sh<=m.ch+1,`${label}: dialog body scrolls (${m.sh} > ${m.ch})`);
+}
+async function boardFlows(browser, report) {
+  loadProfile('representative');
+  for(let i=0;i<4;i++) tables.habits.push({...BASE.habits[0],id:'retired-'+i,name:'Retired habit '+(i+1),archived:true});
+  const {context,page}=await openApp(browser); page.on('pageerror',e=>report.errors.push('[board flows] '+e.message));
+  const lane=name=>page.getByRole('region',{name,exact:true});
+  try {
+    await page.goto(WEB+'/board'); await lane('Backlog').getByText('Try Obsidian').waitFor();
+    // Four compact cards fit a Daily lane at the two laptop viewports.
+    for(const [w,h] of VIEWPORTS.slice(0,2)) {
+      await page.setViewportSize({width:w,height:h});
+      await page.waitForTimeout(250);
+      const shown=await lane('Daily Quest').locator('.quest-card').count();
+      assert.ok(shown>=4,`Daily lane shows ${shown} cards at ${w}x${h}, expected at least 4`);
+      report.cardsPerLane=report.cardsPerLane||{}; report.cardsPerLane[`${w}x${h}`]=shown;
+      await screenshot(page,`board-${w}-${h}`,report);
+    }
+    await page.setViewportSize({width:1440,height:900});
+    // Details from the card; Edit Quest from the menu.
+    await lane('One Time Quest').getByRole('button',{name:'View Pay rent details'}).click();
+    const details=page.getByRole('dialog',{name:'Quest details'}); await details.waitFor();
+    assert.equal(await details.locator('input,textarea,select').count(),0,'details are read-only');
+    await assertFits(page,'details dialog');
+    await page.keyboard.press('Escape'); await details.waitFor({state:'hidden'});
+    // Move by menu, then back by drag.
+    await lane('Backlog').getByRole('button',{name:'More actions for Try Obsidian'}).click();
+    await page.getByRole('menuitem',{name:'Move Try Obsidian to One-time'}).click();
+    await lane('One Time Quest').getByText('Try Obsidian').waitFor();
+    assert.equal(tables.habits.find(h=>h.id==='idea-0').quest_type,'one_time');
+    await lane('One Time Quest').locator('[data-testid="quest-card-idea-0"] .quest-card-grip').dragTo(lane('Backlog'));
+    await lane('Backlog').getByText('Try Obsidian').waitFor();
+    assert.equal(tables.habits.find(h=>h.id==='idea-0').quest_type,'backlog');
+    await lane('Backlog').locator('[data-testid="quest-card-idea-0"] .quest-card-grip').dragTo(lane('One Time Quest'));
+    await lane('One Time Quest').getByText('Try Obsidian').waitFor();
+    await lane('One Time Quest').getByRole('button',{name:'More actions for Try Obsidian'}).click();
+    await page.getByRole('menuitem',{name:'Move Try Obsidian to Backlog'}).click();
+    await lane('Backlog').getByText('Try Obsidian').waitFor();
+    assert.equal(tables.habits.find(h=>h.id==='idea-0').quest_type,'backlog');
+    report.flows.push('board: Backlog card moves by menu and by drag in both directions');
+    // All Habits is a dialog; the dialogs never scroll at the three gated viewports.
+    await lane('Daily Quest').getByRole('button',{name:/ALL HABITS/}).click();
+    await page.getByRole('dialog',{name:'All habits'}).waitFor();
+    for(const [w,h] of VIEWPORTS) { await page.setViewportSize({width:w,height:h}); await assertFits(page,`All habits ${w}x${h}`); }
+    await page.keyboard.press('Escape');
+    for(const [w,h] of VIEWPORTS) {
+      await page.setViewportSize({width:w,height:h});
+      for(const type of ['Habit','One-time','Backlog']) {
+        await page.goto(WEB+'/board');
+        await lane('Daily Quest').getByRole('button',{name:'ADD QUEST'}).click();
+        await page.getByRole('group',{name:'Quest type'}).getByRole('button',{name:type,exact:true}).click();
+        await assertFits(page,`new ${type} quest ${w}x${h}`);
+        await screenshot(page,`new-${type.toLowerCase()}-${w}-${h}`,report);
+      }
+      await page.goto(WEB+'/board');
+      await lane('Daily Quest').getByRole('button',{name:/^More actions for Training activity 1$/}).first().click();
+      await page.getByRole('menuitem',{name:/^Edit Training activity 1$/}).click();
+      await page.getByRole('dialog',{name:'EDIT QUEST'}).waitFor();
+      await assertFits(page,`edit habit ${w}x${h}`);
+      // Editing keeps every field of a One-time and a Backlog quest too.
+      for(const [laneName,quest] of [['One Time Quest','Pay rent'],['Backlog','Try Obsidian']]) {
+        await page.goto(WEB+'/board');
+        if(w<1200) await page.getByRole('tab',{name:new RegExp(laneName)}).click();
+        await lane(laneName).getByRole('button',{name:`More actions for ${quest}`}).click();
+        await page.getByRole('menuitem',{name:`Edit ${quest}`}).click();
+        await page.getByRole('dialog',{name:'EDIT QUEST'}).waitFor();
+        await assertFits(page,`edit ${laneName} ${w}x${h}`);
+      }
+      // A confirm dialog and Archived habits.
+      await page.goto(WEB+'/board');
+      if(w<1200) await page.getByRole('tab',{name:/Daily Quest/}).click();
+      await lane('Daily Quest').getByRole('button',{name:/^More actions for Training activity 1$/}).first().click();
+      await page.getByRole('menuitem',{name:/^Delete Training activity 1$/}).click();
+      await page.getByRole('dialog',{name:/ permanently\?$/}).waitFor();
+      await assertFits(page,`delete confirm ${w}x${h}`);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button',{name:/Layout Hero, Ranger, rank/}).click();
+      await page.getByRole('menuitem',{name:'Archived habits',exact:true}).click();
+      await page.getByRole('dialog',{name:'Archived habits'}).getByText('Retired habit 1').waitFor();
+      await assertFits(page,`archived habits ${w}x${h}`);
+      await screenshot(page,`archived-${w}-${h}`,report);
+    }
+    await page.setViewportSize({width:1440,height:900});
+    report.flows.push('board: quest editors (three types, create and edit), details, confirm, Archived habits and All habits fit without scrolling at 1366x650, 1280x600 and 390x660');
   } finally { await context.close(); }
 }
 async function main() {
@@ -504,7 +606,7 @@ async function main() {
     }
     if (process.argv.includes('--profiles')) {
       const only=process.argv.find(a=>a.startsWith('--only='))?.slice(7).split(',');
-      const steps={quest:()=>questFlows(browser,report),gym:()=>gymFlows(browser,report),keyboard:()=>keyboardAcceptance(browser,report),
+      const steps={board:()=>boardFlows(browser,report),quest:()=>questFlows(browser,report),gym:()=>gymFlows(browser,report),keyboard:()=>keyboardAcceptance(browser,report),
         zoom:async()=>{ for(const p of ['empty','large','long']) await zoomAcceptance(p,report); },
         empty:()=>profileAcceptance(browser,'empty',report),large:()=>profileAcceptance(browser,'large',report),long:()=>profileAcceptance(browser,'long',report),representative:()=>profileAcceptance(browser,'representative',report)};
       for(const [key,run] of Object.entries(steps)) if(!only || only.includes(key)) { console.log('running',key); await run(); }
@@ -574,25 +676,18 @@ async function main() {
       }
     }
     await page.setViewportSize({width:1440,height:900});
-    await page.getByRole('button',{name:/The crystal vault/}).click();
-    assert.equal(await page.locator('.journey.is-expanded .journey-map').evaluate(el=>el.getBoundingClientRect().height),240);
-    await page.locator('.journey.is-expanded').getByRole('button',{name:'Map checkpoint 2: Cross the bridge. Locked. Complete earlier stages first.',exact:true}).click();
-    await page.waitForFunction(()=>document.getElementById('stage-stage-0-1')===document.activeElement);
-    await screenshot(page,'quests-expanded',report);
+    await openChain(page,'The crystal vault'); await screenshot(page,'quests-expanded',report);
     await page.locator('#stage-stage-0-0').click();
     await page.getByRole('status',{name:'Confirmed XP reward'}).waitFor();
     assert.equal(await page.getByText('INT +20 XP',{exact:true}).count(),1);
-    await page.waitForFunction(()=>document.querySelector('.journey-checkpoint.completed')!==null);
+    await page.locator('.chain-stage.is-done').first().waitFor();
     await screenshot(page,'confirmed-xp',report);
     report.flows.push('confirmed actual XP and checkpoint advancement');
     await page.goto(WEB+'/gym');
-    await page.getByRole('button',{name:'Bench press',exact:true}).click();
-    await page.waitForFunction(()=>{const v=document.querySelector('video.gym-media');return v && v.readyState>=2 && !v.paused && v.currentTime>0;});
+    await page.locator('.gym-list-item').first().click();
+    await page.waitForFunction(()=>{const v=document.querySelector('video.gym-media');return v && v.readyState>=1;});
     assert(await page.locator('video.gym-media').evaluate(v=>v.muted && v.controls && v.playsInline));
-    await page.locator('video.gym-media').evaluate(v=>window.closedPlayer=v);
-    await page.keyboard.press('Escape');
-    assert(await page.evaluate(()=>window.closedPlayer.paused));
-    report.flows.push('muted inline MP4 autoplay and pause on close');
+    report.flows.push('video guide is muted, inline and controllable in the detail pane');
     await page.getByRole('button',{name:'Start workout',exact:true}).click();
     await page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'}).fill('20');
     await page.getByRole('button',{name:/Layout Hero, Ranger, rank/}).click(); await page.getByRole('menuitem',{name:'Edit details'}).click();
@@ -600,9 +695,9 @@ async function main() {
     await page.getByRole('button',{name:'Close EDIT DETAILS',exact:true}).click();
     await page.getByRole('dialog',{name:'EDIT DETAILS',exact:true}).waitFor({state:'hidden'});
     assert.equal(await page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'}).inputValue(),'20');
-    await page.getByRole('link',{name:'LONG QUESTS',exact:true}).click(); await page.getByRole('button',{name:'Keep editing',exact:true}).click();
+    await page.getByRole('link',{name:'CHAIN PROGRESSION',exact:true}).click(); await page.getByRole('button',{name:'Keep editing',exact:true}).click();
     assert(page.url().includes('/gym'));
-    await page.getByRole('button',{name:'Next Exercises page'}).click();
+    await page.locator('.gym-list-item',{hasText:'Curls'}).click();
     assert.equal(await page.getByRole('spinbutton',{name:'Current weight for Curls in kg'}).inputValue(),'');
     await page.getByRole('spinbutton',{name:'Current weight for Curls in kg'}).press('e');
     await page.getByRole('button',{name:'Finish workout',exact:true}).click();
@@ -642,12 +737,8 @@ async function main() {
         }
       }
     }
-    await page.goto(WEB+'/longquests'); await page.emulateMedia({reducedMotion:'reduce'});
-    assert.equal(await page.locator('.journey-hero').first().evaluate(el=>getComputedStyle(el).transitionDuration),'0s');
-    await page.route('**/art/journey-terrain.webp',route=>route.abort());
-    await page.reload(); await page.locator('.journey-checkpoint').first().waitFor();
-    assert.equal(await page.locator('.journey-checkpoint').count()>0,true);
-    report.flows.push('reduced motion and functional missing-art fallback');
+    await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).waitFor();
+    assert.equal(await page.locator('.journey').count(),0,'the animated map is gone'); report.flows.push('Chain page has no animated map');
     const profile=path.join(OUT,'zoom-profile'); fs.mkdirSync(path.join(profile,'Default'),{recursive:true});
     fs.writeFileSync(path.join(profile,'Default','Preferences'),JSON.stringify({partition:{default_zoom_level:{x:Math.log(2)/Math.log(1.2)}}}));
     zoom=await chromium.launchPersistentContext(profile,{channel:'chrome',headless:true,viewport:null,args:['--window-size=1280,900']}); await prepare(zoom);

@@ -1,8 +1,10 @@
 export type Stat = 'STR' | 'INT' | 'DEX' | 'WIS' | 'CHA';
 export type Rank = 'E' | 'D' | 'C' | 'B' | 'A' | 'S';
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
-/** Recurring habit vs one-time (today-only) quest (improvement-pass #7). */
-export type QuestType = 'habit' | 'one_time';
+/** Recurring habit, one-time (dated) quest, or a Backlog idea with no date. */
+export type QuestType = 'habit' | 'one_time' | 'backlog';
+/** What a One-time or Backlog quest is about. Habits have no genre. */
+export type QuestGenre = 'tool' | 'concept' | 'article' | 'software_idea' | 'todo';
 
 export interface StatData {
   level: number;
@@ -20,6 +22,14 @@ export interface Quest {
   /** Optional note attached to the quest (improvement-pass #8). */
   description: string | null;
   questType: QuestType;
+  /** One-time and Backlog quests only; null for habits and untagged quests. */
+  genre?: QuestGenre | null;
+  /** False when a One-time quest has no set time (the stored time is a placeholder). Defaults to true. */
+  timeSet?: boolean;
+  /** One-time quests only: the stored "YYYY-MM-DD" scheduled date; null/absent otherwise. */
+  scheduledDate?: string | null;
+  /** Row creation time, used to list Backlog newest first. */
+  createdAt?: string;
   /** Catalog lifecycle state; archived habits remain visible in All Habits. */
   archived?: boolean;
   time: string;

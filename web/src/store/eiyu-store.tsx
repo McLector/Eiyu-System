@@ -17,6 +17,7 @@ import {
   completeHabitRecovery,
   createHabit,
   deleteLongQuest,
+  fetchBacklogQuests,
   fetchLongQuests,
   fetchProfile,
   updateProfile,
@@ -25,6 +26,8 @@ import {
   formatError,
   incrementHabitProgress,
   initialUser,
+  moveBacklogToOneTime,
+  moveOneTimeToBacklog,
   rankFromStats,
   setStageDoneWithReceipt,
   saveAtomicLongQuest,
@@ -55,6 +58,7 @@ export const queryClient = new QueryClient({
 });
 
 const habitsTodayKey = (userId?: string) => ['habits', 'today', userId ?? null] as const;
+const backlogKey = (userId?: string) => ['backlog', userId ?? null] as const;
 const longQuestsKey = (userId?: string) => ['longQuests', userId ?? null] as const;
 
 interface EiyuStore {
@@ -62,6 +66,12 @@ interface EiyuStore {
   questsLoading: boolean;
   questsError: string | null;
   retryQuests: () => Promise<void>;
+  /** Backlog quests: ideas with no date, newest first. */
+  backlog: Quest[];
+  backlogLoading: boolean;
+  /** Server-dated to the account's today; single-flight per quest. */
+  moveToOneTime: (id: string) => Promise<void>;
+  moveToBacklog: (id: string) => Promise<void>;
   /** Full completion if not yet done, undo if already done. */
   toggleQuest: (id: string) => Promise<boolean>;
   /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
@@ -110,6 +120,12 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     queryFn: () => fetchTodayHabits(userId!),
     enabled: !!userId,
   });
+  // Read Backlog only after the board read: that read runs the server rollover that can add quests to Backlog.
+  const backlogQuery = useQuery({
+    queryKey: backlogKey(userId),
+    queryFn: () => fetchBacklogQuests(userId!),
+    enabled: !!userId && habitsQuery.isSuccess,
+  });
   const profileQuery = useQuery({
     queryKey: ['profile', userId ?? null],
     queryFn: () => fetchProfile(userId!),
@@ -127,6 +143,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   });
 
   const quests = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
+  const backlog = useMemo(() => backlogQuery.data ?? [], [backlogQuery.data]);
   const longQuests = useMemo(() => longQuestsQuery.data ?? [], [longQuestsQuery.data]);
   const stats = useMemo(() => statsQuery.data ?? initialUser.stats, [statsQuery.data]);
   const profile = profileQuery.data ?? null;
@@ -139,7 +156,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const delay = millisecondsUntilNextAccountDay(new Date(), profile.timeZone) + 50;
       timer = setTimeout(() => {
         if (!active) return;
-        qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }).finally(scheduleNextRollover);
+        qc.invalidateQueries({ queryKey: habitsTodayKey(userId) })
+          .then(() => qc.invalidateQueries({ queryKey: backlogKey(userId) }))
+          .finally(scheduleNextRollover);
       }, delay);
     };
     scheduleNextRollover();
@@ -169,9 +188,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     activeUserId.current = userId;
   }, [qc, userId]);
 
+  // A failed Backlog read is a board error too; otherwise it would look like an empty Backlog.
   const questsLoadError = retryingQuests
     ? undefined
-    : [habitsQuery.error, profileQuery.error, statsQuery.error].find((e): e is Error => !!e);
+    : [habitsQuery.error, backlogQuery.error, profileQuery.error, statsQuery.error].find((e): e is Error => !!e);
   const questsError = questsLoadError ? formatError(questsLoadError) : questActionError;
   const longQuestsError =
     longQuestsQuery.isPending || retryingLongQuests
@@ -302,14 +322,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         throw new Error('This quest was deleted. Close this editor and reload the board.');
       }
       if (existingId) {
-        await updateHabit(existingId, input, quests.find(quest => quest.id === existingId)?.name);
+        await updateHabit(existingId, input, (quests.find(quest => quest.id === existingId) ?? backlog.find(quest => quest.id === existingId))?.name);
       } else {
         await createHabit(userId, input);
       }
-      await qc.invalidateQueries({ queryKey: ['habits'] });
+      await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
       setQuestActionError(null);
     },
-    [userId, qc, quests]
+    [userId, qc, quests, backlog]
   );
 
   const runLifecycle = useCallback(
@@ -325,11 +345,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
 
           if (operation === 'delete') {
             deletedHabitIds.current.add(id);
-            qc.setQueriesData<Quest[]>({ queryKey: ['habits'] }, rows =>
-              rows?.filter(row => row.id !== id)
-            );
+            qc.setQueriesData<Quest[]>({ queryKey: ['habits'] }, rows => rows?.filter(row => row.id !== id));
+            qc.setQueriesData<Quest[]>({ queryKey: ['backlog'] }, rows => rows?.filter(row => row.id !== id));
           }
-          await qc.invalidateQueries({ queryKey: ['habits'] });
+          await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
           setQuestActionError(null);
         } catch (err) {
           setQuestActionError(formatError(err));
@@ -351,11 +370,36 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const restoreQuest = useCallback((id: string) => runLifecycle(id, 'restore'), [runLifecycle]);
   const deleteQuest = useCallback((id: string) => runLifecycle(id, 'delete'), [runLifecycle]);
 
+  const runMove = useCallback(
+    (id: string, direction: 'to-one-time' | 'to-backlog'): Promise<void> => {
+      const existing = lifecycleRequests.current.get(id);
+      if (existing) return existing;
+      const request = (async () => {
+        try {
+          if (direction === 'to-one-time') await moveBacklogToOneTime(id);
+          else await moveOneTimeToBacklog(id);
+          await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
+          setQuestActionError(null);
+        } catch (err) {
+          setQuestActionError(formatError(err));
+          throw err;
+        }
+      })();
+      lifecycleRequests.current.set(id, request);
+      request.then(() => lifecycleRequests.current.delete(id), () => lifecycleRequests.current.delete(id));
+      return request;
+    },
+    [qc]
+  );
+  const moveToOneTime = useCallback((id: string) => runMove(id, 'to-one-time'), [runMove]);
+  const moveToBacklog = useCallback((id: string) => runMove(id, 'to-backlog'), [runMove]);
+
   const retryQuests = useCallback(async () => {
     setQuestActionError(null);
     setRetryingQuests(true);
     await Promise.all([
       qc.refetchQueries({ queryKey: habitsTodayKey(userId), type: 'active' }),
+      qc.refetchQueries({ queryKey: backlogKey(userId), type: 'active' }),
       qc.refetchQueries({ queryKey: ['profile', userId], type: 'active' }),
       qc.refetchQueries({ queryKey: ['stats', userId], type: 'active' }),
     ]).finally(() => setRetryingQuests(false));
@@ -459,6 +503,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         habitsQuery.isLoading || profileQuery.isLoading || statsQuery.isLoading || retryingQuests,
       questsError,
       retryQuests,
+      backlog,
+      backlogLoading: backlogQuery.isLoading,
+      moveToOneTime,
+      moveToBacklog,
       toggleQuest,
       adjustProgress,
       completeRecovery,
@@ -485,6 +533,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       retryingQuests,
       questsError,
       retryQuests,
+      backlog,
+      backlogQuery.isLoading,
+      moveToOneTime,
+      moveToBacklog,
       toggleQuest,
       adjustProgress,
       completeRecovery,
