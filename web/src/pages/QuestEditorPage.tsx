@@ -7,14 +7,15 @@ export default function QuestEditorPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, questsLoading } = useEiyu();
+  const { user, questsLoading, backlog = [], backlogLoading = false } = useEiyu();
 
   // Don't judge the id against a quest list that hasn't loaded yet — a
   // direct deep-link/refresh to /quest-editor/:id mounts this before the
   // real habits query resolves. Wait, then judge.
-  if (id && questsLoading) return null;
+  // Backlog quests are read separately from the board's quests, so wait for both.
+  if (id && (questsLoading || backlogLoading)) return null;
 
-  const editingQuest = id ? (user.quests.find(q => q.id === id) ?? null) : null;
+  const editingQuest = id ? (user.quests.find(q => q.id === id) ?? backlog.find(q => q.id === id) ?? null) : null;
 
   // A real id that resolves to nothing — deleted, typo'd, or (RLS makes
   // these indistinguishable to the client) another user's — is a
