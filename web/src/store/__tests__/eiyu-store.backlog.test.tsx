@@ -85,6 +85,16 @@ describe('Backlog in the web store', () => {
     await waitFor(() => expect(store?.questsError).toContain('quest has a completion'));
   });
 
+  it('publishes a failed Backlog read as a board error, not an empty Backlog, and Retry reads it again', async () => {
+    shared.fetchBacklogQuests.mockRejectedValueOnce(new Error('backlog read failed'));
+    renderStore();
+    await waitFor(() => expect(store?.questsError).toContain('backlog read failed'));
+    expect(store!.backlog).toEqual([]);
+    await store!.retryQuests();
+    await waitFor(() => expect(store?.questsError).toBeNull());
+    expect(store!.backlog.map(q => q.id)).toEqual(['b1']);
+  });
+
   it('drops a deleted Backlog quest from the cache immediately', async () => {
     const client = renderStore();
     await waitFor(() => expect(store?.backlog).toHaveLength(1));

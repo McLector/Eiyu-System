@@ -188,9 +188,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     activeUserId.current = userId;
   }, [qc, userId]);
 
+  // A failed Backlog read is a board error too; otherwise it would look like an empty Backlog.
   const questsLoadError = retryingQuests
     ? undefined
-    : [habitsQuery.error, profileQuery.error, statsQuery.error].find((e): e is Error => !!e);
+    : [habitsQuery.error, backlogQuery.error, profileQuery.error, statsQuery.error].find((e): e is Error => !!e);
   const questsError = questsLoadError ? formatError(questsLoadError) : questActionError;
   const longQuestsError =
     longQuestsQuery.isPending || retryingLongQuests
