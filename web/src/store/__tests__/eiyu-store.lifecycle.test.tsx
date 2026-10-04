@@ -9,6 +9,7 @@ const shared = vi.hoisted(() => ({
   archiveHabit: vi.fn(),
   deleteHabit: vi.fn(),
   restoreHabit: vi.fn(),
+  fetchBacklogQuests: vi.fn(),
   fetchLongQuests: vi.fn(),
   fetchProfile: vi.fn(),
   fetchStats: vi.fn(),
@@ -83,6 +84,7 @@ beforeEach(() => {
   shared.fetchTodayHabits.mockResolvedValue([quest]);
   shared.fetchProfile.mockResolvedValue({ displayName: 'Test User', userClass: 'Ranger', timeZone: 'UTC' });
   shared.fetchStats.mockResolvedValue(initialUser.stats);
+  shared.fetchBacklogQuests.mockResolvedValue([]);
   shared.fetchLongQuests.mockResolvedValue([]);
 });
 
