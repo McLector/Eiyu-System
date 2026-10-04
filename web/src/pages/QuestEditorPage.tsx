@@ -24,5 +24,5 @@ export default function QuestEditorPage() {
     return <Navigate to="/board" replace />;
   }
 
-  return <WebQuestEditor key={id ?? searchParams.get('type') ?? 'habit'} editingQuest={editingQuest} initialType={searchParams.get('type') === 'one_time' ? 'one_time' : 'habit'} onClose={() => navigate('/board')} />;
+  return <WebQuestEditor key={id ?? searchParams.get('type') ?? 'habit'} editingQuest={editingQuest} initialType={searchParams.get('type') === 'one_time' || searchParams.get('type') === 'backlog' ? (searchParams.get('type') as 'one_time' | 'backlog') : 'habit'} onClose={() => navigate('/board')} />;
 }

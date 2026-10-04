@@ -801,6 +801,33 @@ button:disabled { opacity: .45; cursor: default; }
 .page-title { margin: 0; color: var(--c-text); font: 700 22px Rajdhani, sans-serif; letter-spacing: .08em; text-transform: uppercase; overflow-wrap: anywhere; }
 .field-label, .phase4-form label, .gym-form label:not(.gym-checkbox), .gym-toolbar > label:first-child, .gym-table-header { color: var(--c-muted-flat); font: 700 11px/1.2 Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
 .field-label { display: block; margin-bottom: 7px; }
+/* Form primitives shared by dialog forms. */
+.form-stack { display: grid; gap: var(--field-gap, 12px); min-width: 0; }
+.form-stack > * { min-width: 0; }
+.form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.form-row > * { min-width: 0; }
+.field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.field-label-row .field-label { margin-bottom: 0; }
+.field-label-row .btn-compact { min-height: 24px; padding-block: 2px; }
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.choice-chip[aria-pressed='true'] { border-color: var(--c-accent-strong); background: var(--c-accent-glass); color: var(--c-accent-text); }
+.choice-chip[data-tone='Easy'][aria-pressed='true'] { border-color: var(--c-success-border); background: var(--c-success-glass); color: var(--c-success); }
+.choice-chip[data-tone='Medium'][aria-pressed='true'] { border-color: var(--c-warning-border); background: var(--c-warning-glass); color: var(--c-warning); }
+.choice-chip[data-tone='Hard'][aria-pressed='true'] { border-color: var(--c-danger-border); background: var(--c-danger-glass); color: var(--c-danger); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-row .choice-chip { padding: 5px 12px; border-radius: 999px; color: var(--c-muted-flat); font: 600 12px Inter, sans-serif; }
+.day-chips { display: flex; gap: 4px; }
+.day-chip { flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid var(--c-glass-border); border-radius: 7px; background: transparent; color: var(--c-dim-flat); cursor: pointer; font: 700 11px Rajdhani, sans-serif; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease; }
+.day-chip[aria-pressed='true'] { border-color: var(--c-accent-border); background: var(--c-accent-glass); color: var(--c-accent-text); }
+.habit-schedule { display: grid; gap: 12px; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); grid-template-areas: "time days" "target target"; align-items: start; }
+@media (max-width: 520px) { .habit-schedule { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "time target" "days days"; } }
+/* Short viewports get tighter rhythm before any content is removed: forms must still show everything at once. */
+@media (max-height: 720px) {
+  .phase4-dialog { --field-gap: 8px; }
+  .compact-dialog-body { padding-block: 10px 12px; }
+  .phase4-dialog .field-label, .phase4-dialog .field-label-row { margin-bottom: 4px; }
+  .phase4-dialog .field { padding-block: 6px; }
+}
 .stat-chip { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
 .choice-chip { padding: 9px; border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; cursor: pointer; transition: transform var(--dur-press) var(--ease-out), background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease; }
 .action-footer { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--c-divider-flat); }
