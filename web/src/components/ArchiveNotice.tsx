@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckIcon } from '../Icons';
-import type { QuestType } from '@eiyu/shared';
+import { ArchiveIcon, UndoIcon } from '../Icons';
+import { formatError, type QuestType } from '@eiyu/shared';
 import { useSession } from '../store/session-context';
 
 let activeOwner: string | null = null;
@@ -59,10 +59,22 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
+  const undo = async () => {
+    const run = notice?.undo;
+    setQueue(q => q.slice(1));
+    if (!run) return;
+    try { await run(); } catch (err) { announceFeedback(`Could not undo that: ${formatError(err)}`, owner, 'danger'); }
+  };
   if (!notice || notice.owner !== owner) return null;
-  const content = <div className="archive-notice feedback-card" data-tone={notice.tone ?? 'success'} role="status" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
-    {notice.message ? <span>{notice.message}</span> : <><CheckIcon /><span><strong>{notice.type === 'habit' ? 'Habit' : 'Quest'} archived ✓</strong><br />Your archived habits are available from your profile.</span><button className="btn-secondary" onClick={() => { setQueue(q => q.slice(1)); onOpen(); }}>View archived habits</button></>}
+  const content = <div className="archive-notice feedback-card" data-tone={notice.tone ?? (notice.message ? 'success' : 'warning')} role="status" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
+    {notice.message ? <span>{notice.message}</span> : <>
+      <ArchiveIcon />
+      <span><strong>{notice.type === 'habit' ? 'Habit' : 'Quest'} archived ✓</strong><br />Your archived habits are available from your profile.</span>
+      {notice.undo && <button type="button" className="btn-quiet btn-compact" onClick={() => void undo()}><UndoIcon size={14} /> Undo</button>}
+      <button type="button" className="btn-secondary btn-compact" onClick={() => { setQueue(q => q.slice(1)); onOpen(); }}>View archived habits</button>
+    </>}
     <button className="phase4-close" aria-label="Dismiss archive notice" onClick={() => setQueue(q => q.slice(1))}>×</button>
+    {!notice.message && <i key={notice.id} className={`archive-notice-timer${paused ? ' is-paused' : ''}`} aria-hidden="true" />}
   </div>;
   return target ? createPortal(content, target) : content;
 }

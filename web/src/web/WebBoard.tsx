@@ -74,22 +74,6 @@ function XpBar({ value, max, color }: { value: number; max: number; color: strin
   );
 }
 
-export function ArchivedCard({ quest, onEdit, onRestore, onDelete, pending }: { quest: Quest; onEdit: () => void; onRestore: () => void; onDelete: () => void; pending: boolean }) {
-  return (
-    <article className="board-catalog-card is-archived">
-      <button type="button" aria-label={`Edit ${quest.name}`} onClick={onEdit}>
-        <span className="board-catalog-name">{quest.name}</span>
-        <span className="board-catalog-meta">{quest.questType === 'one_time' ? 'One-time quest' : 'Recurring habit'} · saved details</span>
-      </button>
-      <div className="board-catalog-actions">
-        <span className="board-catalog-status">ARCHIVED</span>
-        <button type="button" className="btn-quiet btn-compact" onClick={onRestore} aria-label={`Restore ${quest.name}`} disabled={pending}>{pending ? 'RESTORING…' : 'RESTORE'}</button>
-        <button type="button" className="btn-destructive btn-compact" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
-      </div>
-    </article>
-  );
-}
-
 function BoardLane({
   id,
   title,

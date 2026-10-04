@@ -618,7 +618,7 @@ select.field option {
 .board-catalog-status { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--c-accent-border); border-radius: 4px; color: var(--c-accent-text); font: 700 11px Rajdhani, sans-serif; letter-spacing: .07em; }
 .board-catalog-actions { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
 .board-catalog-status.is-complete { border-color: var(--c-success-border); color: var(--c-success); }
-.board-catalog-card.is-archived .board-catalog-status { border-color: var(--c-divider-flat); color: var(--c-muted-flat); }
+.quest-card.is-archived .quest-card-title { color: var(--c-muted-flat); }
 
 @media (max-width: 1199px) {
   .web-board-today { border-left: 0; border-top: 1px solid var(--c-divider-flat); padding: 16px 0 0; }
@@ -713,8 +713,13 @@ select.field option {
 }
 
 .archive-list { display: flex; flex-direction: column; height: 60svh; }
-.archive-notice { position: fixed; z-index: 90; top: 76px; right: 16px; max-width: min(460px, calc(100vw - 32px)); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px; font: 12px Inter,sans-serif; }
-.archive-notice > span { flex: 1; }
+.archive-notice { position: fixed; z-index: 90; top: 76px; right: 16px; max-width: min(460px, calc(100vw - 32px)); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 12px 14px; overflow: hidden; font: 12px Inter,sans-serif; }
+.archive-notice > span { flex: 1 1 160px; min-width: 0; }
+.archive-notice > svg { flex: none; color: var(--c-warning); }
+.archive-notice-timer { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: var(--c-warning); transform-origin: left; animation: archive-timer 8s linear forwards; }
+.archive-notice-timer.is-paused { animation-play-state: paused; }
+@keyframes archive-timer { to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .archive-notice-timer { display: none; } }
 
 .gym-page { display: flex; flex-direction: column; gap: 10px; height: calc(100svh - 110px); min-height: 430px; color: var(--c-text); font: 13px Inter, sans-serif; }
 .gym-heading, .gym-routine-heading, .gym-actions, .gym-toolbar, .gym-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
