@@ -45,7 +45,14 @@ Started and finished 2026-10-04, branch `web-redesign-0014`. Follows handoff 004
    A different constraint **name** is fine (038 finds the quest_type check by its column). A different **hash** means the live function drifted: stop, and rebuild the re-issued body in 038 from the live definition first.
 2. **Apply 038 by hand** in the SQL editor, then run the migration marker query in `backend/supabase/README.md`; the `038 backlog` row must be `t`.
 3. **Only then merge and deploy the web client.** The new web client calls the 038 functions and columns; an older database makes Backlog fail.
-4. The midnight rollover starts the day **after** 038 is applied (its cutover is the UTC apply date + 1). One-time quests left unfinished before that stay where they are.
+4. **If the live database already received an earlier draft of 038**, re-apply the final file: it is written to be safe over that draft, and a re-apply keeps the existing cutover row.
+5. **After applying, verify the final 038** by comparing `select proname, md5(pg_get_functiondef(oid)) from pg_proc where pronamespace = 'public'::regnamespace and proname in ('archive_habit','get_habits_for_date','move_backlog_to_one_time','move_one_time_to_backlog','rollover_unfinished_one_time_quests') order by 1;` with the values on the isolated stack:
+   - `archive_habit` = `fff95528d96f54fd859cba9bc043b857`
+   - `get_habits_for_date` = `78babf870eb3a3a1ea3f3f074dd90b73`
+   - `move_backlog_to_one_time` = `2ab44a748b5ec4c67d0bf90f1bd0485e`
+   - `move_one_time_to_backlog` = `5879c8048c3a5a6fd848552d922fd5a7`
+   - `rollover_unfinished_one_time_quests` = `39df05db23430030f31429634a6c1d4f`
+6. The midnight rollover starts the day **after** 038 is applied (its cutover is the UTC apply date + 1). One-time quests left unfinished before that stay where they are.
 
 ## Deviations from the spec
 
@@ -53,6 +60,7 @@ Started and finished 2026-10-04, branch `web-redesign-0014`. Follows handoff 004
 - **No "Created" date on chains.** The chain model has no such field.
 - **Chain nav and page title were renamed on web only.** The empty state still says `NO LONG QUESTS`, because that copy is shared with mobile.
 - **The Gym video guide plays inline and no longer autoplays.**
+- **The Gym draft chip reads `Workout draft · unit`** instead of the spec's `Draft saved 2m ago`.
 - **Short-viewport editor layout** (found in the first real-browser run, below): on short screens Time, Days and the habit target share one row, stat chips put icon and name side by side, and the name error sits beside its label. Every field is still there.
 - **ALL HABITS is icon-only in a narrow lane** (lanes under 380px wide). Measured: icon-only at 1280 (lane 306px) and 1366 (lane 327px), label shown at 1920 (lane 469px). By the lane grid the label returns at about a 1,570px-wide window. Below 1,200px one lane fills the width, so the label shows from a lane of 380px up; at 390px (lane 366px) it is icon-only. Its name stays "ALL HABITS" for assistive tech and as a tooltip. Without this the Daily header wrapped and the lane lost a card.
 
@@ -63,7 +71,7 @@ Started and finished 2026-10-04, branch `web-redesign-0014`. Follows handoff 004
 - **The rollover cutover is UTC**, the apply date + 1, not each account's local day.
 - **A failed Backlog read shows the whole board's error state**, not a Backlog-only error.
 - **Chains have no Created date**, and the **Finished date shows no year** (it uses the app's short display date).
-- **Editing a One-time quest resets its date to today.** Confirmed in code: the editor does not load the stored date and saves today's. The board only lists today's One-time quests, so in practice this only matters for a quest whose date is in the future, which the web cannot open for editing anyway.
+- **A One-time quest's date is locked once it is created.** The editor keeps the stored date and disables the DATE input, with a hint. Real rescheduling needs a follow-up migration 039 with a server function, for example `reschedule_one_time_quest(p_id, p_date)`, that deletes the unfinished occurrences from today onward and refuses if a completion exists.
 - **At about 1200x600** the Daily header still wraps (ALL HABITS and ADD QUEST no longer fit beside the title) and the lane shows three cards. The gate (1366x650, 1280x600) shows four.
 - **Below about 560px of viewport height** a dialog body may scroll (for example 320x568), as the spec allows.
 
@@ -91,7 +99,7 @@ Final results are in the next section. Run commands:
 - `node scripts/verify-web-overhaul-browser.cjs`: passed, 218 screens, 12 flows.
 - `node scripts/verify-web-overhaul-browser.cjs --profiles`: passed, 268 screens, 28 flows. Measured cards per Daily lane: 4 at 1366x650 and 4 at 1280x600.
 - `scripts/verify-board-gym-browser.cjs` on the disposable stack: passed, 8 flows, 56 measurements, no horizontal overflow, no page errors.
-- Web: 337 tests in 56 files pass; `tsc --noEmit` clean; lint clean; `vite build` passes (existing chunk-size warning).
+- Web: 344 tests in 56 files pass; `tsc --noEmit` clean; lint clean; `vite build` passes (existing chunk-size warning).
 - `packages/shared`: 287 passed, 8 skipped (the env-gated native suites). Mobile: 92 passed. Mobile lint: 0 errors, 40 existing warnings.
 - pgTAP on the disposable stack: 020 59/59, 015 21/21, 002 31/31, 003 57/57, 008 58/58, 011 10/10.
 
