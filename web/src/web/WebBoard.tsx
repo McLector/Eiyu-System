@@ -321,7 +321,8 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
 
         <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or open All Habits.' : false} action={
           <div className="board-lane-actions">
-            <button type="button" className="btn-secondary btn-compact" onClick={() => setAllHabitsOpen(true)}><ListIcon size={14} /> ALL HABITS</button>
+            {/* In a narrow lane the label is visually hidden (still named) so the header stays one row and four cards fit. */}
+            <button type="button" className="btn-secondary btn-compact board-all-habits" title="All habits" onClick={() => setAllHabitsOpen(true)}><ListIcon size={14} /><span className="board-action-label">ALL HABITS</span></button>
             {addButton('habit')}
           </div>
         }>

@@ -678,6 +678,12 @@ select.field option {
 .btn-secondary.board-recovery-trigger { color: var(--c-ice); margin: 12px 0; width: 100%; }
 .board-lane-header { flex-wrap: wrap; }
 .board-lane-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+/* A laptop-width lane cannot fit the title, ALL HABITS and ADD QUEST on one row; a wrapped header costs a card. */
+.board-lane { container: board-lane / inline-size; }
+@container board-lane (max-width: 379px) {
+  .board-lane-header { flex-wrap: nowrap; }
+  .board-all-habits .board-action-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+}
 .board-lane.is-drop-ready { border-style: dashed; border-color: var(--c-accent-strong); }
 .board-lane.is-drop-target { border-style: dashed; border-color: var(--c-accent); background: var(--c-accent-glass); }
 .lane-drop-hint { position: absolute; inset: auto 10px 58px; display: grid; place-items: center; min-height: 56px; border: 1.5px dashed var(--c-accent-strong); border-radius: 4px; background: var(--c-modal); color: var(--c-accent-text); font: 700 11px Rajdhani, sans-serif; letter-spacing: .1em; text-transform: uppercase; pointer-events: none; }
