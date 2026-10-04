@@ -8,9 +8,12 @@ import {
   parseGymRir, fetchPreviousGymWeights, fetchGymHistory, deleteGymRoutine, listGymMediaCleanup, acknowledgeGymMediaCleanup,
   UncertainSaveError,
 } from '@eiyu/shared';
+import { GYM_COPY, gymCleanupPending, gymSavedRefreshFailed, isGymCleanupNotice } from '@eiyu/shared';
 import { useSession } from '../store/session-context';
 import Dialog from '../components/Dialog';
+import { ChevronIcon } from '../Icons';
 import FlowList from '../components/FlowList';
+import StateBlock from '../components/StateBlock';
 import { announceFeedback } from '../components/ArchiveNotice';
 import { useEditorGuard } from '../components/NavigationGuard';
 import { deleteGymMedia, signGymMedia, uploadGymMedia } from './gym-media';
@@ -40,7 +43,7 @@ function RoutineEditor({ routine, userId, onClose, onSaved }: {
       <label>Weight unit<select className="field" value={unit} onChange={e => setUnit(e.target.value as GymUnit)} disabled={pending || uncertain}><option value="kg">kg</option><option value="lb">lb</option></select></label>
 
       {error && <p role="alert" className="phase4-error">{error}</p>}
-      <div className="action-footer"><button type="button" className="btn-secondary" disabled={pending || uncertain} onClick={() => closeEditor(onClose)}>Cancel</button><button className="btn-primary" disabled={pending}>{pending ? 'Saving…' : uncertain ? 'Check save result' : 'Save routine'}</button></div>
+      <div className="action-footer"><button type="button" className="btn-secondary" disabled={pending || uncertain} onClick={() => closeEditor(onClose)}>Cancel</button><button className="btn-primary" disabled={pending}>{pending ? 'Saving…' : uncertain ? GYM_COPY.confirmSave : 'Save routine'}</button></div>
     </form>
   </Dialog>;
 }
@@ -86,7 +89,7 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
       } catch (err) {
         setUncertain(err instanceof UncertainSaveError);
         let message = formatError(err);
-        if (uploaded && !committed) message += ' Uploaded media retained until the saved record is reconciled.';
+        if (uploaded && !committed) message += ` ${GYM_COPY.uploadHeld}`;
         setError(message);
       } finally { inFlight.current = false; setPending(false); }
     }}>
@@ -102,7 +105,7 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
       </div>
       <label>Notes<textarea className="field" rows={2} value={form.notes} disabled={pending || uncertain} onChange={e => field('notes', e.target.value)} /></label>
       {error && <p role="alert" className="phase4-error">{error}</p>}
-      <div className="action-footer"><button type="button" className="btn-secondary" disabled={pending || uncertain} onClick={() => closeEditor(onClose)}>Cancel</button><button className="btn-primary" disabled={pending}>{pending ? 'Saving…' : uncertain ? 'Check save result' : 'Save exercise'}</button></div>
+      <div className="action-footer"><button type="button" className="btn-secondary" disabled={pending || uncertain} onClick={() => closeEditor(onClose)}>Cancel</button><button className="btn-primary" disabled={pending}>{pending ? 'Saving…' : uncertain ? GYM_COPY.confirmSave : 'Save exercise'}</button></div>
     </form>
   </Dialog>;
 }
@@ -122,7 +125,7 @@ function Demonstration({ exercise, onClose, onEdit }: { exercise: GymExercise; o
     return () => { active = false; window.clearInterval(timer); };
   }, [exercise.media_path, retry]);
   return <Dialog title={exercise.name} onClose={onClose}>
-    {!exercise.media_path ? <><p>No demonstration uploaded for this exercise.</p><button className="btn-ghost" onClick={onEdit}>Edit exercise</button></> : error ? <div role="alert"><p>{error}</p><button className="btn-ghost" onClick={() => setRetry(n => n + 1)}>Reload demonstration</button></div> : !url ? <p role="status">Loading demonstration…</p> : exercise.media_mime === 'image/gif' ? <img className="gym-media" src={url} alt={`${exercise.name} demonstration`} onError={() => setError('Demonstration could not load. Reload to refresh access.')} /> : <><video ref={video} className="gym-media" src={url} controls muted autoPlay playsInline preload="metadata" onError={() => setError('Video could not load. Reload to refresh access.')} />{blocked && <button className="btn-primary" onClick={() => void video.current?.play().then(() => setBlocked(false)).catch(() => setBlocked(true))}>Play demonstration</button>}</>}
+    {!exercise.media_path ? <><p>No demonstration uploaded for this exercise.</p><button className="btn-secondary" onClick={onEdit}>Edit exercise</button></> : error ? <div role="alert"><p>{error}</p><button className="btn-secondary" onClick={() => setRetry(n => n + 1)}>Reload demonstration</button></div> : !url ? <p role="status">Loading demonstration…</p> : exercise.media_mime === 'image/gif' ? <img className="gym-media" src={url} alt={`${exercise.name} demonstration`} onError={() => setError('Demonstration could not load. Reload to refresh access.')} /> : <><video ref={video} className="gym-media" src={url} controls muted autoPlay playsInline preload="metadata" onError={() => setError('Video could not load. Reload to refresh access.')} />{blocked && <button className="btn-primary" onClick={() => void video.current?.play().then(() => setBlocked(false)).catch(() => setBlocked(true))}>Play demonstration</button>}</>}
   </Dialog>;
 }
 
@@ -132,8 +135,8 @@ function WorkoutHistory({ userId, routines, onClose }: { userId: string; routine
   const query = useQuery({ queryKey: ['gym-history', userId, filter, page], queryFn: () => fetchGymHistory(userId, page, filter || undefined) });
   return <Dialog title="Workout history" onClose={onClose}><div className="gym-history">
     <label>Workouts<select className="field" value={filter} onChange={event => { setFilter(event.target.value); setPage(0); }}><option value="">All workouts</option>{routines.map(r => <option key={r.id} value={r.id}>{r.name}{r.deleted_at ? ' (deleted routine)' : ''}</option>)}</select></label>
-    {query.isPending ? <p role="status">Loading workouts...</p> : query.isError ? <p role="alert">{formatError(query.error)}</p> : <>
-      {!query.data.sessions.length && <p>No completed workouts yet.</p>}
+    {query.isPending ? <StateBlock kind="loading">{GYM_COPY.loadingHistory}</StateBlock> : query.isError ? <StateBlock kind="error">{formatError(query.error)}</StateBlock> : <>
+      {!query.data.sessions.length && <StateBlock kind="empty">{GYM_COPY.emptyHistory}</StateBlock>}
       {query.data.sessions.map(session => <details key={session.id} className="gym-history-session"><summary>{session.routine_name}{routines.find(r => r.id === session.routine_id)?.deleted_at ? ' · Deleted routine' : ''} · {new Date(session.completed_at!).toLocaleString()} · {session.unit}</summary>
         {query.data.entries.filter(e => e.session_id === session.id).map(entry => <p key={entry.id}>{entry.prescription.name} · {entry.prescription.sets} × {entry.prescription.reps} · {entry.weight ?? '—'} {session.unit}</p>)}
       </details>)}
@@ -190,12 +193,12 @@ function GymWorkspace({ userId }: { userId: string }) {
       if (paths.length < 100) return;
     }
   };
-  useEffect(() => { void cleanup().catch(err => setNotice('Media cleanup needs retry: ' + formatError(err))); }, [userId, setNotice]);
+  useEffect(() => { void cleanup().catch(err => setNotice(gymCleanupPending(err))); }, [userId, setNotice]);
   const refresh = async () => { await qc.invalidateQueries({ queryKey: ['gym', userId] }, { throwOnError: true }); await qc.invalidateQueries({ queryKey: ['gym-previous', userId] }, { throwOnError: true }); };
   const run = async (task: () => Promise<void>) => {
     if (inFlight.current) return;
     inFlight.current = true; setPending(true); setError(null); setNotice(null);
-    try { await task(); setUncertain(false); retryTask.current = null; try { await refresh(); } catch (err) { setNotice('Saved. Refresh failed: ' + formatError(err)); } }
+    try { await task(); setUncertain(false); retryTask.current = null; try { await refresh(); } catch (err) { setNotice(gymSavedRefreshFailed('Saved', err)); } }
     catch (err) { setUncertain(err instanceof UncertainSaveError); retryTask.current = err instanceof UncertainSaveError ? task : null; setError(formatError(err)); }
     finally { inFlight.current = false; setPending(false); }
   };
@@ -222,19 +225,23 @@ function GymWorkspace({ userId }: { userId: string }) {
     });
   };
   if (!userId) return null;
-  if (query.isPending) return <p role="status">Reading Gym Progress…</p>;
-  if (query.isError && !query.data) return <div className="board-state" role="alert"><p>{formatError(query.error)}</p><button className="btn-ghost" onClick={() => void query.refetch()}>Retry</button></div>;
+  if (query.isPending) return <StateBlock kind="loading">Reading Gym Progress…</StateBlock>;
+  if (query.isError && !query.data) return <StateBlock kind="error" onRetry={() => void query.refetch()}>{formatError(query.error)}</StateBlock>;
   return <div className="gym-page">
-    <header className="gym-heading"><h1>Gym Progress</h1><div className="gym-actions"><button className="btn-ghost" onClick={() => setHistory(true)}>Workout history</button><button className="btn-ghost" onClick={() => setRoutineEditor('new')} disabled={pending || uncertain}>Create routine</button></div></header>
+    <header className="gym-heading"><h1 className="page-title">Gym Progress</h1><div className="gym-actions"><button className="btn-secondary" onClick={() => setHistory(true)}>Workout history</button><button className="btn-secondary" onClick={() => setRoutineEditor('new')} disabled={pending || uncertain}>Create routine</button></div></header>
     <div className="gym-toolbar"><label>Routine<select className="field" value={routine?.id ?? ''} disabled={pending || uncertain} onChange={e => { const id = e.target.value; requestSwitch(() => { setSelected(id); setWeights({}); }); }}>{!routines.length && <option value="">No routines</option>}{routines.map(r => <option key={r.id} value={r.id}>{r.name}{r.archived ? ' (archived)' : ''}</option>)}</select></label><label className="gym-checkbox"><input type="checkbox" checked={showArchived} onChange={e => { const checked = e.target.checked; requestSwitch(() => { setShowArchived(checked); setWeights({}); }); }} />Include archived routines</label></div>
-    {query.isError && <p role="alert">Refresh failed. Your saved progress remains. <button className="btn-secondary" onClick={() => void query.refetch()}>Retry refresh</button></p>}
+    {query.isError && <StateBlock kind="error" retryLabel="Retry refresh" onRetry={() => void query.refetch()}>{GYM_COPY.refreshFailed}</StateBlock>}
     {error && <p role="alert" className="phase4-error">{error}</p>}
-    {!routine ? <p className="board-lane-empty">Create your first routine, then add its exercises.</p> : <>
+    {(uncertain || isGymCleanupNotice(notice)) && <div className="action-footer">
+      {uncertain && <button className="btn-secondary" disabled={pending} onClick={() => { if (retryTask.current) void run(retryTask.current); }}>{GYM_COPY.confirmSave}</button>}
+      {isGymCleanupNotice(notice) && <button className="btn-secondary" onClick={() => void cleanup().then(() => setNotice('Media cleanup complete.')).catch(err => setError(formatError(err)))}>Retry media cleanup</button>}
+    </div>}
+    {!routine ? <StateBlock kind="empty">{GYM_COPY.noRoutine}</StateBlock> : <>
       <div className="gym-routine-heading"><h2>{routine.name} <small>{unit}</small></h2><div className="gym-actions">
-        <button className="btn-ghost" disabled={pending || uncertain} onClick={() => setRoutineEditor('edit')}>Edit routine</button>
-        <button className="btn-ghost" disabled={pending || uncertain || dirty} onClick={() => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); })}>{routine.archived ? 'Restore routine' : 'Archive routine'}</button>
         <button className="btn-secondary" disabled={pending || uncertain || routine.archived} onClick={() => setExerciseEditor('new')}>Add exercise</button>
-        <button className="btn-destructive" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Completed history remains.${draft ? ' This also discards the unfinished workout.' : ''}`, action: () => void run(async () => { await deleteGymRoutine(routine.id, !!draft); setWeights({}); await cleanup().catch(err => setNotice('Routine deleted. Cleanup needs retry: ' + formatError(err))); }) })}>Delete routine</button>
+        <button className="btn-quiet" disabled={pending || uncertain} onClick={() => setRoutineEditor('edit')}>Edit routine</button>
+        <button className="btn-quiet" disabled={pending || uncertain || dirty} onClick={() => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); })}>{routine.archived ? 'Restore routine' : 'Archive routine'}</button>
+        <button className="btn-destructive" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Completed history remains.${draft ? ' This also discards the unfinished workout.' : ''}`, action: () => void run(async () => { await deleteGymRoutine(routine.id, !!draft); setWeights({}); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }) })}>Delete routine</button>
       </div></div>
       <div className="gym-table" role="table" aria-label={routine.name}>
         <div className="gym-table-header" role="row">{['#', 'Exercise', 'Sets × Reps', 'Rest', 'RIR', 'Notes', 'Previous Weight', 'Current Weight'].map(title => <span role="columnheader" key={title}>{title}</span>)}</div>
@@ -242,23 +249,21 @@ function GymWorkspace({ userId }: { userId: string }) {
           {rows.map((row, index) => <div className="gym-row" role="row" key={row.id} data-item-id={row.id}>
             <span role="cell" data-label="#">{index + 1}</span>
             <div role="cell" data-label="Exercise"><button className="gym-exercise-name" onClick={() => { const exercise = exercises.find(e => e.id === row.id); if (exercise) setDemo(exercise); else setNotice('This exercise was removed from the routine. Its saved workout details remain.'); }}>{row.name}</button>
-              {!draft && <div className="gym-row-actions"><button className="btn-ghost" onClick={() => setExerciseEditor(exercises.find(e => e.id === row.id)!)} disabled={pending || uncertain}>Edit</button><button className="btn-ghost" aria-label={`Move ${row.name} up`} disabled={index === 0 || pending} onClick={() => void run(async () => { const ids = exercises.map(e => e.id); [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]]; await moveGymExercises(routine, ids); })}>↑</button><button className="btn-ghost" aria-label={`Move ${row.name} down`} disabled={index === exercises.length - 1 || pending} onClick={() => void run(async () => { const ids = exercises.map(e => e.id); [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]]; await moveGymExercises(routine, ids); })}>↓</button><button className="btn-ghost" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${row.name}? Completed history remains.`, action: () => void run(async () => { await removeGymExercise(row.id); await cleanup().catch(err => setNotice('Exercise removed. Cleanup needs retry: ' + formatError(err))); }) })}>Remove</button></div>}
+              {!draft && <div className="gym-row-actions"><button className="btn-quiet btn-compact" onClick={() => setExerciseEditor(exercises.find(e => e.id === row.id)!)} disabled={pending || uncertain}>Edit</button><button className="btn-quiet btn-compact" aria-label={`Move ${row.name} up`} disabled={index === 0 || pending} onClick={() => void run(async () => { const ids = exercises.map(e => e.id); [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]]; await moveGymExercises(routine, ids); })}><ChevronIcon direction="up" size={14} /></button><button className="btn-quiet btn-compact" aria-label={`Move ${row.name} down`} disabled={index === exercises.length - 1 || pending} onClick={() => void run(async () => { const ids = exercises.map(e => e.id); [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]]; await moveGymExercises(routine, ids); })}><ChevronIcon direction="down" size={14} /></button><button className="btn-destructive btn-compact" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${row.name}? Completed history remains.`, action: () => void run(async () => { await removeGymExercise(row.id); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed'))); }) })}>Remove</button></div>}
             </div>
             <span role="cell" data-label="Sets × Reps">{row.sets} × {row.reps}</span><span role="cell" data-label="Rest">{row.rest_seconds}s</span><span role="cell" data-label="RIR">{row.rir}{row.rir_max ? `-${row.rir_max}` : ''}</span><span role="cell" data-label="Notes">{row.notes ? <button className="gym-exercise-name gym-notes" onClick={() => setNote(row.notes)}>{row.notes}</button> : '—'}</span><span role="cell" data-label="Previous Weight">{previousWeight(row.id)} {unit}</span>
             <div role="cell" data-label="Current Weight"><input className="field gym-weight" aria-label={`Current weight for ${row.name} in ${unit}`} type="number" min={0} max={1000000} step="0.001" value={inputWeight(row.id)} aria-invalid={invalidWeights.has(row.id)} disabled={!draft || pending || uncertain} onInput={e => { const invalid = e.currentTarget.validity.badInput; setInvalidWeights(prev => { const next = new Set(prev); if (invalid) next.add(row.id); else next.delete(row.id); return next; }); }} onChange={e => setWeights(prev => ({ ...prev, [row.id]: e.target.value }))} /></div>
           </div>)}
         </FlowList>
       </div>
-      <footer className="gym-session-actions">{draft ? <><span>Workout draft · {draft.unit}</span><button className="btn-ghost" disabled={pending || uncertain} onClick={() => saveWorkout(false)}>Save draft</button><button className="btn-primary" disabled={pending || uncertain} onClick={() => saveWorkout(true)}>Finish workout</button><button className="btn-ghost" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Discard workout', text: 'Discard this unfinished workout and its entered weights?', action: () => void run(async () => { await discardGymSession(draft.id); setWeights({}); }) })}>Discard draft</button></> : <button className="btn-primary" disabled={pending || uncertain || !exercises.length || routine.archived} onClick={() => void run(async () => { await startGymSession(routine.id); setWeights({}); })}>Start workout</button>}{pending && <span role="status">Saving…</span>}</footer>
+      <footer className="gym-session-actions">{draft ? <><span>Workout draft · {draft.unit}</span><button className="btn-destructive" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Discard workout', text: 'Discard this unfinished workout and its entered weights?', action: () => void run(async () => { await discardGymSession(draft.id); setWeights({}); }) })}>Discard draft</button><button className="btn-secondary" disabled={pending || uncertain} onClick={() => saveWorkout(false)}>Save draft</button><button className="btn-primary" disabled={pending || uncertain} onClick={() => saveWorkout(true)}>Finish workout</button></> : <button className="btn-primary" disabled={pending || uncertain || !exercises.length || routine.archived} onClick={() => void run(async () => { await startGymSession(routine.id); setWeights({}); })}>Start workout</button>}{pending && <span role="status">Saving…</span>}</footer>
     </>}
-    {routineEditor && <RoutineEditor routine={routineEditor === 'edit' ? routine : undefined} userId={userId} onClose={() => setRoutineEditor(null)} onSaved={async id => { setSelected(id); try { await refresh(); setNotice('Routine saved.'); } catch (err) { setNotice('Routine saved. Refresh failed: ' + formatError(err)); } }} />}
-    {exerciseEditor && routine && <ExerciseEditor exercise={exerciseEditor === 'new' ? undefined : exerciseEditor} routine={routine} userId={userId} nextPosition={Math.max(-1, ...exercises.map(e => e.position)) + 1} onClose={() => setExerciseEditor(null)} onSaved={async warning => { try { await refresh(); setNotice(warning ?? 'Exercise saved.'); } catch (err) { setNotice('Exercise saved. Refresh failed: ' + formatError(err)); } }} />}
+    {routineEditor && <RoutineEditor routine={routineEditor === 'edit' ? routine : undefined} userId={userId} onClose={() => setRoutineEditor(null)} onSaved={async id => { setSelected(id); try { await refresh(); setNotice('Routine saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Routine saved', err)); } }} />}
+    {exerciseEditor && routine && <ExerciseEditor exercise={exerciseEditor === 'new' ? undefined : exerciseEditor} routine={routine} userId={userId} nextPosition={Math.max(-1, ...exercises.map(e => e.position)) + 1} onClose={() => setExerciseEditor(null)} onSaved={async warning => { try { await refresh(); setNotice(warning ?? 'Exercise saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Exercise saved', err)); } }} />}
     {demo && <Demonstration exercise={demo} onClose={() => setDemo(null)} onEdit={() => { setExerciseEditor(demo); setDemo(null); }} />}
     {note !== null && <Dialog title="Exercise notes" onClose={() => setNote(null)}><p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{note}</p></Dialog>}
     {history && <WorkoutHistory userId={userId} routines={data.routines} onClose={() => setHistory(false)} />}
-    {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)}><p>{confirmation.text}</p><div className="action-footer"><button className="btn-secondary" onClick={() => setConfirmation(null)}>Cancel</button><button className="btn-destructive" onClick={() => { const action = confirmation.action; setConfirmation(null); action(); }}>Confirm</button></div></Dialog>}
+    {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)}><p>{confirmation.text}</p><div className="action-footer"><button className="btn-secondary" onClick={() => setConfirmation(null)}>Cancel</button><button className="btn-destructive" onClick={() => { const action = confirmation.action; setConfirmation(null); action(); }}>{confirmation.title}</button></div></Dialog>}
     {blankWeights && <Dialog title="Finish with blank weights?" onClose={() => setBlankWeights(null)}><p>{blankWeights.length} blank weights: {blankWeights.map(e => e.prescription.name).join(', ')}</p><div className="action-footer"><button className="btn-secondary" onClick={() => { setReveal(blankWeights[0].exercise_id); setBlankWeights(null); }}>Review fields</button><button className="btn-primary" onClick={() => { setBlankWeights(null); saveWorkout(true, true); }}>Finish with blanks</button></div></Dialog>}
-    {uncertain && <button className="btn-secondary" disabled={pending} onClick={() => { if (retryTask.current) void run(retryTask.current); }}>Check save result</button>}
-    {notice?.toLowerCase().includes('cleanup') && <button className="btn-secondary" onClick={() => void cleanup().then(() => setNotice('Media cleanup complete.')).catch(err => setError(formatError(err)))}>Retry media cleanup</button>}
   </div>;
 }

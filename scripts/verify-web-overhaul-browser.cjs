@@ -122,6 +122,7 @@ async function closeSurface(page,route) {
 async function screenshot(page,name,report) {
   // A capture taken mid-load proves nothing about the loaded layout, so wait out any "Reading ...…" state and fail if it never clears.
   await page.getByText(/^Reading .*…$/).first().waitFor({state:'hidden',timeout:60000}).catch(()=>{ throw new Error(`still loading when capturing ${name}`); });
+  await page.waitForTimeout(320); // entrances run 150-500ms; a capture mid-fade would show a translucent dialog
   await page.evaluate(async()=>{ await Promise.all(['14px Inter','700 18px Rajdhani','12px "JetBrains Mono"'].map(font=>document.fonts.load(font))); await document.fonts.ready; await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))); });
   if(name.includes('actual-200-percent')) {
     const capture=await page.context().newCDPSession(page);
@@ -285,22 +286,32 @@ async function questFlows(browser, report) {
     }
     await page.setViewportSize({width:1440,height:900});
     report.flows.push('R4 expanded journey: no control overlap at six sizes');
-    // Dirty edit protects collapse and page changes; Keep editing preserves input.
-    await page.getByRole('button',{name:'EDIT',exact:true}).click();
-    const name=page.getByRole('textbox',{name:'Quest name',exact:true});
+    // Evidence for the HUD framing: the expanded map in both themes at phone and desktop widths.
+    for(const dark of [true,false]) {
+      await theme(page,dark);
+      for(const [w,h] of [[320,568],[390,844],[1440,900]]) { await page.setViewportSize({width:w,height:h}); await screenshot(page,`journey-expanded-${w}-${h}-${dark?'dark':'light'}`,report); }
+    }
+    await theme(page,true); await page.setViewportSize({width:1440,height:900});
+    // The editor is a modal dialog: the list behind it is inert, and a dirty close asks first; Keep editing preserves input.
+    const edit=page.getByRole('button',{name:'EDIT',exact:true});
+    await edit.click();
+    const editor=page.getByRole('dialog',{name:'Edit Long Quest',exact:true});
+    await editor.waitFor();
+    assert.equal(await page.evaluate(()=>document.querySelector('.long-quests-page')?.closest('[inert]')!==null),true,'page behind the editor is inert');
+    const name=editor.getByRole('textbox',{name:'Quest name',exact:true});
+    assert.equal(await name.evaluate(el=>el===document.activeElement),true,'name field takes focus on open');
     await name.fill('The crystal vault renamed');
-    await card('The crystal vault').click();
+    await page.keyboard.press('Escape');
     await (await guardDialog(page)).waitFor();
     await page.getByRole('button',{name:'Keep editing',exact:true}).click();
+    await (await guardDialog(page)).waitFor({state:'hidden'});
     assert.equal(await name.inputValue(),'The crystal vault renamed');
-    await pager.getByRole('button',{name:'Next Long Quests page'}).click();
-    await (await guardDialog(page)).waitFor();
-    await page.getByRole('button',{name:'Keep editing',exact:true}).click();
-    assert.equal(await name.inputValue(),'The crystal vault renamed');
-    assert.match(await pager.getByText(/ \/ /).innerText(),/^1 \//);
-    report.flows.push('R4 dirty collapse and page change are guarded; input retained');
-    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    report.flows.push('R4 dirty editor dialog is guarded; Keep editing retains input');
+    await editor.getByRole('button',{name:'Cancel',exact:true}).click();
     await page.getByRole('button',{name:'Leave without saving',exact:true}).click();
+    await editor.waitFor({state:'hidden'});
+    assert.match(await pager.getByText(/ \/ /).innerText(),/^1 \//,'list stays on its page after abandoning an edit');
+    assert.equal(await edit.evaluate(el=>el===document.activeElement),true,'focus returns to Edit');
     assert.equal(tables.long_quests.find(q=>q.id==='quest-0').name,'The crystal vault','abandoned edit must not save');
     // Single-stage quests stay editable without removal, and keep stage id/description.
     await card('The crystal vault').click();
@@ -375,7 +386,7 @@ async function gymFlows(browser, report) {
     // Definitions cannot be edited while a snapshot draft exists.
     assert.equal(await page.getByRole('button',{name:'Edit',exact:true}).count(),0);
     await page.getByRole('button',{name:'Discard draft',exact:true}).click();
-    await page.getByRole('dialog',{name:'Discard workout'}).getByRole('button',{name:'Confirm',exact:true}).click();
+    await page.getByRole('dialog',{name:'Discard workout'}).getByRole('button',{name:'Discard workout',exact:true}).click();
     await page.getByRole('button',{name:'Start workout',exact:true}).waitFor();
     report.flows.push('R4 exercise definitions are not editable while a draft snapshot exists');
     // Clearing a numeric prescription must stay blank, never coerce to zero, and block saving.
@@ -397,7 +408,7 @@ async function profileAcceptance(browser, profile, report) {
     await page.goto(WEB+'/longquests');
     if(profile==='empty') {
       await page.getByText('NO LONG QUESTS').waitFor();
-      await page.goto(WEB+'/gym'); await page.getByText('Create your first routine, then add its exercises.').waitFor();
+      await page.goto(WEB+'/gym'); await page.getByText('No routine yet. Create one, then add its exercises.').waitFor();
       report.flows.push('R5 empty account shows Long Quest and Gym empty states');
     }
     if(profile==='large') {
@@ -505,6 +516,34 @@ async function main() {
     const context=await browser.newContext({viewport:{width:1440,height:900}}); await prepare(context);
     const page=await context.newPage(); page.setDefaultTimeout(10000); page.on('pageerror',e=>report.errors.push(e.message));
     await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).waitFor();
+    // Motion: a dialog enters with opacity and transform transitions, and under reduced motion with opacity only.
+    for(const reduced of [false,true]) {
+      await page.emulateMedia({reducedMotion:reduced?'reduce':'no-preference'});
+      await page.getByRole('button',{name:/NEW QUEST/}).click();
+      const dialog=page.getByRole('dialog',{name:'New Long Quest'}); await dialog.waitFor();
+      const running=await dialog.evaluate(el=>el.getAnimations().map(a=>a.transitionProperty).sort());
+      assert.deepEqual(running,reduced?['opacity']:['opacity','transform'],`dialog entrance transitions (reduced motion: ${reduced})`);
+      await page.keyboard.press('Escape'); await dialog.waitFor({state:'hidden'});
+    }
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    report.flows.push('dialog entrance: opacity + transform, opacity only under reduced motion');
+    // Slow-motion feel check: at 10% speed the dialog is caught mid-transition (translucent, scaled), then settles cleanly.
+    {
+      const cdp=await page.context().newCDPSession(page);
+      await cdp.send('Animation.enable'); await cdp.send('Animation.setPlaybackRate',{playbackRate:0.1});
+      await page.getByRole('button',{name:/NEW QUEST/}).click();
+      const dialog=page.getByRole('dialog',{name:'New Long Quest'}); await dialog.waitFor();
+      await page.waitForTimeout(300);
+      const mid=await dialog.evaluate(el=>({opacity:+getComputedStyle(el).opacity,transform:getComputedStyle(el).transform}));
+      assert.ok(mid.opacity>0 && mid.opacity<1,`dialog should be translucent mid-entrance, got ${mid.opacity}`);
+      assert.notEqual(mid.transform,'none','dialog should be scaled mid-entrance');
+      await page.screenshot({path:path.join(OUT,'motion-dialog-mid.png')});
+      await cdp.send('Animation.setPlaybackRate',{playbackRate:1}); await page.waitForTimeout(500);
+      const settled=await dialog.evaluate(el=>({opacity:+getComputedStyle(el).opacity,transform:getComputedStyle(el).transform}));
+      assert.equal(settled.opacity,1); assert.equal(settled.transform,'none','dialog must settle with no leftover transform');
+      await page.keyboard.press('Escape'); await dialog.waitFor({state:'hidden'}); await cdp.detach();
+      report.flows.push('slow-motion: dialog is mid-transition at 10% speed and settles to opacity 1, no transform');
+    }
     for(const [w,h] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {
       await page.setViewportSize({width:w,height:h});
       for(const dark of [true,false]) {
@@ -514,7 +553,7 @@ async function main() {
     await page.setViewportSize({width:1440,height:900});
     await page.getByRole('button',{name:/The crystal vault/}).click();
     assert.equal(await page.locator('.journey.is-expanded .journey-map').evaluate(el=>el.getBoundingClientRect().height),240);
-    await page.locator('.journey.is-expanded').getByRole('button',{name:'Cross the bridge. Locked. Complete earlier stages first.',exact:true}).click();
+    await page.locator('.journey.is-expanded').getByRole('button',{name:'Map checkpoint 2: Cross the bridge. Locked. Complete earlier stages first.',exact:true}).click();
     await page.waitForFunction(()=>document.getElementById('stage-stage-0-1')===document.activeElement);
     await screenshot(page,'quests-expanded',report);
     await page.locator('#stage-stage-0-0').click();

@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import Dialog from '../components/Dialog';
 import { useEditorGuard } from '../components/NavigationGuard';
 import { accountDateKey, DEFAULT_HABIT_DAYS, Quest, Stat, Difficulty, STATS, HabitInput, formatError, normalizeNameBoundaries, suggestEasyVersions, validateQuestName } from '@eiyu/shared';
-import { STAT_COLORS } from '@eiyu/shared';
-import { SparkleIcon, StatIcon } from '../Icons';
+import StatChip from '../components/StatChip';
+import { SparkleIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 
@@ -108,21 +108,25 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
     }
   };
 
-  const diffColors: Record<Difficulty, string> = { Easy: '#4ade80', Medium: '#fbbf24', Hard: '#f87171' };
+  const diffTones: Record<Difficulty, { fg: string; bg: string; border: string }> = {
+    Easy: { fg: 'var(--c-success)', bg: 'var(--c-success-glass)', border: 'var(--c-success-border)' },
+    Medium: { fg: 'var(--c-warning)', bg: 'var(--c-warning-glass)', border: 'var(--c-warning-border)' },
+    Hard: { fg: 'var(--c-danger)', bg: 'var(--c-danger-glass)', border: 'var(--c-danger-border)' },
+  };
 
   return (
     <Dialog title={editingQuest ? 'EDIT QUEST' : questType === 'onetime' ? 'NEW ONE TIME QUEST' : 'NEW DAILY QUEST'} onClose={() => { if (!confirmDelete) closeEditor(onClose); }} pending={saving}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Name */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>QUEST NAME</label>
+            <label className="field-label">QUEST NAME</label>
             <input aria-label="Quest name" aria-invalid={!!nameError} aria-describedby={nameError ? 'quest-name-error' : undefined} className="field" placeholder="e.g. Morning run for 30 min" value={name} onChange={e => setName(e.target.value)} />
-            {nameError && <p id="quest-name-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{nameError}</p>}
+            {nameError && <p id="quest-name-error" role="alert" aria-live="polite" className="phase4-error">{nameError}</p>}
           </div>
 
           {/* Note */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>NOTE <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}>(optional)</span></label>
+            <label className="field-label">NOTE <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}>(optional)</span></label>
             <textarea
               className="field"
               placeholder="Add a note, reminder, or motivation..."
@@ -137,18 +141,18 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           {!targetCount && (
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)' }}>PENALTY <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}> (required for habits)</span></label>
+              <label className="field-label" style={{ marginBottom: 0 }}>PENALTY <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}> (required for habits)</span></label>
               <button
                 type="button"
                 onClick={() => void handleAiSuggest()}
                 disabled={suggesting || !name.trim()}
-                style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, opacity: suggesting || !name.trim() ? 0.5 : 1 }}
+                style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-accent-text)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, opacity: suggesting || !name.trim() ? 0.5 : 1 }}
               >
                 <SparkleIcon size={12} /> {suggesting ? 'Reading the possibilities…' : 'SUGGEST PENALTIES'}
               </button>
             </div>
             <input className="field" placeholder="e.g. Walk for 10 min instead" value={easyVer} onChange={e => setEasyVer(e.target.value)} />
-            {suggestError && <p style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', marginTop: 6 }}>{suggestError}</p>}
+            {suggestError && <p role="alert" className="phase4-error">{suggestError}</p>}
             {suggestions && suggestions.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                 {suggestions.map(s => (
@@ -156,8 +160,8 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
                     key={s}
                     type="button"
                     onClick={() => { setEasyVer(s); setSuggestions(null); }}
-                    className="btn-ghost"
-                    style={{ padding: '5px 10px', fontFamily: 'Inter', fontSize: 11, color: 'var(--c-accent)' }}
+                    className="choice-chip"
+                    style={{ padding: '5px 10px', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-accent-text)', borderColor: 'var(--c-accent-border)' }}
                   >
                     {s}
                   </button>
@@ -170,7 +174,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           {/* Target count — habit type only */}
           {questType === 'habit' && (
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>
+              <label className="field-label">
                 TARGET COUNT <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}>(optional — e.g. 8x a day)</span>
               </label>
               <input
@@ -187,21 +191,21 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           {/* Time + Days */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>TIME</label>
+              <label className="field-label">TIME</label>
               <input className="field" type="time" value={time} onChange={e => setTime(e.target.value)} />
             </div>
             {questType === 'habit' && (
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DAYS</label>
+              <label className="field-label">DAYS</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {['S','M','T','W','T','F','S'].map((d, i) => (
                   <button key={i} aria-label={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]} aria-pressed={days.includes(i)} onClick={() => toggleDay(i)} style={{
                     width: 28, height: 28, borderRadius: 7, flexShrink: 0,
                     background: days.includes(i) ? 'var(--c-accent-glass)' : 'transparent',
                     border: `1px solid ${days.includes(i) ? 'var(--c-accent-border)' : 'var(--c-glass-border)'}`,
-                    fontFamily: 'Rajdhani', fontSize: 10, fontWeight: 700,
-                    color: days.includes(i) ? 'var(--c-accent)' : 'var(--c-dim-flat)',
-                    cursor: 'pointer', transition: 'all 0.15s',
+                    fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700,
+                    color: days.includes(i) ? 'var(--c-accent-text)' : 'var(--c-dim-flat)',
+                    cursor: 'pointer', transition: 'background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease',
                   }}>{d}</button>
                 ))}
               </div>
@@ -212,7 +216,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           {/* Date — one-time quests only */}
           {questType === 'onetime' && (
             <div>
-              <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DATE</label>
+              <label className="field-label">DATE</label>
               <input
                 className="field"
                 type="date"
@@ -229,71 +233,56 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
 
           {/* Stat */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 8 }}>ATTRIBUTE</label>
+            <label className="field-label">ATTRIBUTE</label>
             <div style={{ display: 'flex', gap: 6 }}>
-              {STATS.map(s => (
-                <button key={s} onClick={() => setStat(s)} style={{
-                  padding: '8px 4px',
-                  borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                  background: stat === s ? STAT_COLORS[s] + '18' : 'transparent',
-                  border: `1px solid ${stat === s ? STAT_COLORS[s] + '55' : 'var(--c-glass-border)'}`,
-                  cursor: 'pointer', transition: 'all 0.15s',
-                }}>
-                  <StatIcon stat={s} size={13} />
-                  <span style={{ fontFamily: 'Rajdhani', fontSize: 9, fontWeight: 700, color: stat === s ? STAT_COLORS[s] : 'var(--c-dim-flat)', letterSpacing: '0.08em' }}>{s}</span>
-                </button>
-              ))}
+              {STATS.map(s => <StatChip key={s} stat={s} selected={stat === s} onClick={() => setStat(s)} />)}
             </div>
           </div>
 
           {/* Difficulty */}
           <div>
-            <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 8 }}>DIFFICULTY</label>
+            <label className="field-label">DIFFICULTY</label>
             <div style={{ display: 'flex', gap: 6 }}>
               {DIFFICULTIES.map(d => (
-                <button key={d} onClick={() => setDifficulty(d)} style={{
-                  padding: '9px',
-                  borderRadius: 8,
-                  background: difficulty === d ? diffColors[d] + '18' : 'transparent',
-                  border: `1px solid ${difficulty === d ? diffColors[d] + '55' : 'var(--c-glass-border)'}`,
+                <button key={d} type="button" className="choice-chip" aria-pressed={difficulty === d} onClick={() => setDifficulty(d)} style={{
+                  flex: 1,
+                  background: difficulty === d ? diffTones[d].bg : 'transparent',
+                  borderColor: difficulty === d ? diffTones[d].border : undefined,
                   fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em',
-                  color: difficulty === d ? diffColors[d] : 'var(--c-muted-flat)',
-                  cursor: 'pointer', transition: 'all 0.15s',
+                  color: difficulty === d ? diffTones[d].fg : 'var(--c-muted-flat)',
                 }}>{d.toUpperCase()}</button>
               ))}
             </div>
           </div>
 
-          {saveError && !confirmDelete && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171' }}>{saveError}</p>}
+          {saveError && !confirmDelete && <p role="alert" className="phase4-error">{saveError}</p>}
 
           {/* Actions */}
-          <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
-            <button onClick={() => void handleSave()} disabled={saving || !valid} className="btn-primary" style={{ padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-bg)', letterSpacing: '0.08em', opacity: saving || !valid ? 0.6 : 1 }}>
-              {saving ? 'SAVING…' : editingQuest ? 'SAVE CHANGES' : 'CREATE QUEST'}
-            </button>
-            <button onClick={() => { if (!confirmDelete && !saving) closeEditor(onClose); }} disabled={confirmDelete || saving} style={{ padding: '13px 20px', background: 'none', border: '1px solid var(--c-glass-border)', borderRadius: 6, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', cursor: 'pointer' }}>
+          <div className="action-footer">
+            <button onClick={() => { if (!confirmDelete && !saving) closeEditor(onClose); }} disabled={confirmDelete || saving} className="btn-secondary">
               Cancel
+            </button>
+            <button onClick={() => void handleSave()} disabled={saving || !valid} className="btn-primary">
+              {saving ? 'SAVING…' : editingQuest ? 'SAVE CHANGES' : 'CREATE QUEST'}
             </button>
           </div>
 
           {/* Lifecycle controls — archive is reversible; delete is permanent. */}
           {editingQuest && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {editingQuest.archived ? (
                   <button
                     onClick={() => void handleLifecycle('restore')}
                     disabled={saving}
-                    className="btn-ghost"
-                    style={{ padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
+                    className="btn-secondary">
                     RESTORE QUEST
                   </button>
                 ) : (
                   <button
                     onClick={() => void handleLifecycle('archive')}
                     disabled={saving}
-                    className="btn-ghost"
-                    style={{ padding: '10px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-muted-flat)', letterSpacing: '0.08em' }}>
+                    className="btn-secondary">
                     ARCHIVE QUEST
                   </button>
                 )}
@@ -301,14 +290,14 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
                   ref={deleteTrigger}
                   onClick={() => { setConfirmDelete(true); setSaveError(null); }}
                   disabled={saving}
-                  style={{ padding: '10px', borderRadius: 8, cursor: 'pointer', background: 'transparent', border: '1px solid rgba(248,113,113,0.25)', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em' }}>
+                  className="btn-destructive">
                   DELETE PERMANENTLY
                 </button>
               </div>
 
               {confirmDelete && <Dialog title={`Delete ${editingQuest?.name} permanently?`} onClose={() => setConfirmDelete(false)} pending={saving} initialFocus="[data-cancel-delete]">
                 <p>This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</p>
-                {saveError && <p role="alert">{saveError}</p>}
+                {saveError && <p role="alert" className="phase4-error">{saveError}</p>}
                 <div className="action-footer"><button data-cancel-delete onClick={() => setConfirmDelete(false)} disabled={saving} className="btn-secondary">Cancel</button><button onClick={() => void handleLifecycle('delete')} disabled={saving} className="btn-destructive">{saving ? 'DELETING...' : 'Confirm permanent delete'}</button></div>
               </Dialog>}
             </div>

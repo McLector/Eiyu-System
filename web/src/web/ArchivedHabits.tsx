@@ -4,6 +4,7 @@ import { formatError, partitionBoardQuests, type Quest } from '@eiyu/shared';
 import { useEiyu } from '../store/eiyu-store';
 import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
+import StateBlock from '../components/StateBlock';
 import { ArchivedCard, BoardDeleteDialog } from './WebBoard';
 
 export default function ArchivedHabits({ onClose }: { onClose: () => void }) {
@@ -21,7 +22,7 @@ export default function ArchivedHabits({ onClose }: { onClose: () => void }) {
   };
   return <>
     <Dialog title="Archived habits" onClose={onClose} pending={pending !== null || target !== null}>
-      {questsLoading ? <p role="status">Reading archived habits…</p> : questsError ? <div role="alert"><p>{questsError}</p><button className="btn-ghost" onClick={() => void retryQuests()}>Retry</button></div> :
+      {questsLoading ? <StateBlock kind="loading">Reading archived habits…</StateBlock> : questsError ? <StateBlock kind="error" onRetry={() => void retryQuests()}>{questsError}</StateBlock> :
         <div className="archive-list"><PaginatedList label="Archived habits" empty="No archived habits. Your archived definitions and their history stay here.">
           {partitionBoardQuests(user.quests ?? []).archivedQuests.map(quest => <ArchivedCard key={quest.id} quest={quest} pending={pending !== null} onEdit={() => navigate(`/quest-editor/${quest.id}`)} onRestore={() => void restore(quest.id)} onDelete={() => setTarget(quest)} />)}
         </PaginatedList></div>}

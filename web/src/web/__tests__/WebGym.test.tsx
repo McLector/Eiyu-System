@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -64,6 +64,21 @@ it('finishes a workout and carries its weight into the next session', async () =
   expect(await screen.findByText('40 kg')).toBeInTheDocument();
   expect(screen.getByRole('spinbutton', { name: 'Current weight for Bench press in kg' })).toHaveValue(null);
 });
+it('names each destructive confirmation after the action it performs, not a generic "Confirm"', async () => {
+  const user = userEvent.setup(); setup();
+  for (const [opener, title] of [['Delete routine', 'Delete routine'], ['Remove', 'Remove exercise']] as const) {
+    await user.click(await screen.findByRole('button', { name: opener }));
+    const dialog = await screen.findByRole('dialog', { name: title });
+    expect(within(dialog).getByRole('button', { name: title })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Confirm' })).toBeNull();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  }
+  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
+  await user.click(await screen.findByRole('button', { name: 'Discard draft' }));
+  const discard = await screen.findByRole('dialog', { name: 'Discard workout' });
+  expect(within(discard).getByRole('button', { name: 'Discard workout' })).toBeInTheDocument();
+  expect(within(discard).queryByRole('button', { name: 'Confirm' })).toBeNull();
+});
 it('shows an empty demonstration and keeps a failed save editable', async () => {
   const user = userEvent.setup(); setup();
   await user.click(await screen.findByRole('button', { name: 'Bench press' }));
@@ -91,14 +106,14 @@ it('retains one upload and freezes the payload until an uncertain exercise creat
   await user.upload(screen.getByLabelText(/Demonstration \(optional/), new File(['GIF89a'], 'rows.gif', { type: 'image/gif' }));
   mocks.saveExercise.mockRejectedValueOnce(new UncertainSaveError());
   await user.click(screen.getByRole('button', { name: 'Save exercise' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Uploaded media retained');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Your upload is held until the save is confirmed.');
   expect(screen.getByRole('textbox', { name: 'Exercise name' })).toBeDisabled();
   expect(screen.getByLabelText(/Demonstration \(optional/)).toBeDisabled();
   expect(mocks.removeMedia).not.toHaveBeenCalled();
   await user.click(screen.getByRole('button', { name: 'Close Add exercise' }));
   expect(screen.getByRole('dialog', { name: 'Save in progress' })).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Keep editing' }));
-  await user.click(screen.getByRole('button', { name: 'Check save result' }));
+  await user.click(screen.getByRole('button', { name: 'Confirm save result' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   expect(mocks.upload).toHaveBeenCalledOnce();
   expect(mocks.saveExercise).toHaveBeenCalledTimes(2);

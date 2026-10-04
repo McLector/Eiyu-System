@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { accountDateKey, fetchMonthHistory, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
 
 import { CheckIcon, ChevronIcon, CompletionDotIcon } from '../Icons';
+import StateBlock from '../components/StateBlock';
 
 interface Props { userId: string; timeZone: string; onClose: () => void; }
 
@@ -76,12 +77,9 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
 
           {/* Calendar grid */}
           {historyQuery.isPending ? (
-            <div style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Reading the record…</div>
+            <StateBlock kind="loading">Reading the record…</StateBlock>
           ) : historyQuery.error ? (
-            <div role="alert" style={{ textAlign: 'center', padding: '24px 0', marginBottom: 20, fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>
-              <div>The System couldn&apos;t pull this month&apos;s record. Try again in a moment.</div>
-              <button className="btn-ghost" onClick={() => void historyQuery.refetch()} style={{ marginTop: 12, padding: '7px 12px', color: 'var(--c-accent)', font: '700 11px Rajdhani, sans-serif', letterSpacing: '.08em' }}>RETRY</button>
-            </div>
+            <StateBlock kind="error" retryLabel="RETRY" onRetry={() => void historyQuery.refetch()}>The System couldn&apos;t pull this month&apos;s record. Try again in a moment.</StateBlock>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 20 }}>
               {cells.map((day, i) => {
@@ -96,9 +94,9 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
                     background: isToday ? 'var(--c-accent-glass)' : 'transparent',
                     border: isToday ? '1px solid var(--c-accent-border)' : '1px solid transparent',
                   }}>
-                    <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: isToday ? 'var(--c-accent)' : 'var(--c-text)' }}>{day}</span>
+                    <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: isToday ? 'var(--c-accent-text)' : 'var(--c-text)' }}>{day}</span>
                     {completion ? (
-                      <CompletionDotIcon color={completion === 'full' ? '#4ade80' : '#fbbf24'} size={8} />
+                      <CompletionDotIcon color={completion === 'full' ? 'var(--c-success)' : 'var(--c-warning)'} size={8} />
                     ) : (
                       <div style={{ width: 8, height: 8 }} />
                     )}
@@ -110,7 +108,7 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
 
           {/* Legend */}
           <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-            {[['#4ade80', 'Full completion'], ['#fbbf24', 'Penalty']].map(([color, label]) => (
+            {[['var(--c-success)', 'Full completion'], ['var(--c-warning)', 'Penalty']].map(([color, label]) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <CompletionDotIcon color={color as string} size={8} />
                 <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-muted-flat)' }}>{label}</span>
@@ -128,11 +126,11 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
             ) : (
               todayCompletions.map((q, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i > 0 ? '1px solid var(--c-divider-flat)' : 'none' }}>
-                  <div style={{ width: 20, height: 20, borderRadius: 5, background: 'rgba(74,222,128,0.15)', border: '1.5px solid rgba(74,222,128,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#4ade80' }}>
+                  <div style={{ width: 20, height: 20, borderRadius: 5, background: 'var(--c-success-glass)', border: '1.5px solid var(--c-success-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--c-success)' }}>
                     <CheckIcon size={11} />
                   </div>
                   <span style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)', flex: 1 }}>{q.habitName}</span>
-                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: '#4ade80', background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: 5, padding: '2px 6px' }}>
+                  <span style={{ fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--c-success)', background: 'var(--c-success-glass)', border: '1px solid var(--c-success-border)', borderRadius: 5, padding: '2px 6px' }}>
                     +{q.kind === 'full' ? FULL_XP : EASY_XP} XP
                   </span>
                 </div>

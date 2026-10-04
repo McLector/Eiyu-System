@@ -25,18 +25,20 @@ export default function JourneyMap({ quest, expanded, onSelect }: { quest: LongQ
     return () => { observer?.disconnect(); document.removeEventListener('visibilitychange', visibility); };
   }, []);
   return <div ref={root} className={`journey ${expanded ? 'is-expanded' : ''} ${active ? '' : 'is-paused'}`} style={{ '--journey-color': STAT_COLORS[quest.stat] } as React.CSSProperties}>
-    <div className="journey-map">
-      {!missing && <img className="journey-terrain" src="/art/journey-terrain.webp" alt="Fantasy landscape with a castle, cave, mine, ruins and vault" onError={() => setMissing(true)} />}
+    <div className="journey-map" role="group" aria-label={`${quest.name} journey map`}>
+      {/* Decorative: the checkpoints carry the information, so the painting is hidden from assistive technology. */}
+      {!missing && <img className="journey-terrain" src="/art/journey-terrain.webp" alt="" onError={() => setMissing(true)} />}
       {/* The map stretches a 100x100 viewBox over a wide, short box, so strokes must not scale or the route becomes a hairline. */}
       <svg className="journey-route" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         <path d={ROUTE} fill="none" stroke="#04141a" strokeOpacity=".6" strokeWidth="6" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         <path d={ROUTE} fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeDasharray="0.1 8" vectorEffect="non-scaling-stroke" />
       </svg>
-      {!!stages.length && <img className="journey-hero" src="/art/journey-hero.webp" alt="" style={{ left: `${POINTS[heroIndex].x}%`, top: `${POINTS[heroIndex].y}%` }} />}
+      {/* The wrapper covers the map and is translated by percentages of its own size, so the travel runs on the compositor. */}
+      {!!stages.length && <div className="journey-hero-track" style={{ transform: `translate(${POINTS[heroIndex].x}%, ${POINTS[heroIndex].y}%)` }}><img className="journey-hero" src="/art/journey-hero.webp" alt="" /></div>}
       {stages.map((stage, index) => {
         const sequence = stageSequenceState(quest.stages, page * 5 + index);
         const state = stage.done ? 'Completed' : sequence.locked ? 'Locked' : 'Available';
-        return <button key={stage.id} className={`journey-checkpoint ${state.toLowerCase()}`} style={{ left: `${POINTS[index].x}%`, top: `${POINTS[index].y}%` }} aria-label={`${stage.name}. ${state}${sequence.locked ? '. ' + sequence.reason : ''}`} title={stage.name} onClick={() => onSelect(stage.id)}>
+        return <button key={stage.id} className={`journey-checkpoint ${state.toLowerCase()}`} style={{ left: `${POINTS[index].x}%`, top: `${POINTS[index].y}%` }} aria-label={`Map checkpoint ${page * 5 + index + 1}: ${stage.name}. ${state}${sequence.locked ? '. ' + sequence.reason : ''}`} title={stage.name} onClick={() => onSelect(stage.id)}>
           <span className="journey-checkpoint-icon">{stage.done ? <CheckIcon /> : sequence.locked ? '◇' : page * 5 + index + 1}</span><small>{state}</small>
         </button>;
       })}

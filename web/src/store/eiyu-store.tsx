@@ -42,6 +42,7 @@ import {
   type UserProfile,
 } from '@eiyu/shared';
 
+import { stageNotice } from '@eiyu/shared';
 import { useSession } from './session-context';
 
 export const queryClient = new QueryClient({
@@ -389,7 +390,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         if (activeUserId.current !== userId) return;
         setLqActionError(null);
         setRewardReceipt(receipt.replayed ? null : receipt);
-        setStageRewardNotice(receipt.replayed ? 'Stage save reconciled.' : receipt.changed ? nextDone ? 'Stage completed.' : 'Stage undone.' : 'Stage already saved.');
+        setStageRewardNotice(stageNotice(receipt.replayed ? 'replayed' : receipt.changed ? (nextDone ? 'completed' : 'undone') : 'unchanged'));
       } catch (err) {
         if (activeUserId.current === userId) {
           setLqActionError(formatError(err));

@@ -50,7 +50,7 @@ export default function WebHeatmap({ userId, timeZone }: Props) {
         LAST 6 MONTHS
       </div>
       {historyQuery.error ? (
-        <div style={{ fontFamily: 'Inter', fontSize: 13, color: '#f87171' }}>The archive didn&apos;t respond.</div>
+        <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-danger)' }}>The archive didn&apos;t respond.</div>
       ) : (
         <>
           <div style={{ display: 'flex' }}>
@@ -63,7 +63,7 @@ export default function WebHeatmap({ userId, timeZone }: Props) {
                     display: 'flex',
                     alignItems: 'center',
                     fontFamily: 'Rajdhani',
-                    fontSize: 9,
+                    fontSize: 11,
                     fontWeight: 600,
                     color: 'var(--c-dim-flat)',
                   }}>
@@ -80,7 +80,7 @@ export default function WebHeatmap({ userId, timeZone }: Props) {
                       position: 'absolute',
                       left: columnIndex * (CELL_SIZE + CELL_GAP),
                       fontFamily: 'Rajdhani',
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: 600,
                       color: 'var(--c-dim-flat)',
                     }}>

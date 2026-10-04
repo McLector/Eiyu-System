@@ -12,13 +12,14 @@ function StatGain({ total }: { total: RewardReceipt['totals'][number] }) {
     return () => cancelAnimationFrame(frame);
   }, [total]);
   const progress = levelProgress(xp);
-  return <div className="reward-stat" style={{ color: STAT_COLORS[total.stat] }}><strong>{total.stat} {total.delta > 0 ? '+' : ''}{total.delta} XP</strong><span>Level {progress.level} · {progress.xpIntoLevel} / {progress.xpForNextLevel} XP</span><progress aria-label={`${total.stat} level progress`} value={progress.xpIntoLevel} max={progress.xpForNextLevel} /></div>;
+  const leveledUp = levelProgress(total.after).level > levelProgress(total.before).level;
+  return <div className="reward-stat" style={{ color: STAT_COLORS[total.stat] }}><strong>{total.stat} {total.delta > 0 ? '+' : ''}{total.delta} XP</strong><span className={leveledUp ? 'is-level-up' : undefined}>Level {progress.level} · {progress.xpIntoLevel} / {progress.xpForNextLevel} XP</span><progress aria-label={`${total.stat} level progress`} value={progress.xpIntoLevel} max={progress.xpForNextLevel} /></div>;
 }
 export default function RewardFeedback({ receipt }: { receipt?: RewardReceipt | null }) {
   const [visible, setVisible] = useState(true);
   useEffect(() => { setVisible(true); const timer = setTimeout(() => setVisible(false), 4600); return () => clearTimeout(timer); }, [receipt?.id]);
   if (!visible || !receipt || receipt.replayed || !receipt.totals.length) return null;
-  return <aside className="reward-feedback" role="status" aria-label="Confirmed XP reward">
+  return <aside className="reward-feedback feedback-card" data-tone="success" role="status" aria-label="Confirmed XP reward">
     {receipt.totals.map(total => <StatGain key={receipt.id + total.stat} total={total} />)}
     {receipt.components.filter(c => c.kind === 'bonus').map(c => <small key={c.stat}>Completion bonus: {c.stat} {c.delta > 0 ? '+' : ''}{c.delta} XP</small>)}
   </aside>;

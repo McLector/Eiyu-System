@@ -17,11 +17,11 @@ export default function FireStreak({ size = 14 }: Props) {
   const height = size * (30 / 26);
   return (
     <span
-      className="fire-flame"
+      className="fire-flame fire-glow"
       aria-hidden="true"
       style={{
         position: 'relative', display: 'inline-block', width: size, height,
-        verticalAlign: 'middle', animation: 'fireGlow 1.3s ease-in-out infinite',
+        verticalAlign: 'middle',
       }}
     >
       <svg width={size} height={height} viewBox="0 0 26 30" className="fire-flame"

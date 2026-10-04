@@ -15,14 +15,14 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
       width: 44, height: 24, borderRadius: 12,
       background: on ? 'var(--c-accent-strong)' : 'var(--c-track)',
       border: `1.5px solid ${on ? 'var(--c-accent-border)' : 'var(--c-divider-flat)'}`,
-      position: 'relative', cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0,
+      position: 'relative', cursor: 'pointer', transition: 'background-color var(--dur-base) ease, border-color var(--dur-base) ease', flexShrink: 0,
     }}>
       <div style={{
         width: 16, height: 16, borderRadius: '50%', position: 'absolute',
-        top: 2, left: on ? 22 : 2,
+        top: 2, left: 2, transform: `translateX(${on ? 20 : 0}px)`,
         background: on ? 'var(--c-accent)' : 'var(--c-dim-flat)',
         boxShadow: on ? '0 0 8px var(--c-accent)' : 'none',
-        transition: 'left 0.2s, background 0.2s',
+        transition: 'transform var(--dur-base) var(--ease-in-out), background-color var(--dur-base) ease',
       }} />
     </button>
   );
@@ -72,7 +72,7 @@ export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onL
         label="Quest History"
         sub="View your completion calendar"
         right={
-          <button onClick={onShowHistory} className="btn-ghost" style={{ padding: '6px 16px', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
+          <button onClick={onShowHistory} className="btn-secondary">
             VIEW
           </button>
         }
@@ -85,12 +85,12 @@ export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onL
           label="Sign Out"
           sub="Return to the login screen"
           right={
-            <button onClick={onLogout} style={{ padding: '6px 16px', borderRadius: 50, border: '1px solid rgba(248,113,113,0.35)', background: 'rgba(248,113,113,0.08)', fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: '#f87171', letterSpacing: '0.08em', cursor: 'pointer', transition: 'all 0.15s' }}>
+            <button onClick={onLogout} className="btn-destructive">
               SIGN OUT
             </button>
           }
         />
-        {signOutError && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171', margin: '8px 0 0' }}>{signOutError}</p>}
+        {signOutError && <p role="alert" className="phase4-error">{signOutError}</p>}
       </>}
 
       <div style={{ marginTop: 24, textAlign: 'center', fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)' }}>

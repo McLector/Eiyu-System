@@ -81,7 +81,7 @@ describe('web Status weekly review', () => {
     store.fetchWeeklyReview.mockRejectedValueOnce(new Error('offline'));
     await interaction.click(screen.getByRole('tab', { name: 'STATS' }));
     await interaction.click(screen.getByRole('tab', { name: 'WEEKLY REVIEW' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load this week's data.");
+    expect(await screen.findByRole('alert')).toHaveTextContent("The System couldn't read this week's data.");
     store.fetchWeeklyReview.mockResolvedValueOnce(weeklyData);
     await interaction.click(screen.getByRole('button', { name: 'RETRY' }));
     await waitFor(() => expect(screen.getByRole('table', { name: /weekly activity/i })).toBeInTheDocument());

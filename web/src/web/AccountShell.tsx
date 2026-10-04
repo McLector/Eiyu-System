@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
 
-import { BoardIcon, ScrollIcon, StatusIcon, SunIcon, ChevronIcon } from '../Icons';
+import { BoardIcon, DumbbellIcon, GearIcon, ScrollIcon, SignOutIcon, StatusIcon } from '../Icons';
 import { useSession } from '../store/session-context';
 import { useEiyu } from '../store/eiyu-store';
 import WebSettings from './WebSettings';
@@ -24,7 +24,7 @@ const NAV = [
   { to: '/board', label: 'BOARD', Icon: BoardIcon },
   { to: '/status', label: 'STATUS', Icon: StatusIcon },
   { to: '/longquests', label: 'LONG QUESTS', Icon: ScrollIcon },
-  { to: '/gym', label: 'GYM PROGRESS', Icon: StatusIcon },
+  { to: '/gym', label: 'GYM PROGRESS', Icon: DumbbellIcon },
 ] as const;
 
 function initials(name: string) { return profileInitials(name); }
@@ -71,8 +71,8 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
         </label>
         {error && <p className="phase4-error" role="alert">{error}</p>}
         <div className="phase4-dialog-actions">
-          <button type="button" className="btn-ghost phase4-secondary" onClick={() => requestClose(onClose)} disabled={pending}>CANCEL</button>
-          <button type="button" className="btn-ghost phase4-primary" onClick={() => void save()} disabled={pending}>
+          <button type="button" className="btn-secondary" onClick={() => requestClose(onClose)} disabled={pending}>CANCEL</button>
+          <button type="button" className="btn-primary" onClick={() => void save()} disabled={pending}>
             {pending ? 'SAVING…' : 'SAVE'}
           </button>
         </div>
@@ -178,10 +178,10 @@ export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, d
           {menuOpen && (
             <div className="phase4-account-menu" role="menu" aria-label="Account menu">
               <button role="menuitem" type="button" onClick={() => openOverlay('profile')}><StatusIcon active={false} />Edit details</button>
-              <button role="menuitem" type="button" onClick={() => openOverlay('settings')}><SunIcon />Settings</button>
+              <button role="menuitem" type="button" onClick={() => openOverlay('settings')}><GearIcon active={false} />Settings</button>
               <button role="menuitem" type="button" onClick={() => openOverlay('archived')}><ScrollIcon active={false} />Archived habits</button>
               <button role="menuitem" type="button" onClick={() => guardNavigation(() => void logout())} disabled={logoutPending}>
-                <ChevronIcon />{logoutPending ? 'Logging out…' : 'Logout'}
+                <SignOutIcon active={false} />{logoutPending ? 'Logging out…' : 'Logout'}
               </button>
               {logoutError && <p className="phase4-error" role="alert">{logoutError}</p>}
             </div>

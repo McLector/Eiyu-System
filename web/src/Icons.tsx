@@ -97,6 +97,32 @@ export function GearIcon({ active }: { active: boolean }) {
   );
 }
 
+export function DumbbellIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+      stroke={active ? 'var(--c-accent)' : 'var(--c-nav-dim)'}
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.5 6.5v11" />
+      <path d="M17.5 6.5v11" />
+      <path d="M3.5 9v6" />
+      <path d="M20.5 9v6" />
+      <path d="M6.5 12h11" />
+    </svg>
+  );
+}
+
+export function SignOutIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+      stroke={active ? 'var(--c-accent)' : 'var(--c-nav-dim)'}
+      strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
+
 export function CheckIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -165,7 +191,7 @@ export function CompletionDotIcon({ color, size = 8 }: { color: string; size?: n
 export function ChevronIcon({ direction = 'right', size = 16 }: { direction?: 'right' | 'down' | 'up' | 'left'; size?: number }) {
   const rotate = { right: 0, down: 90, left: 180, up: 270 }[direction];
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ transform: `rotate(${rotate}deg)`, transition: 'transform 0.25s ease' }}>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ transform: `rotate(${rotate}deg)`, transition: 'transform var(--dur-base) var(--ease-in-out)' }}>
       <polyline points="9 18 15 12 9 6" />
     </svg>
   );

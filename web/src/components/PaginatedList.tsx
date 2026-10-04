@@ -1,4 +1,5 @@
 import { Children, useEffect, useRef, useState, type ReactNode } from 'react';
+import StateBlock from './StateBlock';
 
 export default function PaginatedList({ children, label, empty }: { children: ReactNode; label: string; empty?: string }) {
   const rows = Children.toArray(children);
@@ -13,7 +14,11 @@ export default function PaginatedList({ children, label, empty }: { children: Re
       if (!node || node.clientHeight <= 0) return;
       const heights = Array.from(node.children).map(child => child.getBoundingClientRect().height);
       const height = Math.max(1, ...heights);
-      setCapacity(Math.max(1, Math.floor((node.clientHeight + 8) / (height + 8))));
+      // clientHeight includes the body's own padding, which cards cannot use; rows are separated by the flex gap.
+      const style = getComputedStyle(node);
+      const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+      const gap = parseFloat(style.rowGap) || 0;
+      setCapacity(Math.max(1, Math.floor((node.clientHeight - padding + gap) / (height + gap))));
     };
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
@@ -22,11 +27,11 @@ export default function PaginatedList({ children, label, empty }: { children: Re
     return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
   }, [children, current, capacity]);
   return <div className="paged-list">
-    <div ref={body} className="paged-list-body">{rows.length ? rows.slice(current * capacity, (current + 1) * capacity) : <p className="board-lane-empty">{empty ?? 'No items yet.'}</p>}</div>
+    <div ref={body} className="paged-list-body">{rows.length ? rows.slice(current * capacity, (current + 1) * capacity) : <StateBlock kind="empty">{empty ?? 'No items yet.'}</StateBlock>}</div>
     <nav className="list-pagination" aria-label={`${label} pages`}>
-      <button className="btn-ghost" type="button" aria-label={`Previous ${label} page`} disabled={current === 0} onClick={() => setPage(current - 1)}>Previous</button>
+      <button className="btn-secondary" type="button" aria-label={`Previous ${label} page`} disabled={current === 0} onClick={() => setPage(current - 1)}>Previous</button>
       <span aria-live="polite">{current + 1} / {pages}</span>
-      <button className="btn-ghost" type="button" aria-label={`Next ${label} page`} disabled={current === pages - 1} onClick={() => setPage(current + 1)}>Next</button>
+      <button className="btn-secondary" type="button" aria-label={`Next ${label} page`} disabled={current === pages - 1} onClick={() => setPage(current + 1)}>Next</button>
     </nav>
   </div>;
 }

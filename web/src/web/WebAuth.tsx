@@ -27,23 +27,23 @@ interface Props { onLogin: () => void; logoutWarning?: string | null; onDismissL
 interface Notice { icon: 'mail' | 'check'; title: string; message: string; }
 
 const STRENGTH_LABELS = ['Weak', 'Okay', 'Good', 'Strong'] as const;
-const STRENGTH_COLORS = ['#f87171', '#fbbf24', '#4ade80', '#4ade80'] as const;
+const STRENGTH_COLORS = ['var(--c-danger)', 'var(--c-warning)', 'var(--c-success)', 'var(--c-success)'] as const;
 
 const NOTICE_TINT = {
-  mail: { bg: 'var(--c-accent-glass)', border: 'var(--c-accent-border)', color: 'var(--c-accent)' },
-  check: { bg: 'rgba(74,222,128,0.15)', border: 'rgba(74,222,128,0.4)', color: '#4ade80' },
+  mail: { bg: 'var(--c-accent-glass)', border: 'var(--c-accent-border)', color: 'var(--c-accent-text)' },
+  check: { bg: 'var(--c-success-glass)', border: 'var(--c-success-border)', color: 'var(--c-success)' },
 } as const;
 
 function PasswordStrength({ password }: { password: string }) {
   if (!password) return null;
   const score = passwordStrength(password);
   const label = password.length < MIN_PASSWORD_LENGTH ? 'Too short' : STRENGTH_LABELS[score];
-  const color = password.length < MIN_PASSWORD_LENGTH ? '#f87171' : STRENGTH_COLORS[score];
+  const color = password.length < MIN_PASSWORD_LENGTH ? 'var(--c-danger)' : STRENGTH_COLORS[score];
   return (
     <div style={{ marginTop: 6 }}>
       <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
         {[1, 2, 3].map(i => (
-          <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= score ? STRENGTH_COLORS[score] : 'var(--c-glass-border)', transition: 'background 0.2s' }} />
+          <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= score ? STRENGTH_COLORS[score] : 'var(--c-glass-border)', transition: 'background-color var(--dur-base) ease' }} />
         ))}
       </div>
       <span style={{ fontFamily: 'Inter', fontSize: 11, color }}>{label}</span>
@@ -160,7 +160,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 0 24px var(--c-accent-glass)',
           }}>
-            <span style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--c-accent)' }}>英</span>
+            <span style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--c-accent-text)' }}>英</span>
           </div>
           <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.1em', margin: 0 }}>EIYU SYSTEM</h1>
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginTop: 6 }}>
@@ -180,9 +180,9 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
           {notice ? (
             <div style={{ textAlign: 'center', padding: '12px 0' }}>
               <NoticeBadge icon={notice.icon} />
-              <p style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--c-accent)', marginBottom: 6, letterSpacing: '0.04em' }}>{notice.title}</p>
+              <p style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--c-accent-text)', marginBottom: 6, letterSpacing: '0.04em' }}>{notice.title}</p>
               <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginBottom: 20 }}>{notice.message}</p>
-              <button onClick={() => { setNotice(null); switchMode('login'); }} className="btn-ghost" style={{ width: '100%', padding: '13px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.08em' }}>
+              <button onClick={() => { setNotice(null); switchMode('login'); }} className="btn-secondary" style={{ width: '100%' }}>
                 BACK TO LOGIN
               </button>
             </div>
@@ -192,19 +192,19 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DISPLAY NAME</label>
                   <input aria-label="Display name" aria-invalid={attempted && !!nameError} aria-describedby={attempted && nameError ? 'signup-name-error' : undefined} className="field" placeholder="Kaito Mizuru" value={name} onChange={e => setName(e.target.value)} />
-                  {attempted && nameError && <p id="signup-name-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{nameError}</p>}
+                  {attempted && nameError && <p id="signup-name-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{nameError}</p>}
                 </div>
               )}
               <div>
                 <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>EMAIL</label>
                 <input aria-label="Email address" aria-invalid={attempted && !!emailError} aria-describedby={attempted && emailError ? 'auth-email-error' : undefined} className="field" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
-                {attempted && emailError && <p id="auth-email-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{emailError}</p>}
+                {attempted && emailError && <p id="auth-email-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{emailError}</p>}
               </div>
               {mode !== 'forgot' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>PASSWORD</label>
                   <input aria-label="Password" aria-invalid={attempted && !!passwordError} aria-describedby={attempted && passwordError ? 'auth-password-error' : undefined} className="field" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
-                  {attempted && passwordError && <p id="auth-password-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', margin: '6px 0 0' }}>{passwordError}</p>}
+                  {attempted && passwordError && <p id="auth-password-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{passwordError}</p>}
                   {mode === 'signup' && <PasswordStrength password={password} />}
                 </div>
               )}
@@ -212,7 +212,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>CONFIRM PASSWORD</label>
                   <input aria-label="Confirm password" className="field" type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
-                  {attempted && confirmError && <p id="signup-confirm-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171', marginTop: 6 }}>{confirmError}</p>}
+                  {attempted && confirmError && <p id="signup-confirm-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', marginTop: 6 }}>{confirmError}</p>}
                 </div>
               )}
               {mode === 'signup' && (
@@ -225,10 +225,10 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
                     onClick={() => setTerms(!terms)}
                     style={{
                       width: 18, height: 18, borderRadius: 5, flexShrink: 0, padding: 0,
-                      border: `1.5px solid ${terms ? 'rgba(74,222,128,0.5)' : 'var(--c-accent-border)'}`,
-                      background: terms ? 'rgba(74,222,128,0.15)' : 'transparent',
+                      border: `1.5px solid ${terms ? 'var(--c-success-border)' : 'var(--c-accent-border)'}`,
+                      background: terms ? 'var(--c-success-glass)' : 'transparent',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      transition: 'all 0.15s', color: '#4ade80', cursor: 'pointer',
+                      transition: 'background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease', color: 'var(--c-success)', cursor: 'pointer',
                     }}
                   >
                     {terms && <CheckIcon size={11} />}
@@ -238,18 +238,18 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
                     <button
                       type="button"
                       onClick={() => openLegalDocument('privacy')}
-                      style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent-text)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                       Privacy Policy
                     </button>{' '}
                     and{' '}
                     <button
                       type="button"
                       onClick={() => openLegalDocument('terms')}
-                      style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+                      style={{ padding: 0, border: 0, background: 'none', color: 'var(--c-accent-text)', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                       Terms of Use
                     </button>.
                   </span>
-                  {attempted && !terms && <span role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: '#f87171' }}>Accept the Privacy Policy and Terms to continue.</span>}
+                  {attempted && !terms && <span role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)' }}>Accept the Privacy Policy and Terms to continue.</span>}
                 </div>
               )}
               {mode === 'login' && (
@@ -259,8 +259,8 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
                   </button>
                 </div>
               )}
-              {error && <p style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171' }}>{error}</p>}
-              <button type="submit" disabled={submitting} className="btn-ghost" style={{ width: '100%', padding: '14px', marginTop: 4, fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em', opacity: submitting ? 0.6 : 1 }}>
+              {error && <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-danger)' }}>{error}</p>}
+              <button type="submit" disabled={submitting} className="btn-primary" style={{ width: '100%', marginTop: 4, minHeight: 46, fontSize: 16 }}>
                 {submitting ? 'WORKING…' : mode === 'login' ? 'ENTER SYSTEM' : mode === 'signup' ? 'BEGIN JOURNEY' : 'SEND RECOVERY LINK'}
               </button>
             </form>
@@ -274,12 +274,12 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
               {mode === 'login' ? 'New adventurer?' : mode === 'signup' ? 'Already enrolled?' : ''}
             </span>
             {mode !== 'forgot' && (
-              <button onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              <button onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent-text)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                 {mode === 'login' ? 'Register' : 'Sign in'}
               </button>
             )}
             {mode === 'forgot' && (
-              <button onClick={() => switchMode('login')} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              <button onClick={() => switchMode('login')} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-accent-text)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
                 Back to login
               </button>
             )}
@@ -295,7 +295,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
               style={{ paddingRight: 8 }}>
               {activeLegalDocument.sections.map(section => (
                 <section key={section.heading} style={{ marginBottom: 20 }}>
-                  <h3 style={{ margin: '0 0 7px', fontFamily: 'Rajdhani', fontSize: 13, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>
+                  <h3 style={{ margin: '0 0 7px', fontFamily: 'Rajdhani', fontSize: 13, color: 'var(--c-accent-text)', letterSpacing: '0.1em' }}>
                     {section.heading}
                   </h3>
                   <p style={{ margin: 0, fontFamily: 'Inter', fontSize: 14, lineHeight: 1.75, color: 'var(--c-muted-flat)', overflowWrap: 'anywhere' }}>

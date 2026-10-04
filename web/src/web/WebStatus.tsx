@@ -5,6 +5,7 @@ import {
   STAT_COLORS, STATS, RANK_CONFIG, tintSecondaryText, type Stat, type UserProfile,
   fetchWeeklyReview, fetchOrCreateWeeklySummary, regenerateWeeklySummary, formatError,
 } from '@eiyu/shared';
+import { WEEKLY_REVIEW_COPY } from '@eiyu/shared';
 import { StatIcon, SparkleIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import { useSession } from '../store/session-context';
@@ -54,13 +55,13 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
         <span aria-hidden="true" style={{ display: 'flex' }}>
           <SparkleIcon size={15} />
         </span>
-        <span style={{ flex: 1, fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>WEEKLY DEBRIEF</span>
+        <span style={{ flex: 1, fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent-text)', letterSpacing: '0.1em' }}>WEEKLY DEBRIEF</span>
         <button
           onClick={() => void handleRegenerate()}
           disabled={regenerating || isPending || !summary}
           aria-label="Regenerate weekly summary"
-          className="btn-ghost"
-          style={{ padding: '4px 7px', color: 'var(--c-accent)', font: '700 10px Rajdhani, sans-serif', letterSpacing: '.06em', opacity: regenerating || isPending || !summary ? 0.5 : 1 }}
+          className="btn-secondary"
+          style={{ minHeight: 30, padding: '4px 10px', fontSize: 11 }}
         >
           {regenerating ? 'REGENERATING…' : '↻ REGENERATE'}
         </button>
@@ -70,18 +71,18 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
       ) : error ? (
         <div className="status-query-error" role="alert">
           <span>The System couldn&apos;t reach the archive — {formatError(error)}</span>
-          <button className="btn-ghost" onClick={() => void refetch()}>RETRY</button>
+          <button className="btn-secondary" onClick={() => void refetch()}>RETRY</button>
         </div>
       ) : (
         <>
-          {regenerateError && <p role="alert" style={{ fontFamily: 'Inter', fontSize: 12, color: '#f87171', lineHeight: 1.5, margin: '0 0 6px' }}>{regenerateError}</p>}
+          {regenerateError && <p role="alert" style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-danger)', lineHeight: 1.5, margin: '0 0 6px' }}>{regenerateError}</p>}
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>
             {displayed}
           </p>
           {isLong && (
             <button onClick={() => setExpanded(e => !e)} style={{
               marginTop: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-              fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c-accent)',
+              fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--c-accent-text)',
             }}>
               {expanded ? 'SHOW LESS ↑' : 'READ MORE ↓'}
             </button>
@@ -101,10 +102,10 @@ function StatBar({ stat, user, isFirst, darkMode }: { stat: Stat; user: UserProf
         <StatIcon stat={stat} size={13} />
         <span style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: STAT_COLORS[stat], letterSpacing: '0.08em', flex: 1 }}>{stat}</span>
         <span style={{ fontFamily: 'JetBrains Mono', fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>Lv.{s.level}</span>
-        <span style={{ fontFamily: 'Inter', fontSize: 10, color: tintSecondaryText(STAT_COLORS[stat], darkMode) }}>{s.xp}/{s.xpMax} XP</span>
+        <span style={{ fontFamily: 'Inter', fontSize: 11, color: tintSecondaryText(STAT_COLORS[stat], darkMode) }}>{s.xp}/{s.xpMax} XP</span>
       </div>
       <div style={{ height: 6, borderRadius: 4, background: 'var(--c-track)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: STAT_COLORS[stat], borderRadius: 4, transition: 'width 0.4s ease', boxShadow: `0 0 6px ${STAT_COLORS[stat]}55` }} />
+        <div style={{ height: '100%', width: '100%', transform: `scaleX(${Math.min(1, Math.max(0, pct / 100))})`, transformOrigin: 'left', background: STAT_COLORS[stat], borderRadius: 4, transition: 'transform var(--dur-slow) var(--ease-in-out)', boxShadow: `0 0 6px ${STAT_COLORS[stat]}55` }} />
       </div>
     </div>
   );
@@ -129,9 +130,11 @@ export default function WebStatus({ darkMode }: Props) {
     fullMark: 50,
   }));
 
-  const radarAccent = darkMode ? '#67e8f9' : '#0891b2';
-  const radarFill = darkMode ? 'rgba(103,232,249,0.12)' : 'rgba(8,145,178,0.1)';
-  const gridStroke = darkMode ? 'rgba(103,232,249,0.1)' : 'rgba(8,145,178,0.15)';
+  // The chart reads the theme tokens, so it follows the theme without a JS colour table.
+  const radarAccent = 'var(--c-accent)';
+  const radarLabel = 'var(--c-accent-text)';
+  const radarFill = 'color-mix(in srgb, var(--c-accent) 12%, transparent)';
+  const gridStroke = 'var(--c-divider-flat)';
 
   return (
     <div className="status-layout">
@@ -144,8 +147,8 @@ export default function WebStatus({ darkMode }: Props) {
               background: tab === t ? 'var(--c-accent-glass)' : 'transparent',
               border: `1px solid ${tab === t ? 'var(--c-accent-border)' : 'transparent'}`,
               fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700,
-              color: tab === t ? 'var(--c-accent)' : 'var(--c-muted-flat)',
-              letterSpacing: '0.1em', cursor: 'pointer', transition: 'all 0.15s',
+              color: tab === t ? 'var(--c-accent-text)' : 'var(--c-muted-flat)',
+              letterSpacing: '0.1em', cursor: 'pointer', transition: 'background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, color var(--dur-fast) ease',
             }}>
               {t === 'hero' ? 'HERO' : t === 'stats' ? 'STATS' : 'WEEKLY REVIEW'}
             </button>
@@ -177,11 +180,11 @@ export default function WebStatus({ darkMode }: Props) {
               <PolarGrid stroke={gridStroke} strokeDasharray="3 3" />
               <PolarAngleAxis
                 dataKey="subject"
-                tick={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, fill: radarAccent, letterSpacing: '0.1em' }}
+                tick={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, fill: radarLabel, letterSpacing: '0.1em' }}
               />
               <Radar name="Stats" dataKey="value" stroke={radarAccent} fill={radarFill} strokeWidth={2} dot={{ r: 3, fill: radarAccent }} />
               <Tooltip
-                contentStyle={{ background: darkMode ? 'rgba(5,18,35,0.95)' : 'rgba(237,248,255,0.95)', border: `1px solid ${radarAccent}33`, borderRadius: 10, fontFamily: 'JetBrains Mono', fontSize: 13, color: darkMode ? '#dff0fb' : '#0b1e32' }}
+                contentStyle={{ background: 'var(--c-modal)', border: '1px solid var(--c-panel-border)', borderRadius: 4, fontFamily: 'JetBrains Mono', fontSize: 13, color: 'var(--c-text)' }}
                 formatter={(v: unknown) => [`Lv.${v}`, 'Level']}
               />
             </RadarChart>
@@ -210,8 +213,8 @@ export default function WebStatus({ darkMode }: Props) {
                 <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)', padding: '12px 0' }}>Reading the week…</div>
               ) : weeklyReviewQuery.error ? (
                 <div className="status-query-error" role="alert">
-                  <span>Couldn&apos;t load this week&apos;s data.</span>
-                  <button className="btn-ghost" onClick={() => void weeklyReviewQuery.refetch()}>RETRY</button>
+                  <span>{WEEKLY_REVIEW_COPY.error}</span>
+                  <button className="btn-secondary" onClick={() => void weeklyReviewQuery.refetch()}>RETRY</button>
                 </div>
               ) : (
                 <WeeklyReviewMatrix data={weeklyReviewQuery.data ?? []} timeZone={user.timeZone} />

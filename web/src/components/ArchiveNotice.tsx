@@ -8,10 +8,11 @@ export const getNotificationOwner = () => activeOwner;
 export function announceArchive(type: 'habit' | 'one_time', owner = activeOwner) {
   window.dispatchEvent(new CustomEvent('eiyu:archived', { detail: { id: crypto.randomUUID(), owner, type } }));
 }
-export function announceFeedback(message: string, owner = activeOwner) {
-  window.dispatchEvent(new CustomEvent('eiyu:archived', { detail: { id: crypto.randomUUID(), owner, message } }));
+export type FeedbackTone = 'info' | 'success' | 'warning' | 'danger';
+export function announceFeedback(message: string, owner = activeOwner, tone: FeedbackTone = 'success') {
+  window.dispatchEvent(new CustomEvent('eiyu:archived', { detail: { id: crypto.randomUUID(), owner, message, tone } }));
 }
-interface Notice { id: string; owner: string; type?: 'habit' | 'one_time'; message?: string }
+interface Notice { id: string; owner: string; type?: 'habit' | 'one_time'; message?: string; tone?: FeedbackTone }
 export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   const { user } = useSession();
   const owner = user?.id ?? null;
@@ -58,7 +59,7 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
     return () => observer.disconnect();
   }, []);
   if (!notice || notice.owner !== owner) return null;
-  const content = <div className="archive-notice" role="status" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
+  const content = <div className="archive-notice feedback-card" data-tone={notice.tone ?? 'success'} role="status" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
     {notice.message ? <span>{notice.message}</span> : <><CheckIcon /><span><strong>{notice.type === 'habit' ? 'Habit' : 'Quest'} archived ✓</strong><br />Your archived habits are available from your profile.</span><button className="btn-secondary" onClick={() => { setQueue(q => q.slice(1)); onOpen(); }}>View archived habits</button></>}
     <button className="phase4-close" aria-label="Dismiss archive notice" onClick={() => setQueue(q => q.slice(1))}>×</button>
   </div>;

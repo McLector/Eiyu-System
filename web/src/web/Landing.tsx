@@ -60,8 +60,8 @@ function DemoQuestRow({ quest, isFirst }: { quest: (typeof DEMO_QUESTS)[number];
     }}>
       <div style={{
         width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-        background: quest.completed ? 'rgba(74,222,128,0.18)' : 'transparent',
-        border: `1.5px solid ${quest.completed ? 'rgba(74,222,128,0.5)' : color + '55'}`,
+        background: quest.completed ? 'var(--c-success-glass)' : 'transparent',
+        border: `1.5px solid ${quest.completed ? 'var(--c-success-border)' : color + '55'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {quest.completed && <CheckIcon />}
@@ -75,7 +75,7 @@ function DemoQuestRow({ quest, isFirst }: { quest: (typeof DEMO_QUESTS)[number];
           <span style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, color, letterSpacing: '0.08em' }}>{quest.stat}</span>
           <span style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-dim-flat)' }}>{quest.difficulty}</span>
           {quest.streak > 0 && (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'JetBrains Mono', fontSize: 10, color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 4, padding: '1px 5px' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'JetBrains Mono', fontSize: 11, color: 'var(--c-warning)', background: 'var(--c-warning-glass)', border: '1px solid var(--c-warning-border)', borderRadius: 4, padding: '1px 5px' }}>
               <FireStreak size={11} /> {quest.streak}
             </span>
           )}
@@ -101,11 +101,11 @@ export default function Landing({ onGetStarted }: Props) {
             width: 34, height: 34, borderRadius: 9,
             background: 'var(--c-accent-glass)', border: '1.5px solid var(--c-accent-border)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent)',
+            fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent-text)',
           }}>英</div>
           <span style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.1em' }}>EIYU SYSTEM</span>
         </div>
-        <button onClick={onGetStarted} className="btn-ghost" style={{ padding: '8px 22px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>
+        <button onClick={onGetStarted} className="btn-ghost" style={{ padding: '8px 22px', fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-accent-text)', letterSpacing: '0.1em' }}>
           ENTER SYSTEM
         </button>
       </header>
@@ -119,7 +119,7 @@ export default function Landing({ onGetStarted }: Props) {
         <div style={{ position: 'relative', maxWidth: 720, margin: '0 auto', padding: '0 24px' }}>
           <h1 style={{ fontFamily: 'Rajdhani', fontSize: 64, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.04em', lineHeight: 1.05, margin: '0 0 20px' }}>
             Your habits.<br />
-            <span style={{ color: 'var(--c-accent)' }}>Your stats.</span>
+            <span style={{ color: 'var(--c-accent-text)' }}>Your stats.</span>
           </h1>
 
           <p style={{ fontFamily: 'Inter', fontSize: 17, color: 'var(--c-muted-flat)', lineHeight: 1.65, margin: '0 auto 36px', maxWidth: 520 }}>
@@ -127,7 +127,7 @@ export default function Landing({ onGetStarted }: Props) {
           </p>
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <button onClick={onGetStarted} className="btn-ghost" style={{ padding: '14px 32px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>
+            <button onClick={onGetStarted} className="btn-ghost" style={{ padding: '14px 32px', fontFamily: 'Rajdhani', fontSize: 15, fontWeight: 700, color: 'var(--c-accent-text)', letterSpacing: '0.1em' }}>
               BEGIN YOUR JOURNEY →
             </button>
             <a href="#features" style={{ padding: '14px 28px', borderRadius: 50, border: '1px solid var(--c-glass-border)', fontFamily: 'Inter', fontSize: 14, color: 'var(--c-muted-flat)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
@@ -186,7 +186,7 @@ export default function Landing({ onGetStarted }: Props) {
             { n: '04', title: 'Review & adapt', body: 'Check the weekly radar chart and AI analysis to see where you are strong and where to push harder.' },
           ].map((step, i) => (
             <div key={i} style={{ display: 'flex', gap: 24, padding: '28px 0', borderTop: i > 0 ? '1px solid var(--c-divider-flat)' : 'none' }}>
-              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 600, color: 'var(--c-accent)', opacity: 0.3, flexShrink: 0, lineHeight: 1.1 }}>{step.n}</div>
+              <div style={{ fontFamily: 'JetBrains Mono', fontSize: 32, fontWeight: 600, color: 'var(--c-accent-text)', opacity: 0.3, flexShrink: 0, lineHeight: 1.1 }}>{step.n}</div>
               <div>
                 <h3 style={{ fontFamily: 'Rajdhani', fontSize: 18, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.04em', margin: '0 0 6px' }}>{step.title}</h3>
                 <p style={{ fontFamily: 'Inter', fontSize: 14, color: 'var(--c-muted-flat)', lineHeight: 1.65, margin: 0 }}>{step.body}</p>
@@ -205,7 +205,7 @@ export default function Landing({ onGetStarted }: Props) {
           <p style={{ fontFamily: 'Inter', fontSize: 14, color: 'var(--c-muted-flat)', lineHeight: 1.6, marginBottom: 28 }}>
             Build better habits. See the progress. Stay consistent.
           </p>
-          <button onClick={onGetStarted} className="btn-ghost" style={{ width: '100%', padding: '16px', fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent)', letterSpacing: '0.1em' }}>
+          <button onClick={onGetStarted} className="btn-ghost" style={{ width: '100%', padding: '16px', fontFamily: 'Rajdhani', fontSize: 16, fontWeight: 700, color: 'var(--c-accent-text)', letterSpacing: '0.1em' }}>
             START FOR FREE →
           </button>
         </div>

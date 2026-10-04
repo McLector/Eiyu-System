@@ -181,7 +181,8 @@ async function main() {
         }
       }
     }
-    assert.equal(report.measurements.filter(m=>m.horizontalOverflow || m.lanes.some(l=>l.bodyOverflow)).length,0);
+    const overflowing=report.measurements.filter(m=>m.horizontalOverflow || m.lanes.some(l=>l.bodyOverflow));
+    assert.deepEqual(overflowing.map(m=>`${m.route} ${m.width}x${m.height} ${m.theme}${m.horizontalOverflow?' page':''}${m.lanes.filter(l=>l.bodyOverflow).map(l=>' lane:'+l.title).join('')}`),[]);
     // Full cards and narrow exercise cards intentionally scroll in document flow.
     assert.equal(report.errors.length,0);
     await page.goto(`${WEB}/board`);

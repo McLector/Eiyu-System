@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useBlocker } from 'react-router-dom';
+import { NAVIGATION_GUARD_COPY } from '@eiyu/shared';
 import Dialog from './Dialog';
 
 interface EditorState { dirty: boolean; pending: boolean; overlay?: boolean }
@@ -31,8 +32,8 @@ export function NavigationGuard({ children }: { children: ReactNode }) {
   const cancel = () => { setConfirmation(null); setBusy(false); if (blocker.state === 'blocked') blocker.reset(); };
   return <Context.Provider value={{ register: (id, state) => { if (state) editors.current.set(id, state); else editors.current.delete(id); }, request }}>
     {children}
-    {(blocked || confirmation || busy) && <Dialog title={pending || busy ? 'Save in progress' : 'Unsaved changes'} onClose={cancel}>
-      <p>{pending || busy ? 'Wait for the save result before leaving.' : 'Leave without saving your changes? Your last saved draft will remain.'}</p>
+    {(blocked || confirmation || busy) && <Dialog title={pending || busy ? NAVIGATION_GUARD_COPY.busyTitle : NAVIGATION_GUARD_COPY.leaveTitle} onClose={cancel}>
+      <p>{pending || busy ? NAVIGATION_GUARD_COPY.busyBody : NAVIGATION_GUARD_COPY.leaveBody}</p>
       <div className="action-footer"><button className="btn-secondary" onClick={cancel}>Keep editing</button>
         {!pending && !busy && <button className="btn-destructive" onClick={() => { const action = confirmation; setConfirmation(null); if (blocker.state === 'blocked') blocker.proceed(); else action?.(); }}>Leave without saving</button>}
       </div>

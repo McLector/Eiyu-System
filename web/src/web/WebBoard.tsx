@@ -20,6 +20,7 @@ import SignaturePanel from '../SignaturePanel';
 import FireStreak from '../FireStreak';
 import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
+import StateBlock from '../components/StateBlock';
 import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 
 interface Props {
@@ -64,8 +65,8 @@ export function BoardDeleteDialog({ quest, onCancel, onDelete }: {
 function XpBar({ value, max, color }: { value: number; max: number; color: string }) {
   const pct = Math.min(100, (value / max) * 100);
   return (
-    <div style={{ height: 4, borderRadius: 4, background: 'var(--c-track)', overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: '100%', transform: `scaleX(${pct / 100})`, transformOrigin: 'left', background: color, borderRadius: 4, transition: 'transform 0.4s ease' }} />
+    <div style={{ height: 4, borderRadius: 4, background: 'var(--c-bar-track)', overflow: 'hidden' }}>
+      <div style={{ height: '100%', width: '100%', transform: `scaleX(${pct / 100})`, transformOrigin: 'left', background: color, borderRadius: 4, transition: 'transform var(--dur-slow) var(--ease-in-out)' }} />
     </div>
   );
 }
@@ -113,12 +114,12 @@ function QuestCard({
         {quest.streak > 0 && <span className="board-card-streak"><FireStreak size={11} /> {quest.streak}</span>}
         {quest.frozen && <SnowflakeIcon size={12} />}
       </div>
-      {quest.description && <button className="board-edit-button" onClick={onEdit}>Show note</button>}
+      {quest.description && <button type="button" className="btn-quiet btn-compact" onClick={onEdit}>Edit note</button>}
       <div className="board-card-actions">
         {quest.targetCount == null ? (
           <button
             type="button"
-            className={`board-action-button${quest.completed ? ' is-complete' : ''}`}
+            className={`btn-secondary btn-compact${quest.completed ? ' is-complete' : ''}`}
             onClick={onToggle}
             aria-label={`${completedLabel} ${quest.name}`}
             aria-pressed={quest.completed}
@@ -128,18 +129,16 @@ function QuestCard({
           </button>
         ) : (
           <div className="board-progress-stepper" aria-label={`${quest.name} progress`}>
-            <button type="button" aria-label={`Decrease progress for ${quest.name}`} onClick={() => onAdjustProgress(-1)} disabled={quest.progressCount <= 0}>−</button>
+            <button type="button" className="btn-secondary btn-compact" aria-label={`Decrease progress for ${quest.name}`} onClick={() => onAdjustProgress(-1)} disabled={quest.progressCount <= 0}>−</button>
             <span>{quest.progressCount}/{quest.targetCount}</span>
-            <button type="button" aria-label={`Increase progress for ${quest.name}`} onClick={() => onAdjustProgress(1)} disabled={quest.progressCount >= quest.targetCount}>+</button>
+            <button type="button" className="btn-secondary btn-compact" aria-label={`Increase progress for ${quest.name}`} onClick={() => onAdjustProgress(1)} disabled={quest.progressCount >= quest.targetCount}>+</button>
           </div>
         )}
-        <button type="button" className="board-edit-button" onClick={onEdit} aria-label={`Open ${quest.name} details`}>
-          DETAILS
-        </button>
-      </div>
-      <div className="board-card-lifecycle">
-        <button type="button" className="board-edit-button" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
-        <button type="button" className="board-edit-button is-danger" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+        <div className="board-card-secondary">
+          <button type="button" className="btn-quiet btn-compact" onClick={onEdit} aria-label={`Open ${quest.name} details`}>DETAILS</button>
+          <button type="button" className="btn-quiet btn-compact" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
+          <button type="button" className="btn-destructive btn-compact" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+        </div>
       </div>
     </article>
   );
@@ -163,8 +162,8 @@ function CatalogCard({ quest, onEdit, onArchive, onDelete, pending }: { quest: Q
         <span className={`board-catalog-status${quest.dailyEligible && quest.completed ? ' is-complete' : ''}`}>
           {quest.dailyEligible && quest.completed ? 'DONE' : status}
         </span>
-        <button type="button" className="board-edit-button" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
-        <button type="button" className="board-edit-button is-danger" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+        <button type="button" className="btn-quiet btn-compact" onClick={onArchive} aria-label={`Archive ${quest.name}`} disabled={pending}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</button>
+        <button type="button" className="btn-destructive btn-compact" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
       </div>
     </article>
   );
@@ -179,8 +178,8 @@ export function ArchivedCard({ quest, onEdit, onRestore, onDelete, pending }: { 
       </button>
       <div className="board-catalog-actions">
         <span className="board-catalog-status">ARCHIVED</span>
-        <button type="button" className="board-edit-button" onClick={onRestore} aria-label={`Restore ${quest.name}`} disabled={pending}>{pending ? 'RESTORING…' : 'RESTORE'}</button>
-        <button type="button" className="board-edit-button is-danger" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
+        <button type="button" className="btn-quiet btn-compact" onClick={onRestore} aria-label={`Restore ${quest.name}`} disabled={pending}>{pending ? 'RESTORING…' : 'RESTORE'}</button>
+        <button type="button" className="btn-destructive btn-compact" onClick={onDelete} aria-label={`Delete ${quest.name}`} disabled={pending}>DELETE</button>
       </div>
     </article>
   );
@@ -246,6 +245,8 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
   const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
   const { completed: completedToday, total: totalToday } = boardTodayProgress({ dailyQuests, oneTimeQuests });
   const [xpToast, setXpToast] = useState<string | null>(null);
+  const xpToastTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(xpToastTimer.current), []);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Quest | null>(null);
   const [pendingLifecycleIds, setPendingLifecycleIds] = useState<Set<string>>(() => new Set());
@@ -294,7 +295,8 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     const succeeded = await toggleQuestAction(id);
     if (succeeded && !quest.completed) {
       setXpToast(`+${FULL_XP} ${quest.stat} XP`);
-      setTimeout(() => setXpToast(null), 2000);
+      window.clearTimeout(xpToastTimer.current);
+      xpToastTimer.current = window.setTimeout(() => setXpToast(null), 2000);
     }
   };
 
@@ -303,19 +305,12 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     queueLifecycle(quest.id, async () => { await archiveQuest(quest.id); announceArchive(quest.questType, owner); });
   };
 
-  if (questsLoading) return <div className="board-state" role="status">Reading the board…</div>;
-  if (questsError) {
-    return (
-      <div className="board-state" role="alert">
-        <p>{questsError}</p>
-        <button onClick={() => void retryQuests()} className="btn-ghost">RETRY</button>
-      </div>
-    );
-  }
+  if (questsLoading) return <StateBlock kind="loading">Reading the board…</StateBlock>;
+  if (questsError) return <StateBlock kind="error" retryLabel="RETRY" onRetry={() => void retryQuests()}>{questsError}</StateBlock>;
 
   return (
     <div className="web-board-shell">
-      {xpToast && <div className="board-xp-toast" role="status">{xpToast}</div>}
+      {xpToast && <div className="board-xp-toast feedback-card" data-tone="success" role="status">{xpToast}</div>}
 
       <nav className="board-lane-tabs" aria-label="Board lanes" role="tablist">
         {([
@@ -364,14 +359,14 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
           <strong>{completedToday} <span>/ {totalToday} quests</span></strong>
           <p>{boardSummaryLine(completedToday, totalToday)}</p>
         </div>
-        {recoveryRequired.length > 0 && <button className="btn-ghost board-recovery-trigger" onClick={() => setRecoveryOpen(true)}>{recoveryRequired.length} recovery required</button>}
+        {recoveryRequired.length > 0 && <button className="btn-secondary board-recovery-trigger" onClick={() => setRecoveryOpen(true)}>{recoveryRequired.length} recovery required</button>}
         </SignaturePanel>
       </section>
 
-        <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} storageKey={`${storagePrefix}:daily-quest-scroll`} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or check All Habits.' : false} action={<button onClick={() => onNewQuest('habit')} className="btn-ghost board-add-button"><PlusIcon /> ADD QUEST</button>}>
+        <BoardLane id="daily-quest" title="Daily Quest" count={dailyQuests.length} active={activeLane === 'daily-quest'} storageKey={`${storagePrefix}:daily-quest-scroll`} empty={dailyQuests.length === 0 ? 'No habits are scheduled for today. Create one or check All Habits.' : false} action={<button onClick={() => onNewQuest('habit')} className="btn-secondary board-add-button"><PlusIcon /> ADD QUEST</button>}>
           {dailyQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
-        <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} storageKey={`${storagePrefix}:one-time-quest-scroll`} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today.' : false} action={<button onClick={() => onNewQuest('one_time')} className="btn-ghost board-add-button"><PlusIcon /> ADD QUEST</button>}>
+        <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} storageKey={`${storagePrefix}:one-time-quest-scroll`} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today.' : false} action={<button onClick={() => onNewQuest('one_time')} className="btn-secondary board-add-button"><PlusIcon /> ADD QUEST</button>}>
           {oneTimeQuests.map(quest => <QuestCard key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => toggleQuest(quest.id)} onEdit={() => onEditQuest(quest.id)} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => archive(quest)} onDelete={() => confirmDelete(quest)} />)}
         </BoardLane>
         <BoardLane id="all-habits" title="All Habits" count={allHabits.length} active={activeLane === 'all-habits'} storageKey={`${storagePrefix}:all-habits-scroll`} empty={allHabits.length === 0 ? 'No saved habits yet. Add a recurring quest to build your catalog.' : false}>
@@ -383,7 +378,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
         {recoveryRequired.map(quest => <article className="board-recovery-card" key={quest.id}>
           <strong><SnowflakeIcon size={14} /> Streak frozen</strong><p>{quest.name}</p>
           <span>Until {recoveryDeadlineLabel(quest)}</span><p>Penalty: {quest.easyVersion}</p>
-          <button className="btn-ghost" onClick={() => completeRecovery(quest.id)}>MARK RECOVERY COMPLETE</button>
+          <button className="btn-secondary" onClick={() => completeRecovery(quest.id)}>MARK RECOVERY COMPLETE</button>
         </article>)}
       </Dialog>}
       {deleteTarget && <BoardDeleteDialog quest={deleteTarget} onCancel={() => setDeleteTarget(null)} onDelete={deleteQuest} />}
