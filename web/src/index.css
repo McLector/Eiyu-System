@@ -839,7 +839,6 @@ button:disabled { opacity: .45; cursor: default; }
   .compact-dialog-body { padding-block: 10px 12px; }
   .phase4-dialog .field-label, .phase4-dialog .field-label-row { margin-bottom: 4px; }
   .phase4-dialog .field { padding-block: 6px; }
-  .phase4-dialog .field-label-row .btn-compact { min-height: 18px; padding-block: 0; }
   .phase4-dialog .seg .choice-chip { padding-block: 5px; }
   /* Stat pickers lay icon and name side by side instead of stacking them. */
   .phase4-dialog .stat-chip { flex-direction: row; justify-content: center; gap: 5px; padding-block: 6px; }
