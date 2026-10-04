@@ -856,13 +856,6 @@ button:disabled { opacity: .45; cursor: default; }
 /* On phones the five labels would collide; the icon shape and the accessible name still carry the state. */
 @media (max-width: 479px) { .journey-checkpoint small { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; padding: 0; } }
 
-@media (pointer: fine) {
-  .surface-flat, .phase4-overlay { cursor: url('/art/sword-rest.svg') 2 2, auto; }
-  .surface-flat button:not(:disabled), .surface-flat a, .surface-flat summary, .phase4-overlay button:not(:disabled), .phase4-overlay a, .phase4-overlay summary { cursor: url('/art/sword-action.svg') 2 2, pointer !important; }
-  input,textarea { cursor: text !important; }
-  :disabled { cursor: default !important; }
-}
-
 /* Motion: entrances are transitions (interruptible) started from @starting-style; exits stay instant. */
 .phase4-overlay { transition: opacity var(--dur-base) var(--ease-out); }
 .phase4-dialog { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }

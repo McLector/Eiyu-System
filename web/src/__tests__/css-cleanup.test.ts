@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -31,9 +31,15 @@ describe('stylesheet hygiene', () => {
   it('does not ship the retired Sidebar', () => {
     expect(() => readFileSync(join(src, 'web', 'Sidebar.tsx'))).toThrow();
   });
-  it('keeps !important to the few places that must beat an inline style or the sword cursor (ratchet: lower, never raise)', () => {
+  it('uses the browser default cursor: no custom cursor image and no sword art shipped', () => {
+    expect(bare).not.toMatch(/cursor:\s*url\(/);
+    expect(existsSync(join(src, '..', 'public', 'art', 'sword-rest.svg'))).toBe(false);
+    expect(existsSync(join(src, '..', 'public', 'art', 'sword-action.svg'))).toBe(false);
+  });
+
+  it('keeps !important to the few places that must beat an inline style (ratchet: lower, never raise)', () => {
     const count = (bare.match(/!important/g) ?? []).length;
-    expect(count).toBeLessThanOrEqual(8);
+    expect(count).toBeLessThanOrEqual(5);
   });
   it('marks severity with the whole border, not a thick one-sided accent stripe (a known generated-UI tell)', () => {
     expect(bare).not.toMatch(/border-(left|right):\s*[3-9]px solid/);
