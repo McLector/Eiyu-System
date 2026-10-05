@@ -763,10 +763,8 @@ input, textarea { caret-color: var(--c-accent); }
   .gym-heading h1 { font-size: 20px; }
 }
 
-.long-quest-list { display: flex; flex-direction: column; height: auto; }
 .status-layout { gap: 16px; }
 .status-layout > aside { min-width: 0; }
-@media (max-width: 767px) { .long-quest-list { height: auto; } }
 
 .status-layout > .status-tabs { grid-column: 1 / -1; }
 .status-hero-panel, .status-content { display: flex; min-width: 0; }
@@ -924,16 +922,27 @@ button:disabled { opacity: .45; cursor: default; }
   .btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled), .btn-quiet:active:not(:disabled), .btn-destructive:active:not(:disabled), .btn-ghost:active:not(:disabled), .stat-chip:active, .choice-chip:active { transform: none; }
 }
 /* Chain Progression */
-.chain-card { padding-block: 8px 12px; border-top: 1px solid var(--c-divider-flat); }
-.chain-card:first-child { border-top: 0; }
-.chain-head { display: grid; width: 100%; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 12px 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+/* Chain Progression: the selected chain on the left, the chain picker on the right. */
+.chain-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; align-items: start; }
+.chain-panel { display: grid; min-width: 0; gap: 14px; }
+.chain-panel-head { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 14px; }
+.chain-panel-head .chain-title { margin: 6px 0 0; }
+.chain-progress-head { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--c-muted-flat); font: 700 11px Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+.chain-nav { display: grid; min-width: 0; gap: 10px; padding: 12px; border: 1px solid var(--c-divider-flat); border-radius: 4px; }
+.chain-nav-label { color: var(--c-muted-flat); font: 700 11px Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+.chain-nav .flow-list-body { gap: 4px; }
+.chain-nav-item { display: flex; width: 100%; min-height: 40px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--c-text); font: 600 13px Inter, sans-serif; text-align: left; cursor: pointer; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
+.chain-nav-item:hover { background: var(--c-accent-glass); }
+.chain-nav-item.is-selected { border-color: var(--c-accent-border); background: var(--c-accent-glass); color: var(--c-accent-text); }
+.chain-nav-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chain-nav-count { flex: none; color: var(--c-muted-flat); font: 12px 'JetBrains Mono', monospace; }
+.chain-nav-new { width: 100%; }
+@media (max-width: 899px) { .chain-layout { grid-template-columns: minmax(0, 1fr); } .chain-nav { order: -1; } }
 .chain-icon { display: grid; place-items: center; width: 40px; height: 40px; border: 1.5px solid color-mix(in srgb, var(--quest-stat) 45%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--quest-stat) 10%, transparent); }
 .chain-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--c-text); font: 700 18px/1.2 Rajdhani, sans-serif; letter-spacing: .04em; overflow-wrap: anywhere; }
-.chain-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; color: var(--c-muted-flat); font: 12px 'JetBrains Mono', monospace; }
 .chain-bar { height: 6px; margin: 0 0 4px; overflow: hidden; border: 1px solid var(--c-divider-flat); border-radius: 3px; background: var(--c-bar-track); }
 /* The fill scales rather than resizing, so progress changes run on the compositor. */
 .chain-bar > i { display: block; height: 100%; background: var(--quest-stat, var(--c-accent)); transform-origin: left center; transition: transform var(--dur-slow) var(--ease-in-out); }
-.chain-body { display: grid; gap: 14px; padding: 4px 0 12px; }
 .chain-description { margin: 0; color: var(--c-text); font: 13px/1.5 Inter, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
 .chain-description.is-clamped { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .chain-stats { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; }
@@ -943,15 +952,15 @@ button:disabled { opacity: .45; cursor: default; }
 .chain-stage { border: 1px solid var(--c-divider-flat); border-radius: 4px; }
 .chain-stage.is-current { border-color: var(--c-accent-strong); background: var(--c-accent-glass); }
 .chain-stage.is-locked .chain-stage-name { color: var(--c-muted-flat); }
-.chain-stage-row { display: grid; width: 100%; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 0; background: transparent; color: var(--c-text); text-align: left; cursor: pointer; }
-.chain-stage-row[aria-disabled='true'] { cursor: not-allowed; }
+.chain-stage-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; color: var(--c-text); }
 .chain-stage-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--c-accent-border); border-radius: 50%; color: var(--c-muted-flat); font: 700 12px Rajdhani, sans-serif; }
 .chain-stage.is-done .chain-stage-mark { border-color: var(--c-success-border); background: var(--c-success-glass); color: var(--c-success); }
 .chain-stage.is-current .chain-stage-mark { border-color: var(--c-accent); background: var(--c-accent); color: var(--c-on-accent); }
 .chain-stage-name { overflow: hidden; font: 600 14px Inter, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .chain-stage.is-done .chain-stage-name { color: var(--c-muted-flat); text-decoration: line-through; }
-.chain-stage-more { margin: 0 8px 8px 46px; }
-.chain-stage-description { margin: 0; padding: 0 12px 12px 48px; color: var(--c-muted-flat); font: 13px/1.5 Inter, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chain-stage-body { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 0 12px 12px 48px; }
+.chain-stage-description { flex: 1 1 220px; min-width: 0; margin: 0; color: var(--c-muted-flat); font: 13px/1.5 Inter, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chain-complete { margin-left: auto; }
 .quest-chip.is-done { border-color: var(--c-success-border); background: var(--c-success-glass); color: var(--c-success); }
 .quest-chip.is-cur { border-color: var(--c-accent-strong); background: var(--c-accent-glass); color: var(--c-accent-text); }
 .quest-chip.is-locked { border-style: dashed; color: var(--c-muted-flat); }

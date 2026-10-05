@@ -7,12 +7,13 @@ import {
   formatError,
   stageSequenceState,
 } from '@eiyu/shared';
+import ActionMenu, { type ActionMenuItem } from '../components/ActionMenu';
 import FlowList from '../components/FlowList';
 import Dialog from '../components/Dialog';
 import RewardFeedback from '../components/RewardFeedback';
 import StateBlock from '../components/StateBlock';
 import LongQuestEditorDialog from './LongQuestEditorDialog';
-import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, LockIcon } from '../Icons';
+import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, LockIcon, UndoIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
 type StageStatus = 'done' | 'current' | 'locked';
@@ -22,7 +23,7 @@ const ROW_CLASS: Record<StageStatus, string> = { done: 'is-done', current: 'is-c
 const CHIP_CLASS: Record<StageStatus, string> = { done: 'is-done', current: 'is-cur', locked: 'is-locked' };
 const DESCRIPTION_CLAMP_AT = 140;
 
-function ChainCard({ lq, expanded, onToggleExpand }: { lq: LongQuest; expanded: boolean; onToggleExpand: () => void }) {
+function ChainPanel({ lq }: { lq: LongQuest }) {
   const { user, toggleStage: toggleStageAction, removeLongQuest, pendingStageIds = [] } = useEiyu();
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -44,92 +45,105 @@ function ChainCard({ lq, expanded, onToggleExpand }: { lq: LongQuest; expanded: 
   const description = lq.description ?? '';
   const longDescription = description.length > DESCRIPTION_CLAMP_AT || description.includes('\n');
   const toggleOpen = (id: string) => setFlipped(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const titleId = `chain-title-${lq.id}`;
 
   return (
-    <div className="chain-card" style={{ '--quest-stat': STAT_COLORS[lq.stat] } as CSSProperties}>
-      <button type="button" className="chain-head" onClick={onToggleExpand} aria-expanded={expanded}>
+    <article className="chain-panel" aria-labelledby={titleId} style={{ '--quest-stat': STAT_COLORS[lq.stat] } as CSSProperties}>
+      <header className="chain-panel-head">
         <span className="chain-icon"><StatIcon stat={lq.stat} size={17} /></span>
-        <span style={{ minWidth: 0 }}>
-          <span className="chain-title">{lq.name}</span>
-          <span className="chain-meta">
-            <span className="quest-chip is-stat">{lq.stat}</span>
-            <span>{done} / {lq.stages.length} stages completed</span>
-          </span>
-        </span>
-        <span style={{ transform: `rotate(${expanded ? 180 : 0}deg)`, transition: 'transform var(--dur-base) var(--ease-in-out)', color: 'var(--c-dim-flat)' }}><ChevronIcon direction="down" /></span>
-      </button>
-      {/* Outside the button: a progressbar inside a button is flattened away from assistive technology. */}
-      <div className="chain-bar" role="progressbar" aria-label={`${lq.name} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ transform: `scaleX(${percent / 100})` }} /></div>
-
-      {expanded && (
-        <div className="chain-body">
-          {description && (
-            <div>
-              <p className={`chain-description${longDescription && !fullDescription ? ' is-clamped' : ''}`}>{description}</p>
-              {longDescription && <button type="button" className="btn-quiet btn-compact" aria-expanded={fullDescription} onClick={() => setFullDescription(open => !open)}>{fullDescription ? 'Show less' : 'Show more'}</button>}
-            </div>
-          )}
-          <dl className="chain-stats">
-            <div><dt>Stages</dt><dd>{lq.stages.length}</dd></div>
-            <div><dt>Done</dt><dd>{done}</dd></div>
-            <div><dt>Finished</dt><dd>{lq.completedAt ? formatDisplayDate(new Date(lq.completedAt), user.timeZone) : '—'}</dd></div>
-          </dl>
-          {lq.stages.length === 0 ? (
-            <p className="chain-description">This chain has no stages yet. Edit it to add the first one.</p>
-          ) : (
-            <FlowList label="Stages" size={8} narrowSize={6}>
-              {statuses.map(({ stage, sequence, status }, index) => {
-                const lockedReason = sequence.reason ?? 'Complete earlier stages first.';
-                const open = isOpen(stage.id);
-                return (
-                  <div className={`chain-stage ${ROW_CLASS[status]}`} key={stage.id} data-item-id={stage.id}>
-                    <button
-                      type="button"
-                      id={`stage-${stage.id}`}
-                      className="chain-stage-row"
-                      onClick={() => { if (!sequence.locked) toggleStageAction(lq.id, stage.id); }}
-                      disabled={pendingStageIds.includes(stage.id)}
-                      aria-disabled={sequence.locked}
-                      aria-label={`${stage.name}. ${sequence.locked ? lockedReason : stage.done ? 'Completed' : 'Available'}`}
-                      title={sequence.locked ? lockedReason : undefined}
-                    >
-                      <span className="chain-stage-mark">{status === 'done' ? <CheckIcon size={13} /> : status === 'locked' ? <LockIcon size={13} /> : index + 1}</span>
-                      <span className="chain-stage-name" title={stage.name}>{stage.name}</span>
-                      <span className={`quest-chip ${CHIP_CLASS[status]}`}>{STATUS_LABEL[status]}</span>
-                    </button>
-                    {stage.description && (
-                      <>
-                        <button type="button" className="btn-quiet btn-compact chain-stage-more" aria-expanded={open}
-                          aria-label={`${open ? 'Hide' : 'Show'} details for ${stage.name}`} onClick={() => toggleOpen(stage.id)}>
-                          {open ? 'Hide details' : 'Show details'}
-                        </button>
-                        {open && <p className="chain-stage-description">{stage.description}</p>}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </FlowList>
-          )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setEditing(true)} className="btn-secondary">EDIT</button>
-            <button type="button" onClick={() => setConfirmDelete(true)} className="btn-destructive">DELETE LONG QUEST</button>
-          </div>
+        <div style={{ minWidth: 0 }}>
+          <span className="quest-chip is-stat">{lq.stat}</span>
+          <h3 id={titleId} className="chain-title">{lq.name}</h3>
+        </div>
+      </header>
+      {description && (
+        <div>
+          <p className={`chain-description${longDescription && !fullDescription ? ' is-clamped' : ''}`}>{description}</p>
+          {longDescription && <button type="button" className="btn-quiet btn-compact" aria-expanded={fullDescription} onClick={() => setFullDescription(open => !open)}>{fullDescription ? 'Show less' : 'Show more'}</button>}
         </div>
       )}
+      <dl className="chain-stats">
+        <div><dt>Stages</dt><dd>{lq.stages.length}</dd></div>
+        <div><dt>Done</dt><dd>{done}</dd></div>
+        <div><dt>Created</dt><dd>{lq.createdAt ? formatDisplayDate(new Date(lq.createdAt), user.timeZone) : '—'}</dd></div>
+        <div><dt>Finished</dt><dd>{lq.completedAt ? formatDisplayDate(new Date(lq.completedAt), user.timeZone) : '—'}</dd></div>
+      </dl>
+      <div>
+        <div className="chain-progress-head"><span>Progress</span><span>{percent}%</span></div>
+        <div className="chain-bar" role="progressbar" aria-label={`${lq.name} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}><i style={{ transform: `scaleX(${percent / 100})` }} /></div>
+      </div>
+      {lq.stages.length === 0 ? (
+        <p className="chain-description">This chain has no stages yet. Edit it to add the first one.</p>
+      ) : (
+        <FlowList label="Stages" size={8} narrowSize={6}>
+          {statuses.map(({ stage, sequence, status }, index) => {
+            const open = isOpen(stage.id);
+            const pending = pendingStageIds.includes(stage.id);
+            const items: ActionMenuItem[] = [
+              ...(stage.description ? [{ label: open ? 'Hide details' : 'Show details', onSelect: () => toggleOpen(stage.id), icon: <ChevronIcon direction={open ? 'up' : 'down'} size={14} /> }] : []),
+              // Only the last finished stage can be undone; the database enforces the same order.
+              ...(stage.done && !sequence.locked ? [{ label: 'Mark not done', onSelect: () => toggleStageAction(lq.id, stage.id), icon: <UndoIcon size={14} />, disabled: pending }] : []),
+            ];
+            return (
+              <div className={`chain-stage ${ROW_CLASS[status]}`} key={stage.id} data-item-id={stage.id}>
+                <div className="chain-stage-row">
+                  <span className="chain-stage-mark">{status === 'done' ? <CheckIcon size={13} /> : status === 'locked' ? <LockIcon size={13} /> : index + 1}</span>
+                  <span className="chain-stage-name" title={stage.name}>{stage.name}</span>
+                  <span className={`quest-chip ${CHIP_CLASS[status]}`} title={status === 'locked' ? sequence.reason ?? undefined : undefined}>{STATUS_LABEL[status]}</span>
+                  {status === 'locked' && <span className="sr-only">{sequence.reason ?? 'Complete earlier stages first.'}</span>}
+                  {items.length > 0 && <ActionMenu label={`Actions for ${stage.name}`} items={items} />}
+                </div>
+                {((open && stage.description) || status === 'current') && (
+                  <div className="chain-stage-body">
+                    {open && stage.description && <p className="chain-stage-description">{stage.description}</p>}
+                    {status === 'current' && (
+                      <button type="button" className="btn-primary btn-compact chain-complete" disabled={pending} onClick={() => toggleStageAction(lq.id, stage.id)}>
+                        <CheckIcon size={14} />COMPLETE STAGE
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </FlowList>
+      )}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" onClick={() => setEditing(true)} className="btn-secondary">EDIT</button>
+        <button type="button" onClick={() => setConfirmDelete(true)} className="btn-destructive">DELETE LONG QUEST</button>
+      </div>
 
       {confirmDelete && <Dialog title="Delete Long Quest" pending={deletePending} onClose={() => setConfirmDelete(false)}><p>Delete {lq.name} and its stages? Earned XP remains.</p>{deleteError && <p role="alert" className="phase4-error">{deleteError}</p>}<div className="action-footer"><button className="btn-secondary" disabled={deletePending} onClick={() => setConfirmDelete(false)}>Cancel</button><button className="btn-destructive" disabled={deletePending} onClick={async () => { setDeletePending(true); setDeleteError(null); try { await removeLongQuest(lq.id); setConfirmDelete(false); } catch (err) { setDeleteError(formatError(err)); } finally { setDeletePending(false); } }}>Delete Long Quest</button></div></Dialog>}
       {editing && <LongQuestEditorDialog quest={lq} onClose={() => setEditing(false)} />}
-    </div>
+    </article>
+  );
+}
+
+/** The chain picker beside the selected chain, so you can jump between chains without leaving the page. */
+function ChainNav({ chains, selectedId, onSelect, onNew }: { chains: LongQuest[]; selectedId: string; onSelect: (id: string) => void; onNew: () => void }) {
+  return (
+    <nav className="chain-nav" aria-label="Your chains">
+      <span className="chain-nav-label">Your chains</span>
+      <FlowList label="Chains" size={6} narrowSize={4} protectEditors>
+        {chains.map(quest => (
+          <button key={quest.id} type="button" data-item-id={quest.id} className={`chain-nav-item${quest.id === selectedId ? ' is-selected' : ''}`}
+            aria-current={quest.id === selectedId ? 'true' : undefined} onClick={() => onSelect(quest.id)}>
+            <span className="chain-nav-name">{quest.name}</span>
+            <span className="chain-nav-count">{quest.stages.filter(stage => stage.done).length}/{quest.stages.length}</span>
+          </button>
+        ))}
+      </FlowList>
+      <button type="button" className="btn-secondary chain-nav-new" onClick={onNew}><PlusIcon size={14} />NEW CHAIN</button>
+    </nav>
   );
 }
 
 export default function WebLongQuests() {
   const { user, stageRewardNotice, rewardReceipt, longQuestsLoading, longQuestsError, retryLongQuests } = useEiyu();
-  // undefined = the viewer has not chosen yet, so the first chain opens by default.
-  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
+  // Until the viewer picks one (or after the picked chain is deleted), the first chain is the selected one.
+  const [chosen, setChosen] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const expanded = chosen === undefined ? user.longQuests[0]?.id ?? null : chosen;
+  const selected = user.longQuests.find(quest => quest.id === chosen) ?? user.longQuests[0];
   const rewardCardShown = !!rewardReceipt && !rewardReceipt.replayed && rewardReceipt.totals.length > 0;
 
   return (
@@ -155,17 +169,14 @@ export default function WebLongQuests() {
       ) : longQuestsError && !user.longQuests.length ? (
         <StateBlock kind="error" retryLabel="RETRY" onRetry={() => void retryLongQuests()}>{longQuestsError}</StateBlock>
       ) : (
-        <div className="long-quest-list">
-          <FlowList label="Chains" size={2} protectEditors>
-            {user.longQuests.length === 0 ? (
-              <StateBlock kind="empty" title={LONG_QUEST_COPY.emptyTitle}>{LONG_QUEST_COPY.empty}</StateBlock>
-            ) : (
-              user.longQuests.map(lq => (
-                <ChainCard key={lq.id} lq={lq} expanded={expanded === lq.id} onToggleExpand={() => setChosen(expanded === lq.id ? null : lq.id)} />
-              ))
-            )}
-          </FlowList>
-        </div>
+        selected ? (
+          <div className="chain-layout">
+            <ChainPanel key={selected.id} lq={selected} />
+            <ChainNav chains={user.longQuests} selectedId={selected.id} onSelect={setChosen} onNew={() => setShowNew(true)} />
+          </div>
+        ) : (
+          <StateBlock kind="empty" title={LONG_QUEST_COPY.emptyTitle}>{LONG_QUEST_COPY.empty}</StateBlock>
+        )
       )}
     </div>
   );

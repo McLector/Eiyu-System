@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom/vitest';
 import { initialUser } from '@eiyu/shared';
@@ -16,21 +16,23 @@ vi.mock('../store/eiyu-store', () => ({ useEiyu: () => ({
 import WebLongQuests from '../web/WebLongQuests';
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe('Long Quest sequence controls', () => {
-  it('keeps locked stages focusable without completing them and disables pending saves', async () => {
+  it('never completes a locked stage, disables a saving one, and keeps locked details one action away', async () => {
     const user = userEvent.setup();
     render(<WebLongQuests />);
-    // The first chain opens by default.
-    expect(screen.getByRole('button', { name: /Campaign/ })).toHaveAttribute('aria-expanded', 'true');
-    const locked = document.getElementById('stage-s2')!;
-    expect(locked).toHaveAttribute('aria-disabled', 'true');
+    // The first chain is selected by default.
+    expect(screen.getByRole('button', { name: /Campaign/ })).toHaveAttribute('aria-current', 'true');
+    // Plan is current but still saving, so its action is disabled.
+    expect(screen.getByRole('button', { name: 'COMPLETE STAGE' })).toBeDisabled();
+    // Build is locked: nothing completes it, and the reason is exposed instead of a dead control.
+    const locked = document.querySelector<HTMLElement>('[data-item-id="s2"]')!;
+    expect(within(locked).queryByRole('button', { name: /COMPLETE/ })).toBeNull();
+    expect(locked).toHaveTextContent('Complete earlier stages first.');
     await user.click(locked);
     expect(toggleStage).not.toHaveBeenCalled();
-    expect(document.getElementById('stage-s1')).toBeDisabled();
-    await waitFor(() => expect(locked).toHaveFocus());
-    expect(locked).toHaveAccessibleName('Build. Complete earlier stages first.');
-    // A locked stage keeps its details one click away.
+    // A locked stage keeps its details one action away.
     expect(screen.queryByText('Complete planning first.')).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Show details for Build' }));
+    await user.click(within(locked).getByRole('button', { name: 'Actions for Build' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Show details' }));
     expect(screen.getByText('Complete planning first.')).toBeVisible();
   });
 });

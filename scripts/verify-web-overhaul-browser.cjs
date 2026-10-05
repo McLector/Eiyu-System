@@ -222,7 +222,7 @@ function loadProfile(name) {
 // Reports pairs of visible controls whose boxes genuinely overlap; nested pairs are not overlap.
 async function overlaps(page) {
   return page.evaluate(()=>{
-    const els=[...document.querySelectorAll('.chain-stage-row, .chain-stage-more, .list-pagination button')].filter(e=>e.offsetParent!==null);
+    const els=[...document.querySelectorAll('.chain-stage-row, .chain-complete, .chain-nav-item, .list-pagination button')].filter(e=>e.offsetParent!==null);
     const box=e=>e.getBoundingClientRect(), out=[];
     if(els.length<8) out.push(`detector saw only ${els.length} controls`);
     for(let i=0;i<els.length;i++) for(let j=i+1;j<els.length;j++) {
@@ -254,9 +254,9 @@ async function matrix(browser, profile, report) {
 }
 async function guardDialog(page) { return page.getByRole('dialog',{name:'Unsaved changes',exact:true}); }
 async function openChain(page,name) {
-  const head=page.getByRole('button',{name:new RegExp(name)}).first();
-  if((await head.getAttribute('aria-expanded'))!=='true') await head.click();
-  return head;
+  const item=page.getByRole('navigation',{name:'Your chains'}).getByRole('button',{name:new RegExp(name)}).first();
+  if((await item.getAttribute('aria-current'))!=='true') await item.click();
+  return item;
 }
 async function questFlows(browser, report) {
   loadProfile('representative');
@@ -273,12 +273,12 @@ async function questFlows(browser, report) {
     await page.getByRole('button',{name:'+ Add stage',exact:true}).click();
     await page.getByPlaceholder('Stage 1...').fill('First waypoint');
     await page.getByRole('button',{name:'SAVE CHANGES',exact:true}).click();
-    await page.getByRole('button',{name:/First waypoint/}).waitFor();
+    await page.locator('.chain-stage-name',{hasText:'First waypoint'}).waitFor();
     assert.equal(tables.long_quest_stages.filter(s=>s.long_quest_id==='quest-zero').length,1);
     report.flows.push('R4 zero-stage repair saves a first stage atomically');
     // Self-test: the detector must report a forced overlap, otherwise a clean result means nothing.
     await page.goto(WEB+'/longquests'); await openChain(page,'The crystal vault');
-    const forced=await page.addStyleTag({content:'.chain-stage-row,.chain-stage-more{position:fixed!important;left:0!important;top:0!important}'});
+    const forced=await page.addStyleTag({content:'.chain-stage-row,.chain-complete{position:fixed!important;left:0!important;top:0!important}'});
     assert.ok((await overlaps(page)).length>0,'overlap detector failed to see a forced overlap');
     await forced.evaluate(el=>el.remove());
     for(const [w,h] of [[320,568],[390,844],[768,1024],[1280,720],[1440,900],[1920,1080]]) {
@@ -341,15 +341,15 @@ async function questFlows(browser, report) {
     failures.remove=false;
     await page.getByRole('dialog',{name:'Delete Long Quest'}).getByRole('button',{name:'Delete Long Quest',exact:true}).click();
     await page.getByRole('dialog',{name:'Delete Long Quest'}).waitFor({state:'hidden'});
-    await page.getByText('Solo journey').waitFor({state:'detached'});
+    await page.getByText('Solo journey').first().waitFor({state:'detached'});
     const pagesAfter=+(await pager.getByText(/ \/ /).innerText()).split('/')[1];
     assert.ok(pagesAfter<=pagesBefore,'page count must not grow after deletion');
     assert.match(await pager.getByText(/ \/ /).innerText(),new RegExp(`^${pagesAfter} / ${pagesAfter}$`),'page clamps to the last page');
     report.flows.push('R4 deletion cancel restores focus, failure keeps dialog, retry deletes and page clamps');
     await page.goto(WEB+'/longquests'); await openChain(page,'The crystal vault');
-    await page.locator('#stage-stage-0-0').click();
+    await page.getByRole('button',{name:'COMPLETE STAGE',exact:true}).click();
     await page.locator('.chain-stage.is-done').first().waitFor();
-    await page.locator('#stage-stage-0-0').click();
+    await page.locator('.chain-stage.is-done').first().getByRole('button',{name:/^Actions for /}).click(); await page.getByRole('menuitem',{name:'Mark not done'}).click();
     await page.waitForFunction(()=>document.querySelectorAll('.chain-stage.is-done').length===0);
     report.flows.push('Chain: stage completes and undoes; Done and Current chips follow');
   } finally { await context.close(); }
@@ -617,7 +617,7 @@ async function main() {
     }
     const context=await browser.newContext({viewport:{width:1440,height:900}}); await prepare(context);
     const page=await context.newPage(); page.setDefaultTimeout(10000); page.on('pageerror',e=>report.errors.push(e.message));
-    await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).waitFor();
+    await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).first().waitFor();
     // Motion: a dialog enters with opacity and transform transitions, and under reduced motion with opacity only.
     for(const reduced of [false,true]) {
       await page.emulateMedia({reducedMotion:reduced?'reduce':'no-preference'});
@@ -666,7 +666,7 @@ async function main() {
         }
       }
       await page.setViewportSize({width:1440,height:900});
-      await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).waitFor();
+      await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).first().waitFor();
       report.flows.push('board row menu: inside viewport at 320 and 1440, themed in both themes, Escape returns focus');
     }
     for(const [w,h] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {
@@ -677,7 +677,7 @@ async function main() {
     }
     await page.setViewportSize({width:1440,height:900});
     await openChain(page,'The crystal vault'); await screenshot(page,'quests-expanded',report);
-    await page.locator('#stage-stage-0-0').click();
+    await page.getByRole('button',{name:'COMPLETE STAGE',exact:true}).click();
     await page.getByRole('status',{name:'Confirmed XP reward'}).waitFor();
     assert.equal(await page.getByText('INT +20 XP',{exact:true}).count(),1);
     await page.locator('.chain-stage.is-done').first().waitFor();
@@ -737,12 +737,12 @@ async function main() {
         }
       }
     }
-    await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).waitFor();
+    await page.goto(WEB+'/longquests'); await page.getByText('The crystal vault',{exact:true}).first().waitFor();
     assert.equal(await page.locator('.journey').count(),0,'the animated map is gone'); report.flows.push('Chain page has no animated map');
     const profile=path.join(OUT,'zoom-profile'); fs.mkdirSync(path.join(profile,'Default'),{recursive:true});
     fs.writeFileSync(path.join(profile,'Default','Preferences'),JSON.stringify({partition:{default_zoom_level:{x:Math.log(2)/Math.log(1.2)}}}));
     zoom=await chromium.launchPersistentContext(profile,{channel:'chrome',headless:true,viewport:null,args:['--window-size=1280,900']}); await prepare(zoom);
-    const zp=await zoom.newPage(); await zp.goto(WEB+'/longquests'); await zp.getByText('The crystal vault',{exact:true}).waitFor();
+    const zp=await zoom.newPage(); await zp.goto(WEB+'/longquests'); await zp.getByText('The crystal vault',{exact:true}).first().waitFor();
     const size=await zp.evaluate(()=>({width:innerWidth,dpr:devicePixelRatio,scale:visualViewport.scale})); assert(size.width<=640 && size.dpr>=2);
     await screenshot(zp,'quests-actual-200-percent',report); report.zoom=size;
     zp.on('pageerror',e=>report.errors.push(e.message));
