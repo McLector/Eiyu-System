@@ -92,4 +92,9 @@ describe('Field', () => {
     await renderWithTheme(<Field label="Name" accessibilityLabel="Quest name" value="" onChangeText={() => {}} />);
     expect(screen.getByLabelText('Quest name')).toBeOnTheScreen();
   });
+
+  it('can give its error a test id, so a screen can find it without relying on the wording', async () => {
+    await renderWithTheme(<Field label="Name" value="" onChangeText={() => {}} error="Enter a name." errorTestID="name-error" />);
+    expect(screen.getByTestId('name-error')).toHaveTextContent('Enter a name.');
+  });
 });

@@ -59,4 +59,13 @@ describe('DeleteQuestModal', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('The System could not delete it.');
     expect(screen.getByTestId('board-delete-confirm')).toBeEnabled();
   });
+
+  it('can carry the editor test ids, so the editor and the Board keep their own', async () => {
+    const props = { quest, pending: false, error: null, onCancel: jest.fn(), onConfirm: jest.fn(), idPrefix: 'quest' };
+    await renderWithTheme(<DeleteQuestModal {...props} />);
+    expect(screen.getByTestId('quest-delete-modal')).toBeOnTheScreen();
+    expect(screen.getByTestId('quest-delete-cancel')).toBeOnTheScreen();
+    expect(screen.getByTestId('quest-delete-confirm')).toBeOnTheScreen();
+    expect(screen.queryByTestId('board-delete-modal')).toBeNull();
+  });
 });

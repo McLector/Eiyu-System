@@ -13,16 +13,18 @@ interface Props {
   error: string | null;
   onCancel: () => void;
   onConfirm: () => void;
+  /** Test-id prefix, so each screen that shows this keeps its own ids. */
+  idPrefix?: string;
 }
 
 /** The permanent-delete question: a small centred confirmation, because it is destructive and cannot be undone. */
-export function DeleteQuestModal({ quest, pending, error, onCancel, onConfirm }: Props) {
+export function DeleteQuestModal({ quest, pending, error, onCancel, onConfirm, idPrefix = 'board' }: Props) {
   const t = useTokens();
   const cancelRef = useRef<View>(null);
 
   return (
     <Modal
-      testID="board-delete-modal"
+      testID={`${idPrefix}-delete-modal`}
       visible={quest !== null}
       transparent
       animationType="fade"
@@ -39,9 +41,9 @@ export function DeleteQuestModal({ quest, pending, error, onCancel, onConfirm }:
           {error ? <Text accessibilityRole="alert" style={[styles.text, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
           <View style={styles.actions}>
             <View ref={cancelRef}>
-              <Button testID="board-delete-cancel" variant="quiet" label="Cancel" disabled={pending} onPress={onCancel} />
+              <Button testID={`${idPrefix}-delete-cancel`} variant="quiet" label="Cancel" disabled={pending} onPress={onCancel} />
             </View>
-            <Button testID="board-delete-confirm" variant="destructive" label="Confirm permanent delete" busy={pending} onPress={onConfirm} />
+            <Button testID={`${idPrefix}-delete-confirm`} variant="destructive" label="Confirm permanent delete" busy={pending} onPress={onConfirm} />
           </View>
         </View>
       </View>

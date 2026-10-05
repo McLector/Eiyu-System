@@ -8,11 +8,13 @@ export type FieldProps = Omit<TextInputProps, 'style'> & {
   label: string;
   error?: string;
   hint?: string;
+  /** Lets a screen (and its E2E flows) find the error without matching its wording. */
+  errorTestID?: string;
   style?: StyleProp<TextStyle>;
 };
 
 /** A labelled text input. The label stays as written (caps come from style) and doubles as the screen-reader name. */
-export function Field({ label, error, hint, accessibilityLabel, multiline, onFocus, onBlur, style, ...rest }: FieldProps) {
+export function Field({ label, error, hint, errorTestID, accessibilityLabel, multiline, onFocus, onBlur, style, ...rest }: FieldProps) {
   const t = useTokens();
   const [focused, setFocused] = useState(false);
   const border = error ? t.danger : focused ? t.accent : t['glass-border'];
@@ -34,7 +36,7 @@ export function Field({ label, error, hint, accessibilityLabel, multiline, onFoc
         ]}
       />
       {error ? (
-        <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text>
+        <Text testID={errorTestID} accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text>
       ) : hint ? (
         <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>{hint}</Text>
       ) : null}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, findNodeHandle, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
@@ -8,6 +8,7 @@ import ArchivedHabitsSheet from '@/components/eiyu/archived-habits-sheet';
 import { PlusIcon } from '@/components/eiyu/icons';
 import SettingsContent from '@/components/eiyu/settings-content';
 import { Button } from '@/components/ui/button';
+import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
 import { Field } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { fonts } from '@/constants/eiyu-theme';
@@ -26,7 +27,6 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [discardPrompt, setDiscardPrompt] = useState(false);
-  const keepEditingRef = useRef<View>(null);
   const saving = useRef(false);
   const dirty = displayName !== user.name || userClass !== user.userClass;
 
@@ -43,11 +43,6 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
       return;
     }
     setDiscardPrompt(true);
-  };
-
-  const focusKeepEditing = () => {
-    const target = keepEditingRef.current && findNodeHandle(keepEditingRef.current);
-    if (target != null) AccessibilityInfo.setAccessibilityFocus(target);
   };
 
   const save = async () => {
@@ -92,26 +87,13 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
         </View>
       </Sheet>
 
-      <Modal
+      <DiscardChangesModal
         visible={discardPrompt}
-        transparent
-        animationType="fade"
         testID="profile-discard-modal"
-        onShow={focusKeepEditing}
-        onRequestClose={() => setDiscardPrompt(false)}>
-        <View style={[styles.promptOverlay, { backgroundColor: t.overlay }]}>
-          <View accessibilityViewIsModal style={[styles.promptCard, { backgroundColor: t.modal, borderColor: t['accent-border'] }]}>
-            <Text accessibilityRole="alert" accessibilityLabel="Discard changes?" style={[styles.promptTitle, { color: t.text, fontFamily: fonts.display }]}>Discard changes?</Text>
-            <Text style={[styles.promptText, { color: t['muted-flat'], fontFamily: fonts.body }]}>Your unsaved profile changes will be lost.</Text>
-            <View style={styles.actions}>
-              <View ref={keepEditingRef}>
-                <Button variant="secondary" label="Keep Editing" onPress={() => setDiscardPrompt(false)} />
-              </View>
-              <Button variant="destructive" label="Discard Changes" onPress={() => { setDiscardPrompt(false); onClose(); }} />
-            </View>
-          </View>
-        </View>
-      </Modal>
+        message="Your unsaved profile changes will be lost."
+        onKeep={() => setDiscardPrompt(false)}
+        onDiscard={() => { setDiscardPrompt(false); onClose(); }}
+      />
     </>
   );
 }
@@ -229,10 +211,6 @@ const styles = StyleSheet.create({
   form: { gap: 14, paddingTop: 4 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 8 },
   error: { fontSize: 13, lineHeight: 18, marginTop: 8 },
-  promptOverlay: { flex: 1, justifyContent: 'center', padding: 20 },
-  promptCard: { width: '100%', maxWidth: 480, alignSelf: 'center', borderWidth: 1, borderRadius: 4, padding: 20, gap: 8 },
-  promptTitle: { fontSize: 20, letterSpacing: 1 },
-  promptText: { fontSize: 14, lineHeight: 21, marginBottom: 8 },
   settingsRoot: { flex: 1 },
   settingsHeading: { minHeight: 62, paddingLeft: 18, paddingRight: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1 },
   settingsTitle: { fontSize: 20, letterSpacing: 1 },
