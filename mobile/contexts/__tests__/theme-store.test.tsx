@@ -15,11 +15,14 @@ let mockUserId: string | undefined = 'u1';
 jest.doMock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'), ...mockShared }));
 jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: mockUserId ? { user: { id: mockUserId } } : null }) }));
 
-const { AppThemeProvider, useAppTheme } = require('../theme-store') as typeof import('../theme-store');
+const { AppThemeProvider, useAppTheme, useTokens } = require('../theme-store') as typeof import('../theme-store');
+const { PALETTE_TOKENS } = jest.requireActual('@eiyu/shared') as typeof import('@eiyu/shared');
 
 let current: ReturnType<typeof useAppTheme> | null = null;
+let currentTokens: ReturnType<typeof useTokens> | null = null;
 function Probe() {
   current = useAppTheme();
+  currentTokens = useTokens();
   return <Text>{`${current.mode}/${current.palette}`}</Text>;
 }
 async function mount() {
@@ -206,5 +209,26 @@ describe('AppThemeProvider when the app returns to the foreground', () => {
     mockUserId = undefined;
     await mount();
     expect(appStateHandlers).toHaveLength(0);
+  });
+});
+
+describe('AppThemeProvider tokens', () => {
+  it('exposes the palette tokens for the current mode and palette', async () => {
+    await mount();
+    expect(current!.tokens).toEqual(PALETTE_TOKENS.cyan.dark);
+    expect(current!.tokens.accent).toBe(PALETTE_TOKENS.cyan.dark.accent);
+  });
+
+  it('follows a palette and mode change', async () => {
+    await mount();
+    await act(async () => { current!.setPalette('magenta'); });
+    await act(async () => { current!.setMode('light'); });
+    expect(current!.tokens.accent).toBe(PALETTE_TOKENS.magenta.light.accent);
+    expect(current!.tokens['page-flat']).toBe(PALETTE_TOKENS.magenta.light['page-flat']);
+  });
+
+  it('useTokens returns the same object as the provider value', async () => {
+    await mount();
+    expect(currentTokens).toBe(current!.tokens);
   });
 });

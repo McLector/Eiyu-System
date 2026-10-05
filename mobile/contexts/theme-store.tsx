@@ -4,6 +4,7 @@ import {
   fetchAccountPalette,
   fetchAccountTheme,
   isPalette,
+  PALETTE_TOKENS,
   resolveThemeOnLoad,
   saveAccountPalette,
   saveAccountTheme,
@@ -28,11 +29,13 @@ interface AppTheme {
   palette: Palette;
   darkMode: boolean;
   theme: EiyuTheme;
+  /** The palette's colour table for the current mode, keyed by the web CSS variable name without `--c-`. */
+  tokens: Readonly<Record<string, string>>;
   setMode: (mode: ThemeMode) => void;
   setPalette: (palette: Palette) => void;
 }
 
-const ThemeContext = createContext<AppTheme | null>(null);
+export const ThemeContext = createContext<AppTheme | null>(null);
 
 /**
  * Theme and palette follow the account, like on web: the device copy paints first, then the account's choice wins.
@@ -118,7 +121,15 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const value = useMemo<AppTheme>(
-    () => ({ mode, palette, darkMode: mode === 'dark', theme: buildEiyuTheme(mode, palette), setMode, setPalette }),
+    () => ({
+      mode,
+      palette,
+      darkMode: mode === 'dark',
+      theme: buildEiyuTheme(mode, palette),
+      tokens: PALETTE_TOKENS[palette][mode],
+      setMode,
+      setPalette,
+    }),
     [mode, palette, setMode, setPalette],
   );
 
@@ -131,4 +142,9 @@ export function useAppTheme(): AppTheme {
   const ctx = useContext(ThemeContext);
   if (!ctx) throw new Error('useAppTheme must be used inside AppThemeProvider');
   return ctx;
+}
+
+/** The colour table the design-system primitives read; every colour a primitive draws comes from here. */
+export function useTokens(): Readonly<Record<string, string>> {
+  return useAppTheme().tokens;
 }
