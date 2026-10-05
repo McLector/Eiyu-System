@@ -25,6 +25,7 @@ import {
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { useAppTheme, useTokens } from '@/contexts/theme-store';
 import { AI_SUGGESTIONS_STORAGE_KEY, completeHabit } from '@eiyu/shared';
 import { accountDateKey } from '@eiyu/shared';
 import { createHabit, HabitInput } from '@eiyu/shared';
@@ -99,7 +100,9 @@ export function DevBall() {
 }
 
 function DevBallInner() {
-  const { user, theme, saveHabit, toggleQuest, setDarkMode, darkMode, notificationsEnabled } = useEiyu();
+  const { user, saveHabit, toggleQuest, notificationsEnabled } = useEiyu();
+  const { darkMode, setMode } = useAppTheme();
+  const t = useTokens();
   const { session } = useAuth();
   const userId = session?.user.id ?? null;
   const qc = useQueryClient();
@@ -265,7 +268,7 @@ function DevBallInner() {
     },
     {
       label: darkMode ? 'Switch to light theme' : 'Switch to dark theme',
-      run: () => setDarkMode(!darkMode),
+      run: () => setMode(darkMode ? 'light' : 'dark'),
     },
     { label: 'Open history modal', run: () => { setShowMenu(false); router.push('/history'); } },
   ];
@@ -278,11 +281,11 @@ function DevBallInner() {
         {
           left: pos.x,
           top: pos.y,
-          backgroundColor: theme.accentGlass,
-          borderColor: theme.accentBorder,
+          backgroundColor: t['accent-glass'],
+          borderColor: t['accent-border'],
         },
       ]}>
-      <Text style={[styles.ballGlyph, { color: theme.accent, fontFamily: fonts.display }]}>D</Text>
+      <Text style={[styles.ballGlyph, { color: t.accent, fontFamily: fonts.display }]}>D</Text>
     </View>
   );
 
@@ -293,9 +296,9 @@ function DevBallInner() {
         <View style={styles.scrim}>
           {/* Swallow taps on the scrim so only CLOSE/backdrop-dismiss exits. */}
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
-          <View style={[styles.card, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}
+          <View style={[styles.card, { backgroundColor: t.modal, borderColor: t['glass-border'] }]}
             onStartShouldSetResponder={() => true}>
-            <Text style={[styles.title, { color: theme.accent, fontFamily: fonts.display }]}>DEV TOOLS</Text>
+            <Text style={[styles.title, { color: t.accent, fontFamily: fonts.display }]}>DEV TOOLS</Text>
             {tools.map(tool => (
               <Pressable
                 key={tool.label}
@@ -306,13 +309,13 @@ function DevBallInner() {
                     Alert.alert('Tool failed', String(err));
                   }
                 }}
-                style={[styles.toolRow, { borderColor: theme.glassBorder }]}
+                style={[styles.toolRow, { borderColor: t['glass-border'] }]}
                 accessibilityRole="button">
-                <Text style={[styles.toolLabel, { color: theme.text, fontFamily: fonts.body }]}>{tool.label}</Text>
+                <Text style={[styles.toolLabel, { color: t.text, fontFamily: fonts.body }]}>{tool.label}</Text>
               </Pressable>
             ))}
-            <Pressable onPress={() => setShowMenu(false)} style={[styles.closeRow, { borderColor: theme.accentBorder }]}>
-              <Text style={[styles.toolLabel, { color: theme.accent, fontFamily: fonts.display }]}>CLOSE</Text>
+            <Pressable onPress={() => setShowMenu(false)} style={[styles.closeRow, { borderColor: t['accent-border'] }]}>
+              <Text style={[styles.toolLabel, { color: t.accent, fontFamily: fonts.display }]}>CLOSE</Text>
             </Pressable>
           </View>
         </View>

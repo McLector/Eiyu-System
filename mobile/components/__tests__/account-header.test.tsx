@@ -20,15 +20,9 @@ jest.mock('@/contexts/auth-store', () => ({ useAuth: () => ({ signOut: mockSignO
 jest.mock('@/contexts/eiyu-store', () => ({
   useEiyu: () => ({
     user: { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C', quests: [] },
-    theme: {
-      body: '#000', modal: '#111', overlay: '#000', glassBorder: '#333', text: '#fff',
-      muted: '#aaa', dim: '#777', accent: '#0ff', accentBorder: '#355', accentGlass: '#022',
-    },
     saveProfile: mockSaveProfile,
     restoreQuest: jest.fn(),
     deleteQuest: jest.fn(),
-    darkMode: true,
-    setDarkMode: jest.fn(),
     notificationsEnabled: true,
     setNotificationsEnabled: jest.fn(),
   }),

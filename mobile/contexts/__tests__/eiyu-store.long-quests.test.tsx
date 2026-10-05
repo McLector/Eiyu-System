@@ -33,11 +33,6 @@ const mockAudioPlayer = { seekTo: jest.fn(), play: jest.fn(), volume: 1 };
 const mockNetwork = { getNetworkStateAsync: jest.fn(), addNetworkStateListener: jest.fn() };
 
 jest.doMock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'), ...mockShared }));
-jest.doMock('@/contexts/theme-store', () => {
-  const { darkTheme } = jest.requireActual('@/constants/eiyu-theme');
-  const stub = { mode: 'dark', palette: 'cyan', darkMode: true, theme: darkTheme, setMode: () => {}, setPalette: () => {} };
-  return { useAppTheme: () => stub };
-});
 jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user: { id: 'user-1' } } }) }));
 jest.doMock('@/lib/notifications', () => mockNative);
 jest.doMock('@/lib/notification-prefs', () => mockPreference);

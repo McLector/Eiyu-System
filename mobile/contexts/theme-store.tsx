@@ -12,8 +12,6 @@ import {
   type ThemeMode,
 } from '@eiyu/shared';
 
-import type { EiyuTheme } from '@/constants/eiyu-theme';
-import { buildEiyuTheme } from '@/constants/palette-theme';
 import { useAuth } from '@/contexts/auth-store';
 import {
   clearThemeUnsynced,
@@ -28,7 +26,6 @@ interface AppTheme {
   mode: ThemeMode;
   palette: Palette;
   darkMode: boolean;
-  theme: EiyuTheme;
   /** The palette's colour table for the current mode, keyed by the web CSS variable name without `--c-`. */
   tokens: Readonly<Record<string, string>>;
   setMode: (mode: ThemeMode) => void;
@@ -125,7 +122,6 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
       mode,
       palette,
       darkMode: mode === 'dark',
-      theme: buildEiyuTheme(mode, palette),
       tokens: PALETTE_TOKENS[palette][mode],
       setMode,
       setPalette,

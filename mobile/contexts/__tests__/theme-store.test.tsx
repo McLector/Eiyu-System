@@ -144,11 +144,11 @@ describe('AppThemeProvider', () => {
     expect(mockShared.saveAccountTheme).not.toHaveBeenCalled();
   });
 
-  it('exposes a theme object that follows the palette', async () => {
+  it('exposes a token table that follows the palette', async () => {
     await mount();
-    const before = current!.theme.accent;
+    const before = current!.tokens.accent;
     await act(async () => { current!.setPalette('magenta'); });
-    expect(current!.theme.accent).not.toBe(before);
+    expect(current!.tokens.accent).not.toBe(before);
   });
 });
 

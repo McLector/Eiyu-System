@@ -30,9 +30,7 @@ import {
 } from 'react';
 
 import { initialUser } from '@eiyu/shared';
-import type { EiyuTheme } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
-import { useAppTheme } from '@/contexts/theme-store';
 import { completeHabit, completeHabitRecovery, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
 import { rankFromStats } from '@eiyu/shared';
 import { formatError } from '@eiyu/shared';
@@ -135,9 +133,6 @@ const offlineActionMessage = "You're offline. Your update wasn't saved. Your sav
 
 interface EiyuStore {
   user: UserProfile;
-  theme: EiyuTheme;
-  darkMode: boolean;
-  setDarkMode: (v: boolean) => void;
   questsLoading: boolean;
   questsError: string | null;
   /** True when a previously loaded quest list is available, including an empty list. */
@@ -199,8 +194,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const userId = session?.user.id;
   const qc = useQueryClient();
 
-  const { darkMode, theme: appTheme, setMode } = useAppTheme();
-  const setDarkMode = useCallback((dark: boolean) => setMode(dark ? 'dark' : 'light'), [setMode]);
   const [questActionError, setQuestActionError] = useState<string | null>(null);
   const [retryingQuests, setRetryingQuests] = useState(false);
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
@@ -905,9 +898,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const value = useMemo<EiyuStore>(
     () => ({
       user,
-      theme: appTheme,
-      darkMode,
-      setDarkMode,
       // Gate the board until ALL load queries settle - matching the pre-Phase-3
       // Promise.all behavior. Otherwise habits can resolve first and flash the
       // placeholder stats/name from initialUser for a moment.
@@ -953,9 +943,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
-      darkMode,
-      appTheme,
-      setDarkMode,
       habitsQuery.isPending,
       profileQuery.isPending,
       statsQuery.isPending,

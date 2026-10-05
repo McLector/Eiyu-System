@@ -2,7 +2,6 @@ import { render, type RenderResult } from '@testing-library/react-native';
 import { PALETTE_TOKENS, type Palette, type ThemeMode } from '@eiyu/shared';
 import type { ReactElement, ReactNode } from 'react';
 
-import { buildEiyuTheme } from '@/constants/palette-theme';
 import { ThemeContext } from '@/contexts/theme-store';
 
 /** Test stand-in for AppThemeProvider: same value shape, no storage and no account. */
@@ -19,7 +18,6 @@ export function TestThemeProvider({ children, mode = 'dark', palette = 'cyan', s
         mode,
         palette,
         darkMode: mode === 'dark',
-        theme: buildEiyuTheme(mode, palette),
         tokens: PALETTE_TOKENS[palette][mode],
         setMode,
         setPalette,
