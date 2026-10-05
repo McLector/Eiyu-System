@@ -302,6 +302,11 @@ with checks(marker, ok) as (
     and not has_function_privilege('anon',to_regprocedure('public.move_backlog_to_one_time(uuid)'),'EXECUTE')
     and coalesce((select pg_get_functiondef(p.oid) ilike '%rollover_unfinished_one_time_quests%'
       from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false), false)
+  union all select '039 gym: quick-log weights and the two newest weights per exercise', coalesce(
+    has_function_privilege('authenticated',to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'),'EXECUTE')
+    and has_function_privilege('authenticated',to_regprocedure('public.recent_gym_weights(uuid)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.recent_gym_weights(uuid)'),'EXECUTE'), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -313,7 +318,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–038
+re-run an old file over a newer definition. This query covers migrations 001–039
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -359,6 +364,10 @@ Run all 19 rollback/cleanup SQL test files in `supabase/tests` on a disposable l
 Verify prerequisites through 034, then apply **035 → 036 → 037** in order, verifying each phase before deploying the web client. Keep 036 immutable after application; atomic definitions are a separate 037 migration. Existing completion and mobile definition interfaces remain supported. 035 removes direct exercise-definition writes in favor of parent-locked RPCs; older web Gym clients must upgrade. Completed sessions are retained behind server-controlled routine tombstones.
 
 Media cleanup uses an owner-only durable manifest. Acknowledge only successful deletion of confirmed unreferenced paths; failed cleanup remains queued. Never delete an upload whose definition save remains uncertain. Migration capability checks do not replace owner/concurrency/Storage acceptance on a confirmed disposable Supabase stack. No production rollout has been performed.
+
+## Gym quick-log rollout (039)
+
+Apply **039** (`039_gym_quick_log.sql`) and verify its marker **before** deploying the web client that logs weights from the exercise. The new client calls `log_gym_weight` and `recent_gym_weights`; deployed ahead of the SQL it would fail on every log. 039 runs in one transaction. It retires the draft workflow in place: a draft holding at least one typed weight becomes a completed session under its own start date (its blank entries are dropped), and a draft with no weights is removed, so nothing the user typed is lost. `start_gym_session`, `save_gym_session` and `discard_gym_session` stay in place for browser tabs still running the previous client; a draft started from such a tab afterwards is not shown by the new client and is converted by re-running only the conversion statement at the top of 039. A log is stored as one completed single-exercise session whose id the client chooses, so retrying a log after an uncertain network failure is a no-op. Verify with `node scripts/verify-gym-quick-log-db.cjs` (PGlite) and the marker query above.
 
 ## Backlog rollout (038)
 
