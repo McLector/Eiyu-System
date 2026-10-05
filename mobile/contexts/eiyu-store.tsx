@@ -67,14 +67,15 @@ import {
   scheduleHabitReminders,
 } from '@/lib/notifications';
 import {
-  createLongQuest,
   deleteLongQuest,
   fetchLongQuests,
   LongQuestInput,
-  reconcileLongQuestStages,
-  setStageDone,
-  updateLongQuest,
+  saveAtomicLongQuest,
+  setStageDoneWithReceipt,
+  stageNotice,
+  type RewardReceipt,
 } from '@eiyu/shared';
+import { newRequestId } from '@/lib/request-id';
 import { fetchProfile, updateProfile } from '@eiyu/shared';
 import { fetchStats } from '@eiyu/shared';
 import { LongQuest, Quest, UserProfile } from '@eiyu/shared';
@@ -164,14 +165,22 @@ interface EiyuStore {
   reminderWarning: string | null;
   /** Retry reminder reconciliation without opening an OS permission prompt. */
   retryReminders: () => Promise<void>;
-  /** R-33: toggle one stage's done state. */
+  /** R-33: toggle one stage's done state; the reward is paid once per request id even if the call is retried. */
   toggleStage: (lqId: string, stageId: string) => void;
+  /** Stages with a request in flight. */
+  pendingStageIds: string[];
+  /** The XP card for the last confirmed stage change (null for a replay or after it is cleared). */
+  rewardReceipt: RewardReceipt | null;
+  stageRewardNotice: string | null;
+  clearStageReward: () => void;
   longQuestsLoading: boolean;
   longQuestsError: string | null;
   /** Re-fetch Long Quests after a load failure. */
   retryLongQuests: () => Promise<void>;
   /** R-32: create or edit a Long Quest with ordered stages. */
   saveLongQuest: (input: LongQuestInput, existingId?: string) => Promise<void>;
+  /** Drop the remembered ids of an unconfirmed save so the next attempt starts fresh (after the user discards it). */
+  forgetLongQuestSave: () => void;
   removeLongQuest: (id: string) => Promise<void>;
   /** R-42: global reminder toggle. */
   notificationsEnabled: boolean;
@@ -196,6 +205,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [retryingQuests, setRetryingQuests] = useState(false);
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
   const [lqActionError, setLqActionError] = useState<string | null>(null);
+  const [stageRewardNotice, setStageRewardNotice] = useState<string | null>(null);
+  const [rewardReceipt, setRewardReceipt] = useState<RewardReceipt | null>(null);
+  const [pendingStageIds, setPendingStageIds] = useState<string[]>([]);
+  const rewardRequests = useRef(new Map<string, string>());
+  const definitionRequests = useRef(new Map<string, { id: string; request: string }>());
   const [notificationsEnabled, setNotificationsEnabledState] = useState(true);
   const [notificationPreferenceLoaded, setNotificationPreferenceLoaded] = useState(false);
   const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState(false);
@@ -804,47 +818,57 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       stageRequests.current.add(lqId);
       const nextDone = !stage.done;
       const key = longQuestsKey(userId);
-      const previous = qc.getQueryData<LongQuest[]>(key);
-      qc.setQueryData<LongQuest[]>(key, lqs =>
-        lqs?.map(q =>
-          q.id === lqId
-            ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: nextDone } : s)) }
-            : q
-        )
-      );
+      setPendingStageIds(ids => [...ids, stageId]);
+      // The same request id is reused until the server confirms, so a retry after a dropped reply cannot pay twice.
+      const operation = `${stageId}:${nextDone}`;
+      const requestId = rewardRequests.current.get(operation) ?? newRequestId();
+      rewardRequests.current.set(operation, requestId);
       try {
-        await setStageDone(stageId, nextDone);
+        const receipt = await setStageDoneWithReceipt(stageId, nextDone, requestId);
+        rewardRequests.current.delete(operation);
+        qc.setQueryData<LongQuest[]>(key, lqs =>
+          lqs?.map(q => q.id === lqId ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: receipt.done } : s)) } : q)
+        );
+        if (activeUserId.current !== userId) return;
         setLqActionError(null);
+        setRewardReceipt(receipt.replayed ? null : receipt);
+        setStageRewardNotice(stageNotice(receipt.replayed ? 'replayed' : receipt.changed ? (nextDone ? 'completed' : 'undone') : 'unchanged'));
       } catch (err) {
-        qc.setQueryData<LongQuest[]>(key, previous);
-        setLqActionError(formatError(err));
+        if (activeUserId.current === userId) {
+          setLqActionError(formatError(err));
+          setStageRewardNotice(null);
+        }
       } finally {
         await qc.invalidateQueries({ queryKey: key });
         await qc.invalidateQueries({ queryKey: ['stats', userId] });
         stageRequests.current.delete(lqId);
+        setPendingStageIds(ids => ids.filter(id => id !== stageId));
       }
     },
     [longQuests, userId, qc]
   );
 
+  const clearStageReward = useCallback(() => {
+    setRewardReceipt(null);
+    setStageRewardNotice(null);
+  }, []);
+
   const saveLongQuest = useCallback(
     async (input: LongQuestInput, existingId?: string) => {
       if (!userId) return;
-      if (existingId) {
-        await updateLongQuest(
-          existingId,
-          { name: input.name, stat: input.stat, description: input.description },
-          longQuests.find(quest => quest.id === existingId)?.name
-        );
-        await reconcileLongQuestStages(existingId, input.stages);
-      } else {
-        await createLongQuest(userId, input);
-      }
+      // A retry after an unconfirmed save must reuse the quest id and request id; they are dropped only on success.
+      const operation = existingId ?? 'new';
+      const stable = definitionRequests.current.get(operation) ?? { id: existingId ?? newRequestId(), request: newRequestId() };
+      definitionRequests.current.set(operation, stable);
+      await saveAtomicLongQuest(stable.id, stable.request, input, !existingId, longQuests.find(q => q.id === existingId)?.name);
+      definitionRequests.current.delete(operation);
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
     [userId, qc, longQuests]
   );
+
+  const forgetLongQuestSave = useCallback(() => { definitionRequests.current.clear(); }, []);
 
   const removeLongQuest = useCallback(
     async (id: string) => {
@@ -910,10 +934,15 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       reminderWarning,
       retryReminders,
       toggleStage,
+      pendingStageIds,
+      rewardReceipt,
+      stageRewardNotice,
+      clearStageReward,
       longQuestsLoading: longQuestsQuery.isPending || retryingLongQuests,
       longQuestsError,
       retryLongQuests,
       saveLongQuest,
+      forgetLongQuestSave,
       removeLongQuest,
       notificationsEnabled,
       setNotificationsEnabled,
@@ -949,10 +978,15 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       reminderWarning,
       retryReminders,
       toggleStage,
+      pendingStageIds,
+      rewardReceipt,
+      stageRewardNotice,
+      clearStageReward,
       longQuestsQuery.isPending,
       longQuestsError,
       retryLongQuests,
       saveLongQuest,
+      forgetLongQuestSave,
       removeLongQuest,
       notificationsEnabled,
       setNotificationsEnabled,
