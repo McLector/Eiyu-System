@@ -88,6 +88,9 @@ flow at normal or increased Android font scale.
   stage completion and undo, delete (centred confirmation). Rewritten for the
   Chain list and detail screens in mobile parity slice 3; not yet run on a device.
   The AI stage breakdown flow was removed with "Suggest stages" (D17).
+- `gym_*` — Gym tab: create routine and exercise, log a weight, delete; validation and the discard guard.
+  Written in mobile parity slice 4, not yet run on a device. GIF/MP4 upload is not covered (the system
+  picker cannot be driven); do it by hand.
 - `phase6_whole_product_acceptance.yaml` — disposable cross-platform lifecycle,
   account-isolation, retained-history, and Android navigation journey
 - `phase6_reload_smoke.yaml` — same-account relaunch, persisted board state,

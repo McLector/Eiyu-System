@@ -1,0 +1,38 @@
+appId: com.mclector.eiyusystem
+---
+# Mobile parity slice 4: a routine needs a name; an exercise needs a name and valid reps. Not yet run on a device.
+- runFlow: _helpers/login.yaml
+- tapOn: "GYM"
+- tapOn: "NEW ROUTINE"
+- tapOn:
+    id: "gym-routine-save"
+- assertVisible: "NEW ROUTINE"
+- tapOn: "e.g. Chest, Triceps, Shoulders"
+- inputText: "Maestro Validation Routine"
+- hideKeyboard
+- tapOn:
+    id: "gym-routine-save"
+- assertVisible: "Maestro Validation Routine"
+
+- tapOn:
+    id: "gym-add-exercise"
+- tapOn: "Exercise name"
+- inputText: "Bad Reps"
+- hideKeyboard
+- tapOn: "6-10"
+- eraseText: 10
+- inputText: "12-8"
+- hideKeyboard
+- tapOn:
+    id: "gym-exercise-save"
+- assertVisible: ".*ascending range.*"
+- assertVisible: "ADD EXERCISE"
+
+# Cleanup: leave through the discard guard, then delete the routine.
+- back
+- tapOn: "Discard Changes"
+- tapOn:
+    id: "gym-routine-menu"
+- tapOn: "Delete routine"
+- tapOn: "Delete Routine"
+- assertNotVisible: "Maestro Validation Routine"

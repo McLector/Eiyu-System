@@ -1,0 +1,46 @@
+appId: com.mclector.eiyusystem
+---
+# Mobile parity slice 4: routine -> exercise -> log a weight -> delete. Written for the new screens, not yet run on a device.
+# Media (GIF/MP4) is not covered: the system picker cannot be driven from Maestro.
+- runFlow: _helpers/login.yaml
+- tapOn: "GYM"
+- tapOn: "NEW ROUTINE"
+- assertVisible: "NEW ROUTINE"
+- tapOn: "e.g. Chest, Triceps, Shoulders"
+- inputText: "Maestro Routine"
+- hideKeyboard
+- tapOn:
+    id: "gym-routine-save"
+- assertVisible: "Maestro Routine"
+
+- tapOn:
+    id: "gym-add-exercise"
+- assertVisible: "ADD EXERCISE"
+- tapOn: "Exercise name"
+- inputText: "Maestro Bench"
+- hideKeyboard
+- tapOn:
+    id: "gym-exercise-save"
+- assertVisible: "Maestro Bench"
+- assertVisible: "3 × 6-10"
+
+# The exercise card: type a weight and log it.
+- tapOn:
+    id: "gym-exercise-row"
+- assertVisible: "1 / 1"
+- tapOn:
+    id: "gym-weight-.*"
+- inputText: "62.5"
+- hideKeyboard
+- tapOn:
+    id: "gym-log-.*"
+- assertVisible: ".*62.5 kg logged.*"
+
+# Cleanup: delete the routine so the shared test account stays empty.
+- back
+- tapOn:
+    id: "gym-routine-menu"
+- tapOn: "Delete routine"
+- assertVisible: ".*Logged weights remain in your history.*"
+- tapOn: "Delete Routine"
+- assertNotVisible: "Maestro Routine"
