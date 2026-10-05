@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
 
 import ArchivedHabitsSheet from '@/components/eiyu/archived-habits-sheet';
-import { PlusIcon } from '@/components/eiyu/icons';
-import SettingsContent from '@/components/eiyu/settings-content';
+import { SettingsSheet } from '@/components/settings/settings-sheet';
 import { Button } from '@/components/ui/button';
 import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
 import { Field } from '@/components/ui/field';
@@ -179,17 +178,7 @@ export default function AccountHeader() {
       {sheet === 'profile' && <ProfileSheet onClose={() => setSheet(null)} />}
       <ArchivedHabitsSheet visible={sheet === 'archived'} onClose={() => setSheet(null)} />
 
-      <Modal visible={sheet === 'settings'} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
-        <View style={[styles.settingsRoot, { backgroundColor: t['page-flat'], paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-          <View style={[styles.settingsHeading, { backgroundColor: t.nav, borderBottomColor: t['nav-border'] }]}>
-            <Text accessible accessibilityRole="header" style={[styles.settingsTitle, { color: t.text, fontFamily: fonts.display }]}>SETTINGS</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close Settings" onPress={() => setSheet(null)} style={styles.settingsClose}>
-              <View style={styles.closeGlyph}><PlusIcon size={20} color={t['muted-flat']} /></View>
-            </Pressable>
-          </View>
-          <SettingsContent onClose={() => setSheet(null)} embedded />
-        </View>
-      </Modal>
+      <SettingsSheet visible={sheet === 'settings'} onClose={() => setSheet(null)} />
     </>
   );
 }
@@ -211,9 +200,4 @@ const styles = StyleSheet.create({
   form: { gap: 14, paddingTop: 4 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 8 },
   error: { fontSize: 13, lineHeight: 18, marginTop: 8 },
-  settingsRoot: { flex: 1 },
-  settingsHeading: { minHeight: 62, paddingLeft: 18, paddingRight: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1 },
-  settingsTitle: { fontSize: 20, letterSpacing: 1 },
-  settingsClose: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  closeGlyph: { transform: [{ rotate: '45deg' }] },
 });
