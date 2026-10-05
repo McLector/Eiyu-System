@@ -121,3 +121,65 @@ Deno.test('each retry reserves its own provider attempt before fetch', async () 
     throw new Error(`expected one begin plus one retry reservation before two provider calls; got ${observed.join(',')}`);
   }
 });
+
+// A throw outside the handler's own guarded steps used to escape as a bare text/plain 500 with no CORS
+// headers, which a browser reports only as "Failed to send a request to the Edge Function".
+Deno.test('an unexpected throw still answers JSON with CORS headers instead of escaping', async () => {
+  const client = fakeClient();
+  const originalError = console.error;
+  const logged: unknown[][] = [];
+  console.error = (...args: unknown[]) => { logged.push(args); };
+  try {
+    const handler = createAiProxyHandler({
+      createUserClient: () => client,
+      createServiceClient: () => client,
+      generate: async () => ({ suggestions: ['one'] }),
+      corsHeaders: origin => ({ 'Access-Control-Allow-Origin': origin ?? '' }),
+      clock: {
+        now: Date.now,
+        setTimeout: (() => { throw new Error('timers unavailable'); }) as unknown as typeof globalThis.setTimeout,
+        clearTimeout: globalThis.clearTimeout,
+      },
+    });
+    const response = await handler(new Request('https://local.test/ai', {
+      method: 'POST',
+      headers: { ...authHeaders, Origin: 'http://localhost:5173' },
+      body: JSON.stringify({ action: 'easy-versions', habitName: 'Read' }),
+    }));
+    const body = await response.json();
+    if (response.status !== 503 || typeof body.error !== 'string') {
+      throw new Error(`expected a JSON 503, got status=${response.status} body=${JSON.stringify(body)}`);
+    }
+    if (response.headers.get('Access-Control-Allow-Origin') !== 'http://localhost:5173') {
+      throw new Error('the failure response must carry CORS headers so the browser can read it');
+    }
+    if (!response.headers.get('Content-Type')?.includes('application/json')) {
+      throw new Error('the failure response must be JSON');
+    }
+    if (!logged.some(args => String(args[1] ?? args[0]).includes('timers unavailable'))) {
+      throw new Error('the underlying error must reach the function logs');
+    }
+  } finally {
+    console.error = originalError;
+  }
+});
+
+Deno.test('a failing CORS builder cannot turn the failure response into an unhandled throw', async () => {
+  const client = fakeClient();
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const handler = createAiProxyHandler({
+      createUserClient: () => client,
+      createServiceClient: () => client,
+      generate: async () => ({ suggestions: ['one'] }),
+      corsHeaders: () => { throw new Error('cors broke'); },
+    });
+    const response = await handler(new Request('https://local.test/ai', {
+      method: 'POST', headers: authHeaders, body: JSON.stringify({ action: 'easy-versions', habitName: 'Read' }),
+    }));
+    if (response.status !== 503) throw new Error(`expected 503, got ${response.status}`);
+  } finally {
+    console.error = originalError;
+  }
+});

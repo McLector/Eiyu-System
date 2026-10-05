@@ -238,7 +238,7 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
   };
   const totalRequestTimeoutMs = dependencies.totalRequestTimeoutMs ?? DEFAULT_AI_REQUEST_TIMEOUT_MS;
 
-  return async request => {
+  const handle = async (request: Request): Promise<Response> => {
     const cors = makeCorsHeaders(request.headers.get('Origin'));
     if (request.method === 'OPTIONS') return new Response('ok', { headers: cors });
     if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405, cors);
@@ -360,6 +360,19 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
       }
     } finally {
       budget.dispose();
+    }
+  };
+
+  // Last resort. Anything thrown outside the guarded steps above would otherwise escape as a bare text/plain 500 with
+  // no CORS headers, which a browser can only report as "Failed to send a request to the Edge Function".
+  return async request => {
+    try {
+      return await handle(request);
+    } catch (error) {
+      console.error('ai-proxy: unhandled error', error instanceof Error ? `${error.name}: ${error.message}` : String(error));
+      let cors: Record<string, string> = {};
+      try { cors = makeCorsHeaders(request.headers.get('Origin')); } catch { /* answer without CORS rather than throw again */ }
+      return unavailableResponse(cors);
     }
   };
 }
