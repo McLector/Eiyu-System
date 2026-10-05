@@ -890,7 +890,7 @@ button:disabled { opacity: .45; cursor: default; }
 .reward-stat progress::-webkit-progress-value { background: currentColor; border-radius: 3px; }
 .reward-stat progress::-moz-progress-bar { background: currentColor; border-radius: 3px; }
 
-/* Motion: entrances are transitions (interruptible) started from @starting-style; exits stay instant. */
+/* Motion: entrances are transitions (interruptible) started from @starting-style; exits stay instant, except a notice, which fades (NOTICE_FADE_MS in ArchiveNotice.tsx). */
 .phase4-overlay { transition: opacity var(--dur-base) var(--ease-out); }
 .phase4-dialog { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
 .phase4-account-menu { transform-origin: top right; transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
@@ -903,7 +903,9 @@ button:disabled { opacity: .45; cursor: default; }
 .action-menu-item.is-danger:hover:not(:disabled) { background: var(--c-danger-glass); }
 .action-menu-trigger { min-width: 32px; padding-inline: 6px; }
 @starting-style { .phase4-overlay { opacity: 0; } }
+.feedback-card.is-leaving { opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: no-preference) {
+  .feedback-card.is-leaving { transform: translateY(-8px); }
   @starting-style {
     .phase4-dialog { opacity: 0; transform: scale(0.96); }
     .phase4-account-menu { opacity: 0; transform: scale(0.97); }

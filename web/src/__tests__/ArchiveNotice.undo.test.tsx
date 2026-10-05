@@ -22,6 +22,17 @@ describe('archive notice Undo', () => {
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
   });
 
+  it('runs Undo at once and lets the notice fade rather than waiting for it', async () => {
+    const user = userEvent.setup();
+    const undo = vi.fn().mockResolvedValue(undefined);
+    render(<ArchiveNotice onOpen={vi.fn()} />);
+    act(() => announceArchive('habit', 'owner-1', undo));
+    await user.click(await screen.findByRole('button', { name: /Undo/ }));
+    expect(undo).toHaveBeenCalledOnce();
+    expect(screen.getByRole('status')).toHaveClass('is-leaving');
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  });
+
   it('shows no Undo button for an announcement without one', async () => {
     render(<ArchiveNotice onOpen={vi.fn()} />);
     act(() => announceArchive('habit', 'owner-1'));

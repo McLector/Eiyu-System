@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import '@testing-library/jest-dom/vitest';
 import { afterEach, expect, it, vi } from 'vitest';
 vi.mock('../store/session-context', () => ({ useSession: () => ({ user: { id: 'owner-a' } }) }));
-import ArchiveNotice, { announceArchive, announceFeedback } from '../components/ArchiveNotice';
+import ArchiveNotice, { announceArchive, announceFeedback, NOTICE_FADE_MS } from '../components/ArchiveNotice';
 import Dialog from '../components/Dialog';
 
 afterEach(cleanup);
@@ -17,12 +17,22 @@ it('shows a notice raised while a dialog is open inside that dialog, where it is
   const dialog = screen.getByRole('dialog', { name: 'Edit routine' });
   const notice = await within(dialog).findByRole('status');
   expect(notice).toHaveTextContent('Routine saved.');
-  // Everything outside the dialog is inert, so a notice outside it could never be dismissed.
-  const dismiss = within(notice).getByRole('button', { name: 'Dismiss archive notice' });
-  expect(dismiss.closest('[aria-hidden="true"]')).toBeNull();
+  // Everything outside the dialog is inert, so a notice outside it could never be read by assistive tech.
+  expect(notice.closest('[aria-hidden="true"]')).toBeNull();
   expect(screen.getByRole('main', { hidden: true }).closest('[aria-hidden="true"]')).not.toBeNull();
-  dismiss.focus();
-  expect(document.activeElement).toBe(dismiss);
+});
+
+it('keeps the actions of an archive notice reachable inside the dialog', async () => {
+  render(<>
+    <main><ArchiveNotice onOpen={vi.fn()} /></main>
+    <Dialog title="Edit routine" onClose={vi.fn()}><button>Save routine</button></Dialog>
+  </>);
+  act(() => announceArchive('habit', 'owner-a'));
+  const dialog = screen.getByRole('dialog', { name: 'Edit routine' });
+  const view = await within(dialog).findByRole('button', { name: 'View archived habits' });
+  expect(view.closest('[aria-hidden="true"]')).toBeNull();
+  view.focus();
+  expect(document.activeElement).toBe(view);
 });
 
 it('uses the topmost dialog when dialogs are stacked', async () => {
@@ -58,7 +68,7 @@ it('does not stay paused when a hovered notice moves out of a closing dialog', a
     await act(async () => { await Promise.resolve(); });
     expect(screen.getByRole('status')).toHaveTextContent('Habit archived');
     expect(screen.getByRole('status').querySelector('.archive-notice-timer')).not.toHaveClass('is-paused');
-    act(() => { vi.advanceTimersByTime(8100); });
+    act(() => { vi.advanceTimersByTime(8000); }); act(() => { vi.advanceTimersByTime(NOTICE_FADE_MS); });
     expect(screen.queryByRole('status')).toBeNull();
   } finally { vi.useRealTimers(); }
 });
