@@ -6,8 +6,11 @@ appId: com.mclector.eiyusystem
 - extendedWaitUntil:
     visible: "BOARD"
     timeout: 15000
-- tapOn: "SETTINGS"
-- assertVisible: "Settings"
+# Settings is a sheet behind the account menu (no Settings tab any more).
+- tapOn:
+    id: "account-trigger"
+- tapOn: "Settings"
+- assertVisible: "SETTINGS"
 - tapOn: "Quest Reminders"
 - assertVisible: "Quest Reminders"
 - tapOn: "Quest Reminders"

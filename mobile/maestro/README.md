@@ -98,7 +98,7 @@ flow at normal or increased Android font scale.
 - `status_weekly_summary_and_cache` — weekly AI summary generates and
   then serves from cache on revisit
 - `history_month_navigation` — calendar month paging
-- `settings_toggles_and_signout` — theme/notification toggles, sign out
+- `settings_toggles_and_signout` — theme switch (stable `Dark Theme` name, `settings-dark-theme` id, checked state flips), palette radiogroup, sound switch, Logout from the account menu
 
 ## Notes on the app changes made to support this
 
@@ -118,9 +118,11 @@ visible text can't reach (all inert - no behavior change):
   the chain's overflow button (`chain-more`) and the delete confirmation
   (`chain-delete-confirm` / `chain-delete-cancel`). `chain/index.tsx` — the
   `chain-card` rows and `chain-new`. Stages are no longer expanded from the list.
-- `auth.tsx` — the terms-acceptance checkbox `View` (`testID="terms-checkbox"`,
-  on the checkbox glyph itself, not the row - the row's accessible tap
-  target overlaps the nested "Privacy Policy & Terms" link)
+- `auth.tsx` — the terms-acceptance checkbox `Pressable` (`testID="terms-checkbox"`,
+  a 48dp target next to the consent text; tapping the text itself would hit the
+  Privacy Policy / Terms of Use links)
+- `components/settings/settings-sheet.tsx` — `settings-dark-theme` and
+  `settings-sound-effects` switches (match `checked`)
 
 ## Known selector traps (see comments in the flow files)
 

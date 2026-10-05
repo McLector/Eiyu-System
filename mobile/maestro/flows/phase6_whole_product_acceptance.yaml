@@ -142,20 +142,10 @@ appId: com.mclector.eiyusystem
 - assertVisible: "Phase 6 Android"
 - tapOn: "Phase 6 Android, Acceptance Runner, rank E"
 - tapOn: "Settings"
-- runFlow:
-    when:
-      visible: "Dark Theme"
-    commands:
-      - tapOn: "Dark Theme"
-      - assertVisible: "Light Theme"
-      - tapOn: "Light Theme"
-- runFlow:
-    when:
-      visible: "Light Theme"
-    commands:
-      - tapOn: "Light Theme"
-      - assertVisible: "Dark Theme"
-      - tapOn: "Dark Theme"
+- tapOn:
+    id: settings-dark-theme
+- tapOn:
+    id: settings-dark-theme
 - tapOn: "Close Settings"
 - tapOn: "STATUS"
 - tapOn: "CHAIN"

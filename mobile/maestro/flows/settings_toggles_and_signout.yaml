@@ -10,11 +10,29 @@ appId: com.mclector.eiyusystem
 - tapOn: "Settings"
 - assertVisible: "Quest History"
 
-# Theme toggle flips its label and re-themes the screen without crashing.
-- tapOn: "Dark Theme"
-- assertVisible: "Light Theme"
-- tapOn: "Light Theme"
+# The theme switch keeps one stable name ("Dark Theme") and flips its checked
+# state; the screen re-themes without crashing.
+- assertVisible:
+    id: settings-dark-theme
+    checked: true
+- tapOn:
+    id: settings-dark-theme
+- assertVisible:
+    id: settings-dark-theme
+    checked: false
 - assertVisible: "Dark Theme"
+- tapOn:
+    id: settings-dark-theme
+- assertVisible:
+    id: settings-dark-theme
+    checked: true
+
+# The palette radiogroup repaints the app and keeps the pick selected.
+- tapOn: "Monarch violet"
+- assertVisible:
+    text: "Monarch violet"
+    checked: true
+- tapOn: "Cyan"
 
 # Sound Effects: normalize to on, leave Settings, and verify the stored state
 # survives reopening the sheet.
@@ -29,8 +47,7 @@ appId: com.mclector.eiyusystem
 - assertVisible:
     id: settings-sound-effects
     checked: true
-- tapOn:
-    point: "93%, 6%"
+- tapOn: "Close Settings"
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn:
@@ -47,8 +64,7 @@ appId: com.mclector.eiyusystem
 - takeScreenshot: settings-sound-after-reopen
 
 # Logout returns to the auth screen.
-- tapOn:
-    point: "93%, 6%"
+- tapOn: "Close Settings"
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn:

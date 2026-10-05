@@ -69,8 +69,7 @@ appId: com.mclector.eiyusystem
     visible: "Phase Four Native"
     timeout: 15000
 
-# Settings is an account action; Android Back must dismiss the full-screen
-# settings surface without logging out or changing the selected tab.
+# Settings is an account action; Android Back must dismiss the settings sheet without logging out or changing the selected tab.
 - tapOn: "Phase Four Native"
 - tapOn: "Settings"
 - extendedWaitUntil:

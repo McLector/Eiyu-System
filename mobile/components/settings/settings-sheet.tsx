@@ -83,6 +83,7 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
     <Sheet visible={visible} title="SETTINGS" closeLabel="Close Settings" onClose={onClose} testID="settings-sheet">
       <SectionLabel>APPEARANCE</SectionLabel>
       <SwitchRow
+        testID="settings-dark-theme"
         label="Dark Theme"
         sub="Switch between light and dark surfaces"
         value={dark}

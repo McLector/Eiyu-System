@@ -54,7 +54,9 @@ appId: com.anonymous.eiyusystem
 # board; its completion remains independently available in history.
 - assertVisible: "ONE-TIME QUESTS"
 - assertVisible: "No one-time quests scheduled for today."
-- tapOn: "SETTINGS"
+- tapOn:
+    id: "account-trigger"
+- tapOn: "Settings"
 - tapOn: "Quest History"
 - extendedWaitUntil:
     visible: "HISTORY"

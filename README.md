@@ -22,7 +22,7 @@ Your real-life habits translate directly into XP for your character's stats (STR
 * **Gym Progress**: Routines of exercises with sets, reps, rest, RIR and an optional GIF or MP4 video guide. Pick an exercise from the list to see its guide with its notes beside it and its numbers below. Type a weight into Current and press Enter (or the arrow) to log it; the weight before it becomes Previous. There is no workout to start or finish. On Android the Gym tab has a routine chip (with Include archived and a new-routine button), the exercise list, and a swipeable full-screen card per exercise with the guide, the numbers and a large weight field with LOG WEIGHT; routines and exercises have full-screen editors that can attach a GIF or MP4, and Workout history is under the routine's menu.
 * **AI Weekly Summary**: A Gemini-powered natural-language recap of the week's progress, generated server-side (the API key never reaches the client) — always a suggestion you can edit or discard, never auto-saved.
 * **Supabase Backend**: Full cloud sync — habits, stats, completions, streaks, and long quests are all persisted and synced across devices, shared between the mobile and web clients.
-* **Auth**: Email/password auth with session persistence, display-name sign-up, and password reset.
+* **Auth**: Email/password auth with session persistence, display-name sign-up, and password reset. On Android, Settings is a sheet from the account menu: dark/light switch, eight colour palettes (saved on the account, like on web), quest reminders, completion sound and Quest History.
 * **History**: Calendar-based completion history with per-day drill-down.
 * **Notifications**: Local push notification scheduling for habit reminders (mobile only).
 * **Weekly Quests**: Auto-generated weekly targets per stat (not shown in the current Status screens of either app).
@@ -35,7 +35,7 @@ This is an npm-workspaces monorepo with three packages sharing one Supabase back
 eiyu-system/
 ├── mobile/                     # Expo (React Native) app — the original client
 │   ├── app/                    # Screens (expo-router, file-based routing)
-│   ├── components/eiyu/        # Custom UI (glass / Solo Leveling aesthetic)
+│   ├── components/eiyu/        # Custom UI (flat, palette-driven System look)
 │   ├── lib/                    # Mobile-specific Supabase client, notifications, etc.
 │   ├── eas.json                # EAS Build/Update profiles (development/preview/production)
 │   └── maestro/                # Maestro E2E test flows

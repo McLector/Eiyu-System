@@ -69,6 +69,7 @@ describe('SettingsSheet', () => {
     it('is named Dark Theme and checked in dark mode', async () => {
       await show({ mode: 'dark' });
       expect(screen.getByRole('switch', { name: 'Dark Theme' }).props.accessibilityState).toMatchObject({ checked: true });
+      expect(screen.getByRole('switch', { name: 'Dark Theme' }).props.testID).toBe('settings-dark-theme');
     });
 
     it('keeps the same name, unchecked, in light mode (the label must not flip with the state)', async () => {
