@@ -711,7 +711,7 @@ select.field option {
 @media (prefers-reduced-motion: reduce) { .archive-notice-timer { display: none; } }
 
 .gym-page { display: flex; flex-direction: column; gap: 10px; height: calc(100svh - 110px); min-height: 430px; color: var(--c-text); font: 13px Inter, sans-serif; }
-.gym-heading, .gym-routine-heading, .gym-actions, .gym-toolbar, .gym-session-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.gym-heading, .gym-routine-heading, .gym-actions, .gym-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .gym-routine-heading h2 { margin: 0; font: 700 18px Rajdhani, sans-serif; overflow-wrap: anywhere; }
 .gym-routine-heading small { color: var(--c-muted-flat); font: 12px Inter, sans-serif; }
 .gym-toolbar { justify-content: flex-start; }
@@ -726,10 +726,7 @@ select.field option {
 .gym-form .gym-checkbox { flex-direction: row; }
 .gym-form p { margin: 0; font: 12px/1.5 Inter,sans-serif; color: var(--c-muted-flat); }
 .gym-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
-.gym-weight { padding: 7px; width: 100%; font-size: 13px; }
-.gym-session-actions { justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--c-divider-flat); }
-.gym-session-actions > span:first-child { margin-right: auto; color: var(--c-muted-flat); font: 700 11px/1.2 Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
-@media (min-width: 768px) and (min-height: 700px) { .gym-session-actions { position: sticky; bottom: 0; z-index: 5; padding-bottom: 12px; background: color-mix(in srgb, var(--c-page-flat) 90%, transparent); } }
+.gym-weight { width: 6.5rem; padding: 6px 8px; font-size: 14px; }
 .gym-history { display: flex; flex-direction: column; height: 60svh; }
 .gym-history-session { flex-shrink: 0; padding: 10px; color: var(--c-text); font: 13px/1.5 Inter,sans-serif; border-bottom: 1px solid var(--c-divider-flat); }
 .gym-history-session summary { cursor: pointer; }
@@ -979,12 +976,21 @@ button:disabled { opacity: .45; cursor: default; }
 .gym-detail { display: grid; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--c-divider-flat); border-radius: 4px; }
 .gym-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .gym-detail-head h3 { margin: 0; color: var(--c-text); font: 700 18px/1.2 Rajdhani, sans-serif; letter-spacing: .06em; text-transform: uppercase; overflow-wrap: anywhere; }
-.gym-media { width: 100%; max-height: 260px; border-radius: 4px; object-fit: contain; }
+/* The video keeps a capped column and the notes take the space beside it, so nothing stretches across the pane. */
+.gym-detail-main { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.gym-media-box { min-width: 0; }
+.gym-media { display: block; width: 100%; max-width: 100%; max-height: 260px; aspect-ratio: 16 / 9; border-radius: 4px; object-fit: contain; background: color-mix(in srgb, var(--c-text) 4%, transparent); }
+.gym-notes { min-width: 0; max-height: 220px; padding: 10px 12px; overflow-y: auto; overflow-wrap: anywhere; border: 1px solid var(--c-divider-flat); border-radius: 4px; }
+.gym-notes p { margin: 6px 0 0; }
 .gym-media-empty { display: grid; justify-items: start; gap: 8px; padding: 14px; border: 1px dashed var(--c-divider-flat); border-radius: 4px; color: var(--c-muted-flat); }
 .gym-media-empty p { margin: 0; font: 13px Inter, sans-serif; }
 .gym-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 0; }
 .gym-kv > div { padding: 6px 8px; border: 1px solid var(--c-divider-flat); border-radius: 3px; }
 .gym-kv dt { color: var(--c-muted-flat); font: 700 11px Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
 .gym-kv dd { margin: 0; color: var(--c-text); font: 700 16px 'JetBrains Mono', monospace; }
-.gym-weight-field { display: grid; gap: 6px; color: var(--c-muted-flat); font: 700 11px/1.2 Rajdhani, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
-@media (max-width: 767px) { .gym-split { grid-template-columns: minmax(0, 1fr); } }
+.gym-kv-current { grid-column: span 2; }
+.gym-log { display: flex; align-items: center; gap: 6px; }
+.gym-unit { color: var(--c-muted-flat); font: 12px 'JetBrains Mono', monospace; }
+.gym-log-submit { min-width: 32px; min-height: 32px; padding: 5px 8px; }
+.gym-saving { color: var(--c-muted-flat); font: 12px Inter, sans-serif; }
+@media (max-width: 767px) { .gym-split { grid-template-columns: minmax(0, 1fr); } .gym-detail-main { grid-template-columns: minmax(0, 1fr); } }

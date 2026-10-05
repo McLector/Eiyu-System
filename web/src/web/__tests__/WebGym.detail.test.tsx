@@ -1,16 +1,25 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { GymData } from '@eiyu/shared';
+import { UncertainSaveError, type GymData, type GymRecentWeight } from '@eiyu/shared';
 
-const mocks = vi.hoisted(() => ({ data: {} as GymData, fetchGym: vi.fn(), start: vi.fn(), previous: vi.fn(), cleanup: vi.fn(), sign: vi.fn() }));
+type Logged = { exercise_id: string; weight: number; unit: 'kg' | 'lb' };
+const mocks = vi.hoisted(() => ({ data: {} as GymData, logs: [] as Logged[], fetchGym: vi.fn(), log: vi.fn(), cleanup: vi.fn(), sign: vi.fn() }));
 vi.mock('@eiyu/shared', async importOriginal => ({
-  ...await importOriginal<object>(), fetchGym: mocks.fetchGym, startGymSession: mocks.start,
-  fetchPreviousGymWeights: mocks.previous, listGymMediaCleanup: mocks.cleanup,
+  ...await importOriginal<object>(), fetchGym: mocks.fetchGym, logGymWeight: mocks.log, listGymMediaCleanup: mocks.cleanup,
+  // The database answer: the two newest logged weights per exercise, newest first.
+  fetchRecentGymWeights: async () => {
+    const out: GymRecentWeight[] = [];
+    for (const exercise of new Set(mocks.logs.map(l => l.exercise_id))) {
+      const own = mocks.logs.filter(l => l.exercise_id === exercise).reverse().slice(0, 2);
+      own.forEach((l, i) => out.push({ exercise_id: exercise, weight: l.weight, unit: l.unit, logged_at: '2026-10-01T00:00:00Z', recency: (i + 1) as 1 | 2 }));
+    }
+    return out;
+  },
 }));
 vi.mock('../gym-media', async importOriginal => ({ ...await importOriginal<object>(), signGymMedia: mocks.sign }));
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ user: { id: 'owner' } }) }));
@@ -19,25 +28,23 @@ import { NavigationGuard } from '../../components/NavigationGuard';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-const exercise = (id: string, name: string, position: number, media = false) => ({
+const exercise = (id: string, name: string, position: number, over: Record<string, unknown> = {}) => ({
   id, routine_id: 'routine', user_id: 'owner', name, position, sets: 3, reps: '8-12', rest_seconds: 90, rir: 2, rir_max: null,
-  notes: name === 'Squat' ? 'Brace before the descent.' : '', media_path: media ? 'owner/routine/squat.mp4' : null, media_mime: media ? 'video/mp4' : null,
+  notes: '', media_path: null, media_mime: null, ...over,
 });
 beforeEach(() => {
   mocks.cleanup.mockReset().mockResolvedValue([]);
-  mocks.previous.mockReset().mockResolvedValue([]);
   mocks.sign.mockReset().mockResolvedValue('https://example.invalid/squat.mp4');
+  mocks.logs = [];
   mocks.data = {
     routines: [{ id: 'routine', user_id: 'owner', name: 'Leg day', unit: 'kg', archived: false, created_at: '2026-10-01' }],
-    exercises: [exercise('bench', 'Bench press', 0), exercise('squat', 'Squat', 1, true)],
-    sessions: [], entries: [],
+    exercises: [
+      exercise('bench', 'Bench press', 0),
+      exercise('squat', 'Squat', 1, { notes: 'Brace before the descent.', media_path: 'owner/routine/squat.mp4', media_mime: 'video/mp4' }),
+    ],
   } as unknown as GymData;
   mocks.fetchGym.mockReset().mockImplementation(async () => structuredClone(mocks.data));
-  mocks.start.mockReset().mockImplementation(async () => {
-    mocks.data.sessions.unshift({ id: 's0', routine_id: 'routine', user_id: 'owner', routine_name: 'Leg day', unit: 'kg', status: 'draft', created_at: '2026-10-01', completed_at: null } as never);
-    for (const e of mocks.data.exercises) mocks.data.entries.push({ id: `e-${e.id}`, session_id: 's0', user_id: 'owner', exercise_id: e.id, position: e.position, prescription: { name: e.name, sets: 3, reps: '8-12', rest_seconds: 90, rir: 2, notes: e.notes }, weight: null } as never);
-    return 's0';
-  });
+  mocks.log.mockReset().mockImplementation(async (_id: string, exerciseId: string, weight: number) => { mocks.logs.push({ exercise_id: exerciseId, weight, unit: 'kg' }); });
 });
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -45,6 +52,10 @@ function setup() {
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
 }
 const pick = async (user: ReturnType<typeof userEvent.setup>, name: string) => user.click(await screen.findByRole('button', { name: new RegExp(`^\\d+\\s*${name}`) }));
+const weightField = (name = 'Bench press', unit = 'kg') => screen.findByRole('spinbutton', { name: `Current weight for ${name} in ${unit}` });
+const logButton = (name = 'Bench press') => screen.getByRole('button', { name: `Log weight for ${name}` });
+const tile = (label: string) => screen.getByText(label, { selector: 'dt' }).closest('div') as HTMLElement;
+const retype = async (user: ReturnType<typeof userEvent.setup>, field: HTMLElement, value: string) => { await user.clear(field); await user.type(field, value); };
 
 it('lists the exercises and shows the first one in the detail pane', async () => {
   setup();
@@ -54,17 +65,39 @@ it('lists the exercises and shows the first one in the detail pane', async () =>
   expect(screen.getAllByRole('button', { name: /^\d+\s*(Bench press|Squat)/ })).toHaveLength(2);
 });
 
-it('shows the selected exercise, its notes and its video guide', async () => {
+it('lays the stats out as Sets × reps, Rest, RIR, Previous, Current, with Current as the only input', async () => {
+  setup();
+  const detail = await screen.findByRole('region', { name: 'Bench press details' });
+  expect(Array.from(detail.querySelectorAll('.gym-kv dt')).map(dt => dt.textContent)).toEqual(['Sets × reps', 'Rest', 'RIR', 'Previous', 'Current']);
+  expect(within(tile('Current')).getByRole('spinbutton')).toBeInTheDocument();
+  expect(within(detail).getAllByRole('spinbutton')).toHaveLength(1);
+});
+
+it('shows the selected exercise, its video guide, and its notes beside the video', async () => {
   const user = userEvent.setup(); setup();
   await pick(user, 'Squat');
   const detail = await screen.findByRole('region', { name: 'Squat details' });
-  expect(within(detail).getByText('Brace before the descent.')).toBeInTheDocument();
   await waitFor(() => expect(detail.querySelector('video.gym-media')).not.toBeNull());
   const video = detail.querySelector('video.gym-media') as HTMLVideoElement;
   expect(video).toHaveAttribute('controls');
   expect(video.muted).toBe(true);
   expect(video).not.toHaveAttribute('autoplay');
   expect(mocks.sign).toHaveBeenCalledWith('owner/routine/squat.mp4');
+  // The notes take the empty space next to the video instead of sitting under it.
+  const main = detail.querySelector('.gym-detail-main') as HTMLElement;
+  const notes = within(main).getByText('Brace before the descent.');
+  expect(notes.closest('.gym-notes')).not.toBeNull();
+  expect(main.contains(video)).toBe(true);
+  expect(video.closest('.gym-notes')).toBeNull();
+  expect(Array.from(main.children).map(child => child.className)).toEqual(['gym-media-box', 'gym-notes']);
+});
+
+it('keeps the video column when there are no notes, and the notes column only when there are notes', async () => {
+  setup();
+  const detail = await screen.findByRole('region', { name: 'Bench press details' });
+  const main = detail.querySelector('.gym-detail-main') as HTMLElement;
+  expect(Array.from(main.children).map(child => child.className)).toEqual(['gym-media-box']);
+  expect(detail.querySelector('.gym-notes')).toBeNull();
 });
 
 it('says when an exercise has no video guide and offers to attach one', async () => {
@@ -84,87 +117,209 @@ it('puts the routine and exercise actions in menus', async () => {
   expect(screen.getByRole('menuitem', { name: 'Move Bench press up' })).toBeDisabled();
 });
 
-it('shows one draft chip in the heading and keeps the session actions in the footer', async () => {
+it('names the exercise list for assistive technology', async () => {
+  setup();
+  expect(await screen.findByRole('group', { name: 'Leg day exercises' })).toBeInTheDocument();
+});
+
+// ---- Current and Previous ----
+
+it('shows the latest logged weight as Current and the one before as Previous', async () => {
+  mocks.logs = [{ exercise_id: 'bench', weight: 97.5, unit: 'kg' }, { exercise_id: 'bench', weight: 100, unit: 'kg' }];
+  setup();
+  const field = await weightField();
+  await waitFor(() => expect(field).toHaveValue(100));
+  expect(tile('Previous')).toHaveTextContent('97.5 kg');
+});
+
+it('shows a dash for Previous until a second weight is logged, and an empty Current before the first', async () => {
+  setup();
+  const field = await weightField();
+  expect(field).toHaveValue(null);
+  expect(tile('Previous')).toHaveTextContent('—');
+});
+
+it('shows a dash for Previous when only one weight has been logged', async () => {
+  mocks.logs = [{ exercise_id: 'bench', weight: 60, unit: 'kg' }];
+  setup();
+  await waitFor(async () => expect(await weightField()).toHaveValue(60));
+  expect(tile('Previous')).toHaveTextContent('—');
+});
+
+it('converts weights logged in another unit into the routine unit', async () => {
+  mocks.logs = [{ exercise_id: 'bench', weight: 220.462, unit: 'lb' }];
+  setup();
+  await waitFor(async () => expect(await weightField()).toHaveValue(100));
+});
+
+// ---- Logging ----
+
+it('logs a typed weight with Enter, then it becomes Current and the old Current becomes Previous', async () => {
+  mocks.logs = [{ exercise_id: 'bench', weight: 100, unit: 'kg' }];
   const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
-  const chip = await screen.findByText(/Workout draft · kg/, { selector: '.quest-chip' });
-  expect(chip.closest('.gym-routine-heading')).not.toBeNull();
-  expect(screen.getByRole('button', { name: 'Exercise actions for Bench press' })).toBeDisabled();
+  const field = await weightField();
+  await waitFor(() => expect(field).toHaveValue(100));
+  await retype(user, field, '102.5');
+  await user.keyboard('{Enter}');
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledOnce());
+  const [logId, exerciseId, weight] = mocks.log.mock.calls[0];
+  expect(logId).toMatch(/^[0-9a-f-]{36}$/);
+  expect([exerciseId, weight]).toEqual(['bench', 102.5]);
+  await waitFor(() => expect(tile('Previous')).toHaveTextContent('100 kg'));
+  expect(field).toHaveValue(102.5);
+  expect(logButton()).toBeDisabled();
+});
+
+it('logs with the arrow button and returns focus to the weight field', async () => {
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  await user.type(field, '60');
+  await user.click(logButton());
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 60));
+  await waitFor(() => expect(field).toHaveFocus());
+});
+
+it('logs a zero weight, which is a real weight', async () => {
+  mocks.logs = [{ exercise_id: 'bench', weight: 20, unit: 'kg' }];
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  await waitFor(() => expect(field).toHaveValue(20));
+  await retype(user, field, '0');
+  await user.click(logButton());
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 0));
+});
+
+it('keeps the arrow disabled until the weight is a new value', async () => {
+  mocks.logs = [{ exercise_id: 'bench', weight: 100, unit: 'kg' }];
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  await waitFor(() => expect(field).toHaveValue(100));
+  expect(logButton()).toBeDisabled();
+  await retype(user, field, '105');
+  expect(logButton()).toBeEnabled();
+  await retype(user, field, '100');
+  expect(logButton()).toBeDisabled();
+  await user.clear(field);
+  expect(logButton()).toBeDisabled();
+  await user.keyboard('{Enter}');
+  expect(mocks.log).not.toHaveBeenCalled();
+});
+
+it('rejects an invalid weight with the reason, without calling the server', async () => {
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  for (const bad of ['1.2345', '-5']) {
+    await retype(user, field, bad);
+    await user.click(logButton());
+    expect(await screen.findByRole('alert')).toHaveTextContent('Weight must be a number from 0 to 1000000 with at most three decimals.');
+  }
+  expect(mocks.log).not.toHaveBeenCalled();
+  await retype(user, field, '1000001');
+  await user.click(logButton());
+  expect(await screen.findByRole('alert')).toHaveTextContent('Weight must be a number');
+  expect(mocks.log).not.toHaveBeenCalled();
+});
+
+it('lets the arrow explain text the browser cannot read as a number instead of staying silent', async () => {
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  // A lone "e" leaves a number input empty, with the unreadable text only visible through validity.badInput.
+  Object.defineProperty(field, 'validity', { configurable: true, value: { badInput: true } });
+  fireEvent.input(field);
+  expect(field).toHaveAttribute('aria-invalid', 'true');
+  expect(logButton()).toBeEnabled();
+  await user.click(logButton());
+  expect(await screen.findByRole('alert')).toHaveTextContent('Enter a valid weight for Bench press.');
+  expect(mocks.log).not.toHaveBeenCalled();
+});
+
+it('accepts the largest allowed weight and up to three decimals', async () => {
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  await retype(user, field, '1000000');
+  await user.click(logButton());
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 1000000));
+  await retype(user, field, '2.125');
+  await user.click(logButton());
+  await waitFor(() => expect(mocks.log).toHaveBeenLastCalledWith(expect.any(String), 'bench', 2.125));
+});
+
+it('keeps a failed log editable and says why', async () => {
+  mocks.log.mockRejectedValueOnce(new Error('Network unavailable'));
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  await user.type(field, '60');
+  await user.click(logButton());
+  expect(await screen.findByRole('alert')).toHaveTextContent('Network unavailable');
+  expect(field).toHaveValue(60);
+  expect(logButton()).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Confirm save result' })).toBeNull();
+  await user.click(logButton());
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledTimes(2));
+});
+
+it('retries an uncertain log with the same log id so it cannot be recorded twice', async () => {
+  mocks.log.mockRejectedValueOnce(new UncertainSaveError());
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  await user.type(field, '60');
+  await user.click(logButton());
+  const confirm = await screen.findByRole('button', { name: 'Confirm save result' });
+  expect(field).toBeDisabled();
+  await user.click(confirm);
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledTimes(2));
+  expect(mocks.log.mock.calls[1][0]).toBe(mocks.log.mock.calls[0][0]);
+  expect(mocks.log.mock.calls[1].slice(1)).toEqual(['bench', 60]);
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Confirm save result' })).toBeNull());
+});
+
+it('does not log twice when submitted twice before the first finishes', async () => {
+  let release!: () => void;
+  mocks.log.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+  const user = userEvent.setup(); setup();
+  const field = await weightField();
+  await user.type(field, '60');
+  const form = field.closest('form')!;
+  fireEvent.submit(form); fireEvent.submit(form);
+  expect(mocks.log).toHaveBeenCalledOnce();
+  release();
+  await waitFor(() => expect(logButton()).toBeDisabled());
 });
 
 it('keeps typed weights per exercise while switching between them', async () => {
   const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
-  const bench = await screen.findByRole('spinbutton', { name: 'Current weight for Bench press in kg' });
-  await waitFor(() => expect(bench).toBeEnabled());
-  await user.type(bench, '40');
+  await user.type(await weightField(), '40');
   await pick(user, 'Squat');
-  expect(await screen.findByRole('spinbutton', { name: 'Current weight for Squat in kg' })).toHaveValue(null);
+  expect(await weightField('Squat')).toHaveValue(null);
   await pick(user, 'Bench press');
-  expect(await screen.findByRole('spinbutton', { name: 'Current weight for Bench press in kg' })).toHaveValue(40);
+  expect(await weightField()).toHaveValue(40);
+  expect(mocks.log).not.toHaveBeenCalled();
 });
 
-it('jumps to and focuses the first blank weight from "Review fields"', async () => {
+it('locks the weight of an archived routine', async () => {
+  mocks.data.routines[0].archived = true;
   const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
-  const bench = await screen.findByRole('spinbutton', { name: 'Current weight for Bench press in kg' });
-  await waitFor(() => expect(bench).toBeEnabled());
-  await user.type(bench, '40');
-  await user.click(screen.getByRole('button', { name: 'Finish workout' }));
-  await user.click(await screen.findByRole('button', { name: 'Review fields' }));
-  const squat = await screen.findByRole('spinbutton', { name: 'Current weight for Squat in kg' });
-  await waitFor(() => expect(squat).toHaveFocus());
+  await user.click(await screen.findByRole('checkbox', { name: 'Include archived routines' }));
+  const field = await weightField();
+  expect(field).toBeDisabled();
+  expect(logButton()).toBeDisabled();
 });
 
-it('pages the list to a blank weight beyond the first page and focuses it from "Review fields"', async () => {
-  mocks.data.exercises = ['Bench press', 'Squat', 'Row', 'Press', 'Curl', 'Calf raise'].map((name, index) => exercise(`x${index}`, name, index)) as unknown as GymData['exercises'];
-  const user = userEvent.setup({ delay: null }); setup();
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
-  await waitFor(() => expect(screen.getByRole('spinbutton', { name: 'Current weight for Bench press in kg' })).toBeEnabled());
-  for (const name of ['Bench press', 'Squat', 'Row', 'Press', 'Curl']) {
-    await pick(user, name);
-    await user.type(await screen.findByRole('spinbutton', { name: `Current weight for ${name} in kg` }), '1');
-  }
-  expect(screen.queryByRole('button', { name: /^\d+\s*Calf raise/ })).toBeNull();
-  await user.click(screen.getByRole('button', { name: 'Finish workout' }));
-  await user.click(await screen.findByRole('button', { name: 'Review fields' }));
-  const item = await screen.findByRole('button', { name: /^\d+\s*Calf raise/ });
-  expect(item).toHaveAttribute('aria-current', 'true');
-  const calf = await screen.findByRole('spinbutton', { name: 'Current weight for Calf raise in kg' });
-  await waitFor(() => expect(calf).toHaveFocus());
-}, 15000);
-
-it('says when a draft exercise was removed from the routine and still takes its weight', async () => {
-  const start = mocks.start.getMockImplementation()!;
-  mocks.start.mockImplementation(async (...args: unknown[]) => {
-    const id = await start(...args);
-    mocks.data.exercises = mocks.data.exercises.filter(e => e.id !== 'squat');
-    return id;
-  });
+it('asks before leaving a routine with a typed weight that was never logged', async () => {
+  mocks.data.routines.push({ id: 'second', user_id: 'owner', name: 'Pull day', unit: 'kg', archived: false, created_at: '2026-10-02' } as never);
   const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
-  await waitFor(() => expect(mocks.fetchGym).toHaveBeenCalledTimes(2));
-  await pick(user, 'Squat');
-  const detail = await screen.findByRole('region', { name: 'Squat details' });
-  expect(await within(detail).findByText('This exercise was removed from the routine. Its saved workout details remain.')).toBeInTheDocument();
-  expect(within(detail).queryByText('No video guide attached.')).toBeNull();
-  expect(within(detail).queryByRole('button', { name: 'Attach a video guide' })).toBeNull();
-  const weight = within(detail).getByRole('spinbutton', { name: 'Current weight for Squat in kg' });
-  await waitFor(() => expect(weight).toBeEnabled());
-  await user.type(weight, '60');
-  expect(weight).toHaveValue(60);
+  await user.type(await weightField(), '40');
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Routine' }), 'second');
+  expect(await screen.findByRole('dialog', { name: 'Unsaved changes' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Keep editing' }));
+  expect(await weightField()).toHaveValue(40);
 });
 
-it('names the exercise list and says which exercises already have a weight', async () => {
-  const user = userEvent.setup(); setup();
-  expect(await screen.findByRole('group', { name: 'Leg day exercises' })).toBeInTheDocument();
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
-  const bench = await screen.findByRole('spinbutton', { name: 'Current weight for Bench press in kg' });
-  await waitFor(() => expect(bench).toBeEnabled());
-  expect(screen.getByRole('button', { name: /^\d+\s*Bench press/ })).not.toHaveAccessibleName(/weight entered/);
-  await user.type(bench, '40');
-  const item = screen.getByRole('button', { name: /^\d+\s*Bench press/ });
-  expect(item).toHaveAccessibleName(/weight entered/);
-  expect(screen.getByRole('button', { name: /^\d+\s*Squat/ })).not.toHaveAccessibleName(/weight entered/);
-  expect(item.querySelector('svg')!.closest('[aria-hidden="true"]')).not.toBeNull();
+it('has no workout to start, finish, save or discard', async () => {
+  setup();
+  await weightField();
+  for (const name of ['Start workout', 'Finish workout', 'Save draft', 'Discard draft']) expect(screen.queryByRole('button', { name })).toBeNull();
+  expect(document.querySelector('.gym-session-actions')).toBeNull();
+  expect(screen.queryByText(/Workout draft/)).toBeNull();
+  expect(screen.queryByRole('dialog', { name: /blank weights/i })).toBeNull();
 });

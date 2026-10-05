@@ -7,8 +7,8 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { GymData } from '@eiyu/shared';
 import { UncertainSaveError } from '@eiyu/shared';
-const mocks = vi.hoisted(() => ({ data: {} as GymData, fetchGym: vi.fn(), start: vi.fn(), save: vi.fn(), previous: vi.fn(), history: vi.fn(), saveExercise: vi.fn(), upload: vi.fn(), removeMedia: vi.fn(), sign: vi.fn(), cleanup: vi.fn() }));
-vi.mock('@eiyu/shared', async importOriginal => ({ ...await importOriginal<object>(), fetchGym: mocks.fetchGym, startGymSession: mocks.start, saveGymSession: mocks.save, saveGymExercise: mocks.saveExercise, fetchPreviousGymWeights: mocks.previous, fetchGymHistory: mocks.history, listGymMediaCleanup: mocks.cleanup }));
+const mocks = vi.hoisted(() => ({ data: {} as GymData, logs: [] as { exercise_id: string; weight: number; unit: 'kg' | 'lb' }[], fetchGym: vi.fn(), log: vi.fn(), history: vi.fn(), saveExercise: vi.fn(), upload: vi.fn(), removeMedia: vi.fn(), sign: vi.fn(), cleanup: vi.fn() }));
+vi.mock('@eiyu/shared', async importOriginal => ({ ...await importOriginal<object>(), fetchGym: mocks.fetchGym, logGymWeight: mocks.log, saveGymExercise: mocks.saveExercise, fetchGymHistory: mocks.history, fetchRecentGymWeights: async () => { const out: unknown[] = []; for (const id of new Set(mocks.logs.map(l => l.exercise_id))) mocks.logs.filter(l => l.exercise_id === id).reverse().slice(0, 2).forEach((l, i) => out.push({ exercise_id: id, weight: l.weight, unit: l.unit, logged_at: '2026-10-01T00:00:00Z', recency: i + 1 })); return out; }, listGymMediaCleanup: mocks.cleanup }));
 vi.mock('../gym-media', async importOriginal => ({ ...await importOriginal<object>(), uploadGymMedia: mocks.upload, deleteGymMedia: mocks.removeMedia, signGymMedia: mocks.sign }));
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ user: { id: 'owner' } }) }));
 import WebGym from '../WebGym';
@@ -26,43 +26,31 @@ beforeEach(() => {
   mocks.cleanup.mockReset().mockResolvedValue([]);
   mocks.data = {
     routines: [{ id: 'routine', user_id: 'owner', name: 'Chest–Tricep–Shoulders', unit: 'kg', archived: false, created_at: '2026-10-01' }],
-    exercises: [{ id: 'bench', routine_id: 'routine', user_id: 'owner', name: 'Bench press', position: 0, sets: 3, reps: '8-12', rest_seconds: 90, rir: 2, notes: '', media_path: null, media_mime: null }], sessions: [], entries: [],
+    exercises: [{ id: 'bench', routine_id: 'routine', user_id: 'owner', name: 'Bench press', position: 0, sets: 3, reps: '8-12', rest_seconds: 90, rir: 2, notes: '', media_path: null, media_mime: null }],
   };
   mocks.fetchGym.mockReset().mockImplementation(async () => structuredClone(mocks.data));
-  mocks.previous.mockReset().mockImplementation(async () => mocks.data.exercises.flatMap(exercise => {
-    const session = mocks.data.sessions.find(s => s.status === 'completed' && mocks.data.entries.some(e => e.session_id === s.id && e.exercise_id === exercise.id && e.weight !== null));
-    const entry = mocks.data.entries.find(e => e.session_id === session?.id && e.exercise_id === exercise.id);
-    return entry && session ? [{ exercise_id: exercise.id, weight: entry.weight, unit: session.unit, completed_at: session.completed_at }] : [];
-  }));
-  mocks.history.mockReset().mockImplementation(async () => ({ sessions: mocks.data.sessions.filter(s => s.status === 'completed'), entries: mocks.data.entries, hasNext: false }));
-  mocks.start.mockReset().mockImplementation(async () => {
-    const id = `session-${mocks.data.sessions.length}`;
-    mocks.data.sessions.unshift({ id, routine_id: 'routine', user_id: 'owner', routine_name: 'Chest–Tricep–Shoulders', unit: 'kg', status: 'draft', created_at: '2026-10-01', completed_at: null });
-    mocks.data.entries.push({ id: `entry-${id}`, session_id: id, user_id: 'owner', exercise_id: 'bench', position: 0, prescription: { name: 'Bench press', sets: 3, reps: '8-12', rest_seconds: 90, rir: 2, notes: '' }, weight: null });
-    return id;
-  });
-  mocks.save.mockReset().mockImplementation(async (id, weights, finish) => {
-    mocks.data.entries.find(e => e.session_id === id)!.weight = weights[0].weight;
-    if (finish) { const session = mocks.data.sessions.find(s => s.id === id)!; session.status = 'completed'; session.completed_at = '2026-10-01T08:00:00Z'; }
-  });
+  mocks.history.mockReset().mockResolvedValue({ sessions: [], entries: [], hasNext: false });
+  mocks.logs = [];
+  mocks.log.mockReset().mockImplementation(async (_id: string, exerciseId: string, weight: number) => { mocks.logs.push({ exercise_id: exerciseId, weight, unit: 'kg' }); });
 });
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter([{ path: '/gym', element: <NavigationGuard><WebGym /><ArchiveNotice onOpen={vi.fn()} /></NavigationGuard> }], { initialEntries: ['/gym'] });
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
 }
-it('finishes a workout and carries its weight into the next session', async () => {
+it('logs a weight, confirms it, and carries it into Previous on the next log', async () => {
   const user = userEvent.setup(); setup();
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
   const weight = await screen.findByRole('spinbutton', { name: 'Current weight for Bench press in kg' });
-  await waitFor(() => expect(weight).toBeEnabled());
   await user.type(weight, '40');
-  await user.click(screen.getByRole('button', { name: 'Finish workout' }));
-  await screen.findByText('Workout completed. Progress saved.');
-  expect(mocks.save).toHaveBeenCalledWith('session-0', [{ exercise_id: 'bench', weight: 40 }], true);
-  await user.click(screen.getByRole('button', { name: 'Start workout' }));
+  await user.click(screen.getByRole('button', { name: 'Log weight for Bench press' }));
+  await screen.findByText('Bench press: 40 kg logged.');
+  expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 40);
+  await waitFor(() => expect(weight).toHaveValue(40));
+  await user.clear(weight); await user.type(weight, '42.5');
+  await user.click(screen.getByRole('button', { name: 'Log weight for Bench press' }));
+  await screen.findByText('Bench press: 42.5 kg logged.');
   expect(await screen.findByText('40 kg')).toBeInTheDocument();
-  expect(screen.getByRole('spinbutton', { name: 'Current weight for Bench press in kg' })).toHaveValue(null);
+  expect(weight).toHaveValue(42.5);
 });
 it('names each destructive confirmation after the action it performs, not a generic "Confirm"', async () => {
   const user = userEvent.setup(); setup();
@@ -74,20 +62,13 @@ it('names each destructive confirmation after the action it performs, not a gene
     expect(within(dialog).queryByRole('button', { name: 'Confirm' })).toBeNull();
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
   }
-  await user.click(await screen.findByRole('button', { name: 'Start workout' }));
-  await user.click(await screen.findByRole('button', { name: 'Discard draft' }));
-  const discard = await screen.findByRole('dialog', { name: 'Discard workout' });
-  expect(within(discard).getByRole('button', { name: 'Discard workout' })).toBeInTheDocument();
-  expect(within(discard).queryByRole('button', { name: 'Confirm' })).toBeNull();
 });
-it('shows an empty video guide and keeps a failed save editable', async () => {
+it('shows an empty video guide and keeps a failed log editable', async () => {
   const user = userEvent.setup(); setup();
   expect(await screen.findByRole('region', { name: 'Bench press details' })).toHaveTextContent('No video guide attached.');
-  await user.click(screen.getByRole('button', { name: 'Start workout' }));
-  await waitFor(() => expect(screen.getByRole('spinbutton')).toBeEnabled());
-  mocks.save.mockRejectedValueOnce(new Error('Network unavailable'));
-  await user.type(screen.getByRole('spinbutton'), '0');
-  await user.click(screen.getByRole('button', { name: 'Save draft' }));
+  mocks.log.mockRejectedValueOnce(new Error('Network unavailable'));
+  await user.type(await screen.findByRole('spinbutton'), '0');
+  await user.click(screen.getByRole('button', { name: 'Log weight for Bench press' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Network unavailable');
   expect(screen.getByRole('spinbutton')).toHaveValue(0);
 });

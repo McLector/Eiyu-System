@@ -55,7 +55,24 @@ async function fixture(route) {
     else if(operation === 'update_profile') { Object.assign(tables.profiles[0],{display_name:input.p_display_name,user_class:input.p_user_class}); data={displayName:input.p_display_name,userClass:input.p_user_class,timeZone:'UTC'}; }
     else if(operation === 'get_habits_for_date') { const offset=+(url.searchParams.get('offset') || 0), limit=Math.min(1000,+(url.searchParams.get('limit') || 1000)); data=tables.habits.filter(h=>h.quest_type!=='backlog').slice(offset,offset+limit); }
     else if(operation === 'read_history_range') data={rows:[],habits:[],recurring_totals:{}};
-    else if(operation === 'previous_gym_weights') data=tables.gym_exercises.map(e=>({exercise_id:e.id,weight:20,unit:'kg',completed_at:date}));
+    else if(operation === 'recent_gym_weights') {
+      // The two newest logged weights per exercise, newest first: the answer the real database function gives.
+      const finished=new Map(tables.gym_sessions.filter(x=>x.status==='completed').map((x,i)=>[x.id,{session:x,order:i}]));
+      data=[];
+      for(const exercise of tables.gym_exercises.filter(e=>e.routine_id===input.p_routine_id)) {
+        tables.gym_entries.filter(entry=>entry.exercise_id===exercise.id && entry.weight!=null && finished.has(entry.session_id))
+          .sort((a,b)=>finished.get(b.session_id).order-finished.get(a.session_id).order).slice(0,2)
+          .forEach((entry,i)=>data.push({exercise_id:exercise.id,weight:entry.weight,unit:finished.get(entry.session_id).session.unit,logged_at:date,recency:i+1}));
+      }
+    } else if(operation === 'log_gym_weight') {
+      // The log id is the session id, so a retry of a log that already landed adds nothing.
+      if(!tables.gym_sessions.some(x=>x.id===input.p_log_id)) {
+        const exercise=tables.gym_exercises.find(e=>e.id===input.p_exercise_id), routine=tables.gym_routines.find(r=>r.id===exercise.routine_id);
+        tables.gym_sessions.push({id:input.p_log_id,routine_id:routine.id,user_id:uid,routine_name:routine.name,unit:routine.unit,status:'completed',started_at:date,completed_at:date,created_at:date});
+        tables.gym_entries.push({id:'log-entry-'+input.p_log_id,session_id:input.p_log_id,exercise_id:exercise.id,user_id:uid,position:exercise.position,weight:input.p_weight,prescription:{...exercise},created_at:date});
+      }
+      data=null;
+    } else if(operation === 'previous_gym_weights') data=tables.gym_exercises.map(e=>({exercise_id:e.id,weight:20,unit:'kg',completed_at:date}));
     else if(operation === 'start_gym_session') {
       data='draft-'+tables.gym_sessions.length; tables.gym_sessions.push({id:data,routine_id:rid,user_id:uid,routine_name:'Upper body',unit:'kg',status:'draft',started_at:date,completed_at:null,created_at:date});
       tables.gym_entries.push(...tables.gym_exercises.map(e=>({id:'entry-'+e.id,session_id:data,exercise_id:e.id,user_id:uid,position:e.position,weight:null,prescription:{...e},created_at:date})));
@@ -150,17 +167,16 @@ async function edgeAcceptance(browser, report) {
   let rejectedRefreshes = 0;
   page.on('dialog', async dialog => { assert.equal(dialog.type(), 'beforeunload'); rejectedRefreshes++; await dialog.dismiss(); });
   await context.route('http://127.0.0.1:54399/auth/v1/logout**', route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Fixture sign out failed' }) }));
-  let draftId;
+  const loggedBefore = tables.gym_entries.filter(entry => entry.weight === 33).length;
   try {
     await page.goto(WEB+'/gym');
-    await page.getByRole('button', { name: 'Start workout', exact: true }).click();
-    draftId = tables.gym_sessions.find(session => session.status === 'draft').id;
     const weight = page.getByRole('spinbutton', { name: 'Current weight for Bench press in kg' });
-    await weight.fill('25');
+    // Chrome only shows a beforeunload prompt after a real user gesture; a click on the field is one.
+    await weight.click(); await weight.fill('33');
     // A dismissed native prompt may leave Playwright waiting for a load that will not occur.
     await page.reload({ timeout: 2000 }).catch(error => { assert.match(error.message, /ERR_ABORTED|page\.reload: Timeout/); });
-    assert.equal(rejectedRefreshes, 1, 'dirty draft must invoke native refresh protection');
-    assert.equal(await weight.inputValue(), '25');
+    assert.equal(rejectedRefreshes, 1, 'a typed weight that was never logged must invoke native refresh protection');
+    assert.equal(await weight.inputValue(), '33');
     report.flows.push('native dirty refresh dismissal retains entered weight');
 
     await page.getByRole('button', { name: /Layout Hero, Ranger, rank/ }).click();
@@ -168,7 +184,7 @@ async function edgeAcceptance(browser, report) {
     await page.getByRole('dialog', { name: 'Unsaved changes', exact: true }).waitFor();
     await screenshot(page, 'edge-dirty-logout', report);
     await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
-    assert.equal(await weight.inputValue(), '25');
+    assert.equal(await weight.inputValue(), '33');
     await page.getByRole('menuitem', { name: 'Logout', exact: true }).waitFor();
     assert.equal(await page.getByRole('menuitem', { name: 'Logout', exact: true }).evaluate(el => el === document.activeElement), true, 'logout focus restored after cancellation');
     await page.keyboard.press('Escape');
@@ -176,7 +192,7 @@ async function edgeAcceptance(browser, report) {
     await page.setViewportSize({ width: 390, height: 420 });
     // List and detail: one weight field (the selected exercise) instead of the old one-per-row table.
     assert.equal(await page.getByRole('spinbutton').count(), 1, 'keyboard-height resize keeps the detail pane weight field');
-    assert.equal(await weight.inputValue(), '25');
+    assert.equal(await weight.inputValue(), '33');
     assert.equal(await weight.evaluate(el => el === document.activeElement), true);
     await screenshot(page, 'edge-keyboard-height', report);
     report.flows.push('keyboard-height resize keeps the weight field, its value and focus');
@@ -186,12 +202,11 @@ async function edgeAcceptance(browser, report) {
     await page.getByRole('button', { name: 'Leave without saving', exact: true }).click();
     await page.getByRole('alert').filter({ hasText: 'Fixture sign out failed' }).waitFor();
     await page.getByRole('textbox', { name: 'Email address' }).waitFor();
-    assert.equal(tables.gym_entries.find(entry => entry.session_id === draftId).weight, null, 'last saved draft remains after consent to leave');
+    assert.equal(tables.gym_entries.filter(entry => entry.weight === 33).length, loggedBefore, 'a weight that was typed but never logged is not saved after consent to leave');
     await screenshot(page, 'edge-failed-logout', report);
-    report.flows.push('dirty logout cancellation restores focus; server sign-out failure survives local sign-out and last saved draft remains');
+    report.flows.push('dirty logout cancellation restores focus; server sign-out failure survives local sign-out and an unlogged weight is not saved');
   } finally {
     await context.close();
-    if (draftId) { tables.gym_sessions = tables.gym_sessions.filter(session => session.id !== draftId); tables.gym_entries = tables.gym_entries.filter(entry => entry.session_id !== draftId); }
   }
 }
 const SIZES=[[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]];
@@ -222,7 +237,7 @@ function loadProfile(name) {
 // Reports pairs of visible controls whose boxes genuinely overlap; nested pairs are not overlap.
 async function overlaps(page) {
   return page.evaluate(()=>{
-    const els=[...document.querySelectorAll('.chain-stage-row, .chain-complete, .chain-nav-item, .list-pagination button')].filter(e=>e.offsetParent!==null);
+    const els=[...document.querySelectorAll('.chain-stage-row, .chain-complete, .chain-nav-item, .list-pagination button')].filter(e=>e.getClientRects().length>0); // not offsetParent: a position:fixed control has none
     const box=e=>e.getBoundingClientRect(), out=[];
     if(els.length<8) out.push(`detector saw only ${els.length} controls`);
     for(let i=0;i<els.length;i++) for(let j=i+1;j<els.length;j++) {
@@ -323,7 +338,8 @@ async function questFlows(browser, report) {
     assert.equal(await page.getByRole('button',{name:/Remove stage/}).count(),0);
     await page.getByPlaceholder('Stage 1...').fill('Only step, renamed');
     await page.getByRole('button',{name:'SAVE CHANGES',exact:true}).click();
-    await page.getByText('0 / 1 stages completed').first().waitFor();
+    await page.locator('.chain-stage-name',{hasText:'Only step, renamed'}).waitFor();
+    await page.getByRole('navigation',{name:'Your chains'}).getByRole('button',{name:/Solo journey/}).getByText('0/1',{exact:true}).waitFor();
     const solo=tables.long_quest_stages.find(s=>s.long_quest_id==='quest-solo');
     assert.equal(solo.id,'stage-solo-0'); assert.equal(solo.description,'Keep this description.'); assert.equal(solo.name,'Only step, renamed');
     report.flows.push('R4 single-stage quest edits without removal and retains stage id and description');
@@ -342,9 +358,13 @@ async function questFlows(browser, report) {
     await page.getByRole('dialog',{name:'Delete Long Quest'}).getByRole('button',{name:'Delete Long Quest',exact:true}).click();
     await page.getByRole('dialog',{name:'Delete Long Quest'}).waitFor({state:'hidden'});
     await page.getByText('Solo journey').first().waitFor({state:'detached'});
-    const pagesAfter=+(await pager.getByText(/ \/ /).innerText()).split('/')[1];
+    // The chain list drops its pager once everything fits on one page.
+    const pagesAfter=(await pager.count())?+(await pager.getByText(/ \/ /).innerText()).split('/')[1]:1;
     assert.ok(pagesAfter<=pagesBefore,'page count must not grow after deletion');
-    assert.match(await pager.getByText(/ \/ /).innerText(),new RegExp(`^${pagesAfter} / ${pagesAfter}$`),'page clamps to the last page');
+    if(pagesAfter>1) assert.match(await pager.getByText(/ \/ /).innerText(),new RegExp(`^${pagesAfter} / ${pagesAfter}$`),'page clamps to the last page');
+    // The deleted chain was the selected one, so the page falls back to the first chain instead of going blank.
+    await page.getByRole('heading',{name:'Empty journey'}).waitFor();
+    assert.equal(await page.getByRole('navigation',{name:'Your chains'}).getByRole('button',{name:/Empty journey/}).getAttribute('aria-current'),'true');
     report.flows.push('R4 deletion cancel restores focus, failure keeps dialog, retry deletes and page clamps');
     await page.goto(WEB+'/longquests'); await openChain(page,'The crystal vault');
     await page.getByRole('button',{name:'COMPLETE STAGE',exact:true}).click();
@@ -362,16 +382,16 @@ async function gymFlows(browser, report) {
   let gymReads=0; page.on('request',r=>{ if(r.url().includes('/rest/v1/gym_')) gymReads++; });
   await page.clock.install();
   try {
-    await page.goto(WEB+'/gym'); await page.getByRole('button',{name:'Start workout',exact:true}).click();
+    await page.goto(WEB+'/gym');
     const weight=page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'});
     await weight.fill('25');
-    // Routine switch with a dirty workout is guarded; Keep editing preserves selection and input.
+    // Routine switch with a typed, unlogged weight is guarded; Keep editing preserves selection and input.
     const select=page.locator('.gym-toolbar select');
     await select.selectOption('routine-lower');
     await (await guardDialog(page)).waitFor();
     await page.getByRole('button',{name:'Keep editing',exact:true}).click();
     assert.equal(await select.inputValue(),rid); assert.equal(await weight.inputValue(),'25');
-    report.flows.push('R4 routine switch with a dirty workout is guarded and retains input');
+    report.flows.push('R4 routine switch with an unlogged weight is guarded and retains input');
     // Background refresh must not clobber typing.
     // Queries are fresh for 60s, so move the page clock past that, change data server-side, and require a real refetch.
     const before=gymReads;
@@ -382,12 +402,10 @@ async function gymFlows(browser, report) {
     assert.ok(gymReads-before>0,'background refresh must actually run'); report.refreshRequestsObserved=gymReads-before;
     assert.equal(await weight.inputValue(),'25'); assert.equal(await weight.evaluate(el=>el===document.activeElement),true);
     report.flows.push(`R4 background refresh applied new data while typing retained input and focus (${gymReads-before} refresh requests)`);
-    // Definitions cannot be edited while a snapshot draft exists.
-    assert.equal(await page.getByRole('button',{name:/^Exercise actions for /}).isDisabled(),true);
-    await page.getByRole('button',{name:'Discard draft',exact:true}).click();
-    await page.getByRole('dialog',{name:'Discard workout'}).getByRole('button',{name:'Discard workout',exact:true}).click();
-    await page.getByRole('button',{name:'Start workout',exact:true}).waitFor();
-    report.flows.push('R4 exercise definitions are not editable while a draft snapshot exists');
+    // There is no draft snapshot to protect, so definitions stay editable; clear the field so the next flow starts clean.
+    assert.equal(await page.getByRole('button',{name:/^Exercise actions for /}).isDisabled(),false);
+    await weight.fill('');
+    report.flows.push('R4 exercise definitions stay editable: no draft snapshot exists');
     // Clearing a numeric prescription must stay blank, never coerce to zero, and block saving.
     await page.getByRole('button',{name:/^Exercise actions for /}).click();
     await page.getByRole('menuitem',{name:'Edit exercise'}).click();
@@ -428,11 +446,11 @@ async function profileAcceptance(browser, profile, report) {
       report.flows.push('R5 empty account shows Long Quest and Gym empty states');
     }
     if(profile==='large') {
-      const pages=Math.ceil(tables.long_quests.length/2);
+      const pages=Math.ceil(tables.long_quests.length/6); // the chain list shows six per page at this width
       await page.getByText(new RegExp(`^1 / ${pages}$`)).waitFor();
-      await page.getByText('0 / 12 stages completed').waitFor();
+      await page.getByRole('navigation',{name:'Your chains'}).getByText('0/12',{exact:true}).waitFor();
       report.flows.push(`R5 large catalog: ${tables.long_quests.length} quests paged ${pages}x; quest-0 keeps all 12 stages whose rows sit past the 1,000-row ceiling`);
-      await page.goto(WEB+'/gym'); await page.getByRole('button',{name:'Start workout',exact:true}).click();
+      await page.goto(WEB+'/gym'); await page.getByRole('spinbutton',{name:'Current weight for Exercise 1 in kg'}).waitFor();
       const gymPages=Math.ceil(tables.gym_exercises.length/8);
       await page.getByText(new RegExp(`^1 / ${gymPages}$`)).waitFor();
       report.flows.push(`R5 large Gym routine: ${tables.gym_exercises.length} exercises paged ${gymPages}x`);
@@ -688,43 +706,45 @@ async function main() {
     await page.waitForFunction(()=>{const v=document.querySelector('video.gym-media');return v && v.readyState>=1;});
     assert(await page.locator('video.gym-media').evaluate(v=>v.muted && v.controls && v.playsInline));
     report.flows.push('video guide is muted, inline and controllable in the detail pane');
-    await page.getByRole('button',{name:'Start workout',exact:true}).click();
-    await page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'}).fill('20');
+    const bench=page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'});
+    await bench.fill('20');
     await page.getByRole('button',{name:/Layout Hero, Ranger, rank/}).click(); await page.getByRole('menuitem',{name:'Edit details'}).click();
     await page.getByRole('dialog',{name:'EDIT DETAILS',exact:true}).waitFor();
     await page.getByRole('button',{name:'Close EDIT DETAILS',exact:true}).click();
     await page.getByRole('dialog',{name:'EDIT DETAILS',exact:true}).waitFor({state:'hidden'});
-    assert.equal(await page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'}).inputValue(),'20');
+    assert.equal(await bench.inputValue(),'20');
     await page.getByRole('link',{name:'CHAIN PROGRESSION',exact:true}).click(); await page.getByRole('button',{name:'Keep editing',exact:true}).click();
     assert(page.url().includes('/gym'));
     await page.locator('.gym-list-item',{hasText:'Curls'}).click();
-    assert.equal(await page.getByRole('spinbutton',{name:'Current weight for Curls in kg'}).inputValue(),'');
-    await page.getByRole('spinbutton',{name:'Current weight for Curls in kg'}).press('e');
-    await page.getByRole('button',{name:'Finish workout',exact:true}).click();
+    const curls=page.getByRole('spinbutton',{name:'Current weight for Curls in kg'});
+    assert.equal(await curls.inputValue(),'');
+    // Text the browser cannot read as a number must still be explained, not silently ignored.
+    await curls.press('e');
+    await page.getByRole('button',{name:'Log weight for Curls',exact:true}).click();
     await page.getByRole('alert').filter({hasText:'Enter a valid weight for Curls'}).waitFor();
-    assert.equal(await page.getByRole('dialog',{name:'Finish with blank weights?'}).count(),0);
-    await page.getByRole('spinbutton',{name:'Current weight for Curls in kg'}).fill('');
-    await page.getByRole('button',{name:'Finish workout',exact:true}).click();
-    await page.getByRole('button',{name:'Review fields',exact:true}).click();
-    await page.waitForFunction(()=>document.querySelector('[aria-label="Current weight for Rows in kg"]')===document.activeElement);
-    await page.getByRole('button',{name:'Save draft',exact:true}).click();
-    await page.getByRole('status').filter({hasText:'Workout draft saved.'}).waitFor();
+    await curls.fill('');
+    await page.locator('.gym-list-item',{hasText:'Bench press'}).click();
+    assert.equal(await bench.inputValue(),'20');
+    report.flows.push('dirty Gym overlay preservation, guarded routing, unreadable weight explained');
+    // Logging: Enter stores the weight, it survives a refresh, and the next log pushes it into Previous.
+    await bench.fill('22.5'); await bench.press('Enter');
+    await page.getByRole('status').filter({hasText:'Bench press: 22.5 kg logged.'}).waitFor();
+    assert.equal(tables.gym_entries.filter(entry=>entry.weight===22.5).length,1,'one log, exactly once');
     await page.reload();
-    await page.getByRole('button',{name:'Save draft',exact:true}).waitFor();
-    assert.equal(await page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'}).inputValue(),'20');
-    report.flows.push('dirty Gym overlay preservation, guarded routing, offscreen blank review');
-    report.flows.push('invalid offscreen weight blocks Finish and saved draft resumes after refresh');
+    await page.waitForFunction(()=>document.querySelector('[aria-label="Current weight for Bench press in kg"]')?.value==='22.5');
+    await page.getByRole('spinbutton',{name:'Current weight for Bench press in kg'}).fill('25'); await page.getByRole('button',{name:'Log weight for Bench press',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Bench press: 25 kg logged.'}).waitFor();
+    await page.locator('.gym-kv-current').locator('xpath=preceding-sibling::div[1]').getByText('22.5 kg',{exact:true}).waitFor();
+    report.flows.push('weight logged with Enter and the arrow, kept after refresh, and the old Current becomes Previous');
     for(const [w,h] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {
       await page.setViewportSize({width:w,height:h});
       for(const dark of [true,false]) { await theme(page,dark); await screenshot(page,`gym-${w}-${h}-${dark?'dark':'light'}`,report); }
     }
-    await page.getByRole('button',{name:'Finish workout',exact:true}).click(); await page.getByRole('button',{name:'Finish with blanks',exact:true}).click();
-    await page.getByRole('button',{name:'Start workout',exact:true}).waitFor();
     await page.getByRole('button',{name:'Workout history',exact:true}).click();
     await page.locator('summary').filter({hasText:'Deleted routine'}).waitFor();
     assert.equal(await page.getByRole('combobox',{name:'Workouts'}).inputValue(),'');
     await screenshot(page,'history-deleted',report); await page.keyboard.press('Escape');
-    report.flows.push('finish nulls, all-workout deleted-routine history');
+    report.flows.push('all-workout deleted-routine history');
     for(const route of ['board','status','status-weekly','status-hero','settings','history','quest-editor','profile','archived','routine-editor','exercise-editor']) {
       await page.goto(WEB+'/board'); await page.getByRole('button',{name:/Layout Hero, Ranger, rank/}).waitFor();
       for(const [w,h] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {

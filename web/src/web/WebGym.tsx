@@ -1,25 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  archiveGymRoutine, convertGymWeight, discardGymSession, fetchGym, formatError, gymWeight,
+  archiveGymRoutine, convertGymWeight, fetchGym, formatError, gymWeight,
   moveGymExercises, normalizeGymExercise, removeGymExercise, saveGymExercise, saveGymRoutine,
-  saveGymSession, startGymSession, type GymData, type GymEntry, type GymExercise,
+  type GymData, type GymExercise, type GymRecentWeight,
   type GymRoutine, type GymUnit,
-  parseGymRir, fetchPreviousGymWeights, fetchGymHistory, deleteGymRoutine, listGymMediaCleanup, acknowledgeGymMediaCleanup,
-  UncertainSaveError,
+  parseGymRir, fetchRecentGymWeights, fetchGymHistory, deleteGymRoutine, listGymMediaCleanup, acknowledgeGymMediaCleanup,
+  logGymWeight, UncertainSaveError,
 } from '@eiyu/shared';
 import { GYM_COPY, gymCleanupPending, gymSavedRefreshFailed, isGymCleanupNotice } from '@eiyu/shared';
 import { useSession } from '../store/session-context';
 import Dialog from '../components/Dialog';
 import ActionMenu from '../components/ActionMenu';
-import { ArchiveIcon, ChevronIcon, CheckIcon, EditIcon, PlayIcon, RestoreIcon, TrashIcon } from '../Icons';
+import { ArchiveIcon, ChevronIcon, EditIcon, MoveIcon, PlayIcon, RestoreIcon, TrashIcon } from '../Icons';
 import FlowList from '../components/FlowList';
 import StateBlock from '../components/StateBlock';
 import { announceFeedback } from '../components/ArchiveNotice';
 import { useEditorGuard } from '../components/NavigationGuard';
 import { deleteGymMedia, signGymMedia, uploadGymMedia } from './gym-media';
 
-const EMPTY: GymData = { routines: [], exercises: [], sessions: [], entries: [] };
+const EMPTY: GymData = { routines: [], exercises: [] };
 
 function RoutineEditor({ routine, userId, onClose, onSaved }: {
   routine?: GymRoutine; userId: string; onClose: () => void; onSaved: (id: string) => Promise<void>;
@@ -111,14 +111,12 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
   </Dialog>;
 }
 
-type GymRow = { id: string; name: string; sets: number; reps: string; rest_seconds: number; rir: number; rir_max?: number | null; notes?: string | null };
-
 /** The video guide, shown beside the numbers instead of in a dialog. The signed URL is renewed before it lapses. */
-function ExerciseMedia({ exercise, canEdit, onEdit }: { exercise: GymExercise | undefined; canEdit: boolean; onEdit: () => void }) {
+function ExerciseMedia({ exercise, canEdit, onEdit }: { exercise: GymExercise; canEdit: boolean; onEdit: () => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  const path = exercise?.media_path ?? null;
+  const path = exercise.media_path;
   useEffect(() => {
     let active = true;
     setUrl(null); setError(null);
@@ -128,7 +126,6 @@ function ExerciseMedia({ exercise, canEdit, onEdit }: { exercise: GymExercise | 
     const timer = window.setInterval(renew, 240000);
     return () => { active = false; window.clearInterval(timer); };
   }, [path, retry]);
-  if (!exercise) return <div className="gym-media-empty"><p>{GYM_COPY.exerciseRemoved}</p></div>;
   if (!path) {
     return <div className="gym-media-empty"><PlayIcon size={20} /><p>No video guide attached.</p>{canEdit && <button type="button" className="btn-secondary btn-compact" onClick={onEdit}>Attach a video guide</button>}</div>;
   }
@@ -139,38 +136,54 @@ function ExerciseMedia({ exercise, canEdit, onEdit }: { exercise: GymExercise | 
     : <video className="gym-media" src={url} controls muted playsInline preload="metadata" onError={() => setError('The video could not load. Reload to refresh access.')} />;
 }
 
-function GymExercisePane({ row, index, total, exercise, unit, previous, weight, weightInvalid, weightDisabled, canEditDefinition, pending, onWeightInput, onWeightChange, onEdit, onMove, onRemove }: {
-  row: GymRow; index: number; total: number; exercise: GymExercise | undefined; unit: string; previous: string; weight: string;
-  weightInvalid: boolean; weightDisabled: boolean; canEditDefinition: boolean; pending: boolean;
-  onWeightInput: (invalid: boolean) => void; onWeightChange: (value: string) => void; onEdit: () => void; onMove: (delta: -1 | 1) => void; onRemove: () => void;
+function GymExercisePane({ exercise, index, total, unit, previous, weight, weightInvalid, locked, canLog, canEditDefinition, pending, onWeightInput, onWeightChange, onLog, onEdit, onMove, onRemove }: {
+  exercise: GymExercise; index: number; total: number; unit: string; previous: string; weight: string;
+  weightInvalid: boolean; locked: boolean; canLog: boolean; canEditDefinition: boolean; pending: boolean;
+  onWeightInput: (invalid: boolean) => void; onWeightChange: (value: string) => void; onLog: () => Promise<void>;
+  onEdit: () => void; onMove: (delta: -1 | 1) => void; onRemove: () => void;
 }) {
+  const input = useRef<HTMLInputElement>(null);
   return (
-    <section className="gym-detail" aria-label={`${row.name} details`}>
+    <section className="gym-detail" aria-label={`${exercise.name} details`}>
       <div className="gym-detail-head">
-        <h3>{row.name}</h3>
+        <h3>{exercise.name}</h3>
         <ActionMenu
-          label={`Exercise actions for ${row.name}`} disabled={pending || !canEditDefinition}
+          label={`Exercise actions for ${exercise.name}`} disabled={pending || !canEditDefinition}
           items={[
-            { label: 'Edit exercise', onSelect: onEdit, icon: <EditIcon />, tone: 'edit', disabled: !exercise },
-            { label: 'Move up', ariaLabel: `Move ${row.name} up`, onSelect: () => onMove(-1), icon: <ChevronIcon direction="up" />, tone: 'edit', disabled: index === 0 },
-            { label: 'Move down', ariaLabel: `Move ${row.name} down`, onSelect: () => onMove(1), icon: <ChevronIcon direction="down" />, tone: 'edit', disabled: index === total - 1 },
-            { label: 'Remove', ariaLabel: `Remove ${row.name}`, onSelect: onRemove, icon: <TrashIcon />, danger: true, tone: 'danger', disabled: !exercise },
+            { label: 'Edit exercise', onSelect: onEdit, icon: <EditIcon />, tone: 'edit' },
+            { label: 'Move up', ariaLabel: `Move ${exercise.name} up`, onSelect: () => onMove(-1), icon: <ChevronIcon direction="up" />, tone: 'edit', disabled: index === 0 },
+            { label: 'Move down', ariaLabel: `Move ${exercise.name} down`, onSelect: () => onMove(1), icon: <ChevronIcon direction="down" />, tone: 'edit', disabled: index === total - 1 },
+            { label: 'Remove', ariaLabel: `Remove ${exercise.name}`, onSelect: onRemove, icon: <TrashIcon />, danger: true, tone: 'danger' },
           ]}
         />
       </div>
-      <ExerciseMedia key={exercise?.id ?? row.id} exercise={exercise} canEdit={canEditDefinition} onEdit={onEdit} />
+      {/* The video keeps its own capped column; long notes sit beside it instead of under it. */}
+      <div className="gym-detail-main">
+        <div className="gym-media-box"><ExerciseMedia key={exercise.id} exercise={exercise} canEdit={canEditDefinition} onEdit={onEdit} /></div>
+        {exercise.notes && (
+          <div className="gym-notes" role="group" aria-label={`Notes for ${exercise.name}`} tabIndex={0}>
+            <span className="field-label">NOTES</span><p className="details-note">{exercise.notes}</p>
+          </div>
+        )}
+      </div>
       <dl className="gym-kv">
-        <div><dt>Sets × reps</dt><dd>{row.sets} × {row.reps}</dd></div>
-        <div><dt>Rest</dt><dd>{row.rest_seconds}s</dd></div>
-        <div><dt>RIR</dt><dd>{row.rir}{row.rir_max ? `-${row.rir_max}` : ''}</dd></div>
-        <div><dt>Previous</dt><dd>{previous} {unit}</dd></div>
+        <div><dt>Sets × reps</dt><dd>{exercise.sets} × {exercise.reps}</dd></div>
+        <div><dt>Rest</dt><dd>{exercise.rest_seconds}s</dd></div>
+        <div><dt>RIR</dt><dd>{exercise.rir}{exercise.rir_max ? `-${exercise.rir_max}` : ''}</dd></div>
+        <div><dt>Previous</dt><dd>{previous}</dd></div>
+        <div className="gym-kv-current">
+          <dt>Current</dt>
+          <dd>
+            <form className="gym-log" noValidate onSubmit={event => { event.preventDefault(); void onLog().then(() => input.current?.focus()); }}>
+              <input ref={input} className="field gym-weight" aria-label={`Current weight for ${exercise.name} in ${unit}`} type="number" min={0} max={1000000} step="0.001" inputMode="decimal"
+                value={weight} aria-invalid={weightInvalid} disabled={locked} readOnly={pending}
+                onInput={event => onWeightInput(event.currentTarget.validity.badInput)} onChange={event => onWeightChange(event.target.value)} />
+              <span className="gym-unit" aria-hidden="true">{unit}</span>
+              <button type="submit" className="btn-primary btn-compact gym-log-submit" aria-label={`Log weight for ${exercise.name}`} disabled={!canLog}><MoveIcon size={14} /></button>
+            </form>
+          </dd>
+        </div>
       </dl>
-      <label className="gym-weight-field">Current weight ({unit})
-        <input className="field gym-weight" aria-label={`Current weight for ${row.name} in ${unit}`} type="number" min={0} max={1000000} step="0.001"
-          value={weight} aria-invalid={weightInvalid} disabled={weightDisabled}
-          onInput={event => onWeightInput(event.currentTarget.validity.badInput)} onChange={event => onWeightChange(event.target.value)} />
-      </label>
-      {row.notes && <div><span className="field-label">NOTES</span><p className="details-note">{row.notes}</p></div>}
     </section>
   );
 }
@@ -219,21 +232,22 @@ function GymWorkspace({ userId }: { userId: string }) {
   const routines = data.routines.filter(r => !r.deleted_at && (showArchived || !r.archived));
   const routine = routines.find(r => r.id === selected) ?? routines[0];
   const exercises = data.exercises.filter(e => e.routine_id === routine?.id);
-  const sessions = data.sessions.filter(s => s.routine_id === routine?.id);
-  const draft = sessions.find(s => s.status === 'draft');
-  const previous = useQuery({ queryKey: ['gym-previous', userId, routine?.id], queryFn: () => fetchPreviousGymWeights(routine!.id), enabled: !!routine });
-  const draftEntries = data.entries.filter(e => e.session_id === draft?.id);
-  const rows = draft ? draftEntries.map(entry => ({ id: entry.exercise_id, ...entry.prescription })) : exercises;
-  const unit = draft?.unit ?? routine?.unit ?? 'kg';
-  const current = rows.find(row => row.id === selectedExercise) ?? rows[0];
-  const currentIndex = current ? rows.findIndex(row => row.id === current.id) : -1;
-  const dirty = draftEntries.some(entry => invalidWeights.has(entry.exercise_id) || (weights[entry.exercise_id] !== undefined && weights[entry.exercise_id] !== (entry.weight === null ? '' : String(entry.weight))));
+  const recentKey = ['gym-recent', userId, routine?.id];
+  const recent = useQuery({ queryKey: recentKey, queryFn: () => fetchRecentGymWeights(routine!.id), enabled: !!routine });
+  const unit = routine?.unit ?? 'kg';
+  const current = exercises.find(exercise => exercise.id === selectedExercise) ?? exercises[0];
+  const currentIndex = current ? exercises.findIndex(exercise => exercise.id === current.id) : -1;
+  /** The newest (recency 1, Current) or second newest (recency 2, Previous) logged weight, in the routine's unit. */
+  const logged = (id: string, recency: 1 | 2): number | null => {
+    const value = recent.data?.find(entry => entry.exercise_id === id && entry.recency === recency);
+    return value ? convertGymWeight(value.weight, value.unit, unit) : null;
+  };
+  const savedText = (id: string) => { const weight = logged(id, 1); return weight === null ? '' : String(weight); };
+  const inputWeight = (id: string) => weights[id] ?? savedText(id);
+  // A typed weight that was never logged is unsaved work: leaving the routine or the page asks first.
+  const dirty = Object.entries(weights).some(([id, value]) => invalidWeights.has(id) || value !== savedText(id));
   const requestSwitch = useEditorGuard(dirty, pending || uncertain);
   const [confirmation, setConfirmation] = useState<{ title: string; text: string; action: () => void } | null>(null);
-  const [blankWeights, setBlankWeights] = useState<GymEntry[] | null>(null);
-  const [reveal, setReveal] = useState<string | null>(null);
-  /** Select an exercise and page the list to it; FlowList focuses its row, then onRevealed moves focus to the weight. */
-  const revealExercise = (id: string) => { setSelectedExercise(id); setReveal(id); };
   const cleanup = async () => {
     let after = '';
     for (;;) {
@@ -243,7 +257,7 @@ function GymWorkspace({ userId }: { userId: string }) {
     }
   };
   useEffect(() => { void cleanup().catch(err => setNotice(gymCleanupPending(err))); }, [userId, setNotice]);
-  const refresh = async () => { await qc.invalidateQueries({ queryKey: ['gym', userId] }, { throwOnError: true }); await qc.invalidateQueries({ queryKey: ['gym-previous', userId] }, { throwOnError: true }); };
+  const refresh = async () => { await qc.invalidateQueries({ queryKey: ['gym', userId] }, { throwOnError: true }); await qc.invalidateQueries({ queryKey: ['gym-recent', userId] }, { throwOnError: true }); };
   const run = async (task: () => Promise<void>) => {
     if (inFlight.current) return;
     inFlight.current = true; setPending(true); setError(null); setNotice(null);
@@ -251,35 +265,39 @@ function GymWorkspace({ userId }: { userId: string }) {
     catch (err) { setUncertain(err instanceof UncertainSaveError); retryTask.current = err instanceof UncertainSaveError ? task : null; setError(formatError(err)); }
     finally { inFlight.current = false; setPending(false); }
   };
-  const previousWeight = (id: string) => {
-    const value = previous.data?.find(e => e.exercise_id === id);
-    return value ? convertGymWeight(value.weight, value.unit, unit) : '—';
-  };
-  const inputWeight = (id: string) => weights[id] ?? (draftEntries.find(e => e.exercise_id === id)?.weight == null ? '' : String(draftEntries.find(e => e.exercise_id === id)!.weight));
-  const saveWorkout = (finish: boolean, blanksConfirmed = false) => {
-    const invalid = draftEntries.find(entry => invalidWeights.has(entry.exercise_id));
-    if (invalid) { setError(`Enter a valid weight for ${invalid.prescription.name}.`); revealExercise(invalid.exercise_id); return; }
-    try { draftEntries.forEach(entry => gymWeight(inputWeight(entry.exercise_id))); }
-    catch (err) { setError(formatError(err)); return; }
-    const blanks = draftEntries.filter(entry => !inputWeight(entry.exercise_id).trim());
-    if (finish && blanks.length && !blanksConfirmed) { setBlankWeights(blanks); return; }
-    void run(async () => {
-    if (!draft) return;
-    await saveGymSession(draft.id, draftEntries.map(entry => ({ exercise_id: entry.exercise_id, weight: gymWeight(inputWeight(entry.exercise_id)) })), finish);
-    qc.setQueryData<GymData>(key, current => current ? { ...current,
-      entries: current.entries.map(entry => entry.session_id === draft.id ? { ...entry, weight: gymWeight(inputWeight(entry.exercise_id)) } : entry),
-      sessions: current.sessions.map(session => session.id === draft.id && finish ? { ...session, status: 'completed', completed_at: new Date().toISOString() } : session),
-    } : current);
-    setWeights({}); setInvalidWeights(new Set()); setNotice(finish ? 'Workout completed. Progress saved.' : 'Workout draft saved.');
+  const forget = <T,>(record: Record<string, T>, id: string) => Object.fromEntries(Object.entries(record).filter(([entry]) => entry !== id));
+  /** Log the typed weight as the exercise's new Current. The log id is made once per attempt, so a retry is safe. */
+  const logWeight = async (exercise: GymExercise) => {
+    if (invalidWeights.has(exercise.id)) { setError(`Enter a valid weight for ${exercise.name}.`); return; }
+    let weight: number | null;
+    try { weight = gymWeight(inputWeight(exercise.id)); } catch (err) { setError(formatError(err)); return; }
+    if (weight === null || weight === logged(exercise.id, 1)) return;
+    const logId = crypto.randomUUID();
+    await run(async () => {
+      await logGymWeight(logId, exercise.id, weight);
+      qc.setQueryData<GymRecentWeight[]>(recentKey, rows => {
+        const newest = rows?.find(entry => entry.exercise_id === exercise.id && entry.recency === 1);
+        return [
+          ...(rows ?? []).filter(entry => entry.exercise_id !== exercise.id),
+          { exercise_id: exercise.id, weight, unit, logged_at: new Date().toISOString(), recency: 1 },
+          ...(newest ? [{ ...newest, recency: 2 as const }] : []),
+        ];
+      });
+      setWeights(previous => forget(previous, exercise.id));
+      setInvalidWeights(previous => { const next = new Set(previous); next.delete(exercise.id); return next; });
+      setNotice(`${exercise.name}: ${weight} ${unit} logged.`);
     });
   };
   if (!userId) return null;
   if (query.isPending) return <StateBlock kind="loading">Reading Gym Progress…</StateBlock>;
   if (query.isError && !query.data) return <StateBlock kind="error" onRetry={() => void query.refetch()}>{formatError(query.error)}</StateBlock>;
+  const previousWeight = current ? logged(current.id, 2) : null;
+  const currentText = current ? inputWeight(current.id) : '';
   return <div className="gym-page">
     <header className="gym-heading"><h1 className="page-title">Gym Progress</h1><div className="gym-actions"><button className="btn-secondary" onClick={() => setHistory(true)}>Workout history</button><button className="btn-secondary" onClick={() => setRoutineEditor('new')} disabled={pending || uncertain}>Create routine</button></div></header>
-    <div className="gym-toolbar"><label>Routine<select className="field" value={routine?.id ?? ''} disabled={pending || uncertain} onChange={e => { const id = e.target.value; requestSwitch(() => { setSelected(id); setWeights({}); }); }}>{!routines.length && <option value="">No routines</option>}{routines.map(r => <option key={r.id} value={r.id}>{r.name}{r.archived ? ' (archived)' : ''}</option>)}</select></label><label className="gym-checkbox"><input type="checkbox" checked={showArchived} onChange={e => { const checked = e.target.checked; requestSwitch(() => { setShowArchived(checked); setWeights({}); }); }} />Include archived routines</label></div>
+    <div className="gym-toolbar"><label>Routine<select className="field" value={routine?.id ?? ''} disabled={pending || uncertain} onChange={e => { const id = e.target.value; requestSwitch(() => { setSelected(id); setWeights({}); setInvalidWeights(new Set()); }); }}>{!routines.length && <option value="">No routines</option>}{routines.map(r => <option key={r.id} value={r.id}>{r.name}{r.archived ? ' (archived)' : ''}</option>)}</select></label><label className="gym-checkbox"><input type="checkbox" checked={showArchived} onChange={e => { const checked = e.target.checked; requestSwitch(() => { setShowArchived(checked); setWeights({}); setInvalidWeights(new Set()); }); }} />Include archived routines</label></div>
     {query.isError && <StateBlock kind="error" retryLabel="Retry refresh" onRetry={() => void query.refetch()}>{GYM_COPY.refreshFailed}</StateBlock>}
+    {recent.isError && <StateBlock kind="error" retryLabel="Retry" onRetry={() => void recent.refetch()}>The System couldn&apos;t read your logged weights.</StateBlock>}
     {error && <p role="alert" className="phase4-error">{error}</p>}
     {(uncertain || isGymCleanupNotice(notice)) && <div className="action-footer">
       {uncertain && <button className="btn-secondary" disabled={pending} onClick={() => { if (retryTask.current) void run(retryTask.current); }}>{GYM_COPY.confirmSave}</button>}
@@ -287,47 +305,47 @@ function GymWorkspace({ userId }: { userId: string }) {
     </div>}
     {!routine ? <StateBlock kind="empty">{GYM_COPY.noRoutine}</StateBlock> : <>
       <div className="gym-routine-heading"><h2>{routine.name} <small>{unit}</small></h2><div className="gym-actions">
-        {draft && <span className="quest-chip is-cur">Workout draft · {draft.unit}</span>}
         <button className="btn-secondary" disabled={pending || uncertain || routine.archived} onClick={() => setExerciseEditor('new')}>Add exercise</button>
         <ActionMenu
           label={`Routine actions for ${routine.name}`} disabled={pending || uncertain}
           items={[
             { label: 'Edit routine', onSelect: () => setRoutineEditor('edit'), icon: <EditIcon />, tone: 'edit' },
-            { label: routine.archived ? 'Restore routine' : 'Archive routine', onSelect: () => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); }), icon: routine.archived ? <RestoreIcon /> : <ArchiveIcon />, tone: 'warn', disabled: dirty },
-            { label: 'Delete routine', onSelect: () => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Completed history remains.${draft ? ' This also discards the unfinished workout.' : ''}`, action: () => void run(async () => { await deleteGymRoutine(routine.id, !!draft); setWeights({}); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }) }), icon: <TrashIcon />, danger: true, tone: 'danger' },
+            { label: routine.archived ? 'Restore routine' : 'Archive routine', onSelect: () => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); setInvalidWeights(new Set()); }), icon: routine.archived ? <RestoreIcon /> : <ArchiveIcon />, tone: 'warn', disabled: dirty },
+            // An unseen draft left by a tab on the previous client is discarded with the routine, never blocking the delete.
+            { label: 'Delete routine', onSelect: () => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Logged weights remain in your history.`, action: () => void run(async () => { await deleteGymRoutine(routine.id, true); setWeights({}); setInvalidWeights(new Set()); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }) }), icon: <TrashIcon />, danger: true, tone: 'danger' },
           ]}
         />
       </div></div>
       <div className="gym-split">
         <div className="gym-list" role="group" aria-label={`${routine.name} exercises`}>
-          <FlowList label="Exercises" size={8} narrowSize={5} revealId={reveal} onRevealed={() => { setReveal(null); window.requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.gym-detail .gym-weight')?.focus()); }}>
-            {rows.map((row, index) => <div key={row.id} data-item-id={row.id}>
-              <button type="button" className={`gym-list-item${current?.id === row.id ? ' is-active' : ''}`} aria-current={current?.id === row.id ? 'true' : undefined} onClick={() => setSelectedExercise(row.id)}>
+          <FlowList label="Exercises" size={8} narrowSize={5}>
+            {exercises.map((exercise, index) => <div key={exercise.id} data-item-id={exercise.id}>
+              <button type="button" className={`gym-list-item${current?.id === exercise.id ? ' is-active' : ''}`} aria-current={current?.id === exercise.id ? 'true' : undefined} onClick={() => setSelectedExercise(exercise.id)}>
                 <span className="gym-list-index">{index + 1}</span>
-                <span className="gym-list-name">{row.name}</span>
-                <span className="gym-list-sets">{row.sets} × {row.reps}</span>
-                {draft && inputWeight(row.id).trim() && <><span aria-hidden="true"><CheckIcon size={13} /></span><span className="sr-only">, weight entered</span></>}
+                <span className="gym-list-name">{exercise.name}</span>
+                <span className="gym-list-sets">{exercise.sets} × {exercise.reps}</span>
               </button>
             </div>)}
           </FlowList>
         </div>
         {current && <GymExercisePane
-          row={current} index={currentIndex} total={rows.length} exercise={exercises.find(e => e.id === current.id)} unit={unit}
-          previous={String(previousWeight(current.id))} weight={inputWeight(current.id)} weightInvalid={invalidWeights.has(current.id)}
-          weightDisabled={!draft || pending || uncertain} canEditDefinition={!draft && !pending && !uncertain} pending={pending}
+          exercise={current} index={currentIndex} total={exercises.length} unit={unit}
+          previous={previousWeight === null ? '—' : `${previousWeight} ${unit}`} weight={currentText} weightInvalid={invalidWeights.has(current.id)}
+          locked={routine.archived || uncertain} canLog={!pending && !uncertain && !routine.archived && (invalidWeights.has(current.id) || (currentText.trim() !== '' && currentText !== savedText(current.id)))}
+          canEditDefinition={!pending && !uncertain} pending={pending}
           onWeightInput={invalid => setInvalidWeights(prev => { const next = new Set(prev); if (invalid) next.add(current.id); else next.delete(current.id); return next; })}
           onWeightChange={value => setWeights(prev => ({ ...prev, [current.id]: value }))}
-          onEdit={() => { const definition = exercises.find(e => e.id === current.id); if (definition) setExerciseEditor(definition); }}
+          onLog={() => logWeight(current)}
+          onEdit={() => setExerciseEditor(current)}
           onMove={delta => void run(async () => { const ids = exercises.map(e => e.id); const at = ids.indexOf(current.id); [ids[at], ids[at + delta]] = [ids[at + delta], ids[at]]; await moveGymExercises(routine, ids); })}
-          onRemove={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${current.name}? Completed history remains.`, action: () => void run(async () => { await removeGymExercise(current.id); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed'))); }) })}
+          onRemove={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${current.name}? Logged weights remain in your history.`, action: () => void run(async () => { await removeGymExercise(current.id); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed'))); }) })}
         />}
       </div>
-      <footer className="gym-session-actions">{draft ? <><span>Workout draft · {draft.unit}</span><button className="btn-destructive" disabled={pending || uncertain} onClick={() => setConfirmation({ title: 'Discard workout', text: 'Discard this unfinished workout and its entered weights?', action: () => void run(async () => { await discardGymSession(draft.id); setWeights({}); }) })}>Discard draft</button><button className="btn-secondary" disabled={pending || uncertain} onClick={() => saveWorkout(false)}>Save draft</button><button className="btn-primary" disabled={pending || uncertain} onClick={() => saveWorkout(true)}>Finish workout</button></> : <button className="btn-primary" disabled={pending || uncertain || !exercises.length || routine.archived} onClick={() => void run(async () => { await startGymSession(routine.id); setWeights({}); })}>Start workout</button>}{pending && <span role="status">Saving…</span>}</footer>
+      {pending && <span role="status" className="gym-saving">Saving…</span>}
     </>}
     {routineEditor && <RoutineEditor routine={routineEditor === 'edit' ? routine : undefined} userId={userId} onClose={() => setRoutineEditor(null)} onSaved={async id => { setSelected(id); try { await refresh(); setNotice('Routine saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Routine saved', err)); } }} />}
     {exerciseEditor && routine && <ExerciseEditor exercise={exerciseEditor === 'new' ? undefined : exerciseEditor} routine={routine} userId={userId} nextPosition={Math.max(-1, ...exercises.map(e => e.position)) + 1} onClose={() => setExerciseEditor(null)} onSaved={async warning => { try { await refresh(); setNotice(warning ?? 'Exercise saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Exercise saved', err)); } }} />}
     {history && <WorkoutHistory userId={userId} routines={data.routines} onClose={() => setHistory(false)} />}
     {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)}><p>{confirmation.text}</p><div className="action-footer"><button className="btn-secondary" onClick={() => setConfirmation(null)}>Cancel</button><button className="btn-destructive" onClick={() => { const action = confirmation.action; setConfirmation(null); action(); }}>{confirmation.title}</button></div></Dialog>}
-    {blankWeights && <Dialog title="Finish with blank weights?" onClose={() => setBlankWeights(null)}><p>{blankWeights.length} blank weights: {blankWeights.map(e => e.prescription.name).join(', ')}</p><div className="action-footer"><button className="btn-secondary" onClick={() => { revealExercise(blankWeights[0].exercise_id); setBlankWeights(null); }}>Review fields</button><button className="btn-primary" onClick={() => { setBlankWeights(null); saveWorkout(true, true); }}>Finish with blanks</button></div></Dialog>}
   </div>;
 }
