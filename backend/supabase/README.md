@@ -307,6 +307,10 @@ with checks(marker, ok) as (
     and not has_function_privilege('anon',to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'),'EXECUTE')
     and has_function_privilege('authenticated',to_regprocedure('public.recent_gym_weights(uuid)'),'EXECUTE')
     and not has_function_privilege('anon',to_regprocedure('public.recent_gym_weights(uuid)'),'EXECUTE'), false)
+  union all select '040 profiles: the account colour palette', coalesce(
+    has_function_privilege('authenticated',to_regprocedure('public.set_profile_palette(text)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.set_profile_palette(text)'),'EXECUTE')
+    and has_column_privilege('authenticated','public.profiles','palette','UPDATE'), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -318,7 +322,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–039
+re-run an old file over a newer definition. This query covers migrations 001–040
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -364,6 +368,10 @@ Run all 19 rollback/cleanup SQL test files in `supabase/tests` on a disposable l
 Verify prerequisites through 034, then apply **035 → 036 → 037** in order, verifying each phase before deploying the web client. Keep 036 immutable after application; atomic definitions are a separate 037 migration. Existing completion and mobile definition interfaces remain supported. 035 removes direct exercise-definition writes in favor of parent-locked RPCs; older web Gym clients must upgrade. Completed sessions are retained behind server-controlled routine tombstones.
 
 Media cleanup uses an owner-only durable manifest. Acknowledge only successful deletion of confirmed unreferenced paths; failed cleanup remains queued. Never delete an upload whose definition save remains uncertain. Migration capability checks do not replace owner/concurrency/Storage acceptance on a confirmed disposable Supabase stack. No production rollout has been performed.
+
+## Colour palette rollout (040)
+
+Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional for the web client: the client reads the palette in a call that ignores a missing column, and a failed save keeps the choice in the browser, so deploying either side first breaks nothing. Until 040 is applied the palette simply stays per browser. Mobile does not read it yet. Test with `supabase/tests/021_profile_palette.test.sql`.
 
 ## Gym quick-log rollout (039)
 

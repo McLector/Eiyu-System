@@ -4,7 +4,8 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import ArchiveNotice from './components/ArchiveNotice';
 import { NavigationGuard } from './components/NavigationGuard';
 import AccountShell, { type AccountOverlay } from './web/AccountShell';
-import { readStoredPalette, storePalette, type Palette } from './palette';
+import { useSession } from './store/session-context';
+import { useAccountPalette } from './useAccountPalette';
 
 export interface LayoutContext {
   darkMode: boolean;
@@ -14,7 +15,8 @@ export interface LayoutContext {
 
 export default function ProtectedLayout() {
   const [darkMode, setDarkMode] = useState(true);
-  const [palette, setPalette] = useState<Palette>(readStoredPalette);
+  const { session } = useSession();
+  const [palette, changePalette] = useAccountPalette(session?.user.id);
   // On the page root, not the shell: dialogs render outside the shell and must agree with the page behind them.
   // Cyan is the absence of the attribute, and signing out puts the sign-in pages back to cyan.
   useEffect(() => {
@@ -22,7 +24,6 @@ export default function ProtectedLayout() {
     else delete document.documentElement.dataset.palette;
     return () => { delete document.documentElement.dataset.palette; };
   }, [palette]);
-  const changePalette = (next: Palette) => { setPalette(next); storePalette(next); };
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);

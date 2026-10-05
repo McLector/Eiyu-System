@@ -58,3 +58,23 @@ export async function fetchProfile(userId: string): Promise<ProfileData> {
     timeZone: data.time_zone ?? timeZone,
   };
 }
+
+/**
+ * The palette the account chose, or null when it has none or the column is not deployed yet.
+ * Never throws: a palette is cosmetic, and the sign-in must not depend on it.
+ */
+export async function fetchAccountPalette(userId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.from('profiles').select('palette').eq('user_id', userId).maybeSingle();
+    if (error) return null;
+    return (data as { palette: string | null } | null)?.palette ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAccountPalette(palette: string): Promise<string> {
+  const { data, error } = await supabase.rpc('set_profile_palette', { p_palette: palette });
+  if (error) throw error;
+  return data as string;
+}

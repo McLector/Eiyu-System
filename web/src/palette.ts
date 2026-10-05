@@ -19,8 +19,12 @@ export const PALETTE_STORAGE_KEY = 'eiyu:palette';
 
 const IDS: readonly string[] = PALETTES.map(p => p.id);
 
+export function isPalette(value: unknown): value is Palette {
+  return typeof value === 'string' && IDS.includes(value);
+}
+
 export function parsePalette(value: unknown): Palette {
-  return typeof value === 'string' && IDS.includes(value) ? value as Palette : 'cyan';
+  return isPalette(value) ? value : 'cyan';
 }
 
 /** Storage can throw (private windows, blocked site data), and a bad palette must never break the page. */

@@ -29,6 +29,7 @@ export interface Database {
           theme: ThemeKey;
           time_zone: string | null;
           time_zone_changed_at: string | null;
+          palette: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -426,6 +427,10 @@ export interface Database {
       update_profile: {
         Args: { p_display_name: string; p_user_class: string };
         Returns: { displayName: string; userClass: string; timeZone: string | null };
+      };
+      set_profile_palette: {
+        Args: { p_palette: string };
+        Returns: string;
       };
     };
   };

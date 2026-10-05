@@ -168,5 +168,12 @@ select ok(coalesce(
     and not has_function_privilege('anon', to_regprocedure('public.recent_gym_weights(uuid)'), 'EXECUTE'), false),
   '039 Gym quick-log weights and recent weights are in place');
 
+-- Migration 040: the colour palette follows the account.
+select ok(coalesce(
+    has_function_privilege('authenticated', to_regprocedure('public.set_profile_palette(text)'), 'EXECUTE')
+    and not has_function_privilege('anon', to_regprocedure('public.set_profile_palette(text)'), 'EXECUTE')
+    and has_column_privilege('authenticated', 'public.profiles', 'palette', 'UPDATE'), false),
+  '040 The account colour palette is in place');
+
 select * from finish();
 rollback;
