@@ -16,7 +16,7 @@ const daysAgo = (n: number) => addDateKeyDays(today, -n);
 const label = (dateKey: string) => new Date(`${dateKey}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 const days = (): HistoryByDate => ({
-  [today]: { completedCount: 2, scheduledCount: 3, completions: [{ habitName: 'Morning run', kind: 'normal' }, { habitName: 'Read ten pages', kind: 'normal' }] },
+  [today]: { completedCount: 2, scheduledCount: 3, completions: [{ habitName: 'Morning run', kind: 'full' }, { habitName: 'Read ten pages', kind: 'full' }] },
   [daysAgo(1)]: { completedCount: 0, scheduledCount: 0, completions: [] },
   [daysAgo(2)]: { completedCount: 1, scheduledCount: 2, completions: [{ habitName: 'Stretch', kind: 'easy' }] },
 });
@@ -25,7 +25,8 @@ function renderHeatmap() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<QueryClientProvider client={client}><WebHeatmap userId="u1" timeZone="UTC" /></QueryClientProvider>);
 }
-const cell = (dateKey: string) => screen.getByRole('button', { name: new RegExp(label(dateKey)) });
+// By label, not by role: a role query would compute the accessible name of every one of the ~190 day buttons.
+const cell = (dateKey: string) => screen.getByLabelText(new RegExp(`^${label(dateKey)}`));
 
 beforeEach(() => { history.load = async () => days(); });
 afterEach(cleanup);
