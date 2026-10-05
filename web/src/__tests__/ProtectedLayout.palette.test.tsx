@@ -31,8 +31,18 @@ describe('System blue palette', () => {
     renderLayout('/status');
     expect(root().dataset.palette).toBe('blue');
   });
+  it('applies a stored choice of any palette, in either theme', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'jade');
+    renderLayout();
+    expect(root().dataset.palette).toBe('jade');
+    await user.click(await screen.findByRole('switch'));
+    expect(document.querySelector('.surface-flat')).toHaveAttribute('data-theme', 'light');
+    expect(root().dataset.palette).toBe('jade');
+    expect(screen.getByRole('radio', { name: 'Jade' })).toBeEnabled();
+  });
   it('ignores a stored value it does not know', () => {
-    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'magenta');
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'crimson');
     renderLayout('/status');
     expect(root().dataset.palette).toBeUndefined();
   });

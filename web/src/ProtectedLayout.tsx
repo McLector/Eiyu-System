@@ -18,7 +18,7 @@ export default function ProtectedLayout() {
   // On the page root, not the shell: dialogs render outside the shell and must agree with the page behind them.
   // Cyan is the absence of the attribute, and signing out puts the sign-in pages back to cyan.
   useEffect(() => {
-    if (palette === 'blue') document.documentElement.dataset.palette = 'blue';
+    if (palette !== 'cyan') document.documentElement.dataset.palette = palette;
     else delete document.documentElement.dataset.palette;
     return () => { delete document.documentElement.dataset.palette; };
   }, [palette]);

@@ -7,7 +7,7 @@ const css = readFileSync(path.join(SRC, 'index.css'), 'utf-8');
 
 const ROOT_BLOCK = /:root\s*\{([^}]*)\}/;
 const LIGHT_BLOCK = /\[data-theme="light"\]\s*\{([^}]*)\}/;
-const BLUE_BLOCK = /:root\[data-palette="blue"\]\s*\{([^}]*)\}/;
+const PALETTE_BLOCKS = /:root\[data-palette="[a-z]+"\](?:\s*\[data-theme="light"\])?\s*\{[^}]*\}/g;
 
 function tsxSources(): { file: string; text: string }[] {
   return (readdirSync(SRC, { recursive: true }) as string[])
@@ -143,7 +143,7 @@ describe('board and gym layout consistency', () => {
 describe('semantic colours are tokens, not literals', () => {
   // Red/green/amber were typed in ~40 times with no light-theme value (1.5-2.6:1 on the light page).
   const HUES = /#f87171|#4ade80|#fbbf24|rgba?\(\s*248\s*,\s*113\s*,\s*113|rgba?\(\s*74\s*,\s*222\s*,\s*128|rgba?\(\s*251\s*,\s*191\s*,\s*36/gi;
-  const cssOutsideThemeBlocks = css.replace(ROOT_BLOCK, '').replace(LIGHT_BLOCK, '').replace(BLUE_BLOCK, '');
+  const cssOutsideThemeBlocks = css.replace(ROOT_BLOCK, '').replace(LIGHT_BLOCK, '').replace(PALETTE_BLOCKS, '');
 
   it('index.css only spells them inside the theme blocks', () => {
     expect(cssOutsideThemeBlocks.match(HUES) ?? []).toEqual([]);

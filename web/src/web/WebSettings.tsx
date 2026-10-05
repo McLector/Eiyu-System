@@ -1,5 +1,5 @@
 import { MoonIcon, SunIcon } from '../Icons';
-import type { Palette } from '../palette';
+import { PALETTES, type Palette } from '../palette';
 
 interface Props {
   darkMode: boolean;
@@ -31,14 +31,13 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   );
 }
 
-const PALETTES: { id: Palette; label: string }[] = [{ id: 'cyan', label: 'Cyan' }, { id: 'blue', label: 'System blue' }];
-
-function PaletteChoice({ palette, disabled, onChange }: { palette: Palette; disabled: boolean; onChange: (palette: Palette) => void }) {
+function PaletteChoice({ palette, onChange }: { palette: Palette; onChange: (palette: Palette) => void }) {
   return (
     <div role="radiogroup" aria-label="Colour palette" className="palette-options">
-      {PALETTES.map(({ id, label }) => (
-        <label key={id} className={`palette-option${palette === id ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`}>
-          <input type="radio" name="palette" value={id} checked={palette === id} disabled={disabled} onChange={() => { if (palette !== id) onChange(id); }} />
+      {PALETTES.map(({ id, label, swatch }) => (
+        <label key={id} className={`palette-option${palette === id ? ' is-selected' : ''}`}>
+          <input type="radio" name="palette" value={id} checked={palette === id} onChange={() => { if (palette !== id) onChange(id); }} />
+          <span className="palette-swatch" aria-hidden="true" style={{ '--swatch': swatch } as React.CSSProperties} />
           <span>{label}</span>
         </label>
       ))}
@@ -85,8 +84,8 @@ export default function WebSettings({ darkMode, onToggleDark, palette, onPalette
 
       <SettingRow
         label="Colour palette"
-        sub={darkMode ? 'Preview the System blue look' : 'Dark mode only. Switch to dark to use System blue.'}
-        right={<PaletteChoice palette={palette} disabled={!darkMode} onChange={onPaletteChange} />}
+        sub="Tints the whole app, in light and dark"
+        right={<PaletteChoice palette={palette} onChange={onPaletteChange} />}
       />
 
       <div className="divider-flat" />

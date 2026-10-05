@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PALETTE_STORAGE_KEY, parsePalette, readStoredPalette, storePalette } from '../palette';
+import { PALETTES, PALETTE_STORAGE_KEY, parsePalette, readStoredPalette, storePalette } from '../palette';
 
 afterEach(() => { window.localStorage.clear(); vi.restoreAllMocks(); });
 
 describe('parsePalette', () => {
-  it('accepts the two palettes', () => {
-    expect(parsePalette('blue')).toBe('blue');
-    expect(parsePalette('cyan')).toBe('cyan');
+  it.each(PALETTES.map(p => p.id))('accepts %s', id => {
+    expect(parsePalette(id)).toBe(id);
   });
-  it.each([null, undefined, '', 'BLUE', ' blue', 'red', 'blue ', 0, 1, true, {}, []])('falls back to cyan for %j', value => {
+  it.each([null, undefined, '', 'BLUE', ' blue', 'Jade', 'red', 'crimson', 'blue ', 'constructor', '__proto__', 0, 1, true, {}, []])('falls back to cyan for %j', value => {
     expect(parsePalette(value)).toBe('cyan');
   });
 });
