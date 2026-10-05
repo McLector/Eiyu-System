@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, cleanup, render, waitFor } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { AppState, Text } from 'react-native';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -27,7 +27,18 @@ async function mount() {
   await waitFor(() => expect(current).not.toBeNull());
 }
 
+const appStateHandlers: Array<(state: string) => void> = [];
+const appStateRemove = jest.fn();
+let appStateSpy: jest.SpyInstance;
+const toForeground = () => act(async () => { appStateHandlers[appStateHandlers.length - 1]('active'); });
+
 beforeEach(async () => {
+  appStateHandlers.length = 0;
+  appStateRemove.mockClear();
+  appStateSpy = jest.spyOn(AppState, 'addEventListener').mockImplementation(((_event: string, handler: (state: string) => void) => {
+    appStateHandlers.push(handler);
+    return { remove: appStateRemove };
+  }) as never);
   await AsyncStorage.clear();
   current = null;
   mockUserId = 'u1';
@@ -36,7 +47,7 @@ beforeEach(async () => {
   mockShared.fetchAccountPalette.mockReset().mockResolvedValue(null);
   mockShared.saveAccountPalette.mockReset().mockImplementation(async (p: string) => p);
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); appStateSpy.mockRestore(); });
 
 describe('AppThemeProvider', () => {
   it('starts dark and cyan with nothing stored', async () => {
@@ -135,5 +146,65 @@ describe('AppThemeProvider', () => {
     const before = current!.theme.accent;
     await act(async () => { current!.setPalette('magenta'); });
     expect(current!.theme.accent).not.toBe(before);
+  });
+});
+
+describe('AppThemeProvider when the app returns to the foreground', () => {
+  it('picks up a theme and palette changed elsewhere (the web app) while the app was in the background', async () => {
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    mockShared.fetchAccountPalette.mockResolvedValue('jade');
+    await mount();
+    await waitFor(() => expect(current!.palette).toBe('jade'));
+    mockShared.fetchAccountTheme.mockResolvedValue('dark');
+    mockShared.fetchAccountPalette.mockResolvedValue('violet');
+    await toForeground();
+    await waitFor(() => expect(current!.mode).toBe('dark'));
+    await waitFor(() => expect(current!.palette).toBe('violet'));
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBe('violet');
+  });
+
+  it('does nothing for the background and inactive states', async () => {
+    await mount();
+    await waitFor(() => expect(mockShared.fetchAccountTheme).toHaveBeenCalledTimes(1));
+    await act(async () => { appStateHandlers[appStateHandlers.length - 1]('background'); });
+    await act(async () => { appStateHandlers[appStateHandlers.length - 1]('inactive'); });
+    expect(mockShared.fetchAccountTheme).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a pick made while the foreground answer was loading win over that answer', async () => {
+    await mount();
+    await waitFor(() => expect(mockShared.fetchAccountTheme).toHaveBeenCalledTimes(1));
+    let resolve!: (t: string) => void;
+    mockShared.fetchAccountTheme.mockReturnValue(new Promise<string>(r => { resolve = r; }));
+    await toForeground();
+    await act(async () => { current!.setMode('light'); });
+    await act(async () => { resolve('dark'); });
+    expect(current!.mode).toBe('light');
+  });
+
+  it('keeps a pick the account rejected, and tries to send it again, instead of taking the stale account value', async () => {
+    mockShared.saveAccountTheme.mockRejectedValue(new Error('function not found'));
+    await mount();
+    await waitFor(() => expect(mockShared.fetchAccountTheme).toHaveBeenCalledTimes(1));
+    await act(async () => { current!.setMode('light'); });
+    await waitFor(async () => expect(await AsyncStorage.getItem('eiyu:theme-unsynced')).toBe('u1'));
+    mockShared.saveAccountTheme.mockClear();
+    mockShared.fetchAccountTheme.mockResolvedValue('dark');
+    await toForeground();
+    await waitFor(() => expect(mockShared.saveAccountTheme).toHaveBeenCalledWith('light'));
+    expect(current!.mode).toBe('light');
+  });
+
+  it('stops listening when the provider goes away', async () => {
+    const view = await render(<AppThemeProvider><Probe /></AppThemeProvider>);
+    await waitFor(() => expect(appStateHandlers.length).toBeGreaterThan(0));
+    await act(async () => { view.unmount(); });
+    expect(appStateRemove).toHaveBeenCalled();
+  });
+
+  it('does not listen while signed out', async () => {
+    mockUserId = undefined;
+    await mount();
+    expect(appStateHandlers).toHaveLength(0);
   });
 });
