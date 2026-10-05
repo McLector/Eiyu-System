@@ -3,7 +3,7 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const shared = vi.hoisted(() => ({ fetchAccountPalette: vi.fn(), saveAccountPalette: vi.fn() }));
-vi.mock('@eiyu/shared', () => shared);
+vi.mock('@eiyu/shared', async importActual => ({ ...(await importActual<typeof import('@eiyu/shared')>()), ...shared }));
 
 import { PALETTE_STORAGE_KEY } from '../palette';
 import { useAccountPalette } from '../useAccountPalette';
