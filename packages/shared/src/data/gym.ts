@@ -2,6 +2,7 @@ import { supabase } from '../supabase/client';
 import type { GymData, GymEntry, GymExercise, GymRoutine, GymUnit, GymPreviousWeight, GymRecentWeight } from '../types/gym';
 import { normalizeEditableQuestName } from '../logic/validation';
 import { normalizeGymExercise } from '../logic/gym';
+import { newRequestId } from '../logic/request-id';
 import { readBatches } from './pagination';
 import { isConfirmedFailure, UncertainSaveError } from './save-outcome';
 
@@ -50,7 +51,7 @@ export async function logGymWeight(logId: string, exerciseId: string, weight: nu
   throw new UncertainSaveError();
 }
 export async function saveGymRoutine(userId: string, name: string, unit: GymUnit, id?: string, creationId?: string): Promise<string> {
-  const stableId = id ?? creationId ?? crypto.randomUUID();
+  const stableId = id ?? creationId ?? newRequestId();
   const row = { user_id: userId, name: normalizeEditableQuestName(name), unit };
   const signature = JSON.stringify(row);
   if (uncertainWrites.has(stableId)) {
@@ -76,7 +77,7 @@ export async function archiveGymRoutine(id: string, archived: boolean) {
   throw isConfirmedFailure(error) ? error : new UncertainSaveError();
 }
 export async function saveGymExercise(input: Omit<GymExercise, 'id'> & { id?: string }): Promise<string> {
-  const id = input.id ?? crypto.randomUUID();
+  const id = input.id ?? newRequestId();
   const row = { ...input, ...normalizeGymExercise(input), id };
   const signature = JSON.stringify(row);
   if (uncertainWrites.has(id)) {
