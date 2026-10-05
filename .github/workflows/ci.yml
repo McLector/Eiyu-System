@@ -5,6 +5,12 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    # Tests build the Supabase client at import time but never reach a server; these are placeholders, not secrets.
+    env:
+      VITE_SUPABASE_URL: http://localhost:54321
+      VITE_SUPABASE_ANON_KEY: ci-placeholder-key
+      EXPO_PUBLIC_SUPABASE_URL: http://localhost:54321
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
