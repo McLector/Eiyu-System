@@ -231,10 +231,12 @@ function isBusyGenerationError(error: unknown): boolean {
 /** The gate is injectable so quota and provider behavior can be tested without a Supabase or Gemini project. */
 export function createAiProxyHandler(dependencies: AiProxyDependencies): (request: Request) => Promise<Response> {
   const makeCorsHeaders = dependencies.corsHeaders ?? defaultCorsHeaders;
+  // Arrow wrappers, not the bare globals: the clock calls these as `clock.setTimeout(...)`, and the Edge runtime's
+  // timers throw "Illegal invocation" when `this` is anything but the global object.
   const clock = dependencies.clock ?? {
-    now: Date.now,
-    setTimeout: globalThis.setTimeout,
-    clearTimeout: globalThis.clearTimeout,
+    now: () => Date.now(),
+    setTimeout: ((...args: Parameters<typeof globalThis.setTimeout>) => globalThis.setTimeout(...args)) as typeof globalThis.setTimeout,
+    clearTimeout: ((...args: Parameters<typeof globalThis.clearTimeout>) => globalThis.clearTimeout(...args)) as typeof globalThis.clearTimeout,
   };
   const totalRequestTimeoutMs = dependencies.totalRequestTimeoutMs ?? DEFAULT_AI_REQUEST_TIMEOUT_MS;
 
