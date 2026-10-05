@@ -67,7 +67,7 @@ appId: com.anonymous.eiyusystem
 
 # Long Quests remain in their dedicated tab and preserve ordered completion
 # plus all optional descriptions written by the web client.
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - extendedWaitUntil:
     visible: "Cross-platform Journey"
     timeout: 10000

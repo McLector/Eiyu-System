@@ -7,7 +7,7 @@ appId: com.mclector.eiyusystem
 # scroll-to-element leaves the button under the system nav bar, where taps
 # are swallowed).
 - runFlow: _helpers/login.yaml
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - tapOn: "ADD A LONG QUEST"
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "Stage List Edge Cases"

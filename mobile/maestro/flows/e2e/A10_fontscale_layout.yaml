@@ -33,7 +33,7 @@ appId: com.mclector.eiyusystem
 - assertVisible: "LAST 6 MONTHS"
 - assertVisible:
     id: "status-heatmap-today"
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - assertVisible: "E2E FontScale Long Quest"
 - tapOn:
     id: "account-trigger"

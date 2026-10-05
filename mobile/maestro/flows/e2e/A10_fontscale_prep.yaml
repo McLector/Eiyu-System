@@ -20,7 +20,7 @@ appId: com.mclector.eiyusystem
 - tapOn: "SAVE"
 - assertVisible: ${output.longName}
 
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - tapOn: "ADD A LONG QUEST"
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "E2E FontScale Long Quest"

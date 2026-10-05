@@ -34,7 +34,7 @@ appId: com.mclector.eiyusystem
 - tapOn: "STATUS"
 - assertVisible: "CURRENT RANK"
 - takeScreenshot: android-fontscale-status
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - assertVisible: "Long Quests"
 - takeScreenshot: android-fontscale-quests
 - tapOn: "BOARD"

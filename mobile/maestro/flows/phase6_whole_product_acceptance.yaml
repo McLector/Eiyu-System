@@ -154,7 +154,7 @@ appId: com.mclector.eiyusystem
       - tapOn: "Dark Theme"
 - tapOn: "Close Settings"
 - tapOn: "STATUS"
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - tapOn: "BOARD"
 
 # Verify auth/cache isolation with a second local-only disposable account.
@@ -229,5 +229,5 @@ appId: com.mclector.eiyusystem
 - takeScreenshot: android-final-primary-state
 - takeScreenshot: android-final-primary-state
 - tapOn: "STATUS"
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - tapOn: "BOARD"

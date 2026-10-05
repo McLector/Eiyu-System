@@ -4,12 +4,12 @@ appId: com.mclector.eiyusystem
 # assertion. Set font_scale=2.0 externally while the release app stays open.
 - assertVisible: "BOARD"
 - assertVisible: "STATUS"
-- assertVisible: "QUESTS"
+- assertVisible: "CHAIN"
 - assertVisible:
     id: "account-trigger"
 - tapOn: "STATUS"
 - assertVisible: "LAST 6 MONTHS"
-- tapOn: "QUESTS"
-- assertVisible: "QUESTS"
+- tapOn: "CHAIN"
+- assertVisible: "CHAIN"
 - tapOn: "BOARD"
 - assertVisible: "BOARD"

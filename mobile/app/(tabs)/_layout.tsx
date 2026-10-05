@@ -1,14 +1,13 @@
-import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
-import { StyleSheet, useWindowDimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 
-import { BoardIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
 import AccountHeader from '@/components/eiyu/account-header';
+import { BoardIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
 import { fonts } from '@/constants/eiyu-theme';
-import { useEiyu } from '@/contexts/eiyu-store';
+import { useTokens } from '@/contexts/theme-store';
 
 export default function TabLayout() {
-  const { theme, darkMode } = useEiyu();
+  const t = useTokens();
   const { fontScale } = useWindowDimensions();
   const scaledTabBarPadding = 24;
   const scaledTabBarHeight = 73 + Math.max(0, Math.ceil((fontScale - 1) * 40));
@@ -18,13 +17,13 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: true,
         header: () => <AccountHeader />,
-        tabBarActiveTintColor: theme.accent,
-        tabBarInactiveTintColor: theme.navDim,
+        tabBarActiveTintColor: t.accent,
+        tabBarInactiveTintColor: t['nav-dim'],
         tabBarStyle: {
           position: fontScale > 1.15 ? 'relative' : 'absolute',
           borderTopWidth: 1,
-          borderTopColor: theme.navBorder,
-          backgroundColor: 'transparent',
+          borderTopColor: t['nav-border'],
+          backgroundColor: t.nav,
           elevation: 0,
           ...(fontScale > 1.15
             ? {
@@ -33,13 +32,6 @@ export default function TabLayout() {
               }
             : {}),
         },
-        tabBarBackground: () => (
-          <BlurView
-            intensity={40}
-            tint={darkMode ? 'dark' : 'light'}
-            style={[StyleSheet.absoluteFill, { backgroundColor: theme.nav }]}
-          />
-        ),
         tabBarLabelStyle: {
           fontFamily: fonts.displaySemi,
           fontSize: 10,
@@ -61,9 +53,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="longquests"
+        name="chain"
         options={{
-          title: 'QUESTS',
+          title: 'CHAIN',
           tabBarIcon: ({ color }) => <ScrollIcon color={color} size={22} />,
         }}
       />

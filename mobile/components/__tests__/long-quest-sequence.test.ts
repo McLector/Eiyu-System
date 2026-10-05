@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 describe('mobile Long Quest sequence contract', () => {
   it('disables locked stages and explains why', () => {
-    const source = readFileSync(resolve(__dirname, '../../app/(tabs)/longquests.tsx'), 'utf8');
+    const source = readFileSync(resolve(__dirname, '../../app/(tabs)/chain.tsx'), 'utf8');
     expect(source).toContain('stageSequenceState');
     expect(source).toContain('disabled={sequence.locked}');
     expect(source).toContain('LOCKED');
@@ -19,7 +19,7 @@ describe('mobile Long Quest sequence contract', () => {
 
   it('supports optional, bounded, multiline stage descriptions without truncating their display', () => {
     const editor = readFileSync(resolve(__dirname, '../../app/long-quest-editor.tsx'), 'utf8');
-    const list = readFileSync(resolve(__dirname, '../../app/(tabs)/longquests.tsx'), 'utf8');
+    const list = readFileSync(resolve(__dirname, '../../app/(tabs)/chain.tsx'), 'utf8');
     expect(editor).toContain('setStageDescriptionAt');
     expect(editor).toContain('STAGE_DESCRIPTION_MAX_LENGTH');
     expect(editor).toContain('Stage description (optional)');

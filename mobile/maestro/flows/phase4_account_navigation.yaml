@@ -43,7 +43,7 @@ appId: com.mclector.eiyusystem
 # bottom tabs available.
 - assertVisible: "BOARD"
 - assertVisible: "STATUS"
-- assertVisible: "QUESTS"
+- assertVisible: "CHAIN"
 - assertNotVisible: "SETTINGS"
 - tapOn: "Phase Four Updated"
 - assertVisible: "Edit details"

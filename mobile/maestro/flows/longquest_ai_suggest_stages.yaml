@@ -1,7 +1,7 @@
 appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
-- tapOn: "QUESTS"
+- tapOn: "CHAIN"
 - tapOn: "ADD A LONG QUEST"
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "Get a full-stack developer job"
