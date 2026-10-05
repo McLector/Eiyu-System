@@ -1,4 +1,5 @@
-import Svg, { Circle, Ellipse, Line, Path, Polygon, Polyline } from 'react-native-svg';
+import type { ReactNode } from 'react';
+import Svg, { Circle, Ellipse, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
 
 import { STAT_COLORS } from '@eiyu/shared';
 import { Stat } from '@eiyu/shared';
@@ -106,9 +107,9 @@ export function PlusIcon({ size = 20, color = 'currentColor' }: { size?: number;
   );
 }
 
-export function SnowflakeIcon({ size = 16 }: { size?: number }) {
+export function SnowflakeIcon({ size = 16, color = '#93c5fd' }: { size?: number; color?: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#93c5fd" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
       <Line x1="12" y1="2" x2="12" y2="22" />
       <Line x1="2" y1="12" x2="22" y2="12" />
       <Path d="M8 6l4-4 4 4" />
@@ -173,5 +174,169 @@ export function ChevronRight({ size = 16, color = 'currentColor' }: { size?: num
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round">
       <Polyline points="9 18 15 12 9 6" />
     </Svg>
+  );
+}
+
+/* Icons ported from web/src/Icons.tsx. They are decoration: the control that holds them carries the label. */
+
+function Glyph({ size, children, mirrored }: { size: number; children: ReactNode; mirrored?: boolean }) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={mirrored ? { transform: [{ scaleX: -1 }] } : undefined}>
+      {children}
+    </Svg>
+  );
+}
+
+type GlyphProps = { size?: number; color: string };
+const outline = (color: string) => ({ fill: 'none', stroke: color, strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const });
+
+export function DumbbellIcon({ size = 22, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M6.5 6.5v11" {...outline(color)} />
+      <Path d="M17.5 6.5v11" {...outline(color)} />
+      <Path d="M3.5 9v6" {...outline(color)} />
+      <Path d="M20.5 9v6" {...outline(color)} />
+      <Path d="M6.5 12h11" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function SignOutIcon({ size = 22, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" {...outline(color)} />
+      <Polyline points="16 17 21 12 16 7" {...outline(color)} />
+      <Line x1="21" y1="12" x2="9" y2="12" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function MailIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Rect x="2" y="4" width="20" height="16" rx="2" fill={color} fillOpacity={0.15} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+      <Path d="M2 6l10 7 10-7" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+    </Glyph>
+  );
+}
+
+export function NoteIcon({ size = 14, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M6 3h9l3 3v15H6z" fill={color} fillOpacity={0.12} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+      <Path d="M9 9h6M9 13h6M9 17h4" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+    </Glyph>
+  );
+}
+
+export function SparkleIcon({ size = 15, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M12 2l2.5 6.5L21 10l-5 4.5L17.5 21 12 17.5 6.5 21 8 14.5 3 10l6.5-1.5z" fill={color} fillOpacity={0.2} stroke={color} strokeWidth={1.5} strokeLinejoin="round" />
+    </Glyph>
+  );
+}
+
+export function CompletionDotIcon({ size = 8, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Circle cx="12" cy="12" r="11" fill={color} fillOpacity={0.25} />
+      <Circle cx="12" cy="12" r="6" fill={color} />
+    </Glyph>
+  );
+}
+
+export function EditIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M4 20h4L19 9l-4-4L4 16z" {...outline(color)} />
+      <Path d="M13.5 6.5l4 4" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function ArchiveIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Rect x="3" y="4" width="18" height="5" rx="1" {...outline(color)} />
+      <Path d="M5 9v10h14V9M10 13h4" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function TrashIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function MoveIcon({ size = 16, color, direction = 'right' }: GlyphProps & { direction?: 'right' | 'left' }) {
+  return (
+    <Glyph size={size} mirrored={direction === 'left'}>
+      <Path d="M4 12h14M13 6l6 6-6 6" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function GripIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Circle cx="9" cy="6" r="1.4" fill={color} />
+      <Circle cx="15" cy="6" r="1.4" fill={color} />
+      <Circle cx="9" cy="12" r="1.4" fill={color} />
+      <Circle cx="15" cy="12" r="1.4" fill={color} />
+      <Circle cx="9" cy="18" r="1.4" fill={color} />
+      <Circle cx="15" cy="18" r="1.4" fill={color} />
+    </Glyph>
+  );
+}
+
+export function ListIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function RestoreIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M4 12a8 8 0 1 0 8-8M4 4v5h5" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function UndoIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function PlayIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M8 5l11 7-11 7z" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function LockIcon({ size = 16, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Rect x="5" y="11" width="14" height="9" rx="1.5" {...outline(color)} />
+      <Path d="M8 11V8a4 4 0 0 1 8 0v3" {...outline(color)} />
+    </Glyph>
   );
 }
