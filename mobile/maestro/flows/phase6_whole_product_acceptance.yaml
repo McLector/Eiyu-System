@@ -2,9 +2,8 @@
 # also used by the web leg; the appId matches Expo's generated Android package.
 appId: com.mclector.eiyusystem
 ---
-# STALE (mobile redesign, slice 1b): this flow walks the old Board lanes (All Habits / Archived tabs, per-row Archive and Delete buttons, long-press Penalty).
-# Those moved: All Habits is a sheet behind the ALL HABITS button, archived quests are in the account menu, row actions are in the more-button sheet.
-# Rewrite the lane and lifecycle steps against the new Board before relying on it.
+# Rewritten in mobile-parity slice 5 for the redesigned Board (lane tabs, ALL HABITS sheet,
+# row action sheet, Archived habits in the account menu). Not yet run on a device.
 - runFlow: _helpers/launch_fresh.yaml
 - tapOn: "Email address"
 - inputText: ${PHASE6_EMAIL}
@@ -24,98 +23,57 @@ appId: com.mclector.eiyusystem
 - assertVisible: "3/3"
 - assertVisible: "P6 Penalty Today"
 - takeScreenshot: android-cross-platform-state
-- longPressOn:
-    id: "quest-checkbox"
+# The row's check button carries the plain quest name as its label.
+- tapOn: "P6 Penalty Today"
 - assertVisible: "P6 Penalty Today (completed)"
 - tapOn:
     id: "board-lane-tab-one-time"
 - assertVisible: "P6 One-Time Quest (completed)"
 
 # A schedule edit is prospective: Saturday remains an off-day, while the
-# M/W/F definition is still available in the catalog.
+# M/W/F definition is still available in the catalog (ALL HABITS sheet).
 - tapOn:
-    id: "board-lane-tab-all-habits"
-- assertVisible: "Edit P6 Scheduled Penalty"
+    id: "board-lane-tab-daily"
+- tapOn: "ALL HABITS"
+- assertVisible: "P6 Scheduled Penalty"
 - assertVisible: "Mon, Wed, Fri"
 - assertVisible: "OFF DAY"
 
 # Archive and restore the off-day definition without creating a Saturday row.
-- tapOn: "Edit P6 Scheduled Penalty"
-- extendedWaitUntil:
-    visible: "EDIT QUEST"
-    timeout: 15000
-- swipe:
-    direction: UP
+- tapOn: "More actions for P6 Scheduled Penalty"
+- tapOn: "Archive"
+- tapOn: "Close"
 - tapOn:
-    id: "quest-archive"
-- extendedWaitUntil:
-    visible: "BOARD"
-    timeout: 15000
-- tapOn:
-    id: "board-lane-tab-archived"
+    id: "account-trigger"
+- tapOn: "Archived habits"
 - assertVisible: "P6 Scheduled Penalty"
-- tapOn: "Edit P6 Scheduled Penalty"
-- extendedWaitUntil:
-    visible: "EDIT QUEST"
-    timeout: 15000
-- swipe:
-    direction: UP
-- tapOn:
-    id: "quest-restore"
-- extendedWaitUntil:
-    visible: "BOARD"
-    timeout: 15000
-- tapOn:
-    id: "board-lane-tab-all-habits"
+- tapOn: "Restore P6 Scheduled Penalty"
+- tapOn: "Close Archived habits"
+- tapOn: "ALL HABITS"
 - assertVisible: "OFF DAY"
+- tapOn: "Close"
 
 # Delete completed disposable quests only after their evidence has been read.
 - tapOn:
     id: "board-lane-tab-one-time"
+- tapOn: "More actions for P6 One-Time Quest"
+- tapOn: "Delete permanently"
+- assertVisible: "DELETE P6 One-Time Quest PERMANENTLY?"
 - tapOn:
-    id: "quest-edit-trigger"
-- tapOn: "Edit quest"
-- extendedWaitUntil:
-    visible: "EDIT QUEST"
-    timeout: 15000
-- swipe:
-    direction: UP
+    id: "board-delete-confirm"
 - tapOn:
-    id: "quest-delete-permanent"
-- assertVisible: "DELETE QUEST PERMANENTLY?"
+    id: "board-lane-tab-daily"
+- tapOn: "ALL HABITS"
+- tapOn: "More actions for P6 Penalty Today"
+- tapOn: "Archive"
+- tapOn: "Close"
 - tapOn:
-    id: "quest-delete-confirm"
-- extendedWaitUntil:
-    visible: "BOARD"
-    timeout: 15000
-- tapOn:
-    id: "board-lane-tab-all-habits"
-- tapOn: "Edit P6 Penalty Today"
-- extendedWaitUntil:
-    visible: "EDIT QUEST"
-    timeout: 15000
-- swipe:
-    direction: UP
-- tapOn:
-    id: "quest-archive"
-- extendedWaitUntil:
-    visible: "BOARD"
-    timeout: 15000
-- tapOn:
-    id: "board-lane-tab-archived"
-- tapOn: "Edit P6 Penalty Today"
-- extendedWaitUntil:
-    visible: "EDIT QUEST"
-    timeout: 15000
-- swipe:
-    direction: UP
-- tapOn:
-    id: "quest-delete-permanent"
-- tapOn:
-    id: "quest-delete-confirm"
-- extendedWaitUntil:
-    visible: "BOARD"
-    timeout: 15000
+    id: "account-trigger"
+- tapOn: "Archived habits"
+- tapOn: "Delete P6 Penalty Today"
+- tapOn: "Confirm permanent delete"
+- tapOn: "Close Archived habits"
+- assertVisible: "BOARD"
 
 # Deleted quest history, settings, and profile persistence.
 - tapOn: "Phase 6 Android, Acceptance Runner, rank E"

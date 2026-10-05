@@ -1,8 +1,6 @@
 appId: com.mclector.eiyusystem
 ---
-# STALE (mobile redesign, slice 1b): this flow walks the old Board lanes (All Habits / Archived tabs, per-row Archive and Delete buttons, long-press Penalty).
-# Those moved: All Habits is a sheet behind the ALL HABITS button, archived quests are in the account menu, row actions are in the more-button sheet.
-# Rewrite the lane and lifecycle steps against the new Board before relying on it.
+# Rewritten in mobile-parity slice 5 for the redesigned Board; not yet run on a device.
 # Local-only Phase 2 retry. The browser restores and archives this account's
 # quest against the disposable Supabase stack before this flow starts.
 - tapOn:
@@ -27,17 +25,14 @@ appId: com.mclector.eiyusystem
 - extendedWaitUntil:
     visible: "BOARD"
     timeout: 30000
+# An archived quest is off the Board and lives in Archived habits (account menu).
+- assertNotVisible: "P2 Local Lifecycle"
+- tapOn:
+    id: "account-trigger"
+- tapOn: "Archived habits"
 - assertVisible: "P2 Local Lifecycle"
-- assertVisible: "ARCHIVED"
-- tapOn: "Edit P2 Local Lifecycle"
-- extendedWaitUntil:
-    visible: "EDIT QUEST"
-    timeout: 15000
-- swipe:
-    direction: UP
-- tapOn:
-    id: "quest-delete-permanent"
-- assertVisible: "DELETE QUEST PERMANENTLY?"
-- tapOn:
-    id: "quest-delete-cancel"
-- assertVisible: "EDIT QUEST"
+- tapOn: "Delete P2 Local Lifecycle"
+- assertVisible: "Delete permanently?"
+- tapOn: "Cancel"
+- assertNotVisible: "Delete permanently?"
+- assertVisible: "P2 Local Lifecycle"
