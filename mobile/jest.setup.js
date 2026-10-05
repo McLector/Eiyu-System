@@ -31,3 +31,39 @@ jest.mock('@/lib/supabase', () => ({
     },
   },
 }));
+
+// Native modules added for the redesign (swipe pager, gym media). They need device code, so jest gets light stand-ins.
+jest.mock('react-native-pager-view', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const PagerView = React.forwardRef(({ children, ...props }, ref) => React.createElement(View, { ref, ...props }, children));
+  PagerView.displayName = 'PagerView';
+  return { __esModule: true, default: PagerView, PagerView };
+});
+jest.mock('expo-image-picker', () => ({
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: null })),
+  launchCameraAsync: jest.fn(async () => ({ canceled: true, assets: null })),
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true, status: 'granted', canAskAgain: true })),
+  MediaTypeOptions: { All: 'All', Images: 'Images', Videos: 'Videos' },
+}));
+jest.mock('expo-video', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const makePlayer = () => ({
+    play: jest.fn(),
+    pause: jest.fn(),
+    release: jest.fn(),
+    replace: jest.fn(),
+    loop: false,
+    muted: false,
+    addListener: jest.fn(() => ({ remove: jest.fn() })),
+  });
+  return {
+    useVideoPlayer: jest.fn((source, setup) => {
+      const player = makePlayer();
+      if (setup) setup(player);
+      return player;
+    }),
+    VideoView: props => React.createElement(View, props),
+  };
+});

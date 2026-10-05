@@ -2,7 +2,7 @@
   "expo": {
     "name": "eiyu-system",
     "slug": "eiyu-system",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "eiyusystem",
@@ -22,7 +22,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.mclector.eiyusystem"
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.1.0",
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
@@ -41,7 +41,16 @@
           }
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Eiyu uses your photos to attach a guide clip to an exercise.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
