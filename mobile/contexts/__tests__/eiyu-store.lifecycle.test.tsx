@@ -10,6 +10,9 @@ const mockShared = {
   createHabit: jest.fn(),
   deleteHabit: jest.fn(),
   fetchAllActiveHabits: jest.fn(),
+  fetchBacklogQuests: jest.fn(),
+  moveBacklogToOneTime: jest.fn(),
+  moveOneTimeToBacklog: jest.fn(),
   fetchLongQuests: jest.fn(),
   fetchOrCreateWeeklyQuest: jest.fn(),
   fetchProfile: jest.fn(),
@@ -74,7 +77,7 @@ jest.doMock('@/lib/sound-effects-prefs', () => ({
 jest.doMock('expo-network', () => mockNetwork, { virtual: true });
 jest.doMock('expo-audio', () => ({ useAudioPlayer: () => ({ seekTo: jest.fn(), play: jest.fn(), volume: 1 }) }));
 
-const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../eiyu-store');
+const { useEiyu, EiyuProvider, invalidateForNewDay } = require('../eiyu-store') as typeof import('../eiyu-store');
 
 const quest: Quest = {
   id: 'habit-1', name: 'Read', stat: 'WIS', difficulty: 'Easy', easyVersion: 'Read one page',
@@ -111,6 +114,9 @@ beforeEach(() => {
   mockShared.fetchAllActiveHabits.mockResolvedValue([
     { id: 'habit-1', name: 'Read', time: '08:00', days: [1, 2, 3, 4, 5] },
   ]);
+  mockShared.fetchBacklogQuests.mockResolvedValue([]);
+  mockShared.moveBacklogToOneTime.mockResolvedValue(undefined);
+  mockShared.moveOneTimeToBacklog.mockResolvedValue(undefined);
   mockShared.fetchLongQuests.mockResolvedValue([]);
   mockShared.fetchOrCreateWeeklyQuest.mockResolvedValue(null);
   mockShared.fetchProfile.mockResolvedValue({ displayName: 'Test', userClass: 'Ranger', timeZone: 'UTC' });
@@ -357,5 +363,131 @@ describe('offline quest recovery', () => {
     expect(currentStore?.user.quests[0].completed).toBe(false);
 
     expect(mockShared.fetchTodayHabits).toHaveBeenCalledTimes(2);
+  });
+});
+
+const backlogQuest: Quest = {
+  id: 'backlog-1', name: 'Try Zig', stat: 'INT', difficulty: 'Easy', easyVersion: null, description: null,
+  questType: 'backlog', archived: false, time: '00:00', days: [], streak: 0, frozen: false, completed: false,
+  targetCount: null, progressCount: 0, timeSet: false, genre: 'tool',
+};
+
+describe('Backlog and moving quests between lanes', () => {
+  it('loads Backlog once the board read has succeeded and exposes it', async () => {
+    mockShared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
+    await mountStore();
+    await waitFor(() => expect(currentStore!.backlog).toEqual([backlogQuest]));
+    expect(mockShared.fetchBacklogQuests).toHaveBeenCalledWith('user-1');
+    const board = mockShared.fetchTodayHabits.mock.invocationCallOrder[0];
+    const backlog = mockShared.fetchBacklogQuests.mock.invocationCallOrder[0];
+    expect(backlog).toBeGreaterThan(board);
+  });
+
+  it('starts with an empty Backlog while it loads', async () => {
+    mockShared.fetchBacklogQuests.mockReturnValue(new Promise(() => {}));
+    await mountStore();
+    await waitFor(() => expect(mockShared.fetchBacklogQuests).toHaveBeenCalled());
+    expect(currentStore!.backlog).toEqual([]);
+  });
+
+  it('shows a failed Backlog read as a board error, not as an empty Backlog', async () => {
+    mockShared.fetchBacklogQuests.mockRejectedValue(new Error('Backlog is unavailable'));
+    await mountStore();
+    await waitFor(() => expect(currentStore!.questsError).toContain('Backlog is unavailable'));
+  });
+
+  it('moves a Backlog quest to One-time, then refreshes both lists', async () => {
+    mockShared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
+    await mountStore();
+    await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
+    const boardCalls = mockShared.fetchTodayHabits.mock.calls.length;
+    const backlogCalls = mockShared.fetchBacklogQuests.mock.calls.length;
+    await act(async () => { await currentStore!.moveToOneTime('backlog-1'); });
+    expect(mockShared.moveBacklogToOneTime).toHaveBeenCalledWith('backlog-1');
+    expect(mockShared.fetchTodayHabits.mock.calls.length).toBeGreaterThan(boardCalls);
+    expect(mockShared.fetchBacklogQuests.mock.calls.length).toBeGreaterThan(backlogCalls);
+  });
+
+  it('moves a One-time quest to Backlog, then refreshes both lists', async () => {
+    await mountStore();
+    await waitFor(() => expect(currentStore!.user.quests.length).toBeGreaterThan(0));
+    const boardCalls = mockShared.fetchTodayHabits.mock.calls.length;
+    await act(async () => { await currentStore!.moveToBacklog('habit-1'); });
+    expect(mockShared.moveOneTimeToBacklog).toHaveBeenCalledWith('habit-1');
+    expect(mockShared.fetchTodayHabits.mock.calls.length).toBeGreaterThan(boardCalls);
+  });
+
+  it('reports why a move was refused, rethrows it, and refreshes nothing', async () => {
+    mockShared.moveOneTimeToBacklog.mockRejectedValue(new Error('This quest already has a completion.'));
+    await mountStore();
+    await waitFor(() => expect(currentStore!.user.quests.length).toBeGreaterThan(0));
+    const boardCalls = mockShared.fetchTodayHabits.mock.calls.length;
+    await act(async () => { await expect(currentStore!.moveToBacklog('habit-1')).rejects.toThrow('already has a completion'); });
+    expect(currentStore!.questsError).toContain('already has a completion');
+    expect(mockShared.fetchTodayHabits.mock.calls.length).toBe(boardCalls);
+  });
+
+  it('calls the server once when the same quest is moved twice at the same time', async () => {
+    let finish!: () => void;
+    mockShared.moveOneTimeToBacklog.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    await mountStore();
+    await waitFor(() => expect(currentStore!.user.quests.length).toBeGreaterThan(0));
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    await act(async () => { first = currentStore!.moveToBacklog('habit-1'); second = currentStore!.moveToBacklog('habit-1'); });
+    expect(mockShared.moveOneTimeToBacklog).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(); await Promise.all([first, second]); });
+  });
+
+  it('lets a different quest move while another is still in flight', async () => {
+    let finish!: () => void;
+    mockShared.moveOneTimeToBacklog.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    await mountStore();
+    await waitFor(() => expect(currentStore!.user.quests.length).toBeGreaterThan(0));
+    let slow!: Promise<void>;
+    await act(async () => { slow = currentStore!.moveToBacklog('habit-1'); });
+    await act(async () => { await currentStore!.moveToOneTime('backlog-1'); });
+    expect(mockShared.moveBacklogToOneTime).toHaveBeenCalledWith('backlog-1');
+    await act(async () => { finish(); await slow; });
+  });
+
+  it('drops a deleted quest from the Backlog list straight away', async () => {
+    mockShared.fetchBacklogQuests.mockResolvedValueOnce([backlogQuest]).mockResolvedValue([]);
+    await mountStore();
+    await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
+    await act(async () => { await currentStore!.deleteQuest('backlog-1'); });
+    expect(mockShared.deleteHabit).toHaveBeenCalledWith('backlog-1');
+    expect(currentStore!.backlog).toEqual([]);
+  });
+
+  it('refetches Backlog on Retry along with the rest of the board', async () => {
+    mockShared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
+    await mountStore();
+    await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
+    const calls = mockShared.fetchBacklogQuests.mock.calls.length;
+    await act(async () => { await currentStore!.retryQuests(); });
+    expect(mockShared.fetchBacklogQuests.mock.calls.length).toBeGreaterThan(calls);
+  });
+});
+
+describe('invalidateForNewDay', () => {
+  it('refreshes the board first and Backlog only after it, because the board read is what rolls unfinished one-time quests into Backlog', async () => {
+    const qc = new QueryClient();
+    const order: string[] = [];
+    let releaseHabits!: () => void;
+    jest.spyOn(qc, 'invalidateQueries').mockImplementation(((filters: { queryKey: readonly unknown[] }) => {
+      const name = String(filters.queryKey[0]);
+      order.push(`start:${name}`);
+      if (name === 'habits') return new Promise<void>(resolve => { releaseHabits = () => { order.push('end:habits'); resolve(); }; });
+      order.push(`end:${name}`);
+      return Promise.resolve();
+    }) as never);
+    const done = invalidateForNewDay(qc, 'user-1');
+    await Promise.resolve();
+    expect(order).not.toContain('start:backlog');
+    releaseHabits();
+    await done;
+    expect(order.indexOf('start:backlog')).toBeGreaterThan(order.indexOf('end:habits'));
+    expect(order).toContain('start:weeklyQuest');
   });
 });

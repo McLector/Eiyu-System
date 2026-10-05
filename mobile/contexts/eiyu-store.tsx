@@ -42,9 +42,12 @@ import {
   createHabit,
   deleteHabit,
   fetchAllActiveHabits,
+  fetchBacklogQuests,
   fetchUpcomingOneTimeHabits,
   fetchTodayHabits,
   HabitInput,
+  moveBacklogToOneTime,
+  moveOneTimeToBacklog,
   restoreHabit,
   updateHabit,
 } from '@eiyu/shared';
@@ -96,6 +99,18 @@ export const persister = createAsyncStoragePersister({ storage: AsyncStorage });
 
 const habitsTodayKey = (userId?: string) => ['habits', 'today', userId ?? null] as const;
 const longQuestsKey = (userId?: string) => ['longQuests', userId ?? null] as const;
+const backlogKey = (userId?: string) => ['backlog', userId ?? null] as const;
+
+/**
+ * The refresh when the account's day changes: the board first, because reading it runs the server rollover that moves
+ * unfinished one-time quests into Backlog; Backlog after it; the weekly quest in parallel.
+ */
+export async function invalidateForNewDay(qc: QueryClient, userId: string): Promise<void> {
+  await Promise.all([
+    qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }).then(() => qc.invalidateQueries({ queryKey: backlogKey(userId) })),
+    qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
+  ]);
+}
 
 function isOfflineNetworkFailure(error: unknown): boolean {
   const message = error instanceof Error
@@ -144,6 +159,13 @@ interface EiyuStore {
   archiveQuest: (id: string) => Promise<void>;
   restoreQuest: (id: string) => Promise<void>;
   deleteQuest: (id: string) => Promise<void>;
+  /** Backlog quests: ideas with no date, newest first. */
+  backlog: Quest[];
+  backlogLoading: boolean;
+  /** Backlog to One-time (the server dates it today). */
+  moveToOneTime: (id: string) => Promise<void>;
+  /** One-time to Backlog (the server refuses it once the quest has a completion). */
+  moveToBacklog: (id: string) => Promise<void>;
   /** Non-blocking device reminder warning after a successful DB mutation. */
   reminderWarning: string | null;
   /** Retry reminder reconciliation without opening an OS permission prompt. */
@@ -235,6 +257,12 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     queryFn: () => trackOfflineFailure(() => fetchTodayHabits(userId!)),
     enabled: !!userId,
   });
+  // Read Backlog only after the board read: that read runs the server rollover that can add quests to Backlog.
+  const backlogQuery = useQuery({
+    queryKey: backlogKey(userId),
+    queryFn: () => trackOfflineFailure(() => fetchBacklogQuests(userId!)),
+    enabled: !!userId && habitsQuery.isSuccess,
+  });
   const profileQuery = useQuery({
     queryKey: ['profile', userId ?? null],
     queryFn: () => trackOfflineFailure(() => fetchProfile(userId!)),
@@ -265,6 +293,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   });
 
   const quests = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
+  const backlog = useMemo(() => backlogQuery.data ?? [], [backlogQuery.data]);
   const questsHaveCachedData = habitsQuery.data !== undefined;
   const longQuests = useMemo(() => longQuestsQuery.data ?? [], [longQuestsQuery.data]);
   const stats = useMemo(() => statsQuery.data ?? initialUser.stats, [statsQuery.data]);
@@ -279,10 +308,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const delay = millisecondsUntilNextAccountDay(new Date(), profile.timeZone) + 50;
       timer = setTimeout(() => {
         if (!active) return;
-        Promise.all([
-          qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
-          qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
-        ]).finally(() => {
+        invalidateForNewDay(qc, userId).finally(() => {
           setAccountDayRevision(revision => revision + 1);
           scheduleNextRollover();
         });
@@ -303,6 +329,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     ? undefined
     : [
     habitsQuery.error,
+    backlogQuery.error,
     profileQuery.error,
     statsQuery.error,
     weeklyQuestQuery.error,
@@ -351,6 +378,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       });
       return Promise.all([
         habitsRefresh,
+        qc.invalidateQueries({ queryKey: backlogKey(userId), refetchType: 'active' }, { throwOnError: true }),
         qc.invalidateQueries({ queryKey: ['profile', userId], refetchType: 'active' }, { throwOnError: true }),
         qc.invalidateQueries({ queryKey: ['stats', userId], refetchType: 'active' }, { throwOnError: true }),
         qc.invalidateQueries({ queryKey: ['weeklyQuest', userId], refetchType: 'active' }, { throwOnError: true }),
@@ -710,8 +738,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.setQueriesData<Quest[]>({ queryKey: ['habits'] }, rows =>
             rows?.filter(row => row.id !== id)
           );
+          qc.setQueriesData<Quest[]>({ queryKey: ['backlog'] }, rows =>
+            rows?.filter(row => row.id !== id)
+          );
         }
-        await qc.invalidateQueries({ queryKey: ['habits'] });
+        await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
         setQuestActionError(null);
 
         // Database success is authoritative. Notification cleanup/rearming is
@@ -740,12 +771,54 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const restoreQuest = useCallback((id: string) => runLifecycle(id, 'restore'), [runLifecycle]);
   const deleteQuest = useCallback((id: string) => runLifecycle(id, 'delete'), [runLifecycle]);
 
+  const runMove = useCallback(
+    (id: string, direction: 'to-one-time' | 'to-backlog'): Promise<void> => {
+      const existing = lifecycleRequests.current.get(id);
+      if (existing) return existing;
+
+      const request = (async () => {
+        const reminderOperationId = ++reminderOperation.current;
+        setReminderWarning(null);
+        try {
+          if (direction === 'to-one-time') await moveBacklogToOneTime(id);
+          else await moveOneTimeToBacklog(id);
+        } catch (err) {
+          setQuestActionError(formatTrackedQuestActionError(err));
+          throw err;
+        }
+
+        await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
+        setQuestActionError(null);
+
+        // A quest that left One-time must lose its reminder; like archive, this is best-effort and reported separately.
+        try {
+          await syncAllReminders(notificationsEnabled);
+        } catch (err) {
+          if (reminderOperation.current === reminderOperationId) {
+            setReminderWarning(`Quest moved, but reminders could not be updated: ${formatError(err)}`);
+          }
+        }
+      })();
+
+      lifecycleRequests.current.set(id, request);
+      request.then(
+        () => lifecycleRequests.current.delete(id),
+        () => lifecycleRequests.current.delete(id)
+      );
+      return request;
+    },
+    [notificationsEnabled, qc, syncAllReminders, formatTrackedQuestActionError]
+  );
+  const moveToOneTime = useCallback((id: string) => runMove(id, 'to-one-time'), [runMove]);
+  const moveToBacklog = useCallback((id: string) => runMove(id, 'to-backlog'), [runMove]);
+
   const retryQuests = useCallback(async () => {
     setQuestActionError(null);
     // Retry EVERY load query - any of them may be the failed one.
     setRetryingQuests(true);
     await Promise.all([
       qc.refetchQueries({ queryKey: habitsTodayKey(userId), type: 'active' }),
+      qc.refetchQueries({ queryKey: backlogKey(userId), type: 'active' }),
       qc.refetchQueries({ queryKey: ['profile', userId], type: 'active' }),
       qc.refetchQueries({ queryKey: ['stats', userId], type: 'active' }),
       qc.refetchQueries({ queryKey: ['weeklyQuest', userId], type: 'active' }),
@@ -872,6 +945,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       archiveQuest,
       restoreQuest,
       deleteQuest,
+      backlog,
+      backlogLoading: backlogQuery.isLoading,
+      moveToOneTime,
+      moveToBacklog,
       reminderWarning,
       retryReminders,
       toggleStage,
@@ -910,6 +987,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       archiveQuest,
       restoreQuest,
       deleteQuest,
+      backlog,
+      backlogQuery.isLoading,
+      moveToOneTime,
+      moveToBacklog,
       reminderWarning,
       retryReminders,
       toggleStage,

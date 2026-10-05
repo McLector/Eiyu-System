@@ -11,6 +11,7 @@ const mockShared = {
   createHabit: jest.fn(),
   deleteHabit: jest.fn(),
   fetchAllActiveHabits: jest.fn(),
+  fetchBacklogQuests: jest.fn(),
   fetchLongQuests: jest.fn(),
   fetchOrCreateWeeklyQuest: jest.fn(),
   fetchProfile: jest.fn(),
@@ -87,6 +88,7 @@ beforeEach(() => {
   mockShared.createHabit.mockResolvedValue('habit-1');
   mockShared.deleteHabit.mockResolvedValue(undefined);
   mockShared.fetchAllActiveHabits.mockResolvedValue([]);
+  mockShared.fetchBacklogQuests.mockResolvedValue([]);
   mockShared.fetchLongQuests.mockResolvedValue([]);
   mockShared.fetchOrCreateWeeklyQuest.mockResolvedValue(null);
   mockShared.fetchProfile.mockResolvedValue({ displayName: 'Test', userClass: 'Ranger', timeZone: 'UTC' });
