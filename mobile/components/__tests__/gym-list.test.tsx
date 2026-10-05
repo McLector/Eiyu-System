@@ -78,6 +78,16 @@ describe('Gym list', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/gym-routine-editor');
   });
 
+  it('keeps Include archived and Workout history reachable when no routine is showing', async () => {
+    setup({ routine: undefined, routines: [], exercises: [] });
+    const user = userEvent.setup();
+    await renderWithTheme(<GymScreen />);
+    await user.press(screen.getByRole('checkbox', { name: 'Include archived' }));
+    expect(mockGym.setShowArchived).toHaveBeenCalledWith(true);
+    await press(user, 'Workout history');
+    expect(mockRouter.push).toHaveBeenCalledWith('/gym/history');
+  });
+
   it('says a routine with no exercises is empty', async () => {
     setup({ exercises: [] });
     await renderWithTheme(<GymScreen />);
@@ -125,6 +135,29 @@ describe('Gym list', () => {
       expect(mockGym.setShowArchived).toHaveBeenCalledWith(true);
       await press(user, 'NEW ROUTINE');
       expect(mockRouter.push).toHaveBeenCalledWith('/gym-routine-editor');
+    });
+
+    it('pins the routine being looked at before archived ones are included, so the view cannot jump', async () => {
+      setup();
+      const user = userEvent.setup();
+      await renderWithTheme(<GymScreen />);
+      await press(user, /Change routine/);
+      await user.press(screen.getByRole('checkbox', { name: 'Include archived' }));
+      expect(mockGym.selectRoutine).toHaveBeenCalledWith('r1');
+      expect(mockGym.setShowArchived).toHaveBeenCalledWith(true);
+    });
+
+    it('asks first when Include archived is toggled with a typed weight that was never logged', async () => {
+      setup({ dirty: true });
+      const user = userEvent.setup();
+      await renderWithTheme(<GymScreen />);
+      await press(user, /Change routine/);
+      await user.press(screen.getByRole('checkbox', { name: 'Include archived' }));
+      expect(mockGym.setShowArchived).not.toHaveBeenCalled();
+      await press(user, 'Discard Changes');
+      expect(mockGym.resetDrafts).toHaveBeenCalled();
+      expect(mockGym.selectRoutine).toHaveBeenCalledWith('r1');
+      expect(mockGym.setShowArchived).toHaveBeenCalledWith(true);
     });
 
     it('asks before leaving a routine that has a typed weight that was never logged', async () => {

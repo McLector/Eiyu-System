@@ -7,6 +7,7 @@ import { ArchiveIcon, ChevronIcon, EditIcon, ListIcon, MoreIcon, PlusIcon, Resto
 import { RoutinePickerSheet } from '@/components/gym/routine-picker-sheet';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
 import { ConfirmModal } from '@/components/ui/confirm-modal';
 import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
 import { StateBlock } from '@/components/ui/state-block';
@@ -25,14 +26,20 @@ export default function GymScreen() {
   const [picker, setPicker] = useState(false);
   const [menu, setMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  /** The routine the user picked while a typed weight was unsaved, waiting for their answer. */
-  const [switchTo, setSwitchTo] = useState<string | null>(null);
+  /** What the user asked for while a typed weight was unsaved, waiting for their answer. */
+  const [switchTo, setSwitchTo] = useState<{ routineId: string } | { archived: boolean } | null>(null);
   const locked = gym.pending || gym.uncertain;
 
   const pick = (id: string) => {
     if (id === routine?.id) return;
-    if (gym.dirty) setSwitchTo(id);
+    if (gym.dirty) setSwitchTo({ routineId: id });
     else gym.selectRoutine(id);
+  };
+  const includeArchived = (value: boolean) => {
+    // Pin the routine being looked at first: with nothing picked yet, the list changing would move the view to another one.
+    const apply = () => { if (routine) gym.selectRoutine(routine.id); gym.setShowArchived(value); };
+    if (gym.dirty) setSwitchTo({ archived: value });
+    else apply();
   };
 
   if (gym.loading) {
@@ -95,6 +102,9 @@ export default function GymScreen() {
             <StateBlock kind="empty">{GYM_COPY.noRoutine}</StateBlock>
             <View style={styles.centered}>
               <Button variant="primary" label="NEW ROUTINE" icon={<PlusIcon size={18} color={t['on-accent']} />} onPress={() => router.push('/gym-routine-editor')} />
+              {/* An archived routine, or the history of a deleted one, must stay reachable with nothing showing. */}
+              <Chip kind="checkbox" label="Include archived" selected={gym.showArchived} onPress={() => includeArchived(!gym.showArchived)} />
+              <Button variant="quiet" label="Workout history" onPress={() => router.push('/gym/history')} />
             </View>
           </>
         ) : exercises.length === 0 ? (
@@ -134,7 +144,7 @@ export default function GymScreen() {
         routines={routines}
         selectedId={routine?.id}
         showArchived={gym.showArchived}
-        onToggleArchived={gym.setShowArchived}
+        onToggleArchived={includeArchived}
         onSelect={pick}
         onNew={() => router.push('/gym-routine-editor')}
         onClose={() => setPicker(false)}
@@ -164,7 +174,14 @@ export default function GymScreen() {
         visible={switchTo !== null}
         message="Your typed weights that were not logged will be lost."
         onKeep={() => setSwitchTo(null)}
-        onDiscard={() => { const id = switchTo; setSwitchTo(null); gym.resetDrafts(); if (id) gym.selectRoutine(id); }}
+        onDiscard={() => {
+          const ask = switchTo;
+          setSwitchTo(null);
+          gym.resetDrafts();
+          if (!ask) return;
+          if ('routineId' in ask) gym.selectRoutine(ask.routineId);
+          else { if (routine) gym.selectRoutine(routine.id); gym.setShowArchived(ask.archived); }
+        }}
       />
     </View>
   );
@@ -182,7 +199,7 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.5 },
   note: { fontSize: 13, lineHeight: 19 },
   recover: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  centered: { alignItems: 'center' },
+  centered: { alignItems: 'center', gap: 8 },
   row: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   index: { width: 24, fontSize: 13 },
   name: { flex: 1, fontSize: 16 },

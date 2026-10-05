@@ -146,10 +146,10 @@ export default function GymExerciseEditorScreen() {
         ) : null}
       </View>
 
-      <Field label="Exercise name" value={form.name} onChangeText={value => field('name', value)} editable={!busy} />
+      <Field testID="gym-exercise-name" label="Exercise name" value={form.name} onChangeText={value => field('name', value)} editable={!busy} />
       <View style={styles.pair}>
         <View style={styles.half}><Field label="Sets" keyboardType="number-pad" value={form.sets} onChangeText={value => field('sets', value)} editable={!busy} /></View>
-        <View style={styles.half}><Field label="Reps or range" placeholder="8–12" value={form.reps} onChangeText={value => field('reps', value)} editable={!busy} /></View>
+        <View style={styles.half}><Field testID="gym-exercise-reps" label="Reps or range" placeholder="8–12" value={form.reps} onChangeText={value => field('reps', value)} editable={!busy} /></View>
       </View>
       <View style={styles.pair}>
         <View style={styles.half}><Field label="Rest (seconds)" keyboardType="number-pad" value={form.rest_seconds} onChangeText={value => field('rest_seconds', value)} editable={!busy} /></View>

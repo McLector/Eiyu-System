@@ -196,6 +196,31 @@ describe('Gym exercise card', () => {
       expect(mockRouter.back).toHaveBeenCalled();
     });
 
+    it('moves to the neighbouring exercise, not a not-found screen, when one of several is removed', async () => {
+      setup();
+      mockParams = { id: 'e2' };
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseCardScreen />);
+      await press(user, 'Exercise actions for Lift e2');
+      await user.press(screen.getByRole('menuitem', { name: 'Remove' }));
+      await press(user, 'Remove Exercise');
+      expect(mockGym.removeExercise).toHaveBeenCalledWith(expect.objectContaining({ id: 'e2' }));
+      expect(screen.queryByText('EXERCISE NOT FOUND')).toBeNull();
+      expect(screen.getByText('1 / 2')).toBeOnTheScreen();
+      expect(mockRouter.back).not.toHaveBeenCalled();
+    });
+
+    it('returns to the removed exercise when the removal failed', async () => {
+      setup({ removeExercise: jest.fn().mockResolvedValue(false) });
+      mockParams = { id: 'e2' };
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseCardScreen />);
+      await press(user, 'Exercise actions for Lift e2');
+      await user.press(screen.getByRole('menuitem', { name: 'Remove' }));
+      await press(user, 'Remove Exercise');
+      expect(screen.getByText('2 / 2')).toBeOnTheScreen();
+    });
+
     it('stays on the card when the removal failed', async () => {
       setup({ removeExercise: jest.fn().mockResolvedValue(false) }, [exercise('e1', 0)]);
       const user = userEvent.setup();

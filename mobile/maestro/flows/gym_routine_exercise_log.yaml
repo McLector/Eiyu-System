@@ -16,7 +16,8 @@ appId: com.mclector.eiyusystem
 - tapOn:
     id: "gym-add-exercise"
 - assertVisible: "ADD EXERCISE"
-- tapOn: "Exercise name"
+- tapOn:
+    id: "gym-exercise-name"
 - inputText: "Maestro Bench"
 - hideKeyboard
 - tapOn:

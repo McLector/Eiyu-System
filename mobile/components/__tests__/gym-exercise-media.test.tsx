@@ -1,3 +1,4 @@
+import { AccessibilityInfo } from 'react-native';
 import { act, screen, userEvent } from '@testing-library/react-native';
 import type { GymExercise } from '@eiyu/shared';
 
@@ -50,6 +51,15 @@ describe('ExerciseMedia', () => {
     const player = { loop: false, muted: false, play: jest.fn() };
     setup(player);
     expect(player).toMatchObject({ loop: true, muted: true });
+  });
+
+  it('pauses an MP4 when the phone asks for reduced motion', async () => {
+    jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(true);
+    await renderWithTheme(<ExerciseMedia exercise={exercise({ media_path: 'u/r1/a.mp4', media_mime: 'video/mp4' })} canEdit onEdit={jest.fn()} active />);
+    await screen.findByLabelText('Bench video guide');
+    await act(async () => { await Promise.resolve(); });
+    const players = video.useVideoPlayer.mock.results.map(r => r.value as { pause: jest.Mock });
+    expect(players.some(p => p.pause.mock.calls.length > 0)).toBe(true);
   });
 
   it('shows Loading while the link is being signed', async () => {

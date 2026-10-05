@@ -16,10 +16,12 @@ appId: com.mclector.eiyusystem
 
 - tapOn:
     id: "gym-add-exercise"
-- tapOn: "Exercise name"
+- tapOn:
+    id: "gym-exercise-name"
 - inputText: "Bad Reps"
 - hideKeyboard
-- tapOn: "6-10"
+- tapOn:
+    id: "gym-exercise-reps"
 - eraseText: 10
 - inputText: "12-8"
 - hideKeyboard

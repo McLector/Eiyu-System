@@ -167,8 +167,13 @@ export default function GymExerciseCardScreen() {
         onCancel={() => setConfirmRemove(false)}
         onConfirm={() => {
           setConfirmRemove(false);
-          const wasLast = exercises.length === 1;
-          void gym.removeExercise(current).then(removed => { if (removed && wasLast) router.back(); });
+          // Move to the neighbour first so the card never points at an exercise that is about to disappear.
+          const neighbour = exercises[index + 1] ?? exercises[index - 1];
+          if (neighbour) setCurrentId(neighbour.id);
+          void gym.removeExercise(current).then(removed => {
+            if (!removed) setCurrentId(current.id);
+            else if (!neighbour) router.back();
+          });
         }}
       />
     </View>

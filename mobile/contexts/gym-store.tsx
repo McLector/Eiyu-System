@@ -99,8 +99,6 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
   const [uncertain, setUncertain] = useState(false);
   const retryTask = useRef<(() => Promise<void>) | null>(null);
   const inFlight = useRef(false);
-  /** The id of a log attempt, kept until it is confirmed so a retry of the same weight cannot be recorded twice. */
-  const logAttempts = useRef(new Map<string, { weight: number; id: string }>());
 
   const routines = useMemo(() => data.routines.filter(r => !r.deleted_at && (showArchived || !r.archived)), [data.routines, showArchived]);
   const routine = routines.find(r => r.id === selected) ?? routines[0];
@@ -156,12 +154,10 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
     let weight: number | null;
     try { weight = gymWeight(draft(exercise.id)); } catch (err) { setError(formatError(err)); return; }
     if (weight === null || weight === logged(exercise.id, 1)) return;
-    const attempt = logAttempts.current.get(exercise.id);
-    const logId = attempt && attempt.weight === weight ? attempt.id : newRequestId();
-    logAttempts.current.set(exercise.id, { weight, id: logId });
+    // Made once per attempt: an unconfirmed attempt is retried by running this same task, so the id is reused.
+    const logId = newRequestId();
     await run(async () => {
       await logGymWeight(logId, exercise.id, weight);
-      logAttempts.current.delete(exercise.id);
       qc.setQueryData<GymRecentWeight[]>(recentKey, rows => {
         const newest = rows?.find(entry => entry.exercise_id === exercise.id && entry.recency === 1);
         return [

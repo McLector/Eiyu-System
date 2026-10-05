@@ -27,6 +27,8 @@ function Mp4({ url, label }: { url: string; label: string }) {
     p.muted = true;
     if (!reduced) p.play();
   });
+  // The setting arrives after the first render; if it says reduce motion, stop what already started.
+  useEffect(() => { if (reduced) player.pause(); }, [reduced, player]);
   return <VideoView player={player} nativeControls contentFit="contain" accessibilityLabel={label} style={styles.media} />;
 }
 
