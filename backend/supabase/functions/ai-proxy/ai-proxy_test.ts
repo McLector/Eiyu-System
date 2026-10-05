@@ -183,3 +183,39 @@ Deno.test('a failing CORS builder cannot turn the failure response into an unhan
     console.error = originalError;
   }
 });
+
+// The Supabase Edge runtime's setTimeout/clearTimeout throw "Illegal invocation" when called as a method of another
+// object, which is exactly how the default clock used them (`clock.setTimeout(...)`). Local Deno does not check, so
+// emulate the runtime and run the handler with its default clock.
+Deno.test('the default clock works on a runtime whose timers reject a foreign `this`', async () => {
+  const realSet = globalThis.setTimeout;
+  const realClear = globalThis.clearTimeout;
+  const guard = (name: string) => (target: unknown) => {
+    if (target !== undefined && target !== globalThis) throw new TypeError(`Illegal invocation (${name})`);
+  };
+  const checkSet = guard('setTimeout');
+  const checkClear = guard('clearTimeout');
+  globalThis.setTimeout = function (this: unknown, ...args: unknown[]) {
+    checkSet(this);
+    return (realSet as unknown as (...a: unknown[]) => number)(...args);
+  } as unknown as typeof globalThis.setTimeout;
+  globalThis.clearTimeout = function (this: unknown, ...args: unknown[]) {
+    checkClear(this);
+    return (realClear as unknown as (...a: unknown[]) => void)(...args);
+  } as unknown as typeof globalThis.clearTimeout;
+  try {
+    const client = fakeClient();
+    const handler = createAiProxyHandler({
+      createUserClient: () => client,
+      createServiceClient: () => client,
+      generate: async () => ({ suggestions: ['one', 'two', 'three'] }),
+    });
+    const response = await handler(new Request('https://local.test/ai', {
+      method: 'POST', headers: authHeaders, body: JSON.stringify({ action: 'easy-versions', habitName: 'Read' }),
+    }));
+    if (response.status !== 200) throw new Error(`expected 200 from the default clock, got ${response.status}`);
+  } finally {
+    globalThis.setTimeout = realSet;
+    globalThis.clearTimeout = realClear;
+  }
+});
