@@ -15,6 +15,8 @@ interface Props {
   footer?: ReactNode;
   /** When false the back button and a tap outside do nothing, and there is no Close button (a save is in flight). */
   dismissible?: boolean;
+  /** What a screen reader (and a test) calls the Close button; the default is just "Close". */
+  closeLabel?: string;
   testID?: string;
 }
 
@@ -22,7 +24,7 @@ interface Props {
  * A bottom sheet on the system Modal: the back button, a tap outside and the Close button all close it, the content
  * scrolls instead of clipping (200% font), and it never grows past 90% of the screen.
  */
-export function Sheet({ visible, title, onClose, children, footer, dismissible = true, testID = 'sheet' }: Props) {
+export function Sheet({ visible, title, onClose, children, footer, dismissible = true, closeLabel = 'Close', testID = 'sheet' }: Props) {
   const t = useTokens();
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -47,7 +49,7 @@ export function Sheet({ visible, title, onClose, children, footer, dismissible =
               <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{title}</Text>
             ) : <View style={styles.titleSpacer} />}
             {dismissible ? (
-              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.close}>
+              <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} style={styles.close}>
                 <View style={styles.closeGlyph}><PlusIcon size={20} color={t['muted-flat']} /></View>
               </Pressable>
             ) : null}

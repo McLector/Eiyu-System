@@ -100,4 +100,12 @@ describe('Sheet', () => {
     expect(style.minHeight).toBeGreaterThanOrEqual(48);
     expect(style.minWidth).toBeGreaterThanOrEqual(48);
   });
+
+  it('lets the Close button carry a longer name for screen readers and tests', async () => {
+    const onClose = jest.fn();
+    await renderWithTheme(<Sheet visible title="Edit details" closeLabel="Close Edit details" onClose={onClose}><Text>Body</Text></Sheet>);
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Close Edit details' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
