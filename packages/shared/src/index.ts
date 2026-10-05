@@ -36,3 +36,5 @@ export * from './data/save-outcome';
 export * from './theme/palettes';
 export * from './theme/palette-tokens';
 export * from './theme/theme-mode';
+export * from './theme/motion';
+export * from './theme/type';
