@@ -30,8 +30,9 @@ import {
 } from 'react';
 
 import { initialUser } from '@eiyu/shared';
-import { darkTheme, lightTheme, type EiyuTheme } from '@/constants/eiyu-theme';
+import type { EiyuTheme } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
+import { useAppTheme } from '@/contexts/theme-store';
 import { completeHabit, completeHabitRecovery, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
 import { rankFromStats } from '@eiyu/shared';
 import { formatError } from '@eiyu/shared';
@@ -174,7 +175,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const userId = session?.user.id;
   const qc = useQueryClient();
 
-  const [darkMode, setDarkMode] = useState(true);
+  const { darkMode, theme: appTheme, setMode } = useAppTheme();
+  const setDarkMode = useCallback((dark: boolean) => setMode(dark ? 'dark' : 'light'), [setMode]);
   const [questActionError, setQuestActionError] = useState<string | null>(null);
   const [retryingQuests, setRetryingQuests] = useState(false);
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
@@ -846,7 +848,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const value = useMemo<EiyuStore>(
     () => ({
       user,
-      theme: darkMode ? darkTheme : lightTheme,
+      theme: appTheme,
       darkMode,
       setDarkMode,
       // Gate the board until ALL load queries settle - matching the pre-Phase-3
@@ -889,6 +891,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     [
       user,
       darkMode,
+      appTheme,
+      setDarkMode,
       habitsQuery.isPending,
       profileQuery.isPending,
       statsQuery.isPending,

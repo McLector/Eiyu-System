@@ -43,6 +43,12 @@ jest.doMock('@eiyu/shared', () => ({
   ...mockShared,
   completeHabit: mockCompleteHabit,
 }));
+// The store is the subject here, not the theme: a stable stand-in for the provider that normally sits above it.
+jest.doMock('@/contexts/theme-store', () => {
+  const { darkTheme } = jest.requireActual('@/constants/eiyu-theme');
+  const stub = { mode: 'dark', palette: 'cyan', darkMode: true, theme: darkTheme, setMode: () => {}, setPalette: () => {} };
+  return { useAppTheme: () => stub };
+});
 jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user: { id: 'user-1' } } }) }));
 jest.doMock('@/lib/notifications', () => mockNative);
 jest.doMock('@/lib/notification-prefs', () => mockPreference);

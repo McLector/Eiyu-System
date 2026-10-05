@@ -1,4 +1,3 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import {
   JetBrainsMono_500Medium,
@@ -13,20 +12,19 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/contexts/auth-store';
 import { EiyuProvider, persister, queryClient } from '@/contexts/eiyu-store';
+import { AppThemeProvider } from '@/contexts/theme-store';
 import { DevBall } from '@/components/eiyu/dev-ball';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { ThemedShell } from '@/components/eiyu/themed-shell';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const [fontsLoaded] = useFonts({
     Rajdhani_500Medium,
     Rajdhani_600SemiBold,
@@ -49,18 +47,19 @@ export default function RootLayout() {
         maxAge: 7 * 24 * 60 * 60 * 1000,
       }}>
       <AuthProvider>
-        <EiyuProvider>
-          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-            {/* Improvement-pass #1: app-wide keyboard handling (Android edge-to-edge
-                makes classic adjustResize unreliable). */}
-            <KeyboardProvider>
-              <AppNavigator />
-              {/* Improvement-pass #10: __DEV__-only testing ball; renders null in production. */}
-              <DevBall />
-              <StatusBar style="auto" />
-            </KeyboardProvider>
-          </ThemeProvider>
-        </EiyuProvider>
+        <AppThemeProvider>
+          <EiyuProvider>
+            <ThemedShell>
+              {/* Improvement-pass #1: app-wide keyboard handling (Android edge-to-edge
+                  makes classic adjustResize unreliable). */}
+              <KeyboardProvider>
+                <AppNavigator />
+                {/* Improvement-pass #10: __DEV__-only testing ball; renders null in production. */}
+                <DevBall />
+              </KeyboardProvider>
+            </ThemedShell>
+          </EiyuProvider>
+        </AppThemeProvider>
       </AuthProvider>
     </PersistQueryClientProvider>
   );
