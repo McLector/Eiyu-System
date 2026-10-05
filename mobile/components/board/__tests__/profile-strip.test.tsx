@@ -63,6 +63,23 @@ describe('ProfileStrip collapsed', () => {
   });
 });
 
+describe('ProfileStrip today bar', () => {
+  it('fills in proportion to what is done', async () => {
+    await strip({ completed: 3, total: 6 });
+    expect(screen.getByTestId('today-fill')).toHaveStyle({ width: '50%' });
+  });
+
+  it('is empty, not NaN, when nothing is due', async () => {
+    await strip({ completed: 0, total: 0 });
+    expect(screen.getByTestId('today-fill')).toHaveStyle({ width: '0%' });
+  });
+
+  it('never overfills if more is done than was due', async () => {
+    await strip({ completed: 9, total: 7 });
+    expect(screen.getByTestId('today-fill')).toHaveStyle({ width: '100%' });
+  });
+});
+
 describe('ProfileStrip expanding', () => {
   it('opens to the five stats with their levels and XP bars', async () => {
     const user = userEvent.setup();

@@ -79,7 +79,7 @@ export function ProfileStrip({ name, userClass, rank, stats, completed, total }:
             accessibilityLabel="Quests completed today"
             accessibilityValue={{ min: 0, max: total, now: completed }}
             style={[styles.todayTrack, { backgroundColor: t['bar-track'] }]}>
-            <View style={[styles.todayFill, { backgroundColor: t.accent, width: `${fraction * 100}%` }]} />
+            <View testID="today-fill" style={[styles.todayFill, { backgroundColor: t.accent, width: `${fraction * 100}%` }]} />
           </View>
         </View>
       </Pressable>
