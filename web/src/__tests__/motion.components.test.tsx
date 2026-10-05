@@ -12,7 +12,7 @@ beforeEach(() => { vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })))
 afterEach(() => vi.unstubAllGlobals());
 
 it('slides the dark-mode knob with a transform and never animates its left offset', () => {
-  const props = { darkMode: false, onToggleDark: vi.fn(), onShowHistory: vi.fn(), onLogout: vi.fn() };
+  const props = { darkMode: false, onToggleDark: vi.fn(), palette: 'cyan' as const, onPaletteChange: vi.fn(), onShowHistory: vi.fn(), onLogout: vi.fn() };
   const { rerender } = render(<WebSettings {...props} />);
   const knob = () => screen.getByRole('switch', { name: 'Dark mode' }).firstElementChild as HTMLElement;
   expect(knob().style.left).toBe('2px');

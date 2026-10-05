@@ -745,6 +745,33 @@ async function main() {
     assert.equal(await page.getByRole('combobox',{name:'Workouts'}).inputValue(),'');
     await screenshot(page,'history-deleted',report); await page.keyboard.press('Escape');
     report.flows.push('all-workout deleted-routine history');
+    // System blue: chosen in Settings, applied to the page root (dialogs included), kept across a reload, and reversible.
+    {
+      const identity=/Layout Hero, Ranger, rank/;
+      const openSettings=async()=>{ await page.getByRole('button',{name:identity}).click(); await page.getByRole('menuitem',{name:'Settings'}).click(); await page.getByRole('dialog',{name:'SETTINGS'}).waitFor(); };
+      await page.setViewportSize({width:1440,height:900}); await theme(page,true);
+      await openSettings();
+      await page.getByRole('radio',{name:'System blue'}).check();
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),'blue');
+      const blue=await page.evaluate(()=>{ const read=(el,name)=>getComputedStyle(el).getPropertyValue(name).trim(); const dialog=document.querySelector('[role=dialog]'); return {dialogAccent:read(dialog,'--c-accent'),pageAccent:read(document.documentElement,'--c-accent'),body:read(document.documentElement,'--c-body')}; });
+      assert.deepEqual(blue,{dialogAccent:'#5e9cf0',pageAccent:'#5e9cf0',body:'#020818'},'dialog and page agree on the blue palette');
+      await screenshot(page,'palette-blue-settings',report);
+      await page.keyboard.press('Escape');
+      for(const route of ['board','status','longquests','gym']) {
+        await page.goto(WEB+'/'+route); await page.getByRole('button',{name:identity}).waitFor();
+        assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),'blue',`blue persists across a reload on ${route}`);
+        await page.waitForTimeout(400); await screenshot(page,`palette-blue-${route}`,report);
+      }
+      await theme(page,false);
+      await openSettings();
+      assert.equal(await page.getByRole('radio',{name:'Cyan'}).isDisabled(),true,'the palette is dark-mode only'); await page.keyboard.press('Escape');
+      await theme(page,true);
+      await openSettings();
+      await page.getByRole('radio',{name:'Cyan'}).check();
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),undefined);
+      await page.keyboard.press('Escape');
+      report.flows.push('System blue: chosen in Settings, shared by page and dialogs, persists across reloads, dark mode only, reversible');
+    }
     for(const route of ['board','status','status-weekly','status-hero','settings','history','quest-editor','profile','archived','routine-editor','exercise-editor']) {
       await page.goto(WEB+'/board'); await page.getByRole('button',{name:/Layout Hero, Ranger, rank/}).waitFor();
       for(const [w,h] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {

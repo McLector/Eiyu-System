@@ -9,6 +9,7 @@ import WebSettings from './WebSettings';
 import ArchivedHabits from './ArchivedHabits';
 import Dialog from '../components/Dialog';
 import { useEditorGuard, useNavigationGuard } from '../components/NavigationGuard';
+import type { Palette } from '../palette';
 
 export type AccountOverlay = 'profile' | 'settings' | 'archived' | null;
 
@@ -18,6 +19,8 @@ interface Props {
   onCloseOverlay: () => void;
   darkMode: boolean;
   onToggleDark: () => void;
+  palette: Palette;
+  onPaletteChange: (palette: Palette) => void;
 }
 
 const NAV = [
@@ -81,7 +84,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, darkMode, onToggleDark }: Props) {
+export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, darkMode, onToggleDark, palette, onPaletteChange }: Props) {
   const { user } = useEiyu();
   const { signOut } = useSession();
   const guardNavigation = useNavigationGuard();
@@ -195,6 +198,8 @@ export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, d
           <WebSettings
             darkMode={darkMode}
             onToggleDark={onToggleDark}
+            palette={palette}
+            onPaletteChange={onPaletteChange}
             onShowHistory={() => navigate('/history')}
             onLogout={() => guardNavigation(() => void logout())}
             signOutError={logoutError}

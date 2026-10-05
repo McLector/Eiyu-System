@@ -72,6 +72,7 @@
   --c-warning-border: rgba(251, 191, 36, 0.4);
   --c-warning-glass: rgba(251, 191, 36, 0.1);
   --c-bar-track: rgba(103, 232, 249, 0.16);
+  --c-glow: transparent;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -131,6 +132,44 @@
   --c-warning-border: rgba(146, 64, 14, 0.4);
   --c-warning-glass: rgba(146, 64, 14, 0.12);
   --c-bar-track: rgba(8, 145, 178, 0.2);
+  --c-glow: transparent;
+}
+
+/* System blue: a palette on top of the dark theme, switched from Settings with data-palette on the page root.
+   It redefines the look only. The meaning colours (danger, success, warning, fire) stay as they are, and the
+   light theme sets its own tokens on the surface, so it is untouched. Values come from the HUD reference. */
+:root[data-palette="blue"] {
+  --c-text: #dbe9ff;
+  --c-muted: rgba(174, 213, 244, 0.6);
+  --c-dim: rgba(174, 213, 244, 0.4);
+  --c-accent: #5e9cf0;
+  --c-accent-text: #8fbaf8;
+  --c-accent-glass: rgba(94, 156, 240, 0.1);
+  --c-accent-hover: rgba(94, 156, 240, 0.16);
+  --c-accent-border: rgba(94, 156, 240, 0.3);
+  --c-accent-strong: rgba(94, 156, 240, 0.55);
+  --c-glass: rgba(6, 16, 40, 0.65);
+  --c-glass-sm: rgba(6, 16, 40, 0.75);
+  --c-glass-border: rgba(94, 156, 240, 0.2);
+  --c-track: rgba(4, 12, 32, 0.8);
+  --c-modal: rgba(4, 11, 30, 0.97);
+  --c-overlay: rgba(2, 7, 22, 0.85);
+  --c-nav: rgba(2, 8, 22, 0.92);
+  --c-nav-border: rgba(94, 156, 240, 0.16);
+  --c-nav-dim: rgba(174, 213, 244, 0.4);
+  --c-page: radial-gradient(ellipse 100% 55% at 50% -8%, rgba(30, 70, 160, 0.3) 0%, transparent 65%),
+            radial-gradient(ellipse 60% 40% at 15% 85%, rgba(15, 40, 110, 0.28) 0%, transparent 55%),
+            linear-gradient(180deg, #020818 0%, #020714 50%, #030a1c 100%);
+  --c-body: #020818;
+  --c-page-flat: #030a1a;
+  --c-panel-flat: rgba(4, 10, 26, 0.94);
+  --c-panel-border: rgba(94, 156, 240, 0.5);
+  --c-divider-flat: rgba(94, 156, 240, 0.18);
+  --c-muted-flat: rgba(174, 213, 244, 0.68);
+  --c-dim-flat: rgba(174, 213, 244, 0.62);
+  --c-on-accent: #020818;
+  --c-bar-track: rgba(94, 156, 240, 0.22);
+  --c-glow: rgba(94, 156, 240, 0.55);
 }
 
 * {
@@ -994,3 +1033,14 @@ button:disabled { opacity: .45; cursor: default; }
 .gym-log-submit { min-width: 32px; min-height: 32px; padding: 5px 8px; }
 .gym-saving { color: var(--c-muted-flat); font: 12px Inter, sans-serif; }
 @media (max-width: 767px) { .gym-split { grid-template-columns: minmax(0, 1fr); } .gym-detail-main { grid-template-columns: minmax(0, 1fr); } }
+
+/* Settings: the colour palette as one segmented control. */
+.palette-options { display: inline-flex; overflow: hidden; border: 1px solid var(--c-accent-border); border-radius: 4px; }
+.palette-option { position: relative; display: flex; min-height: 32px; align-items: center; padding: 4px 12px; color: var(--c-muted-flat); font: 700 12px Rajdhani, sans-serif; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.palette-option + .palette-option { border-left: 1px solid var(--c-accent-border); }
+.palette-option input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: inherit; }
+.palette-option.is-selected { background: var(--c-accent-glass); color: var(--c-accent-text); }
+.palette-option:has(input:focus-visible) { outline: 2px solid var(--c-accent); outline-offset: -2px; }
+.palette-option.is-disabled { opacity: .5; cursor: default; }
+/* The glow is a token, so it is transparent in cyan and in the light theme. */
+.page-title, .phase4-dialog-heading h2, .chain-title, .gym-detail-head h3 { text-shadow: 0 0 14px var(--c-glow); }
