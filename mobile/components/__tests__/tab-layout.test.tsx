@@ -1,6 +1,6 @@
 import { PALETTE_TOKENS } from '@eiyu/shared';
-import { View } from 'react-native';
 
+import TabLayout from '../../app/(tabs)/_layout';
 import { renderWithTheme } from '../ui/test-theme';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -10,12 +10,12 @@ const mockCaptured: Captured = { screens: [] };
 let mockFontScale = 1;
 
 jest.mock('expo-router', () => {
-  const Tabs = ({ children, screenOptions }: { children: unknown; screenOptions: Record<string, unknown> }) => {
+  function Tabs({ children, screenOptions }: { children: unknown; screenOptions: Record<string, unknown> }) {
     mockCaptured.screenOptions = screenOptions;
     const { View: MockView } = jest.requireActual('react-native');
     return <MockView>{children as never}</MockView>;
-  };
-  Tabs.Screen = ({ name, options }: { name: string; options: Record<string, unknown> }) => {
+  }
+  Tabs.Screen = function Screen({ name, options }: { name: string; options: Record<string, unknown> }) {
     mockCaptured.screens.push({ name, options });
     return null;
   };
@@ -27,7 +27,6 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => ({ width: 360, height: 800, scale: 2, fontScale: mockFontScale }),
 }));
 
-const TabLayout = (require('../../app/(tabs)/_layout') as typeof import('../../app/(tabs)/_layout')).default;
 const T = PALETTE_TOKENS.cyan.dark;
 
 beforeEach(() => {
@@ -87,6 +86,3 @@ describe('tab layout', () => {
     }
   });
 });
-
-// Keeps the import of View used by the jest.mock factory above from being flagged as unused.
-void View;
