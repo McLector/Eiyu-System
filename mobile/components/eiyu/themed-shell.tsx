@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider, type Theme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, type ReactNode } from 'react';
+import { setBackgroundColorAsync } from 'expo-system-ui';
+import { useEffect, useMemo, type ReactNode } from 'react';
 
 import { useAppTheme } from '@/contexts/theme-store';
 
@@ -25,6 +26,11 @@ export function ThemedShell({ children }: { children: ReactNode }) {
       },
     };
   }, [darkMode, tokens]);
+  // The root window background shows behind the keyboard and before the first frame; cosmetic, so a refusal is ignored.
+  const page = tokens['page-flat'];
+  useEffect(() => {
+    setBackgroundColorAsync(page).catch(() => {});
+  }, [page]);
   return (
     <ThemeProvider value={navigationTheme}>
       {children}

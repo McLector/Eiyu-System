@@ -11,6 +11,8 @@ jest.doMock('@/contexts/theme-store', () => {
   const { PALETTE_TOKENS: tokens } = jest.requireActual('@eiyu/shared');
   return { useAppTheme: () => ({ darkMode: mockDark, tokens: tokens[mockPalette][mockDark ? 'dark' : 'light'] }) };
 });
+const mockSetBackground = jest.fn<Promise<void>, [string]>(() => Promise.resolve());
+jest.doMock('expo-system-ui', () => ({ setBackgroundColorAsync: (color: string) => mockSetBackground(color) }));
 jest.doMock('expo-status-bar', () => {
   const { Text: MockText } = require('react-native');
   return { StatusBar: ({ style }: { style: string }) => <MockText>{`status:${style}`}</MockText> };
@@ -57,5 +59,21 @@ describe('ThemedShell', () => {
     await render(<ThemedShell><NavColors /></ThemedShell>);
     expect(screen.getByText(`bg:${t['page-flat']}|card:${t.nav}|border:${t['nav-border']}|text:${t.text}|primary:${t.accent}`)).toBeTruthy();
     mockPalette = 'cyan';
+  });
+
+  it('paints the root window background with the page colour so no stock colour shows behind the keyboard or a transition', async () => {
+    mockDark = true;
+    mockPalette = 'violet';
+    mockSetBackground.mockClear();
+    await render(<ThemedShell><Text>inside</Text></ThemedShell>);
+    expect(mockSetBackground).toHaveBeenCalledWith(PALETTE_TOKENS.violet.dark['page-flat']);
+    mockPalette = 'cyan';
+  });
+
+  it('does not crash when the phone refuses the background change', async () => {
+    mockDark = true;
+    mockSetBackground.mockReturnValueOnce(Promise.reject(new Error('no window')));
+    await render(<ThemedShell><Text>still here</Text></ThemedShell>);
+    expect(screen.getByText('still here')).toBeTruthy();
   });
 });
