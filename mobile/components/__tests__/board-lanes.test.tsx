@@ -12,10 +12,12 @@ import { renderWithTheme, TestThemeProvider } from '../ui/test-theme';
 
 let mockFocusCallbacks: (() => unknown)[] = [];
 let mockStoreValue: any;
+let mockBoardParams: { lane?: string } = {};
 
 jest.mock('expo-router', () => ({
   router: { push: jest.fn(), setParams: jest.fn() },
   useFocusEffect: (callback: () => unknown) => { mockFocusCallbacks.push(callback); },
+  useLocalSearchParams: () => mockBoardParams,
 }));
 const mockRouter = jest.requireMock('expo-router').router as { push: jest.Mock; setParams: jest.Mock };
 jest.mock('@/contexts/eiyu-store', () => ({ useEiyu: () => mockStoreValue }));
@@ -40,6 +42,7 @@ function setup() {
   (hapticLight as jest.Mock).mockClear();
   (hapticSuccess as jest.Mock).mockClear();
   mockFocusCallbacks = [];
+  mockBoardParams = {};
   consumeBoardReturnIntent();
   const quests: Quest[] = [
     habit,
@@ -439,6 +442,20 @@ describe('mobile BoardScreen lane memory and adding', () => {
     expect(screen.getByRole('tab', { name: 'ONE TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.getByText('Created from Daily')).toBeOnTheScreen();
     expect(consumeBoardReturnIntent()).toBeNull();
+  });
+
+  it('opens the lane a tapped reminder asks for, then clears the request so it is not replayed', async () => {
+    mockBoardParams = { lane: 'one-time' };
+    await board();
+    expect(screen.getByRole('tab', { name: 'ONE TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(mockRouter.setParams).toHaveBeenCalledWith({ lane: undefined });
+  });
+
+  it('ignores a lane request it does not know', async () => {
+    mockBoardParams = { lane: 'weekly' };
+    await board();
+    expect(screen.getByRole('tab', { name: 'DAILY QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(mockRouter.setParams).not.toHaveBeenCalled();
   });
 
   it('does not change a selected lane when an unrelated refresh adds a one-time quest', async () => {

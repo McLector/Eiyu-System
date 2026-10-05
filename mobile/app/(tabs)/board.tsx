@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
@@ -88,6 +88,15 @@ export default function BoardScreen() {
     const returnLane = consumeBoardReturnIntent();
     if (returnLane) setActiveLane(returnLane);
   }, []));
+
+  // A tapped reminder asks for its lane through a route param; it is cleared once applied so it is not replayed.
+  const { lane: requestedLane } = useLocalSearchParams<{ lane?: string }>();
+  useEffect(() => {
+    const lane = LANES.find(item => item.id === requestedLane);
+    if (!lane) return;
+    setActiveLane(lane.id);
+    router.setParams({ lane: undefined });
+  }, [requestedLane]);
 
   // The tab and a swipe both end up here: keep the pager on the selected lane.
   useEffect(() => {

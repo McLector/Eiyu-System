@@ -165,6 +165,7 @@ export async function scheduleHabitReminders(
             title: input.name,
             body: 'Time for your quest — tap to open Eiyu System.',
             sound: true,
+            data: { lane: 'daily' },
           },
           trigger,
         });
@@ -209,6 +210,7 @@ export async function scheduleOneTimeReminder(
         title: input.name,
         body: 'One-time quest reminder — tap to open Eiyu System.',
         sound: true,
+        data: { lane: 'one-time' },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,

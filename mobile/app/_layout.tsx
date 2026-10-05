@@ -22,6 +22,7 @@ import { AppThemeProvider } from '@/contexts/theme-store';
 import { DevBall } from '@/components/eiyu/dev-ball';
 import { ThemedShell } from '@/components/eiyu/themed-shell';
 import { installAppFocus } from '@/lib/app-focus';
+import { useNotificationTaps } from '@/lib/notification-taps';
 
 SplashScreen.preventAutoHideAsync();
 installAppFocus();
@@ -73,6 +74,7 @@ function AppNavigator() {
   useEffect(() => {
     if (!loading) SplashScreen.hideAsync();
   }, [loading]);
+  useNotificationTaps(!loading && !!session);
 
   if (loading) return null;
 
