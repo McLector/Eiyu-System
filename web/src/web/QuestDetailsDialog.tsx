@@ -1,21 +1,7 @@
 import type { CSSProperties } from 'react';
-import { accountDateKey, DAYS, STAT_COLORS, questGenreLabel, type Quest } from '@eiyu/shared';
+import { accountDateKey, QUEST_TYPE_LABEL, STAT_COLORS, questGenreLabel, questScheduleLabel, type Quest } from '@eiyu/shared';
 import Dialog from '../components/Dialog';
 import { EditIcon, RestoreIcon, StatIcon } from '../Icons';
-
-const TYPE_LABEL = { habit: 'Habit', one_time: 'One-time', backlog: 'Backlog' } as const;
-
-function scheduleLabel(quest: Quest): string {
-  if (quest.questType === 'backlog') return 'No date yet';
-  if (quest.questType === 'one_time') {
-    const today = accountDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const isToday = !quest.archived && (!quest.scheduledDate || quest.scheduledDate === today);
-    const when = isToday ? 'Today' : quest.scheduledDate ?? 'Past date';
-    return quest.timeSet === false ? `${when}, any time` : `${when} at ${quest.time}`;
-  }
-  const days = quest.days.length === 7 ? 'Every day' : quest.days.map(day => DAYS[day]).join(', ');
-  return `${days} at ${quest.time}`;
-}
 
 /** Read-only details. Opens from the card; editing is a separate, explicit step. */
 export default function QuestDetailsDialog({ quest, onClose, onEdit, archived }: {
@@ -32,10 +18,10 @@ export default function QuestDetailsDialog({ quest, onClose, onEdit, archived }:
           <span className="quest-chip is-stat"><StatIcon stat={quest.stat} size={11} /> {quest.stat}</span>
           <span className="quest-chip">{quest.difficulty}</span>
           {genre && <span className="quest-chip">{genre}</span>}
-          <span className="quest-chip">{TYPE_LABEL[quest.questType]}</span>
+          <span className="quest-chip">{QUEST_TYPE_LABEL[quest.questType]}</span>
         </div>
         <h3 className="details-title">{quest.name}</h3>
-        <p className="details-schedule">{scheduleLabel(quest)}{quest.streak > 0 ? ` · ${quest.streak}-day streak` : ''}</p>
+        <p className="details-schedule">{questScheduleLabel(quest, accountDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone))}{quest.streak > 0 ? ` · ${quest.streak}-day streak` : ''}</p>
         {quest.description && <section><span className="field-label">NOTE</span><p className="details-note">{quest.description}</p></section>}
         {quest.questType === 'habit' && quest.easyVersion && <section><span className="field-label">PENALTY</span><p className="details-note">{quest.easyVersion}</p></section>}
         <div className="action-footer">

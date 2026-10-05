@@ -11,6 +11,7 @@ import {
   formatDisplayDate,
   tintSecondaryText,
   boardSummaryLine,
+  recoveryDeadlineLabel,
   formatError,
   type QuestType,
 } from '@eiyu/shared';
@@ -134,18 +135,6 @@ function BoardLane({
       {ready && hint && <div className="lane-drop-hint">{hint}</div>}
     </section>
   );
-}
-
-function recoveryDeadlineLabel(quest: Quest) {
-  if (!quest.recoveryDeadline) return `${quest.frozenHoursLeft ?? 0}h left`;
-  return new Intl.DateTimeFormat(undefined, {
-    timeZone: quest.recoveryTimeZone,
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  }).format(new Date(quest.recoveryDeadline));
 }
 
 export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageScope = 'board' }: Props) {
@@ -341,7 +330,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
       {recoveryOpen && <Dialog title="Recovery required" onClose={() => setRecoveryOpen(false)}>
         {recoveryRequired.map(quest => <article className="board-recovery-card" key={quest.id}>
           <strong><SnowflakeIcon size={14} /> Streak frozen</strong><p>{quest.name}</p>
-          <span>Until {recoveryDeadlineLabel(quest)}</span><p>Penalty: {quest.easyVersion}</p>
+          <span>{recoveryDeadlineLabel(quest)}</span><p>Penalty: {quest.easyVersion}</p>
           <button className="btn-secondary" onClick={() => completeRecovery(quest.id)}>MARK RECOVERY COMPLETE</button>
         </article>)}
       </Dialog>}

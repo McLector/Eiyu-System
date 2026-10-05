@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { DAYS, STAT_COLORS, questGenreLabel, type Quest } from '@eiyu/shared';
+import { STAT_COLORS, questGenreLabel, questWhenLabel, type Quest } from '@eiyu/shared';
 import { ArchiveIcon, CheckIcon, EditIcon, GripIcon, MoveIcon, SnowflakeIcon, TrashIcon, StatIcon } from '../Icons';
 import ActionMenu, { type ActionMenuItem } from '../components/ActionMenu';
 import FireStreak from '../FireStreak';
@@ -18,13 +18,6 @@ export interface QuestCardProps {
   onMove?: () => void;
   onDragStart?: (quest: Quest) => void;
   onDragEnd?: () => void;
-}
-
-function whenLabel(quest: Quest): string {
-  if (quest.questType === 'backlog') return 'No date';
-  if (quest.questType === 'one_time') return quest.timeSet === false ? 'Today' : `Today ${quest.time}`;
-  const days = quest.days.length === 7 ? 'Every day' : quest.days.map(day => DAYS[day]).join(', ');
-  return `${days} ${quest.time}`;
 }
 
 export default function QuestCard({ quest, pending, onToggle, onOpen, onEdit, onAdjustProgress, onArchive, onDelete, onMove, onDragStart, onDragEnd }: QuestCardProps) {
@@ -91,7 +84,7 @@ export default function QuestCard({ quest, pending, onToggle, onOpen, onEdit, on
         <span className="quest-card-title">{quest.name}</span>
         <span className="quest-card-meta">
           <span className="quest-chip is-stat"><StatIcon stat={quest.stat} size={11} /> {quest.stat}</span>
-          <span className="quest-card-when">{whenLabel(quest)}</span>
+          <span className="quest-card-when">{questWhenLabel(quest)}</span>
           {quest.streak > 0 && <span className="board-card-streak"><FireStreak size={11} /> {quest.streak}</span>}
           {quest.frozen && <SnowflakeIcon size={12} />}
           {genre && <span className="quest-chip">{genre}</span>}
