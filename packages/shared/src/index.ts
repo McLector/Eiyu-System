@@ -8,6 +8,7 @@ export * from './logic/format-error';
 export * from './logic/auth-copy';
 export * from './logic/web-copy';
 export * from './logic/heatmap';
+export * from './logic/history-calendar';
 export * from './logic/contrast';
 export * from './logic/color-tint';
 export * from './logic/board-summary';

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import Dialog from '../components/Dialog';
 import { useQuery } from '@tanstack/react-query';
-import { accountDateKey, fetchMonthHistory, FULL_XP, EASY_XP, type HistoryCompletion } from '@eiyu/shared';
+import {
+  accountDateKey, fetchMonthHistory, FULL_XP, EASY_XP, historyDayKey, historyDayStatus, historyMonthCells, MONTH_NAMES, shiftHistoryMonth,
+} from '@eiyu/shared';
 
 import { CheckIcon, ChevronIcon, CompletionDotIcon } from '../Icons';
 import StateBlock from '../components/StateBlock';
@@ -10,14 +12,8 @@ interface Props { userId: string; timeZone: string; onClose: () => void; }
 
 const DAYS_HEADER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-function dateKey(year: number, month: number, day: number): string {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function dayStatus(completions: HistoryCompletion[] | undefined): 'full' | 'partial' | null {
-  if (!completions || completions.length === 0) return null;
-  return completions.some(c => c.kind === 'full') ? 'full' : 'partial';
-}
+const dateKey = historyDayKey;
+const dayStatus = historyDayStatus;
 
 export function deriveAccountToday(now: Date, timeZone: string): { year: number; month: number; day: number } {
   const [year, month, day] = accountDateKey(now, timeZone).split('-').map(Number);
@@ -36,18 +32,19 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
     enabled: !!userId,
   });
 
-  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthNames = MONTH_NAMES;
   const today = accountDay;
   const isCurrentMonth = year === accountYear && month === accountMonth;
 
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const step = (delta: number) => {
+    const next = shiftHistoryMonth({ year, month }, delta);
+    setYear(next.year);
+    setMonth(next.month);
+  };
+  const prevMonth = () => step(-1);
+  const nextMonth = () => step(1);
 
-  const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); };
-
-  const cells: (number | null)[] = [...Array(firstDay).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  while (cells.length % 7 !== 0) cells.push(null);
+  const cells = historyMonthCells(year, month);
 
   const data = historyQuery.data ?? {};
   const todayCompletions = isCurrentMonth ? (data[dateKey(year, month, today)]?.completions ?? []) : [];
