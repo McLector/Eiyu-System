@@ -91,7 +91,7 @@ function AppNavigator() {
         />
         <Stack.Screen
           name="history"
-          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }}
+          options={{ presentation: 'transparentModal', headerShown: false, animation: 'none' }}
         />
         <Stack.Screen
           name="long-quest-editor"

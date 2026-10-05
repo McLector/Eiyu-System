@@ -34,7 +34,7 @@ describe('Penalty terminology on active mobile surfaces', () => {
   });
 
   it('uses Penalty in history and recovery notifications', () => {
-    const history = source('../../app/history.tsx');
+    const history = source('../status/history-sheet.tsx');
     const notifications = source('../../lib/notifications.ts');
     expect(history).toContain('Penalty');
     expect(history).not.toContain('>easy<');

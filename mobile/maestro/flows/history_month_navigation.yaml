@@ -7,11 +7,11 @@ appId: com.mclector.eiyusystem
     ${
       var names = ['January','February','March','April','May','June','July','August','September','October','November','December'];
       var d = new Date();
-      output.cur = names[d.getMonth()] + ' ' + d.getFullYear();
+      output.cur = (names[d.getMonth()] + ' ' + d.getFullYear()).toUpperCase();
       var b1 = new Date(d.getFullYear(), d.getMonth() - 1, 1);
-      output.back1 = names[b1.getMonth()] + ' ' + b1.getFullYear();
+      output.back1 = (names[b1.getMonth()] + ' ' + b1.getFullYear()).toUpperCase();
       var b9 = new Date(d.getFullYear(), d.getMonth() - 9, 1);
-      output.back9 = names[b9.getMonth()] + ' ' + b9.getFullYear();
+      output.back9 = (names[b9.getMonth()] + ' ' + b9.getFullYear()).toUpperCase();
     }
 - runFlow: _helpers/login.yaml
 - tapOn:

@@ -14,7 +14,6 @@ const mockShared = {
   moveBacklogToOneTime: jest.fn(),
   moveOneTimeToBacklog: jest.fn(),
   fetchLongQuests: jest.fn(),
-  fetchOrCreateWeeklyQuest: jest.fn(),
   fetchProfile: jest.fn(),
   fetchStats: jest.fn(),
   fetchTodayHabits: jest.fn(),
@@ -118,7 +117,6 @@ beforeEach(() => {
   mockShared.moveBacklogToOneTime.mockResolvedValue(undefined);
   mockShared.moveOneTimeToBacklog.mockResolvedValue(undefined);
   mockShared.fetchLongQuests.mockResolvedValue([]);
-  mockShared.fetchOrCreateWeeklyQuest.mockResolvedValue(null);
   mockShared.fetchProfile.mockResolvedValue({ displayName: 'Test', userClass: 'Ranger', timeZone: 'UTC' });
   mockShared.fetchStats.mockResolvedValue(initialUser.stats);
   mockShared.fetchTodayHabits.mockResolvedValue([quest]);
@@ -490,6 +488,6 @@ describe('invalidateForNewDay', () => {
     releaseHabits();
     await done;
     expect(order.indexOf('start:backlog')).toBeGreaterThan(order.indexOf('end:habits'));
-    expect(order).toContain('start:weeklyQuest');
+    expect(order.some(entry => entry.includes('weeklyQuest'))).toBe(false); // the Weekly Quest is gone from mobile
   });
 });

@@ -77,7 +77,6 @@ import {
 } from '@eiyu/shared';
 import { fetchProfile, updateProfile } from '@eiyu/shared';
 import { fetchStats } from '@eiyu/shared';
-import { fetchOrCreateWeeklyQuest, WeeklyQuest } from '@eiyu/shared';
 import { LongQuest, Quest, UserProfile } from '@eiyu/shared';
 
 /** App-wide client - also used by PersistQueryClientProvider in app/_layout.tsx. */
@@ -103,13 +102,10 @@ const backlogKey = (userId?: string) => ['backlog', userId ?? null] as const;
 
 /**
  * The refresh when the account's day changes: the board first, because reading it runs the server rollover that moves
- * unfinished one-time quests into Backlog; Backlog after it; the weekly quest in parallel.
+ * unfinished one-time quests into Backlog; Backlog after it.
  */
 export async function invalidateForNewDay(qc: QueryClient, userId: string): Promise<void> {
-  await Promise.all([
-    qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }).then(() => qc.invalidateQueries({ queryKey: backlogKey(userId) })),
-    qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
-  ]);
+  await qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }).then(() => qc.invalidateQueries({ queryKey: backlogKey(userId) }));
 }
 
 function isOfflineNetworkFailure(error: unknown): boolean {
@@ -184,7 +180,6 @@ interface EiyuStore {
   soundEffectsLoaded: boolean;
   setSoundEffectsEnabled: (enabled: boolean) => Promise<void>;
   /** R-30/R-31: this week's auto-generated quest, null until the first load resolves. */
-  weeklyQuest: WeeklyQuest | null;
   saveProfile: (input: { displayName: string; userClass: string }) => Promise<void>;
 }
 
@@ -271,19 +266,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     queryFn: () => trackOfflineFailure(() => fetchStats(userId!)),
     enabled: !!userId,
   });
-  // Depends on fresh stats (fetch-or-create writes a row server-side).
-  const weeklyQuestQuery = useQuery({
-    queryKey: ['weeklyQuest', userId ?? null],
-    // Self-fetches stats so create-or-fetch can never seed against stale data
-    // even when invalidations below are dispatched in parallel.
-    queryFn: () => trackOfflineFailure(async () =>
-      fetchOrCreateWeeklyQuest(
-        userId!,
-        await fetchStats(userId!),
-        profileQuery.data!.timeZone
-      )),
-    enabled: !!userId && !!profileQuery.data,
-  });
   const longQuestsQuery = useQuery({
     queryKey: longQuestsKey(userId),
     queryFn: () => trackOfflineFailure(() => fetchLongQuests(userId!)),
@@ -296,7 +278,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const longQuests = useMemo(() => longQuestsQuery.data ?? [], [longQuestsQuery.data]);
   const stats = useMemo(() => statsQuery.data ?? initialUser.stats, [statsQuery.data]);
   const profile = profileQuery.data ?? null;
-  const weeklyQuest = weeklyQuestQuery.data ?? null;
 
   useEffect(() => {
     if (!userId || !profile?.timeZone) return;
@@ -330,7 +311,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     backlogQuery.error,
     profileQuery.error,
     statsQuery.error,
-    weeklyQuestQuery.error,
   ].find((e): e is Error => !!e);
   const questsError = questsLoadError ? formatQuestLoadError(questsLoadError, questsHaveCachedData) : questActionError;
   const longQuestsError = longQuestsQuery.isPending || retryingLongQuests ? null : longQuestsQuery.error ? formatError(longQuestsQuery.error) : lqActionError;
@@ -379,7 +359,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         qc.invalidateQueries({ queryKey: backlogKey(userId), refetchType: 'active' }, { throwOnError: true }),
         qc.invalidateQueries({ queryKey: ['profile', userId], refetchType: 'active' }, { throwOnError: true }),
         qc.invalidateQueries({ queryKey: ['stats', userId], refetchType: 'active' }, { throwOnError: true }),
-        qc.invalidateQueries({ queryKey: ['weeklyQuest', userId], refetchType: 'active' }, { throwOnError: true }),
       ]).catch(() => {});
     });
     return () => {
@@ -566,7 +545,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: key }),
-          qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
         ]);
         setQuestActionError(null);
       } catch (err) {
@@ -641,7 +619,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           }
           await Promise.all([
             qc.invalidateQueries({ queryKey: ['stats', userId] }),
-            qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
           ]);
           setQuestActionError(null);
         })
@@ -665,7 +642,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
-          qc.invalidateQueries({ queryKey: ['weeklyQuest', userId] }),
         ]);
         setQuestActionError(null);
       } catch (err) {
@@ -806,7 +782,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       qc.refetchQueries({ queryKey: backlogKey(userId), type: 'active' }),
       qc.refetchQueries({ queryKey: ['profile', userId], type: 'active' }),
       qc.refetchQueries({ queryKey: ['stats', userId], type: 'active' }),
-      qc.refetchQueries({ queryKey: ['weeklyQuest', userId], type: 'active' }),
     ]).finally(() => setRetryingQuests(false));
   }, [qc, userId]);
 
@@ -916,7 +891,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         habitsQuery.isPending ||
         profileQuery.isPending ||
         statsQuery.isPending ||
-        weeklyQuestQuery.isPending ||
         retryingQuests,
       retryingLongQuests,
       questsError,
@@ -946,7 +920,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       soundEffectsEnabled,
       soundEffectsLoaded,
       setSoundEffectsEnabled,
-      weeklyQuest,
       saveProfile,
     }),
     [
@@ -957,7 +930,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       habitsQuery.isPending,
       profileQuery.isPending,
       statsQuery.isPending,
-      weeklyQuestQuery.isPending,
       retryingQuests,
       retryingLongQuests,
       questsError,
@@ -987,7 +959,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       soundEffectsEnabled,
       soundEffectsLoaded,
       setSoundEffectsEnabled,
-      weeklyQuest,
       saveProfile,
     ]
   );

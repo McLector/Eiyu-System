@@ -32,7 +32,7 @@ appId: com.mclector.eiyusystem
 - assertVisible: "3/3"
 - takeScreenshot: android-reload-smoke
 - tapOn: "STATUS"
-- assertVisible: "CURRENT RANK"
+- assertVisible: "ATTRIBUTE PROGRESS"
 - takeScreenshot: android-fontscale-status
 - tapOn: "CHAIN"
 - assertVisible: "Long Quests"

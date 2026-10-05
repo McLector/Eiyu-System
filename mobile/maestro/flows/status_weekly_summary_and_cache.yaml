@@ -2,12 +2,12 @@ appId: com.mclector.eiyusystem
 ---
 - runFlow: _helpers/login.yaml
 - tapOn: "STATUS"
-- assertVisible: "CURRENT RANK"
-- tapOn: "WEEKLY REVIEW"
-- assertVisible: ".*WEEKLY SUMMARY.*"
+- assertVisible: "ATTRIBUTE PROGRESS"
+- tapOn: "WEEKLY"
+- assertVisible: "WEEKLY DEBRIEF"
 - assertVisible: "LAST 7 DAYS"
 - extendedWaitUntil:
-    notVisible: "Thinking…"
+    notVisible: "Reading the week.*"
     timeout: 20000
 # Live success requires an actual generated paragraph. Readable errors are
 # covered by the local failure tests, not accepted as a live-success pass.
@@ -16,10 +16,10 @@ appId: com.mclector.eiyusystem
     text: ".+"
 
 # Re-visiting the tab this session must read the cache, not regenerate -
-# switch away and back and confirm it's instant (no "Thinking…" flash).
+# switch away and back and confirm it's instant (no loading flash).
 - tapOn: "STATS"
-- tapOn: "WEEKLY REVIEW"
-- assertNotVisible: "Thinking…"
+- tapOn: "WEEKLY"
+- assertNotVisible: "Reading the week.*"
 - assertVisible:
     id: "weekly-summary-content"
     text: ".+"

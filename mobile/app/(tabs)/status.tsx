@@ -1,546 +1,92 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import PagerView from 'react-native-pager-view';
 
-import { Divider } from '@/components/eiyu/divider';
-import { GlassView } from '@/components/eiyu/glass-view';
-import HabitHeatmap from '@/components/eiyu/habit-heatmap';
-import { StatIcon } from '@/components/eiyu/icons';
-import { PageBackground } from '@/components/eiyu/page-background';
-import { RadarChart } from '@/components/eiyu/radar-chart';
-import { Screen } from '@/components/eiyu/screen';
-import WeeklyReviewMatrix from '@/components/weekly-review-matrix';
-import {
-  RANK_CONFIG,
-  STATS,
-  STAT_COLORS,
-  fetchOrCreateWeeklySummary,
-  fetchWeeklyReview,
-  formatError,
-  regenerateWeeklySummary,
-  type Stat,
-  type WeeklyDayDatum,
-  weeklyStatTotal,
-} from '@eiyu/shared';
+import HabitHeatmap from '@/components/status/habit-heatmap';
+import { HeroPanel } from '@/components/status/hero-panel';
+import { StatBars } from '@/components/status/stat-bars';
+import { WeeklyDebrief } from '@/components/status/weekly-debrief';
+import { WeeklyPanel } from '@/components/status/weekly-panel';
+import { Segmented } from '@/components/ui/segmented';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { useTokens } from '@/contexts/theme-store';
 
-type StatusTab = 'stats' | 'weekly';
+type View3 = 'hero' | 'stats' | 'weekly';
+const VIEWS: { value: View3; label: string }[] = [
+  { value: 'hero', label: 'HERO' },
+  { value: 'stats', label: 'STATS' },
+  { value: 'weekly', label: 'WEEKLY' },
+];
 
 export default function StatusScreen() {
-  const { user, theme, darkMode, weeklyQuest } = useEiyu();
+  const t = useTokens();
+  const { user } = useEiyu();
   const { session } = useAuth();
-  const [tab, setTab] = useState<StatusTab>('stats');
-  const [weeklyData, setWeeklyData] = useState<WeeklyDayDatum[]>([]);
-  const [weeklyLoading, setWeeklyLoading] = useState(false);
-  const [weeklyError, setWeeklyError] = useState<string | null>(null);
-  const [weeklyRetryCount, setWeeklyRetryCount] = useState(0);
-  const [weeklySummary, setWeeklySummary] = useState<string | null>(null);
-  const [weeklySummaryLoading, setWeeklySummaryLoading] = useState(false);
-  const [weeklySummaryError, setWeeklySummaryError] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
-  const [regenerateError, setRegenerateError] = useState<string | null>(null);
-  const cfg = RANK_CONFIG[user.rank];
+  const userId = session?.user.id;
+  const [view, setView] = useState<View3>('stats');
+  const pagerRef = useRef<PagerView>(null);
 
+  // The segmented control and a swipe both end up here: keep the pager on the chosen view.
   useEffect(() => {
-    const userId = session?.user.id;
-    if (!userId || tab !== 'weekly') return;
-    let cancelled = false;
-    setWeeklyLoading(true);
-    setWeeklyError(null);
-    fetchWeeklyReview(userId, user.timeZone)
-      .then(data => {
-        if (!cancelled) setWeeklyData(data);
-      })
-      .catch(err => {
-        if (!cancelled) setWeeklyError(formatError(err));
-      })
-      .finally(() => {
-        if (!cancelled) setWeeklyLoading(false);
-      });
+    pagerRef.current?.setPage?.(VIEWS.findIndex(item => item.value === view));
+  }, [view]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user.id, tab, user.timeZone, weeklyRetryCount]);
-
-  /**
-   * R-60: the summary is PREFETCHED on mount rather than on the weekly tab
-   * tap. Generating one is a cold serial chain (two reads, an Edge Function
-   * hop, then a Gemini call), and starting it at tap time meant staring at a
-   * spinner for all of it. Starting it as soon as Status opens hides that
-   * behind however long the stats tab is read; a week that already has its
-   * summary costs one cached SELECT instead.
-   *
-   * The ref (not `weeklySummaryLoading` state) is what keeps this to one
-   * request: state set inside an effect is not visible to a re-run of that
-   * same effect in the same commit, so a state guard could fire twice.
-   */
-  const summaryRequested = useRef(false);
-  useEffect(() => {
-    const userId = session?.user.id;
-    if (!userId || summaryRequested.current) return;
-    summaryRequested.current = true;
-    let cancelled = false;
-    setWeeklySummaryLoading(true);
-    setWeeklySummaryError(null);
-    fetchOrCreateWeeklySummary(userId, user.timeZone)
-      .then(text => {
-        if (!cancelled) setWeeklySummary(text);
-      })
-      .catch(err => {
-        if (!cancelled) {
-          setWeeklySummaryError(formatError(err));
-          // Let a later mount retry a failed generation instead of leaving
-          // the week permanently summary-less.
-          summaryRequested.current = false;
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setWeeklySummaryLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.user.id, user.timeZone]);
-
-  const handleRegenerate = async () => {
-    const userId = session?.user.id;
-    if (!userId || regenerating || weeklySummary === null) return;
-    setRegenerating(true);
-    setRegenerateError(null);
-    try {
-      const text = await regenerateWeeklySummary(userId, user.timeZone);
-      setWeeklySummary(text);
-    } catch (err) {
-      const message = formatError(err);
-      setRegenerateError(
-        message.includes('regen cap reached')
-          ? "You've used both regenerations for today — more tomorrow"
-          : message
-      );
-    } finally {
-      setRegenerating(false);
-    }
+  const page = (value: View3, children: React.ReactNode) => {
+    const active = view === value;
+    return (
+      <View
+        key={value}
+        collapsable={false}
+        accessibilityElementsHidden={!active}
+        importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+        style={styles.page}>
+        <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
+      </View>
+    );
   };
 
-  const radarValues = STATS.reduce((acc, stat) => {
-    acc[stat] = user.stats[stat].level;
-    return acc;
-  }, {} as Record<Stat, number>);
-
-  const radarAccent = darkMode ? '#67e8f9' : '#0891b2';
-  const radarFill = darkMode ? 'rgba(103,232,249,0.12)' : 'rgba(8,145,178,0.1)';
-  const gridStroke = darkMode ? 'rgba(103,232,249,0.1)' : 'rgba(8,145,178,0.15)';
-
   return (
-    <View style={{ flex: 1, backgroundColor: theme.body }}>
-      <PageBackground />
-      <Screen contentContainerStyle={styles.scroll} topGap={24}>
-        <View style={styles.rankWrap}>
-          <Text style={[styles.rankLabel, { color: theme.muted, fontFamily: fonts.display }]}>
-            CURRENT RANK
-          </Text>
-          <View
-            style={[
-              styles.rankCircle,
-              { backgroundColor: cfg.bg, borderColor: cfg.color, shadowColor: cfg.glow },
-            ]}>
-            <Text style={[styles.rankValue, { color: cfg.color, fontFamily: fonts.display }]}>
-              {user.rank}
-            </Text>
-          </View>
-          <Text style={[styles.rankSub, { color: theme.muted, fontFamily: fonts.body }]}>
-            {user.name} · {user.userClass}
-          </Text>
-        </View>
-
-        {weeklyQuest && (
-          <GlassView style={styles.weeklyQuestCard}>
-            <View style={styles.weeklyQuestHeader}>
-              <View style={styles.weeklyQuestHeaderLeft}>
-                <StatIcon stat={weeklyQuest.stat} size={15} />
-                <Text style={[styles.weeklyQuestLabel, { color: theme.muted, fontFamily: fonts.display }]}>
-                  WEEKLY QUEST
-                </Text>
-              </View>
-              <Text style={[styles.mono, { color: STAT_COLORS[weeklyQuest.stat] }]}>
-                {Math.min(weeklyQuest.currentCount, weeklyQuest.targetCount)}/{weeklyQuest.targetCount}
-              </Text>
-            </View>
-            <Text style={[styles.weeklyQuestBody, { color: theme.text, fontFamily: fonts.body }]}>
-              Complete {weeklyQuest.targetCount} {weeklyQuest.stat} quests this week
-            </Text>
-            <View style={[styles.track, { backgroundColor: theme.track }]}>
-              <View
-                style={[
-                  styles.trackFill,
-                  {
-                    width: `${Math.min(100, (weeklyQuest.currentCount / weeklyQuest.targetCount) * 100)}%`,
-                    backgroundColor: STAT_COLORS[weeklyQuest.stat],
-                  },
-                ]}
-              />
-            </View>
-          </GlassView>
-        )}
-
-        <GlassView small style={styles.tabToggle}>
-          <View style={styles.tabRow}>
-            {(['stats', 'weekly'] as const).map(t => {
-              const active = tab === t;
-              return (
-                <Pressable
-                  key={t}
-                  onPress={() => setTab(t)}
-                  style={[
-                    styles.tabButton,
-                    {
-                      backgroundColor: active ? theme.accentGlass : 'transparent',
-                      borderColor: active ? theme.accentBorder : 'transparent',
-                    },
-                  ]}>
-                  <Text
-                    style={[
-                      styles.tabLabel,
-                      { color: active ? theme.accent : theme.muted, fontFamily: fonts.displaySemi },
-                    ]}>
-                    {t === 'stats' ? 'STATS' : 'WEEKLY REVIEW'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </GlassView>
-
-        {tab === 'stats' ? (
+    <View style={[styles.root, { backgroundColor: t['page-flat'] }]}>
+      <View style={styles.top}>
+        <Segmented options={VIEWS} value={view} onChange={setView} accessibilityLabel="Status views" />
+      </View>
+      <PagerView
+        testID="status-pager"
+        ref={pagerRef}
+        style={styles.pager}
+        initialPage={1}
+        onPageSelected={(event: { nativeEvent: { position: number } }) => {
+          const next = VIEWS[event.nativeEvent.position];
+          if (next) setView(next.value);
+        }}>
+        {page('hero', <HeroPanel user={user} />)}
+        {page('stats', (
           <>
-            <GlassView style={styles.radarCard}>
-              <View style={styles.radarWrap}>
-                <RadarChart
-                  values={radarValues}
-                  maxValue={50}
-                  size={230}
-                  accent={radarAccent}
-                  fill={radarFill}
-                  gridStroke={gridStroke}
-                />
-              </View>
-            </GlassView>
-
-            <GlassView style={styles.statList}>
-              {STATS.map((stat, i) => {
-                const data = user.stats[stat];
-                const pct = Math.round((data.xp / data.xpMax) * 100);
-                return (
-                  <View key={stat}>
-                    {i > 0 && <Divider />}
-                    <View style={styles.statRow}>
-                      <StatIcon stat={stat} size={16} />
-                      <View style={{ flex: 1 }}>
-                        <View style={styles.statRowHeader}>
-                          <Text style={[styles.statRowLabel, { color: STAT_COLORS[stat], fontFamily: fonts.display }]}>
-                            {stat}
-                          </Text>
-                          <Text style={[styles.mono, { color: theme.muted }]}>
-                            {data.xp} / {data.xpMax} XP
-                          </Text>
-                        </View>
-                        <View style={[styles.track, { backgroundColor: theme.track }]}>
-                          <View
-                            style={[
-                              styles.trackFill,
-                              { width: `${pct}%`, backgroundColor: STAT_COLORS[stat] },
-                            ]}
-                          />
-                        </View>
-                      </View>
-                      <View
-                        style={[
-                          styles.levelPill,
-                          { backgroundColor: `${STAT_COLORS[stat]}18`, borderColor: `${STAT_COLORS[stat]}35` },
-                        ]}>
-                        <Text style={[styles.mono, { color: STAT_COLORS[stat], fontSize: 13 }]}>
-                          {data.level}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </GlassView>
-
-            <HabitHeatmap userId={session?.user.id} />
+            <View>
+              <Text style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>ATTRIBUTE PROGRESS</Text>
+              <StatBars stats={user.stats} />
+            </View>
+            <HabitHeatmap userId={userId} timeZone={user.timeZone} />
           </>
-        ) : (
+        ))}
+        {page('weekly', (
           <>
-            <GlassView style={styles.summaryCard}>
-              <View style={styles.summaryTitleRow}>
-                <Text style={[styles.summaryTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                  ✨ WEEKLY SUMMARY
-                </Text>
-                <Pressable
-                  onPress={handleRegenerate}
-                  disabled={regenerating || weeklySummary === null}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel="Regenerate weekly summary">
-                  <Text
-                    style={[
-                      styles.regenerateText,
-                      {
-                        color: theme.accent,
-                        fontFamily: fonts.display,
-                        opacity: regenerating || weeklySummary === null ? 0.5 : 1,
-                      },
-                    ]}>
-                    {regenerating ? 'REGENERATING…' : '↻ REGENERATE'}
-                  </Text>
-                </Pressable>
-              </View>
-              {regenerateError && (
-                <Text style={[styles.regenerateErrorText, { color: '#f87171' }]}>{regenerateError}</Text>
-              )}
-              {weeklySummaryError ? (
-                <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>
-                  Couldn&apos;t load summary: {weeklySummaryError}
-                </Text>
-              ) : weeklySummaryLoading || weeklySummary === null ? (
-                <Text style={[styles.summaryBody, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Thinking…
-                </Text>
-              ) : (
-                <Text testID="weekly-summary-content" style={[styles.summaryBody, { color: theme.text, fontFamily: fonts.body }]}>
-                  {weeklySummary}
-                </Text>
-              )}
-            </GlassView>
-
-            <GlassView style={styles.weeklyCard}>
-              <Text style={[styles.weeklyTitle, { color: theme.text, fontFamily: fonts.display }]}>
-                LAST 7 DAYS
-              </Text>
-            {weeklyError ? (
-              <View style={styles.weeklyError}>
-                <Text style={[styles.weeklyEmptyText, { color: '#f87171' }]}>Couldn&apos;t load weekly review: {weeklyError}</Text>
-                <Pressable
-                  onPress={() => setWeeklyRetryCount(value => value + 1)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry weekly review"
-                  style={styles.retryButton}>
-                  <Text style={[styles.regenerateText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
-                </Pressable>
-              </View>
-            ) : weeklyLoading ? (
-              <Text style={[styles.weeklyEmptyText, { color: theme.muted }]}>Loading…</Text>
-            ) : (
-              <>
-                <WeeklyReviewMatrix
-                  data={weeklyData}
-                  colors={{ text: theme.text, muted: theme.muted, accent: theme.accent, track: theme.track }}
-                />
-                <Divider style={{ marginTop: 8, marginBottom: 12 }} />
-                <View style={styles.weeklyTotals}>
-                  {STATS.map(stat => {
-                    const total = weeklyStatTotal(weeklyData, stat);
-                    return (
-                      <View key={stat} style={styles.weeklyTotalCell}>
-                        <StatIcon stat={stat} size={14} />
-                        <Text style={[styles.mono, { color: STAT_COLORS[stat], fontSize: 15 }]}>{total}</Text>
-                        <Text style={[styles.weeklyTotalLabel, { color: theme.dim, fontFamily: fonts.body }]}>
-                          {stat}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            )}
-          </GlassView>
+            <WeeklyPanel active={view === 'weekly'} userId={userId} timeZone={user.timeZone} />
+            <WeeklyDebrief userId={userId} timeZone={user.timeZone} />
           </>
-        )}
-      </Screen>
+        ))}
+      </PagerView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    paddingHorizontal: 16,
-    paddingBottom: 100,
-    gap: 16,
-  },
-  rankWrap: {
-    alignItems: 'center',
-  },
-  rankLabel: {
-    fontSize: 11,
-    letterSpacing: 2,
-    marginBottom: 8,
-  },
-  rankCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.7,
-    shadowRadius: 20,
-    elevation: 6,
-  },
-  rankValue: {
-    fontSize: 38,
-  },
-  rankSub: {
-    fontSize: 13,
-    marginTop: 10,
-  },
-  weeklyQuestCard: {
-    padding: 16,
-    gap: 8,
-  },
-  weeklyQuestHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  weeklyQuestHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  weeklyQuestLabel: {
-    fontSize: 11,
-    letterSpacing: 1.5,
-  },
-  weeklyQuestBody: {
-    fontSize: 13,
-  },
-  tabToggle: {
-    padding: 4,
-  },
-  tabRow: {
-    flexDirection: 'row',
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  tabLabel: {
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-  radarCard: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  radarWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statList: {
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-  },
-  statRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  statRowHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: 6,
-  },
-  statRowLabel: {
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-  mono: {
-    fontFamily: 'JetBrainsMono_500Medium',
-    fontSize: 11,
-  },
-  track: {
-    borderRadius: 4,
-    height: 5,
-    overflow: 'hidden',
-  },
-  trackFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  levelPill: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    minWidth: 40,
-    alignItems: 'center',
-  },
-  summaryCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 8,
-  },
-  summaryTitle: {
-    fontSize: 11,
-    letterSpacing: 1.5,
-  },
-  summaryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  regenerateText: {
-    fontSize: 10,
-    letterSpacing: 1,
-  },
-  regenerateErrorText: {
-    fontSize: 12,
-  },
-  summaryBody: {
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  weeklyCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  weeklyTitle: {
-    fontSize: 16,
-    letterSpacing: 1,
-    marginBottom: 16,
-  },
-  weeklyEmptyText: {
-    fontSize: 13,
-    textAlign: 'center',
-    paddingVertical: 20,
-  },
-  weeklyError: {
-    alignItems: 'center',
-  },
-  retryButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  weeklyTotals: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  weeklyTotalCell: {
-    alignItems: 'center',
-    gap: 4,
-    flex: 1,
-  },
-  weeklyTotalLabel: {
-    fontSize: 9,
-    letterSpacing: 1,
-  },
+  root: { flex: 1 },
+  top: { paddingHorizontal: 16, paddingTop: 12 },
+  pager: { flex: 1, marginTop: 8 },
+  page: { flex: 1 },
+  content: { paddingHorizontal: 16, paddingBottom: 100, gap: 20 },
+  eyebrow: { fontSize: 11, letterSpacing: 1.4, marginBottom: 4 },
 });
