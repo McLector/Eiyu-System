@@ -37,8 +37,8 @@ const LANES: { id: LaneId; label: string }[] = [
   { id: 'one-time', label: 'ONE TIME QUEST' },
   { id: 'backlog', label: 'BACKLOG' },
 ];
-/** The kinds the add sheet offers. Backlog joins once the quest editor can create one. */
-const OFFERED_TYPES: QuestTypeChoice[] = ['habit', 'one_time'];
+/** The kinds the add sheet offers. */
+const OFFERED_TYPES: QuestTypeChoice[] = ['habit', 'one_time', 'backlog'];
 /** The tab bar floats over the content at normal font size; this keeps the footer clear of it. */
 const TAB_BAR_OVERLAY = 73;
 

@@ -7,7 +7,7 @@ appId: com.mclector.eiyusystem
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Learn Spanish"
 - hideKeyboard
-- tapOn: ".*SUGGEST PENALTIES.*"
+- tapOn: "SUGGEST PENALTIES"
 - assertVisible: "THINKING.*"
 - extendedWaitUntil:
     notVisible: "THINKING.*"

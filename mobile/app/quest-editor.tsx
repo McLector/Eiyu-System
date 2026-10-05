@@ -1,22 +1,42 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
-import { AccessibilityInfo, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  accountDateKey, DEFAULT_HABIT_DAYS, formatError, normalizeNameBoundaries, QUEST_GENRES, STATS, suggestEasyVersions,
+  validateQuestName,
+  type Difficulty, type HabitInput, type Quest, type QuestGenre, type QuestType, type Stat,
+} from '@eiyu/shared';
 
-import { GhostButton } from '@/components/eiyu/ghost-button';
-import { StatIcon } from '@/components/eiyu/icons';
-import { Screen } from '@/components/eiyu/screen';
-import { accountDateKey, DEFAULT_HABIT_DAYS, DAYS, STATS, STAT_COLORS, validateQuestName } from '@eiyu/shared';
+import { DeleteQuestModal } from '@/components/board/delete-quest-modal';
+import { PlusIcon, SparkleIcon } from '@/components/eiyu/icons';
+import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
+import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
+import { Field } from '@/components/ui/field';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { formatError, suggestEasyVersions } from '@eiyu/shared';
-import { hapticLight, hapticSuccess } from '@/lib/haptics';
+import { useTokens } from '@/contexts/theme-store';
 import { publishBoardReturnIntent } from '@/lib/board-return-intent';
-import { HabitInput, Quest } from '@eiyu/shared';
-import { Difficulty, QuestType, Stat } from '@eiyu/shared';
+import { hapticLight, hapticSuccess } from '@/lib/haptics';
 
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
+const TYPES: { id: QuestType; label: string }[] = [
+  { id: 'habit', label: 'Habit' },
+  { id: 'one_time', label: 'One-time' },
+  { id: 'backlog', label: 'Backlog' },
+];
+const TITLES: Record<QuestType, string> = { habit: 'NEW QUEST', one_time: 'NEW ONE-TIME QUEST', backlog: 'NEW BACKLOG QUEST' };
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+/** reminder_time is required by the database; untimed quests keep this placeholder and timeSet false. */
+const PLACEHOLDER_TIME = '08:00';
+
+function questTypeParam(value: string | undefined): QuestType {
+  return value === 'one_time' || value === 'backlog' ? value : 'habit';
+}
 
 /** "HH:mm" (24h, as stored) -> "h:mm AM/PM" for the themed trigger. */
 function formatTime12(hhmm: string): string {
@@ -37,7 +57,7 @@ function dateToTimeString(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Local calendar date -> "YYYY-MM-DD", matching how the picker itself reports dates (never UTC — see Slice 4's global constraint on this). */
+/** Local calendar date -> "YYYY-MM-DD", matching how the picker itself reports dates (never UTC). */
 function dateToDateKey(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -54,59 +74,98 @@ function formatDateShort(key: string): string {
   return dateKeyToDate(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-const difficultyColor: Record<Difficulty, string> = {
-  Hard: '#f87171',
-  Medium: '#fbbf24',
-  Easy: '#4ade80',
-};
+function FieldLabel({ children }: { children: string }) {
+  const t = useTokens();
+  return <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>{children}</Text>;
+}
+
+/** A tappable field that opens the system date or time dialog. */
+function PickerTrigger({ label, value, onPress, disabled }: { label: string; value: string; onPress: () => void; disabled?: boolean }) {
+  const t = useTokens();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.trigger, { backgroundColor: t.track, borderColor: t['glass-border'] }, disabled && styles.disabled]}>
+      <Text style={{ color: t.text, fontFamily: fonts.body, fontSize: 15 }}>{value}</Text>
+    </Pressable>
+  );
+}
 
 export default function QuestEditorScreen() {
+  const t = useTokens();
   const insets = useSafeAreaInsets();
-  const { theme, user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
-  const { id, type, returnLane } = useLocalSearchParams<{ id?: string; type?: string; returnLane?: string }>();
+  const navigation = useNavigation();
+  const { user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
+  const { id, type: typeParam, returnLane } = useLocalSearchParams<{ id?: string; type?: string; returnLane?: string }>();
   const liveQuest = id ? user.quests.find(q => q.id === id) ?? null : null;
+  // A quest that leaves live data mid-delete keeps the editor in edit mode instead of flipping to "new".
   const editQuestRef = useRef<Quest | null>(liveQuest);
   if (liveQuest) editQuestRef.current = liveQuest;
   const quest = liveQuest ?? editQuestRef.current;
   const isEditing = Boolean(id);
-  const editingId = id;
 
-  // Editing locks the quest type; creation takes it from the board's chooser
-  // popup. Round-tripping questType/description here is what keeps an edit
-  // from silently reverting a one-time quest back into a recurring habit.
-  const [questType] = useState<QuestType>(
-    quest?.questType ?? (type === 'one_time' ? 'one_time' : 'habit')
-  );
-  const isOneTime = questType === 'one_time';
-
+  // The type is chosen when a quest is created and never changed in the editor: after that only the server's move
+  // functions change it.
+  const [type, setType] = useState<QuestType>(quest?.questType ?? questTypeParam(typeParam));
   const [name, setName] = useState(quest?.name ?? '');
+  const [nameTouched, setNameTouched] = useState(false);
+  const [note, setNote] = useState(quest?.description ?? '');
   const [easyVersion, setEasyVersion] = useState(quest?.easyVersion ?? '');
-  const [description, setDescription] = useState(quest?.description ?? '');
-  const [time, setTime] = useState(quest?.time ?? '08:00');
-  const [timePickerVisible, setTimePickerVisible] = useState(false);
-  const [scheduledDate, setScheduledDate] = useState(accountDateKey(new Date(), user.timeZone));
-  const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const [targetCount, setTargetCount] = useState<string>(quest?.targetCount != null ? String(quest.targetCount) : '');
+  const [time, setTime] = useState(quest?.time ?? PLACEHOLDER_TIME);
+  const [noTime, setNoTime] = useState(quest ? quest.timeSet === false : true);
+  const [scheduledDate, setScheduledDate] = useState(() => quest?.scheduledDate ?? accountDateKey(new Date(), user.timeZone));
+  const [targetCount, setTargetCount] = useState(quest?.targetCount != null ? String(quest.targetCount) : '');
   const [days, setDays] = useState<number[]>(quest?.days ?? [...DEFAULT_HABIT_DAYS]);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [difficulty, setDifficulty] = useState<Difficulty>(quest?.difficulty ?? 'Medium');
+  const [genre, setGenre] = useState<QuestGenre | null>(quest?.genre ?? null);
+  const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [discardPrompt, setDiscardPrompt] = useState(false);
   const lifecycleInFlight = useRef(false);
   const pendingRef = useRef(false);
-  const deleteCancelRef = useRef<View>(null);
+  const committed = useRef(false);
+  const heldAction = useRef<unknown>(null);
+
+  const isHabit = type === 'habit';
+  const isOneTime = type === 'one_time';
+
+  const snapshot = () => JSON.stringify({ name, note, easyVersion, time, noTime, scheduledDate, targetCount, days, stat, difficulty, type, genre });
+  const [initialSnapshot] = useState(snapshot);
+  const dirty = snapshot() !== initialSnapshot;
+
+  // Leaving with unsaved edits (Back, swipe, the close button) asks first; a finished save or lifecycle change does not.
+  useEffect(() => navigation.addListener('beforeRemove', event => {
+    if (!dirty || committed.current) return;
+    event.preventDefault();
+    heldAction.current = event.data.action;
+    setDiscardPrompt(true);
+  }), [navigation, dirty]);
+
+  const keepEditing = () => setDiscardPrompt(false);
+  const discard = () => {
+    committed.current = true;
+    setDiscardPrompt(false);
+    navigation.dispatch(heldAction.current as Parameters<typeof navigation.dispatch>[0]);
+  };
 
   const handleSuggest = async () => {
     if (!name.trim() || suggesting) return;
     setSuggesting(true);
     setSuggestError(null);
     try {
-      const result = await suggestEasyVersions(name.trim(), stat);
-      setSuggestions(result);
+      setSuggestions(await suggestEasyVersions(name.trim(), stat));
     } catch (err) {
       setSuggestError(formatError(err));
     } finally {
@@ -114,65 +173,68 @@ export default function QuestEditorScreen() {
     }
   };
 
-  const toggleDay = (d: number) => {
-    setDays(prev => (prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()));
-  };
+  const toggleDay = (d: number) => setDays(prev => (prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()));
 
-  // One-time quests have no Penalty — the name alone validates them.
-  // A quantity habit (target count set) has no Penalty either — target count
-  // and the legacy `easyVersion` field are alternative ways to satisfy a habit's
-  // "how do I complete this" requirement, not both required at once.
-  const nameError = quest?.name === name ? null : validateQuestName(name);
+  // One-time and Backlog quests have no penalty, and neither does a quantity habit (target count set): every other habit
+  // needs one (the database enforces this with habits_easy_version_present).
+  const nameProblem = quest?.name === name ? null : validateQuestName(name);
+  const nameError = nameTouched ? nameProblem : null;
   const targetCountError = targetCount && Number(targetCount) < 2 ? 'Target count must be at least 2.' : null;
-  const penaltyMissing = !isOneTime && !targetCount && !easyVersion.trim();
-  const valid = !nameError && !targetCountError && !penaltyMissing;
-  const saveDisabledReason = nameError ?? targetCountError ??
-    (penaltyMissing ? 'Add a penalty, or set a target count of at least 2.' : undefined);
+  const penaltyMissing = isHabit && !targetCount && !easyVersion.trim();
+  const valid = !nameProblem && !targetCountError && !penaltyMissing;
+
+  const finish = () => {
+    committed.current = true;
+    router.back();
+  };
 
   const handleSave = async () => {
     if (!valid || submitting) return;
     const input: HabitInput = {
-      name: name.trim(),
-      easyVersion: isOneTime ? null : easyVersion.trim(),
-      description: description.trim(),
-      questType,
-      time,
-      days,
+      name: quest?.name === name ? name : normalizeNameBoundaries(name),
+      easyVersion: isHabit ? easyVersion.trim() || null : null,
+      description: note.trim() || null,
+      questType: type,
+      time: isHabit || (isOneTime && !noTime) ? time : PLACEHOLDER_TIME,
+      days: isHabit ? days : [],
       stat,
       difficulty,
       scheduledDate: isOneTime ? scheduledDate : null,
-      targetCount: !isOneTime && targetCount ? Number(targetCount) : null,
+      targetCount: isHabit && targetCount ? Number(targetCount) : null,
+      genre: isHabit ? null : genre,
+      timeSet: isHabit ? true : isOneTime ? !noTime : false,
     };
     setSubmitting(true);
+    setSaving(true);
     pendingRef.current = true;
     setError(null);
     try {
-        await saveHabit(input, editingId);
-        if (!editingId && isOneTime && returnLane === 'one-time') {
-          publishBoardReturnIntent('one-time');
-        }
-        hapticSuccess();
-      router.back();
+      await saveHabit(input, id);
+      if (!id && isOneTime && returnLane === 'one-time') publishBoardReturnIntent('one-time');
+      if (!id && type === 'backlog' && returnLane === 'backlog') publishBoardReturnIntent('backlog');
+      hapticSuccess();
+      finish();
     } catch (err) {
       setError(formatError(err));
     } finally {
       pendingRef.current = false;
+      setSaving(false);
       setSubmitting(false);
     }
   };
 
   const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
-    if (!editingId || submitting || lifecycleInFlight.current) return;
+    if (!id || submitting || lifecycleInFlight.current) return;
     lifecycleInFlight.current = true;
     pendingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
-      if (operation === 'archive') await archiveQuest(editingId);
-      if (operation === 'restore') await restoreQuest(editingId);
-      if (operation === 'delete') await deleteQuest(editingId);
+      if (operation === 'archive') await archiveQuest(id);
+      if (operation === 'restore') await restoreQuest(id);
+      if (operation === 'delete') await deleteQuest(id);
       hapticLight();
-      router.back();
+      finish();
     } catch (err) {
       pendingRef.current = false;
       setError(formatError(err));
@@ -182,654 +244,274 @@ export default function QuestEditorScreen() {
     }
   };
 
-  const fieldStyle = { backgroundColor: theme.track, borderColor: theme.accentBorder, color: theme.text };
+  const close = () => { if (!pendingRef.current && !confirmDelete) router.back(); };
 
   return (
-    <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
-      <View style={[styles.sheet, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
-        <View style={[styles.handle, { backgroundColor: theme.accentBorder }]} />
-        <View style={styles.headerRow}>
-          <Text style={[styles.headerTitle, { color: theme.text, fontFamily: fonts.display }]}>
-            {isEditing ? 'EDIT QUEST' : isOneTime ? 'NEW ONE-TIME QUEST' : 'NEW QUEST'}
-          </Text>
-          <Pressable
-            testID="quest-editor-close"
-            accessibilityRole="button"
-            accessibilityLabel="Close quest editor"
-            onPress={() => { if (!pendingRef.current && !confirmDelete) router.back(); }}
-            disabled={submitting || confirmDelete}
-            style={styles.closeButton}>
-            <Text style={[styles.closeX, { color: theme.dim }]}>×</Text>
-          </Pressable>
-        </View>
+    <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t['page-flat'] }]}>
+      <View style={[styles.header, { paddingTop: insets.top, borderBottomColor: t['divider-flat'] }]}>
+        <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>
+          {isEditing ? 'EDIT QUEST' : TITLES[type]}
+        </Text>
+        <Pressable
+          testID="quest-editor-close"
+          accessibilityRole="button"
+          accessibilityLabel="Close quest editor"
+          onPress={close}
+          disabled={submitting || confirmDelete}
+          style={styles.close}>
+          <View style={styles.closeGlyph}><PlusIcon size={22} color={t['muted-flat']} /></View>
+        </Pressable>
+      </View>
 
-        <View testID="quest-editor-form" style={{ flexShrink: 1 }}>
-        <Screen edges={[]} fill={false} contentContainerStyle={{ gap: 16 }}>
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME <Text style={{ color: theme.dim, fontSize: 10 }}>(required)</Text></Text>
-            <TextInput
-              style={[styles.field, fieldStyle]}
-              placeholder="e.g. Code for 2 hours"
-              placeholderTextColor={theme.dim}
-              value={name}
-              onChangeText={setName}
-              accessibilityLabel="Quest name"
-              accessibilityHint={nameError ?? undefined}
-            />
-            {nameError && <Text testID="quest-name-error" accessibilityRole="alert" style={styles.fieldError}>{nameError}</Text>}
-          </View>
-
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              NOTE <Text style={{ color: theme.dim, fontSize: 10 }}>(optional)</Text>
-            </Text>
-            <TextInput
-              style={[styles.field, styles.descriptionField, fieldStyle]}
-              placeholder="Context, links, why it matters…"
-              placeholderTextColor={theme.dim}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
-          </View>
-
-          {!isOneTime && !targetCount && (
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-                  PENALTY <Text style={{ color: theme.dim, fontSize: 10 }}>(required unless target count is 2 or more)</Text>
-            </Text>
-            <TextInput
-              style={[styles.field, fieldStyle]}
-              placeholder="e.g. Code for 20 minutes"
-              placeholderTextColor={theme.dim}
-              value={easyVersion}
-              onChangeText={setEasyVersion}
-            />
-            {penaltyMissing && <Text style={styles.fieldHint}>Add a penalty, or set a target count of at least 2.</Text>}
-            <Pressable
-              onPress={handleSuggest}
-              disabled={!name.trim() || suggesting}
-              style={{ marginTop: 8, opacity: !name.trim() || suggesting ? 0.5 : 1 }}>
-              <Text style={[styles.suggestText, { color: theme.accent, fontFamily: fonts.display }]}>
-                {suggesting ? 'THINKING…' : '✨ SUGGEST PENALTIES'}
-              </Text>
-            </Pressable>
-            {suggestError && <Text style={[styles.errorText, { marginTop: 6 }]}>{suggestError}</Text>}
-            {suggestions.length > 0 && (
-              <View style={styles.suggestionList}>
-                {suggestions.map((s, i) => (
-                  <Pressable
-                    key={i}
-                    testID={`quest-ai-suggestion-${i + 1}`}
-                    accessibilityLabel={s}
-                    onPress={() => {
-                      setEasyVersion(s);
-                      setSuggestions([]);
-                    }}
-                    style={[styles.suggestionChip, { borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>
-                    <Text style={[styles.suggestionChipText, { color: theme.text, fontFamily: fonts.body }]}>
-                      {s}
-                    </Text>
-                  </Pressable>
+      <View testID="quest-editor-form" style={styles.form}>
+        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formContent}>
+          {!isEditing ? (
+            <View>
+              <FieldLabel>TYPE</FieldLabel>
+              <View style={styles.row}>
+                {TYPES.map(option => (
+                  <Chip key={option.id} label={option.label} selected={type === option.id} onPress={() => setType(option.id)} />
                 ))}
               </View>
-            )}
-          </View>
-          )}
+            </View>
+          ) : null}
 
-          {!isOneTime && (
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              TARGET COUNT <Text style={{ color: theme.dim, fontSize: 10 }}>(optional — e.g. 8x a day)</Text>
-            </Text>
-            <TextInput
-              style={[styles.field, fieldStyle]}
+          <Field
+            label="Quest name"
+            placeholder="e.g. Code for 2 hours"
+            value={name}
+            onChangeText={value => { setName(value); setNameTouched(true); }}
+            onBlur={() => setNameTouched(true)}
+            error={nameError ?? undefined}
+            errorTestID="quest-name-error"
+          />
+
+          <Field
+            label="Note"
+            placeholder="Context, links, why it matters…"
+            value={note}
+            onChangeText={setNote}
+            multiline
+          />
+
+          {isHabit && !targetCount ? (
+            <View style={styles.group}>
+              <Field
+                label="Penalty"
+                placeholder="e.g. Code for 20 minutes"
+                value={easyVersion}
+                onChangeText={setEasyVersion}
+                hint={penaltyMissing ? 'Add a penalty, or set a target count of at least 2.' : 'Required unless a target count is set.'}
+              />
+              <Button
+                variant="quiet"
+                label="SUGGEST PENALTIES"
+                icon={<SparkleIcon color={t.accent} />}
+                disabled={!name.trim()}
+                busy={suggesting}
+                onPress={() => void handleSuggest()}
+              />
+              {suggestError ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{suggestError}</Text> : null}
+              {suggestions.map((s, i) => (
+                <Pressable
+                  key={s}
+                  testID={`quest-ai-suggestion-${i + 1}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={s}
+                  onPress={() => { setEasyVersion(s); setSuggestions([]); }}
+                  style={[styles.suggestion, { borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }]}>
+                  <Text style={{ color: t.text, fontFamily: fonts.body, fontSize: 14 }}>{s}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {isHabit ? (
+            <Field
+              label="Target count"
               placeholder="Leave blank for a normal habit"
-              placeholderTextColor={theme.dim}
               value={targetCount}
-              onChangeText={t => setTargetCount(t.replace(/[^0-9]/g, ''))}
+              onChangeText={value => setTargetCount(value.replace(/[^0-9]/g, ''))}
               keyboardType="number-pad"
+              hint="Optional — e.g. 8 for 8x a day"
+              error={targetCountError ?? undefined}
+              errorTestID="quest-target-error"
             />
-            {targetCountError && <Text testID="quest-target-error" accessibilityRole="alert" style={styles.fieldError}>{targetCountError}</Text>}
-          </View>
-          )}
+          ) : null}
 
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              REMINDER TIME
-            </Text>
-            {/* Themed trigger -> native platform dialog (#9). Always 12h AM/PM
-                BY DESIGN per the original request ("users shouldn't have to
-                type, no 24-hour format") - is24Hour only affects Android; iOS
-                follows locale regardless. Not locale-adaptive on purpose.
-                Replaces the old free-text "08:00" input users had to type into. */}
-            <Pressable
-              style={[styles.field, styles.timeTrigger, fieldStyle]}
-              onPress={() => setTimePickerVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Choose reminder time">
-              <Text style={{ color: theme.text, fontFamily: fonts.body }}>{formatTime12(time)}</Text>
-            </Pressable>
-            {timePickerVisible && (
-              <View>
-                <DateTimePicker
-                  value={timeStringToDate(time)}
-                  mode="time"
-                  is24Hour={false}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event, date) => {
-                    if (Platform.OS === 'android') {
-                      // Android's dialog is modal and fires onChange once.
-                      setTimePickerVisible(false);
-                      if (event.type === 'set' && date) {
-                        setTime(dateToTimeString(date));
-                      }
-                    } else {
-                      // iOS spinner fires continuously while scrolling —
-                      // auto-closing here would unmount it on the first touch.
-                      // Update live; the explicit DONE button closes it.
-                      if (date) {
-                        setTime(dateToTimeString(date));
-                      }
-                    }
-                  }}
-                />
-                {Platform.OS === 'ios' && (
-                  <GhostButton label="DONE" onPress={() => setTimePickerVisible(false)} />
-                )}
-              </View>
-            )}
-          </View>
-
-          {isOneTime && (
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>DATE</Text>
-            <Pressable
-              style={[styles.field, styles.timeTrigger, fieldStyle]}
-              onPress={() => setDatePickerVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Choose quest date">
-              <Text style={{ color: theme.text, fontFamily: fonts.body }}>{formatDateShort(scheduledDate)}</Text>
-            </Pressable>
-            {datePickerVisible && (
-              <View>
+          {isOneTime && !isEditing ? (
+            <View>
+              <FieldLabel>DATE</FieldLabel>
+              <PickerTrigger label="Choose quest date" value={formatDateShort(scheduledDate)} onPress={() => setDatePickerVisible(true)} />
+              {datePickerVisible ? (
                 <DateTimePicker
                   value={dateKeyToDate(scheduledDate)}
                   mode="date"
                   minimumDate={new Date()}
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={(event, date) => {
-                    if (Platform.OS === 'android') {
-                      setDatePickerVisible(false);
-                      if (event.type === 'set' && date) {
-                        setScheduledDate(dateToDateKey(date));
-                      }
-                    } else {
-                      if (date) {
-                        setScheduledDate(dateToDateKey(date));
-                      }
-                    }
+                    setDatePickerVisible(false);
+                    if (event.type === 'set' && date) setScheduledDate(dateToDateKey(date));
                   }}
                 />
-                {Platform.OS === 'ios' && (
-                  <GhostButton label="DONE" onPress={() => setDatePickerVisible(false)} />
-                )}
+              ) : null}
+            </View>
+          ) : null}
+
+          {isOneTime && isEditing ? (
+            <View>
+              <FieldLabel>DATE</FieldLabel>
+              <Text style={[styles.lockedDate, { color: t.text, fontFamily: fonts.body }]}>{formatDateShort(scheduledDate)}</Text>
+              <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>The date is fixed once a quest is created.</Text>
+            </View>
+          ) : null}
+
+          {isHabit || isOneTime ? (
+            <View>
+              <View style={styles.labelRow}>
+                <FieldLabel>{isHabit ? 'REMINDER TIME' : 'TIME'}</FieldLabel>
+                {isOneTime ? <Chip kind="checkbox" compact label="No set time" selected={noTime} onPress={() => setNoTime(v => !v)} /> : null}
               </View>
-            )}
-          </View>
-          )}
+              <PickerTrigger
+                label="Choose reminder time"
+                value={formatTime12(time)}
+                disabled={isOneTime && noTime}
+                onPress={() => setTimePickerVisible(true)}
+              />
+              {timePickerVisible ? (
+                <DateTimePicker
+                  value={timeStringToDate(time)}
+                  mode="time"
+                  is24Hour={false}
+                  onChange={(event, date) => {
+                    setTimePickerVisible(false);
+                    if (event.type === 'set' && date) setTime(dateToTimeString(date));
+                  }}
+                />
+              ) : null}
+            </View>
+          ) : null}
 
-          {!isOneTime && (
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>DAYS</Text>
-            <View style={styles.daysRow}>
-              {DAYS.map((day, i) => {
-                const active = days.includes(i);
-                return (
-                  <Pressable
-                    key={day}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][i]}
-                    accessibilityState={{ checked: active }}
+          {isHabit ? (
+            <View>
+              <FieldLabel>DAYS</FieldLabel>
+              <View style={styles.row}>
+                {DAY_SHORT.map((short, i) => (
+                  <Chip
+                    key={short}
+                    compact
+                    kind="checkbox"
+                    label={short}
+                    accessibilityLabel={DAY_NAMES[i]}
+                    selected={days.includes(i)}
                     onPress={() => toggleDay(i)}
-                    style={[
-                      styles.dayButton,
-                      {
-                        borderColor: active ? theme.accentStrong : theme.glassBorder,
-                        backgroundColor: active ? theme.accentGlass : 'transparent',
-                      },
-                    ]}>
-                    <Text
-                      style={[
-                        styles.dayButtonText,
-                        { color: active ? theme.accent : theme.dim, fontFamily: fonts.display },
-                      ]}>
-                      {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][i]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                  />
+                ))}
+              </View>
             </View>
-          </View>
-          )}
+          ) : null}
+
+          {!isHabit ? (
+            <View>
+              <FieldLabel>GENRE</FieldLabel>
+              <View style={styles.row}>
+                {QUEST_GENRES.map(g => (
+                  <Chip key={g.id} label={g.label} selected={genre === g.id} onPress={() => setGenre(genre === g.id ? null : g.id)} />
+                ))}
+              </View>
+            </View>
+          ) : null}
 
           <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>STAT</Text>
-            <View style={styles.statRow}>
-              {STATS.map(s => {
-                const active = stat === s;
-                const color = STAT_COLORS[s];
-                return (
-                  <Pressable
-                    key={s}
-                    accessibilityRole="radio"
-                    accessibilityLabel={s}
-                    accessibilityState={{ checked: active, selected: active }}
-                    onPress={() => setStat(s)}
-                    style={[
-                      styles.statButton,
-                      {
-                        borderColor: active ? color : theme.glassBorder,
-                        backgroundColor: active ? `${color}15` : 'transparent',
-                      },
-                    ]}>
-                    <StatIcon stat={s} size={14} />
-                    <Text
-                      style={[
-                        styles.statButtonText,
-                        { color: active ? color : theme.dim, fontFamily: fonts.display },
-                      ]}>
-                      {s}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <FieldLabel>STAT</FieldLabel>
+            <View style={styles.row}>
+              {STATS.map(s => <Chip key={s} label={s} selected={stat === s} onPress={() => setStat(s)} />)}
             </View>
           </View>
 
           <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              DIFFICULTY
-            </Text>
-            <View style={styles.diffRow}>
-              {DIFFICULTIES.map(d => {
-                const active = difficulty === d;
-                const color = difficultyColor[d];
-                return (
-                  <Pressable
-                    key={d}
-                    accessibilityRole="radio"
-                    accessibilityLabel={d}
-                    accessibilityState={{ checked: active, selected: active }}
-                    onPress={() => setDifficulty(d)}
-                    style={[
-                      styles.diffButton,
-                      {
-                        borderColor: active ? color : theme.glassBorder,
-                        backgroundColor: active ? `${color}15` : 'transparent',
-                      },
-                    ]}>
-                    <Text
-                      style={[styles.diffButtonText, { color: active ? color : theme.dim, fontFamily: fonts.display }]}>
-                      {d}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <FieldLabel>DIFFICULTY</FieldLabel>
+            <View style={styles.row}>
+              {DIFFICULTIES.map(d => <Chip key={d} label={d} selected={difficulty === d} onPress={() => setDifficulty(d)} />)}
             </View>
           </View>
+        </KeyboardAwareScrollView>
+      </View>
 
-        </Screen>
-        </View>
-
-        <View testID="quest-editor-footer" style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
-          {error && <Text style={styles.errorText}>{error}</Text>}
-          <View testID="quest-editor-actions" style={styles.actionsRow}>
-            {isEditing && quest && (
-              <>
-                <Pressable
-                  testID={quest.archived ? 'quest-restore' : 'quest-archive'}
-                  style={[styles.lifecycleButton, styles.secondaryActionButton, { borderColor: theme.accentBorder }]}
-                  onPress={() => void handleLifecycle(quest.archived ? 'restore' : 'archive')}
-                  disabled={submitting}
-                  accessibilityRole="button"
-                  accessibilityLabel={quest.archived ? 'RESTORE QUEST' : 'ARCHIVE QUEST'}>
-                  <Text style={[styles.lifecycleButtonText, { color: theme.accent, fontFamily: fonts.display }]}>
-                    {quest.archived ? 'RESTORE QUEST' : 'ARCHIVE QUEST'}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  testID="quest-delete-permanent"
-                  style={[styles.deleteButton, styles.secondaryActionButton, { opacity: submitting ? 0.5 : 1 }]}
-                  onPress={() => setConfirmDelete(true)}
-                  disabled={submitting}
-                  accessibilityRole="button"
-                  accessibilityLabel="DELETE PERMANENTLY">
-                  <Text style={[styles.deleteButtonText, { fontFamily: fonts.display }]}>DELETE PERMANENTLY</Text>
-                </Pressable>
-              </>
-            )}
-            <Pressable
-              testID="quest-save"
-              accessibilityRole="button"
-              accessibilityLabel={submitting ? 'Saving' : isEditing ? 'SAVE CHANGES' : 'CREATE QUEST'}
-              accessibilityHint={saveDisabledReason}
-              disabled={!valid || submitting}
-              onPress={handleSave}
-              style={[
-                styles.saveButton,
-                {
-                  backgroundColor: valid ? theme.accentGlass : 'transparent',
-                  borderColor: valid ? theme.accentBorder : theme.glassBorder,
-                  opacity: submitting ? 0.6 : 1,
-                },
-              ]}>
-              <Text
-                style={[
-                  styles.saveButtonText,
-                  { color: valid ? theme.accent : theme.dim, fontFamily: fonts.display },
-                ]}>
-                {submitting ? 'SAVING…' : isEditing ? 'SAVE CHANGES' : 'CREATE QUEST'}
-              </Text>
-            </Pressable>
-          </View>
+      <View testID="quest-editor-footer" style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: Math.max(12, insets.bottom) }]}>
+        {error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+        <View testID="quest-editor-actions" style={styles.actions}>
+          {isEditing && quest ? (
+            <>
+              <Button
+                testID={quest.archived ? 'quest-restore' : 'quest-archive'}
+                variant="secondary"
+                label={quest.archived ? 'RESTORE QUEST' : 'ARCHIVE QUEST'}
+                disabled={submitting}
+                onPress={() => void handleLifecycle(quest.archived ? 'restore' : 'archive')}
+                style={styles.secondaryAction}
+              />
+              <Button
+                testID="quest-delete-permanent"
+                variant="destructive"
+                label="DELETE PERMANENTLY"
+                disabled={submitting}
+                onPress={() => setConfirmDelete(true)}
+                style={styles.secondaryAction}
+              />
+            </>
+          ) : null}
+          <Button
+            testID="quest-save"
+            variant="primary"
+            label={saving ? 'SAVING…' : isEditing ? 'SAVE CHANGES' : 'CREATE QUEST'}
+            accessibilityLabel={saving ? 'Saving' : isEditing ? 'SAVE CHANGES' : 'CREATE QUEST'}
+            disabled={!valid || submitting}
+            busy={saving}
+            onPress={() => void handleSave()}
+            style={styles.save}
+          />
         </View>
       </View>
 
-      <Modal
-        testID="quest-delete-modal"
-        visible={confirmDelete}
-        transparent
-        animationType="fade"
-        onShow={() => {
-          if (deleteCancelRef.current) AccessibilityInfo.sendAccessibilityEvent(deleteCancelRef.current, 'focus');
-        }}
-        onRequestClose={() => { if (!pendingRef.current) setConfirmDelete(false); }}>
-        <View style={styles.confirmOverlay} accessibilityRole="alert" accessibilityViewIsModal>
-          <View style={[styles.confirmCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
-            <Text style={[styles.confirmTitle, { color: theme.text, fontFamily: fonts.display }]}>DELETE {quest?.name} PERMANENTLY?</Text>
-            <Text style={[styles.confirmBody, { color: theme.muted, fontFamily: fonts.body }]}>This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</Text>
-            {error && <Text style={styles.errorText}>{error}</Text>}
-            <View style={styles.confirmActions}>
-              <Pressable
-                ref={deleteCancelRef}
-                testID="quest-delete-cancel"
-                onPress={() => { if (!pendingRef.current) setConfirmDelete(false); }}
-                disabled={submitting}
-                style={[styles.confirmCancel, { borderColor: theme.glassBorder }]}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel">
-                <Text style={[styles.lifecycleButtonText, { color: theme.muted, fontFamily: fonts.display }]}>CANCEL</Text>
-              </Pressable>
-              <Pressable
-                testID="quest-delete-confirm"
-                onPress={() => void handleLifecycle('delete')}
-                disabled={submitting}
-                style={[styles.confirmDelete, { borderColor: 'rgba(248,113,113,0.45)' }]}
-                accessibilityRole="button"
-                accessibilityLabel="Confirm permanent delete">
-                <Text style={[styles.deleteButtonText, { fontFamily: fonts.display }]}>{submitting ? 'DELETING…' : 'CONFIRM PERMANENT DELETE'}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
+      <DeleteQuestModal
+        idPrefix="quest"
+        quest={confirmDelete ? quest : null}
+        pending={submitting}
+        error={error}
+        onCancel={() => { if (!pendingRef.current) setConfirmDelete(false); }}
+        onConfirm={() => void handleLifecycle('delete')}
+      />
+
+      <DiscardChangesModal
+        visible={discardPrompt}
+        testID="quest-discard-modal"
+        message="Your unsaved quest changes will be lost."
+        onKeep={keepEditing}
+        onDiscard={discard}
+      />
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    borderWidth: 1,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 0,
-    maxHeight: '88%',
-  },
-  footer: {
-    flexShrink: 0,
-    paddingTop: 8,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 20,
-    letterSpacing: 1,
-  },
-  closeX: {
-    fontSize: 22,
-    lineHeight: 22,
-  },
-  closeButton: {
-    minWidth: 48,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  label: {
-    fontSize: 11,
-    letterSpacing: 1.5,
-    marginBottom: 7,
-  },
-  errorText: {
-    fontSize: 12,
-    color: '#f87171',
-  },
-  fieldError: {
-    fontSize: 12,
-    color: '#f87171',
-    marginTop: 5,
-  },
-  fieldHint: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: '#fbbf24',
-    marginTop: 5,
-  },
-  suggestText: {
-    fontSize: 11,
-    letterSpacing: 1,
-  },
-  suggestionList: {
-    gap: 6,
-    marginTop: 10,
-  },
-  suggestionChip: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-  },
-  suggestionChipText: {
-    fontSize: 13,
-  },
-  field: {
-    borderWidth: 1,
-    borderRadius: 12,
-    fontFamily: fonts.body,
-    fontSize: 14,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  descriptionField: {
-    minHeight: 76,
-  },
-  timeTrigger: {
-    justifyContent: 'center',
-  },
-  daysRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  dayButton: {
-    flex: 1,
-    minHeight: 44,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dayButtonText: {
-    fontSize: 11,
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  statButton: {
-    flex: 1,
-    minHeight: 48,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  statButtonText: {
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  diffRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  diffButton: {
-    flex: 1,
-    minHeight: 44,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  diffButtonText: {
-    fontSize: 13,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'stretch',
-    gap: 10,
-    marginTop: 12,
-  },
-  lifecycleButton: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-  },
-  secondaryActionButton: {
-    flexGrow: 1,
-    flexBasis: '40%',
-    minHeight: 48,
-    alignItems: 'center',
-  },
-  lifecycleButtonText: {
-    fontSize: 12,
-    letterSpacing: 0.5,
-  },
-  deleteButton: {
-    backgroundColor: 'rgba(248,113,113,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(248,113,113,0.2)',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
-    justifyContent: 'center',
-  },
-  deleteButtonText: {
-    fontSize: 14,
-    color: '#f87171',
-    letterSpacing: 0.5,
-    textAlign: 'center',
-  },
-  confirmOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  confirmCard: {
-    width: '100%',
-    maxWidth: 380,
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 20,
-    gap: 12,
-  },
-  confirmTitle: {
-    fontSize: 16,
-    letterSpacing: 0.8,
-  },
-  confirmBody: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  confirmActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    justifyContent: 'flex-end',
-  },
-  confirmCancel: {
-    flexGrow: 1,
-    flexBasis: '25%',
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-  },
-  confirmDelete: {
-    flexGrow: 1,
-    flexBasis: '55%',
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(248,113,113,0.12)',
-  },
-  saveButton: {
-    flexGrow: 1,
-    flexBasis: '100%',
-    minHeight: 48,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveButtonText: {
-    fontSize: 15,
-    letterSpacing: 1,
-    textAlign: 'center',
-  },
+  root: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 20, paddingRight: 4, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth },
+  title: { flex: 1, fontSize: 20, letterSpacing: 1 },
+  close: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  closeGlyph: { transform: [{ rotate: '45deg' }] },
+  form: { flex: 1 },
+  formContent: { padding: 20, gap: 18 },
+  label: { fontSize: 11, letterSpacing: 1.2, marginBottom: 6 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 6 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  group: { gap: 8 },
+  note: { fontSize: 12, lineHeight: 17 },
+  trigger: { minHeight: 48, borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, justifyContent: 'center' },
+  disabled: { opacity: 0.5 },
+  lockedDate: { fontSize: 15, minHeight: 32 },
+  suggestion: { borderWidth: 1, borderRadius: 4, paddingVertical: 12, paddingHorizontal: 12, minHeight: 48, justifyContent: 'center' },
+  footer: { flexShrink: 0, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 8 },
+  secondaryAction: { flexGrow: 1, flexBasis: '40%' },
+  save: { flexGrow: 1, flexBasis: '100%' },
 });

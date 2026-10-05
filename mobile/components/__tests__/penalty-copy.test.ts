@@ -8,7 +8,7 @@ function source(relativePath: string) {
 describe('Penalty terminology on active mobile surfaces', () => {
   it('uses Penalty in the habit editor and suggestion action', () => {
     const editor = source('../../app/quest-editor.tsx');
-    expect(editor).toContain('PENALTY');
+    expect(editor).toContain('label="Penalty"');
     expect(editor).toContain('SUGGEST PENALTIES');
     expect(editor).not.toContain('EASY VERSION');
     expect(editor).not.toContain('SUGGEST EASY VERSIONS');

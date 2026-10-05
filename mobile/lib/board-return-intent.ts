@@ -1,4 +1,4 @@
-export type BoardReturnLane = 'one-time';
+export type BoardReturnLane = 'one-time' | 'backlog';
 
 let pendingBoardReturnLane: BoardReturnLane | null = null;
 

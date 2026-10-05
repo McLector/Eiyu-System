@@ -1,5 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { initialUser } from '@eiyu/shared';
+import { cleanup, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
+
+import { makeEditorStore } from '../../test-support/quest-editor-kit';
+import { renderWithTheme } from '../ui/test-theme';
 
 const mockSuggestEasyVersions = jest.fn();
 jest.doMock('@eiyu/shared', () => ({
@@ -8,31 +10,21 @@ jest.doMock('@eiyu/shared', () => ({
 }));
 
 let mockParams: { id?: string; type?: string } = {};
-const mockStore: any = {
-  theme: {
-    overlay: '#000', modal: '#111', glassBorder: '#333', handle: '#444', text: '#fff', dim: '#999',
-    track: '#222', accentBorder: '#555', accent: '#0ff', muted: '#aaa', accentStrong: '#0ff', accentGlass: '#022',
-  },
-  user: { ...initialUser, timeZone: 'UTC', rank: 'E', quests: [], longQuests: [] },
-  saveHabit: jest.fn().mockResolvedValue(undefined),
-  archiveQuest: jest.fn().mockResolvedValue(undefined),
-  restoreQuest: jest.fn().mockResolvedValue(undefined),
-  deleteQuest: jest.fn().mockResolvedValue(undefined),
-};
+const mockStore = makeEditorStore();
 
-jest.mock('expo-router', () => ({ router: { back: jest.fn() }, useLocalSearchParams: () => mockParams }));
+jest.mock('expo-router', () => ({
+  router: { back: jest.fn() },
+  useLocalSearchParams: () => mockParams,
+  useNavigation: () => ({ addListener: () => () => {}, dispatch: jest.fn() }),
+}));
 jest.mock('@/contexts/eiyu-store', () => ({ useEiyu: () => mockStore }));
 jest.mock('@/lib/haptics', () => ({ hapticLight: jest.fn(), hapticSuccess: jest.fn() }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('react-native-keyboard-controller', () => {
   const React = require('react');
   const { View } = require('react-native');
-  return { KeyboardAwareScrollView: ({ children, ...props }: any) => React.createElement(View, props, children) };
-});
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
-jest.mock('@/components/eiyu/screen', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return { Screen: ({ children, ...props }: any) => React.createElement(View, props, children) };
+  const passthrough = ({ children, ...props }: any) => React.createElement(View, props, children);
+  return { KeyboardAwareScrollView: passthrough, KeyboardAvoidingView: passthrough };
 });
 
 const { default: QuestEditorScreen } = require('../../app/quest-editor') as typeof import('../../app/quest-editor');
@@ -47,10 +39,10 @@ describe('mobile Quest Editor AI success', () => {
   it('renders three editable penalty choices from a successful AI response', async () => {
     mockParams = { type: 'habit' };
     mockSuggestEasyVersions.mockResolvedValue(['Read one page', 'Open the book', 'Review one note']);
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
     await fireEvent.changeText(screen.getByPlaceholderText('e.g. Code for 2 hours'), 'Read every day');
     await waitFor(() => expect(screen.getByPlaceholderText('e.g. Code for 2 hours').props.value).toBe('Read every day'));
-    await fireEvent.press(screen.getByText('✨ SUGGEST PENALTIES').parent!);
+    await userEvent.setup().press(screen.getByRole('button', { name: 'SUGGEST PENALTIES' }));
     await waitFor(() => expect(mockSuggestEasyVersions).toHaveBeenCalledWith('Read every day', expect.any(String)));
 
     const expected = ['Read one page', 'Open the book', 'Review one note'];
@@ -59,5 +51,31 @@ describe('mobile Quest Editor AI success', () => {
       expect(chip.props.accessibilityLabel).toBe(suggestion);
       expect(chip).toBeOnTheScreen();
     }
+  });
+
+  it('picking a suggestion fills the penalty and clears the list', async () => {
+    mockParams = { type: 'habit' };
+    mockSuggestEasyVersions.mockResolvedValue(['Read one page', 'Open the book', 'Review one note']);
+    const user = userEvent.setup();
+    await renderWithTheme(<QuestEditorScreen />);
+    await fireEvent.changeText(screen.getByLabelText('Quest name'), 'Read every day');
+    await user.press(screen.getByRole('button', { name: 'SUGGEST PENALTIES' }));
+    await user.press(await screen.findByTestId('quest-ai-suggestion-2'));
+
+    expect(screen.getByPlaceholderText('e.g. Code for 20 minutes').props.value).toBe('Open the book');
+    expect(screen.queryByTestId('quest-ai-suggestion-1')).toBeNull();
+  });
+
+  it('keeps the suggest button off until the quest has a name, and reports a failed suggestion', async () => {
+    mockParams = { type: 'habit' };
+    mockSuggestEasyVersions.mockRejectedValue(new Error('AI is down'));
+    const user = userEvent.setup();
+    await renderWithTheme(<QuestEditorScreen />);
+    expect(screen.getByRole('button', { name: 'SUGGEST PENALTIES' })).toBeDisabled();
+
+    await fireEvent.changeText(screen.getByLabelText('Quest name'), 'Read every day');
+    await user.press(screen.getByRole('button', { name: 'SUGGEST PENALTIES' }));
+    expect(await screen.findByText(/AI is down/)).toBeOnTheScreen();
+    expect(screen.queryByTestId('quest-ai-suggestion-1')).toBeNull();
   });
 });

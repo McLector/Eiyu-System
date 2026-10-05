@@ -458,16 +458,24 @@ describe('mobile BoardScreen lane memory and adding', () => {
     expect(profileName.props.ellipsizeMode).toBe('tail');
   });
 
-  it('keeps both quest-type choices inside the chooser scroll viewport, and starts the editor for the one picked', async () => {
+  it('keeps all three quest-type choices inside the chooser scroll viewport, and starts the editor for the one picked', async () => {
     const user = userEvent.setup();
     await board();
     await user.press(screen.getByRole('button', { name: 'ADD A QUEST' }));
     expect(screen.getByTestId('board-type-chooser-scroll')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Create a habit quest' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Create a one-time quest' })).toBeOnTheScreen();
-    expect(screen.queryByRole('button', { name: 'Create a backlog quest' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Create a backlog quest' })).toBeOnTheScreen();
     await user.press(screen.getByRole('button', { name: 'Create a one-time quest' }));
     expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/quest-editor', params: { type: 'one_time', returnLane: 'one-time' } });
+  });
+
+  it('starts the editor on a Backlog quest and returns to the Backlog lane', async () => {
+    const user = userEvent.setup();
+    await board();
+    await user.press(screen.getByRole('button', { name: 'ADD A QUEST' }));
+    await user.press(screen.getByRole('button', { name: 'Create a backlog quest' }));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/quest-editor', params: { type: 'backlog', returnLane: 'backlog' } });
   });
 
   it('starts the habit editor for a habit', async () => {

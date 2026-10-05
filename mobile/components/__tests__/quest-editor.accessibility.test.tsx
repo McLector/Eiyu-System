@@ -1,55 +1,39 @@
-import { act, render, screen, userEvent } from '@testing-library/react-native';
+import { cleanup, screen, userEvent } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-import type { Quest, UserProfile } from '@eiyu/shared';
-import { initialUser } from '@eiyu/shared';
+
+import { habitQuest as quest, makeEditorStore } from '../../test-support/quest-editor-kit';
+import { renderWithTheme } from '../ui/test-theme';
 
 let mockSearchParams: { id?: string } = {};
 let mockStoreValue: any;
 
-jest.mock('expo-router', () => ({ router: { back: jest.fn() }, useLocalSearchParams: () => mockSearchParams }));
+jest.mock('expo-router', () => ({
+  router: { back: jest.fn() },
+  useLocalSearchParams: () => mockSearchParams,
+  useNavigation: () => ({ addListener: () => () => {}, dispatch: jest.fn() }),
+}));
 jest.mock('@/contexts/eiyu-store', () => ({ useEiyu: () => mockStoreValue }));
 jest.mock('@/lib/haptics', () => ({ hapticLight: jest.fn(), hapticSuccess: jest.fn() }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('react-native-keyboard-controller', () => {
   const React = require('react');
   const { View } = require('react-native');
-  return { KeyboardAwareScrollView: ({ children, ...props }: any) => React.createElement(View, props, children) };
-});
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
-jest.mock('@/components/eiyu/screen', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return { Screen: ({ children, ...props }: any) => React.createElement(View, props, children) };
+  const passthrough = ({ children, ...props }: any) => React.createElement(View, props, children);
+  return { KeyboardAwareScrollView: passthrough, KeyboardAvoidingView: passthrough };
 });
 
 import QuestEditorScreen from '../../app/quest-editor';
 
 const mockRouter = jest.requireMock('expo-router').router as { back: jest.Mock };
-const quest: Quest = {
-  id: 'accessible-quest', name: 'Morning walk', stat: 'STR', difficulty: 'Medium',
-  easyVersion: 'Walk for one minute', description: null, questType: 'habit', archived: false,
-  time: '08:00', days: [0, 1, 2, 3, 4, 5, 6], streak: 0, frozen: false,
-  completed: false, targetCount: null, progressCount: 0,
-};
 
 function setup() {
   mockSearchParams = { id: quest.id };
-  const user: UserProfile = { ...initialUser, timeZone: 'UTC', rank: 'E', quests: [quest], longQuests: [] };
-  mockStoreValue = {
-    theme: {
-      overlay: '#000', modal: '#111', glassBorder: '#333', handle: '#444', text: '#fff', dim: '#999',
-      track: '#222', accentBorder: '#555', accent: '#0ff', muted: '#aaa', accentStrong: '#0ff', accentGlass: '#022',
-    },
-    user,
-    saveHabit: jest.fn().mockResolvedValue(undefined),
-    archiveQuest: jest.fn().mockResolvedValue(undefined),
-    restoreQuest: jest.fn().mockResolvedValue(undefined),
-    deleteQuest: jest.fn().mockResolvedValue(undefined),
-  };
-  return mockStoreValue;
+  mockStoreValue = makeEditorStore([quest]);
 }
 
 describe('QuestEditor accessibility semantics', () => {
   afterEach(() => {
+    cleanup();
     mockSearchParams = {};
     mockStoreValue = undefined;
     jest.clearAllMocks();
@@ -58,7 +42,7 @@ describe('QuestEditor accessibility semantics', () => {
   it('names all day checkboxes and reports only the tapped day as changed', async () => {
     setup();
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
 
     expect(screen.getByRole('checkbox', { name: 'Sunday' }).props.accessibilityState.checked).toBe(true);
     expect(screen.getByRole('checkbox', { name: 'Saturday' }).props.accessibilityState.checked).toBe(true);
@@ -74,7 +58,7 @@ describe('QuestEditor accessibility semantics', () => {
   it('exposes named radio choices and keeps one selected value in each group', async () => {
     setup();
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
     const stats = ['STR', 'INT', 'DEX', 'WIS', 'CHA'];
     const difficulties = ['Easy', 'Medium', 'Hard'];
 
@@ -89,7 +73,7 @@ describe('QuestEditor accessibility semantics', () => {
   it('labels the 48 dp close button and preserves delete-confirmation guards', async () => {
     setup();
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
     const close = screen.getByRole('button', { name: 'Close quest editor' });
     expect(StyleSheet.flatten(close.props.style)).toMatchObject({ minWidth: 48, minHeight: 48 });
     await user.press(close);

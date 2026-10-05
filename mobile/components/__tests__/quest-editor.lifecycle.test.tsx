@@ -1,65 +1,35 @@
-import { act, cleanup, fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { AccessibilityInfo, StyleSheet } from 'react-native';
-import type { Quest, UserProfile } from '@eiyu/shared';
-import { initialUser } from '@eiyu/shared';
+import type { Quest } from '@eiyu/shared';
+
 import { consumeBoardReturnIntent } from '../../lib/board-return-intent';
+import { habitQuest as habit, makeEditorStore } from '../../test-support/quest-editor-kit';
+import { renderWithTheme, TestThemeProvider } from '../ui/test-theme';
 
 let mockSearchParams: { id?: string; type?: string; returnLane?: string } = {};
 let mockStoreValue: any;
 
-jest.mock('expo-router', () => ({ router: { back: jest.fn() }, useLocalSearchParams: () => mockSearchParams }));
+jest.mock('expo-router', () => ({
+  router: { back: jest.fn() },
+  useLocalSearchParams: () => mockSearchParams,
+  useNavigation: () => ({ addListener: () => () => {}, dispatch: jest.fn() }),
+}));
 jest.mock('@/contexts/eiyu-store', () => ({ useEiyu: () => mockStoreValue }));
 jest.mock('@/lib/haptics', () => ({ hapticLight: jest.fn(), hapticSuccess: jest.fn() }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
 jest.mock('react-native-keyboard-controller', () => {
   const React = require('react');
   const { View } = require('react-native');
-  return {
-    KeyboardAwareScrollView: ({ children, ...props }: { children: unknown; [key: string]: unknown }) =>
-      React.createElement(View, props, children),
-  };
-});
-jest.mock('@/components/eiyu/screen', () => {
-  const React = require('react');
-  const { View } = require('react-native');
-  return { Screen: ({ children, ...props }: { children: unknown; [key: string]: unknown }) => React.createElement(View, props, children) };
+  const passthrough = ({ children, ...props }: { children: unknown; [key: string]: unknown }) => React.createElement(View, props, children);
+  return { KeyboardAwareScrollView: passthrough, KeyboardAvoidingView: passthrough };
 });
 import QuestEditorScreen from '../../app/quest-editor';
 const mockRouter = jest.requireMock('expo-router').router as { back: jest.Mock };
 
-const habit: Quest = {
-  id: 'habit-1',
-  name: 'Morning walk',
-  stat: 'STR',
-  difficulty: 'Medium',
-  easyVersion: 'Walk for one minute',
-  description: null,
-  questType: 'habit',
-  archived: false,
-  time: '08:00',
-  days: [0, 1, 2, 3, 4, 5, 6],
-  streak: 2,
-  frozen: false,
-  completed: false,
-  targetCount: null,
-  progressCount: 0,
-};
-
 function setup(quest: Quest = habit) {
   mockSearchParams = { id: quest.id };
-  const user: UserProfile = { ...initialUser, timeZone: 'UTC', rank: 'E', quests: [quest], longQuests: [] };
-  const value = {
-    theme: {
-      overlay: '#000', modal: '#111', glassBorder: '#333', handle: '#444', text: '#fff', dim: '#999',
-      track: '#222', accentBorder: '#555', accent: '#0ff', muted: '#aaa', accentStrong: '#0ff', accentGlass: '#022',
-    },
-    user,
-    saveHabit: jest.fn().mockResolvedValue(undefined),
-    archiveQuest: jest.fn().mockResolvedValue(undefined),
-    restoreQuest: jest.fn().mockResolvedValue(undefined),
-    deleteQuest: jest.fn().mockResolvedValue(undefined),
-  };
-  mockStoreValue = value;
-  return value;
+  mockStoreValue = makeEditorStore([quest]);
+  return mockStoreValue as ReturnType<typeof makeEditorStore>;
 }
 
 describe('mobile QuestEditor lifecycle controls', () => {
@@ -74,7 +44,7 @@ describe('mobile QuestEditor lifecycle controls', () => {
   it('archives active quests through archive only', async () => {
     const value = setup();
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
 
     await user.press(screen.getByRole('button', { name: 'ARCHIVE QUEST' }));
 
@@ -85,7 +55,7 @@ describe('mobile QuestEditor lifecycle controls', () => {
   it('keeps Cancel side-effect free and confirms permanent delete separately', async () => {
     const value = setup();
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
 
     await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
     expect(screen.getByText('DELETE Morning walk PERMANENTLY?')).toBeOnTheScreen();
@@ -104,7 +74,7 @@ describe('mobile QuestEditor lifecycle controls', () => {
     let resolveDelete!: () => void;
     value.deleteQuest.mockImplementation(() => new Promise<void>(resolve => { resolveDelete = resolve; }));
     const user = userEvent.setup();
-    const rendered = await render(<QuestEditorScreen />);
+    const rendered = await renderWithTheme(<QuestEditorScreen />);
 
     await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
     const focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
@@ -115,12 +85,12 @@ describe('mobile QuestEditor lifecycle controls', () => {
       fireEvent.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
       await Promise.resolve();
     });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toBeDisabled());
+    await waitFor(() => expect(screen.getByTestId('quest-delete-confirm')).toBeBusy());
     await act(async () => { rendered.getByTestId('quest-delete-modal').props.onRequestClose(); });
     expect(screen.getByText('DELETE Morning walk PERMANENTLY?')).toBeOnTheScreen();
     expect(value.deleteQuest).toHaveBeenCalledTimes(1);
     expect(mockRouter.back).not.toHaveBeenCalled();
-    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
+    await user.press(screen.getByTestId('quest-delete-confirm'));
     expect(value.deleteQuest).toHaveBeenCalledTimes(1);
 
     await act(async () => { resolveDelete(); });
@@ -132,18 +102,18 @@ describe('mobile QuestEditor lifecycle controls', () => {
     let resolveDelete!: () => void;
     value.deleteQuest.mockImplementation(() => new Promise<void>(resolve => { resolveDelete = resolve; }));
     const user = userEvent.setup();
-    const rendered = await render(<QuestEditorScreen />);
+    const rendered = await renderWithTheme(<QuestEditorScreen />);
 
     await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
-    await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
-    expect(screen.getByText('DELETING…')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('quest-delete-confirm'));
+    expect(screen.getByTestId('quest-delete-confirm')).toBeBusy();
     mockStoreValue = { ...value, user: { ...value.user, quests: [] } };
-    await act(async () => { rendered.rerender(<QuestEditorScreen />); await Promise.resolve(); });
+    await act(async () => { rendered.rerender(<TestThemeProvider><QuestEditorScreen /></TestThemeProvider>); await Promise.resolve(); });
 
     expect(screen.getByText('EDIT QUEST')).toBeOnTheScreen();
     expect(screen.queryByText('NEW QUEST')).toBeNull();
     expect(screen.queryByRole('button', { name: 'CREATE QUEST' })).toBeNull();
-    expect(screen.getByText('DELETING…')).toBeOnTheScreen();
+    expect(screen.getByText('DELETE Morning walk PERMANENTLY?')).toBeOnTheScreen();
     await act(async () => { resolveDelete(); });
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalledTimes(1));
   });
@@ -152,7 +122,7 @@ describe('mobile QuestEditor lifecycle controls', () => {
     const value = setup();
     value.deleteQuest.mockRejectedValueOnce(new Error('delete unavailable'));
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
 
     await user.press(screen.getByRole('button', { name: 'DELETE PERMANENTLY' }));
     await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
@@ -166,7 +136,7 @@ describe('mobile QuestEditor lifecycle controls', () => {
     const value = setup();
     mockSearchParams = { type: 'one_time', returnLane: 'one-time' };
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
     await user.type(screen.getByLabelText('Quest name'), 'Submit report');
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
 
@@ -175,10 +145,24 @@ describe('mobile QuestEditor lifecycle controls', () => {
     expect(consumeBoardReturnIntent()).toBe('one-time');
   });
 
+  it('does not publish a lane intent when the create fails', async () => {
+    const value = setup();
+    value.saveHabit.mockRejectedValueOnce(new Error('offline'));
+    mockSearchParams = { type: 'one_time', returnLane: 'one-time' };
+    const user = userEvent.setup();
+    await renderWithTheme(<QuestEditorScreen />);
+    await user.type(screen.getByLabelText('Quest name'), 'Submit report');
+    await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
+
+    expect(await screen.findByText('offline')).toBeOnTheScreen();
+    expect(consumeBoardReturnIntent()).toBeNull();
+    expect(mockRouter.back).not.toHaveBeenCalled();
+  });
+
   it('shows Restore and Delete for archived quests, without a completion control', async () => {
     const value = setup({ ...habit, archived: true });
     const user = userEvent.setup();
-    await render(<QuestEditorScreen />);
+    await renderWithTheme(<QuestEditorScreen />);
 
     expect(screen.getByRole('button', { name: 'RESTORE QUEST' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'DELETE PERMANENTLY' })).toBeOnTheScreen();
@@ -189,8 +173,8 @@ describe('mobile QuestEditor lifecycle controls', () => {
   });
 
   it('keeps the save action a full-width primary target separate from lifecycle actions', async () => {
-    await setup();
-    await render(<QuestEditorScreen />);
+    setup();
+    await renderWithTheme(<QuestEditorScreen />);
 
     const actions = screen.getByTestId('quest-editor-actions');
     const save = screen.getByTestId('quest-save');
@@ -200,4 +184,3 @@ describe('mobile QuestEditor lifecycle controls', () => {
     expect(StyleSheet.flatten(save.props.style)).toMatchObject({ flexBasis: '100%' });
   });
 });
-jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 24, left: 0, right: 0 }) }));
