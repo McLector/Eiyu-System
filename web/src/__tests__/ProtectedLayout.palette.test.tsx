@@ -71,3 +71,19 @@ describe('System blue palette', () => {
     expect(root().dataset.palette).toBe('blue');
   });
 });
+
+describe('dark/light theme', () => {
+  it('keeps the choice across a reload', async () => {
+    const user = userEvent.setup();
+    const first = renderLayout();
+    await user.click(await screen.findByRole('switch'));
+    expect(document.querySelector('.surface-flat')).toHaveAttribute('data-theme', 'light');
+    first.unmount();
+    renderLayout();
+    expect(document.querySelector('.surface-flat')).toHaveAttribute('data-theme', 'light');
+  });
+  it('starts dark when nothing is stored', () => {
+    renderLayout('/status');
+    expect(document.querySelector('.surface-flat')).toHaveAttribute('data-theme', 'dark');
+  });
+});

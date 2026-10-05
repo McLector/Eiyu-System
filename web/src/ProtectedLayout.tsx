@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import ArchiveNotice from './components/ArchiveNotice';
@@ -6,6 +6,7 @@ import { NavigationGuard } from './components/NavigationGuard';
 import AccountShell, { type AccountOverlay } from './web/AccountShell';
 import { useSession } from './store/session-context';
 import { useAccountPalette } from './useAccountPalette';
+import { useAccountTheme } from './useAccountTheme';
 
 export interface LayoutContext {
   darkMode: boolean;
@@ -14,8 +15,9 @@ export interface LayoutContext {
 }
 
 export default function ProtectedLayout() {
-  const [darkMode, setDarkMode] = useState(true);
   const { session } = useSession();
+  const [theme, changeTheme] = useAccountTheme(session?.user.id);
+  const darkMode = theme === 'dark';
   const [palette, changePalette] = useAccountPalette(session?.user.id);
   // On the page root, not the shell: dialogs render outside the shell and must agree with the page behind them.
   // Cyan is the absence of the attribute, and signing out puts the sign-in pages back to cyan.
@@ -39,7 +41,7 @@ export default function ProtectedLayout() {
 
   const context: LayoutContext = {
     darkMode,
-    onToggleDark: () => setDarkMode(d => !d),
+    onToggleDark: () => changeTheme(darkMode ? 'light' : 'dark'),
     openSettings: () => openOverlay('settings'),
   };
 
