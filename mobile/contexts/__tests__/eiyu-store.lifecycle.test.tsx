@@ -452,9 +452,11 @@ describe('Backlog and moving quests between lanes', () => {
   });
 
   it('drops a deleted quest from the Backlog list straight away', async () => {
-    mockShared.fetchBacklogQuests.mockResolvedValueOnce([backlogQuest]).mockResolvedValue([]);
+    // Every read before the delete sees the quest (a second early read must not empty the list), every read after it does not.
+    mockShared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
     await mountStore();
     await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
+    mockShared.fetchBacklogQuests.mockResolvedValue([]);
     await act(async () => { await currentStore!.deleteQuest('backlog-1'); });
     expect(mockShared.deleteHabit).toHaveBeenCalledWith('backlog-1');
     expect(currentStore!.backlog).toEqual([]);

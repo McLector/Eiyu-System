@@ -149,8 +149,6 @@ interface EiyuStore {
   retryQuests: () => Promise<void>;
   /** Full completion if not yet done, undo if already done (R-05, R-07). */
   toggleQuest: (id: string) => void;
-  /** Easy/recovery-version completion (R-06). */
-  completeEasy: (id: string) => void;
   /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
   adjustProgress: (id: string, delta: number) => void;
   /** R-13: ask the server to resolve the authoritative open recovery window. */
@@ -602,19 +600,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     [quests, userId, runCompletion, profile?.timeZone]
   );
 
-  const completeEasy = useCallback(
-    (id: string) => {
-      const quest = quests.find(q => q.id === id);
-      if (!quest || !userId || quest.completed || !quest.easyVersion) return;
-      void runCompletion(
-        id,
-        () => completeHabit(userId, id, quest.stat, 'easy', undefined, profile?.timeZone),
-        true
-      );
-    },
-    [quests, userId, runCompletion, profile?.timeZone]
-  );
-
   /**
    * Slice 5: bump a quantity habit's today progress by `delta`, clamped
    * server-side. Optimistic locally, then reconciled to the RPC's returned
@@ -938,7 +923,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       questsHaveCachedData,
       retryQuests,
       toggleQuest,
-      completeEasy,
       adjustProgress,
       completeRecovery,
       saveHabit,
@@ -980,7 +964,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       questsHaveCachedData,
       retryQuests,
       toggleQuest,
-      completeEasy,
       adjustProgress,
       completeRecovery,
       saveHabit,

@@ -125,7 +125,7 @@ afterEach(() => {
 });
 
 describe('completion sound effects', () => {
-  it('defaults off, persists opt-in, and plays after successful full and easy completion', async () => {
+  it('defaults off, persists opt-in, and plays after a successful completion', async () => {
     await mountStore();
     await waitFor(() => expect(currentStore?.soundEffectsLoaded).toBe(true));
     await waitFor(() => expect(currentStore?.user.quests).toHaveLength(1));
@@ -143,15 +143,18 @@ describe('completion sound effects', () => {
     await act(async () => { currentStore!.toggleQuest('habit-1'); });
     await waitFor(() => expect(mockAudioPlayer.play).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(currentStore?.user.quests[0].completed).toBe(false));
-    await act(async () => { currentStore!.completeEasy('habit-1'); });
-    await waitFor(() => expect(mockAudioPlayer.play).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(currentStore?.user.quests[0].completed).toBe(false));
     await act(async () => { await currentStore!.setSoundEffectsEnabled(false); });
     expect(mockSoundPreference.setSoundEffectsEnabled).toHaveBeenLastCalledWith(false);
     await act(async () => { currentStore!.toggleQuest('habit-1'); });
-    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledTimes(4));
-    expect(mockAudioPlayer.play).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledTimes(3));
+    expect(mockAudioPlayer.play).toHaveBeenCalledTimes(1);
     expect(mockAudioPlayer.seekTo).toHaveBeenCalledWith(0);
+  });
+
+  it('has no long-press shortcut that completes a quest by its penalty', async () => {
+    await mountStore();
+    await waitFor(() => expect(currentStore?.user.quests).toHaveLength(1));
+    expect(currentStore).not.toHaveProperty('completeEasy');
   });
 
   it('does not play on failed completion, undo, or partial quantity progress', async () => {
