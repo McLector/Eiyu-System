@@ -11,6 +11,7 @@ import {
   toDateKey,
 } from '@eiyu/shared';
 import { StarIcon } from '../Icons';
+import Dialog from '../components/Dialog';
 
 interface Props {
   userId: string | undefined;
@@ -22,6 +23,9 @@ const CELL_SIZE = 13;
 const CELL_GAP = 3;
 const MONTH_LABEL_HEIGHT = 16;
 const WEEKDAY_ROW_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+
+const dayLabel = (dateKey: string) =>
+  new Date(`${dateKey}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 /** GitHub-style 6-month contribution graph for the Status screen. */
 export default function WebHeatmap({ userId, timeZone }: Props) {
@@ -106,6 +110,7 @@ export default function WebHeatmap({ userId, timeZone }: Props) {
                       <button
                         key={`${ci}-${ri}`}
                         type="button"
+                        aria-label={`${dayLabel(dateKey)}, ${day?.completedCount ?? 0} of ${day?.scheduledCount ?? 0} completed`}
                         onClick={() => setSelectedDate(dateKey)}
                         disabled={state.isFuture || historyQuery.isPending}
                         style={{
@@ -142,28 +147,25 @@ export default function WebHeatmap({ userId, timeZone }: Props) {
               </div>
             </div>
           </div>
-          <div style={{ borderTop: '1px solid var(--c-divider-flat)', marginTop: 12, paddingTop: 12 }}>
-            {historyQuery.isPending ? (
-              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Reading the archive…</div>
-            ) : !selected ? (
-              <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Click a day to see details.</div>
-            ) : (
-              <>
-                <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c-muted-flat)', marginBottom: 6 }}>
-                  {selectedDate === todayKey ? 'TODAY' : selectedDate} · {selected.completedCount}/{selected.scheduledCount}
-                </div>
-                {selected.completions.length === 0 ? (
-                  <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Nothing completed this day.</div>
-                ) : (
-                  selected.completions.map((c, i) => (
-                    <div key={i} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)', padding: '2px 0' }}>
-                      {c.habitName}
-                    </div>
-                  ))
-                )}
-              </>
-            )}
-          </div>
+          {historyQuery.isPending && (
+            <div style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)', marginTop: 12 }}>Reading the archive…</div>
+          )}
+          {selectedDate && selected && (
+            <Dialog title={`${selectedDate === todayKey ? 'Today · ' : ''}${dayLabel(selectedDate)}`} onClose={() => setSelectedDate(null)}>
+              <div style={{ fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--c-muted-flat)', marginBottom: 8 }}>
+                {selected.completedCount}/{selected.scheduledCount} completed
+              </div>
+              {selected.completions.length === 0 ? (
+                <div style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>Nothing completed this day.</div>
+              ) : (
+                selected.completions.map((c, i) => (
+                  <div key={i} style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-text)', padding: '2px 0' }}>
+                    {c.habitName}
+                  </div>
+                ))
+              )}
+            </Dialog>
+          )}
         </>
       )}
     </div>
