@@ -610,6 +610,38 @@ async function boardFlows(browser, report) {
     report.flows.push('board: quest editors (three types, create and edit), details, confirm, Archived habits and All habits fit without scrolling at 1366x650, 1280x600 and 390x660');
   } finally { await context.close(); }
 }
+
+// Every palette, chosen in Settings in both themes: the page surface and the dialog agree, the accents differ, the choice survives a reload (dark), and it is reversible.
+const PALETTES=[['cyan','Cyan','#67e8f9'],['blue','System blue','#5e9cf0'],['indigo','Indigo','#818cf8'],['violet','Monarch violet','#a78bfa'],['magenta','Magenta','#e879f9'],['steel','Steel','#cbd5e1'],['jade','Jade','#2dd4b0'],['lime','Lime','#a3e635']];
+async function paletteAcceptance(page,report) {
+  const identity=/Layout Hero, Ranger, rank/;
+  const openSettings=async()=>{ await page.getByRole('button',{name:identity}).click(); await page.getByRole('menuitem',{name:'Settings'}).click(); await page.getByRole('dialog',{name:'SETTINGS'}).waitFor(); };
+  const read=()=>page.evaluate(()=>{ const val=(el,name)=>getComputedStyle(el).getPropertyValue(name).trim(); const dialog=document.querySelector('[role=dialog]'); const surface=document.querySelector('.surface-flat[data-theme]'); return {dialog:val(dialog,'--c-accent'),surface:val(surface,'--c-accent'),body:val(surface,'--c-body'),glow:val(surface,'--c-glow')}; });
+  await page.setViewportSize({width:1440,height:900});
+  for(const dark of [true,false]) {
+    await page.goto(WEB+'/board'); await page.getByRole('button',{name:identity}).waitFor();
+    await theme(page,dark);
+    const seen=new Set();
+    for(const [id,label,swatch] of PALETTES) {
+      await openSettings();
+      await page.getByRole('radio',{name:label}).check();
+      assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),id==='cyan'?undefined:id);
+      const now=await read();
+      assert.equal(now.dialog,now.surface,`${id} ${dark?'dark':'light'}: dialog and page agree`);
+      if(dark) assert.equal(now.dialog,swatch,`${id} dark accent is its swatch`);
+      assert(!seen.has(now.dialog),`${id} ${dark?'dark':'light'} accent is distinct`); seen.add(now.dialog);
+      await screenshot(page,`palette-${id}-settings-${dark?'dark':'light'}`,report);
+      await page.keyboard.press('Escape');
+      if(dark&&id!=='cyan') for(const route of ['board','status','gym']) {
+        await page.goto(WEB+'/'+route); await page.getByRole('button',{name:identity}).waitFor();
+        assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),id,`${id} persists across a reload on ${route}`);
+        await page.waitForTimeout(400); await screenshot(page,`palette-${id}-${route}`,report);
+      }
+    }
+    assert.equal(seen.size,PALETTES.length);
+  }
+  report.flows.push('Palettes: all eight chosen in Settings in dark and light, shared by page and dialogs, distinct, persist across reloads, reversible');
+}
 async function main() {
   fs.mkdirSync(OUT,{recursive:true}); const report={measurements:[],flows:[],errors:[]};
   let browser, zoom;
@@ -620,6 +652,15 @@ async function main() {
       assert.equal(report.errors.length, 0, report.errors.join('\n'));
       fs.writeFileSync(path.join(OUT, 'edge-report.json'), JSON.stringify(report, null, 2));
       console.log('Browser edge acceptance passed:', report.measurements.length, 'screens,', report.flows.length, 'flows.');
+      return;
+    }
+    if (process.argv.includes('--palettes')) {
+      const pc=await browser.newContext({viewport:{width:1440,height:900}}); await prepare(pc);
+      const pp=await pc.newPage(); pp.setDefaultTimeout(15000); pp.on('pageerror',e=>report.errors.push(e.message));
+      await paletteAcceptance(pp,report); await pc.close();
+      assert.equal(report.errors.length,0,report.errors.join('\n'));
+      fs.writeFileSync(path.join(OUT,'palettes-report.json'),JSON.stringify(report,null,2));
+      console.log('Palette acceptance passed:',report.measurements.length,'screens,',report.flows.length,'flows.');
       return;
     }
     if (process.argv.includes('--profiles')) {
@@ -745,33 +786,7 @@ async function main() {
     assert.equal(await page.getByRole('combobox',{name:'Workouts'}).inputValue(),'');
     await screenshot(page,'history-deleted',report); await page.keyboard.press('Escape');
     report.flows.push('all-workout deleted-routine history');
-    // System blue: chosen in Settings, applied to the page root (dialogs included), kept across a reload, and reversible.
-    {
-      const identity=/Layout Hero, Ranger, rank/;
-      const openSettings=async()=>{ await page.getByRole('button',{name:identity}).click(); await page.getByRole('menuitem',{name:'Settings'}).click(); await page.getByRole('dialog',{name:'SETTINGS'}).waitFor(); };
-      await page.setViewportSize({width:1440,height:900}); await theme(page,true);
-      await openSettings();
-      await page.getByRole('radio',{name:'System blue'}).check();
-      assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),'blue');
-      const blue=await page.evaluate(()=>{ const read=(el,name)=>getComputedStyle(el).getPropertyValue(name).trim(); const dialog=document.querySelector('[role=dialog]'); return {dialogAccent:read(dialog,'--c-accent'),pageAccent:read(document.documentElement,'--c-accent'),body:read(document.documentElement,'--c-body')}; });
-      assert.deepEqual(blue,{dialogAccent:'#5e9cf0',pageAccent:'#5e9cf0',body:'#020818'},'dialog and page agree on the blue palette');
-      await screenshot(page,'palette-blue-settings',report);
-      await page.keyboard.press('Escape');
-      for(const route of ['board','status','longquests','gym']) {
-        await page.goto(WEB+'/'+route); await page.getByRole('button',{name:identity}).waitFor();
-        assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),'blue',`blue persists across a reload on ${route}`);
-        await page.waitForTimeout(400); await screenshot(page,`palette-blue-${route}`,report);
-      }
-      await theme(page,false);
-      await openSettings();
-      assert.equal(await page.getByRole('radio',{name:'Cyan'}).isDisabled(),true,'the palette is dark-mode only'); await page.keyboard.press('Escape');
-      await theme(page,true);
-      await openSettings();
-      await page.getByRole('radio',{name:'Cyan'}).check();
-      assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),undefined);
-      await page.keyboard.press('Escape');
-      report.flows.push('System blue: chosen in Settings, shared by page and dialogs, persists across reloads, dark mode only, reversible');
-    }
+    await paletteAcceptance(page,report);
     for(const route of ['board','status','status-weekly','status-hero','settings','history','quest-editor','profile','archived','routine-editor','exercise-editor']) {
       await page.goto(WEB+'/board'); await page.getByRole('button',{name:/Layout Hero, Ranger, rank/}).waitFor();
       for(const [w,h] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {
