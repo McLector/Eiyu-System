@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlusIcon } from '@/components/eiyu/icons';
@@ -17,6 +18,8 @@ interface Props {
   dismissible?: boolean;
   /** What a screen reader (and a test) calls the Close button; the default is just "Close". */
   closeLabel?: string;
+  /** Lift the fields above the on-screen keyboard (forms). */
+  keyboardAware?: boolean;
   testID?: string;
 }
 
@@ -24,11 +27,12 @@ interface Props {
  * A bottom sheet on the system Modal: the back button, a tap outside and the Close button all close it, the content
  * scrolls instead of clipping (200% font), and it never grows past 90% of the screen.
  */
-export function Sheet({ visible, title, onClose, children, footer, dismissible = true, closeLabel = 'Close', testID = 'sheet' }: Props) {
+export function Sheet({ visible, title, onClose, children, footer, dismissible = true, closeLabel = 'Close', keyboardAware = false, testID = 'sheet' }: Props) {
   const t = useTokens();
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const close = () => { if (dismissible) onClose(); };
+  const Scroller = keyboardAware ? KeyboardAwareScrollView : ScrollView;
 
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={close} testID={testID}>
@@ -54,9 +58,9 @@ export function Sheet({ visible, title, onClose, children, footer, dismissible =
               </Pressable>
             ) : null}
           </View>
-          <ScrollView testID={`${testID}-scroll`} keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.content}>
+          <Scroller testID={`${testID}-scroll`} keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.content}>
             {children}
-          </ScrollView>
+          </Scroller>
           {footer ? (
             <View
               testID={`${testID}-footer`}

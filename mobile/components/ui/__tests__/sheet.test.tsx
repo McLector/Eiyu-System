@@ -8,6 +8,13 @@ import { renderWithTheme } from '../test-theme';
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 16, left: 0, right: 0 }),
 }));
+jest.mock('react-native-keyboard-controller', () => ({
+  // A stand-in that marks itself, so a test can tell it from the plain ScrollView.
+  KeyboardAwareScrollView: function KeyboardAwareScrollView({ children, ...props }: { children: unknown }) {
+    const { ScrollView } = jest.requireActual('react-native');
+    return <ScrollView {...props} {...({ keyboardAware: true } as object)}>{children as never}</ScrollView>;
+  },
+}));
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -107,5 +114,16 @@ describe('Sheet', () => {
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
     await userEvent.setup().press(screen.getByRole('button', { name: 'Close Edit details' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('scrolls with the plain ScrollView by default', async () => {
+    await renderWithTheme(<Sheet visible title="T" onClose={() => {}}><Text>Body</Text></Sheet>);
+    expect(screen.getByTestId('sheet-scroll')).not.toHaveProp('keyboardAware');
+  });
+
+  it('can lift its fields above the keyboard when asked', async () => {
+    await renderWithTheme(<Sheet visible title="T" keyboardAware onClose={() => {}}><Text>Body</Text></Sheet>);
+    expect(screen.getByTestId('sheet-scroll')).toHaveProp('keyboardAware', true);
+    expect(screen.getByTestId('sheet-scroll')).toHaveProp('keyboardShouldPersistTaps', 'handled');
   });
 });

@@ -48,6 +48,7 @@ appId: com.mclector.eiyusystem
 - tapOn: "Phase Four Updated"
 - assertVisible: "Edit details"
 - assertVisible: "Settings"
+- assertVisible: "Archived habits"
 - assertVisible: "Logout"
 
 # Edit details is a real profile write, not a local-only display update.

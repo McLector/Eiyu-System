@@ -67,3 +67,6 @@ jest.mock('expo-video', () => {
     VideoView: props => React.createElement(View, props),
   };
 });
+
+// The keyboard library is native; it ships its own jest mock (individual tests may still override it).
+jest.mock('react-native-keyboard-controller', () => require('react-native-keyboard-controller/jest'));
