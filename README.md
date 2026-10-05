@@ -25,7 +25,7 @@ Your real-life habits translate directly into XP for your character's stats (STR
 * **Auth**: Email/password auth with session persistence, display-name sign-up, and password reset.
 * **History**: Calendar-based completion history with per-day drill-down.
 * **Notifications**: Local push notification scheduling for habit reminders (mobile only).
-* **Weekly Quests**: Auto-generated weekly targets per stat.
+* **Weekly Quests**: Auto-generated weekly targets per stat (not shown in the current Status screens of either app).
 
 ## Project Structure
 
