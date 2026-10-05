@@ -1,33 +1,24 @@
 appId: com.mclector.eiyusystem
 ---
-# Edge cases around the stage list itself: adding up to MAX_STAGES (8) and
-# removing down to MIN_STAGES (2), where the remove button should disappear.
-# The editor opens with 3 stage slots; + ADD STAGE moves down as slots are
-# added, so scroll to the bottom with a plain swipe before each tap (a
-# scroll-to-element leaves the button under the system nav bar, where taps
-# are swallowed).
+# Stage list edge cases in the editor: a chain needs at least one stage (the last Remove button disappears) and has
+# no upper limit. Written for the new editor, not yet run on a device.
 - runFlow: _helpers/login.yaml
 - tapOn: "CHAIN"
-- tapOn: "ADD A LONG QUEST"
+- tapOn: "NEW CHAIN"
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "Stage List Edge Cases"
 - hideKeyboard
 
-- repeat:
-    times: 5
-    commands:
-      - swipe:
-          start: "50%, 80%"
-          end: "50%, 30%"
-      - waitForAnimationToEnd:
-          timeout: 2000
-      - tapOn: "\\+ ADD STAGE"
-      - waitForAnimationToEnd:
-          timeout: 2000
-- swipe:
-    start: "50%, 80%"
-    end: "50%, 30%"
-- assertVisible: "Stage 8"
-# At MAX_STAGES (8), the add-stage control should be gone.
-- assertNotVisible: "\\+ ADD STAGE"
-- takeScreenshot: e2e-longquest-max-stages
+# Two blank stages to start: remove the second, and the last Remove button goes away.
+- scrollUntilVisible:
+    element: "ADD STAGE"
+    direction: DOWN
+    timeout: 8000
+- tapOn: "Remove stage 2"
+- assertNotVisible: "Remove stage 1"
+- assertNotVisible: "Stage 2"
+
+# Adding brings the Remove buttons back, and there is no maximum.
+- tapOn: "ADD STAGE"
+- assertVisible: "Remove stage 1"
+- takeScreenshot: e2e-longquest-stage-list

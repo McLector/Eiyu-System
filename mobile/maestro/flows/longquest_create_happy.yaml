@@ -1,8 +1,9 @@
 appId: com.mclector.eiyusystem
 ---
+# Mobile parity slice 3: the Chain tab lists chains; a chain opens on its own screen. Written for the new screens, not yet run on a device.
 - runFlow: _helpers/login.yaml
 - tapOn: "CHAIN"
-- tapOn: "ADD A LONG QUEST"
+- tapOn: "NEW CHAIN"
 - assertVisible: "NEW LONG QUEST"
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "Maestro Long Quest Happy Path"
@@ -13,20 +14,17 @@ appId: com.mclector.eiyusystem
 - tapOn: "Stage 2"
 - inputText: "Second stage"
 - hideKeyboard
-- scrollUntilVisible:
-    element: "CREATE LONG QUEST"
-    direction: DOWN
-    timeout: 8000
-- tapOn: "CREATE LONG QUEST"
+- tapOn:
+    id: "long-quest-save"
 - assertVisible: "Maestro Long Quest Happy Path"
 - assertVisible: "0/2"
 
 # Cleanup: keep the shared test account's board empty between flow runs.
-# Tap the "0/2" progress text to expand, not the quest title - the title
-# row is now its own edit-trigger Pressable (Slice 3) and would open the
-# editor instead of expanding the card.
-- tapOn: "0/2"
-- tapOn: "Delete Long Quest"
-- assertVisible: ".*will be removed permanently.*"
+- tapOn: "Maestro Long Quest Happy Path.*"
+- tapOn:
+    id: "chain-more"
 - tapOn: "Delete"
+- assertVisible: ".*Earned XP remains.*"
+- tapOn:
+    id: "chain-delete-confirm"
 - assertNotVisible: "Maestro Long Quest Happy Path"

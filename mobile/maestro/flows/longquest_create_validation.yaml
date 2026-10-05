@@ -1,55 +1,27 @@
 appId: com.mclector.eiyusystem
 ---
+# Written for the new editor, not yet run on a device. A chain needs a name and at least one named stage.
 - runFlow: _helpers/login.yaml
 - tapOn: "CHAIN"
-- tapOn: "ADD A LONG QUEST"
+- tapOn: "NEW CHAIN"
 - assertVisible: "NEW LONG QUEST"
 
-# No name, no stages filled - blocked.
-- scrollUntilVisible:
-    element: "CREATE LONG QUEST"
-    direction: DOWN
-    timeout: 8000
-- tapOn: "CREATE LONG QUEST"
+# Nothing filled in: Save is disabled, so tapping it changes nothing.
+- tapOn:
+    id: "long-quest-save"
 - assertVisible: "NEW LONG QUEST"
 
-# Name only, zero stages filled (MIN_STAGES = 2) - still blocked.
-# The sheet is scrolled down to reach CREATE LONG QUEST; scroll back to the top.
-- swipe:
-    start: "50%, 30%"
-    end: "50%, 85%"
-- swipe:
-    start: "50%, 30%"
-    end: "50%, 85%"
-- swipe:
-    start: "50%, 30%"
-    end: "50%, 85%"
+# Name only, no stage named: still blocked.
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "Name Only No Stages"
 - hideKeyboard
-- scrollUntilVisible:
-    element: "CREATE LONG QUEST"
-    direction: DOWN
-    timeout: 8000
-- tapOn: "CREATE LONG QUEST"
+- tapOn:
+    id: "long-quest-save"
 - assertVisible: "NEW LONG QUEST"
 
-# Name + exactly one stage filled - still below MIN_STAGES, still blocked.
-- swipe:
-    start: "50%, 30%"
-    end: "50%, 85%"
-- swipe:
-    start: "50%, 30%"
-    end: "50%, 85%"
-- swipe:
-    start: "50%, 30%"
-    end: "50%, 85%"
-- tapOn: "Stage 1"
-- inputText: "Only one stage"
-- hideKeyboard
-- scrollUntilVisible:
-    element: "CREATE LONG QUEST"
-    direction: DOWN
-    timeout: 8000
-- tapOn: "CREATE LONG QUEST"
+# Leaving with an unsaved name asks first; Keep Editing stays.
+- tapOn: "Close long quest editor"
+- assertVisible: "Discard changes?"
+- tapOn: "Keep Editing"
 - assertVisible: "NEW LONG QUEST"
+- assertVisible: "Name Only No Stages"

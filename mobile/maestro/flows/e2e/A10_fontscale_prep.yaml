@@ -21,7 +21,7 @@ appId: com.mclector.eiyusystem
 - assertVisible: ${output.longName}
 
 - tapOn: "CHAIN"
-- tapOn: "ADD A LONG QUEST"
+- tapOn: "NEW CHAIN"
 - tapOn: "e.g. Ship a Side Project"
 - inputText: "E2E FontScale Long Quest"
 - hideKeyboard

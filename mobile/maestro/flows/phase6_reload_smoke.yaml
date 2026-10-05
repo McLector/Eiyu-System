@@ -35,7 +35,7 @@ appId: com.mclector.eiyusystem
 - assertVisible: "ATTRIBUTE PROGRESS"
 - takeScreenshot: android-fontscale-status
 - tapOn: "CHAIN"
-- assertVisible: "Long Quests"
+- assertVisible: "CHAIN PROGRESSION"
 - takeScreenshot: android-fontscale-quests
 - tapOn: "BOARD"
 - assertVisible: "P6 Quantity Quest"

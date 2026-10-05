@@ -72,18 +72,19 @@ appId: com.anonymous.eiyusystem
 - extendedWaitUntil:
     visible: "Cross-platform Journey"
     timeout: 10000
-- tapOn: "3/3"
-- assertVisible:
-    text: "Plan.*"
-    checked: true
-- assertVisible:
-    text: "Build.*"
-    checked: true
-- assertVisible:
-    text: "Ship.*"
-    checked: true
+- tapOn: "Cross-platform Journey.*"
+# Every stage reads Done on the chain's own screen (written for the slice 3 screens; not yet run on a device).
+- assertVisible: "100%"
+- assertVisible: "Plan"
+- assertVisible: "Build"
+- assertVisible: "Ship"
+- tapOn: "Actions for Plan"
+- tapOn: "Show details"
 - assertVisible: "Define the route."
+- tapOn: "Actions for Build"
+- tapOn: "Show details"
 - assertVisible: "Build across platforms"
+- tapOn: "Actions for Ship"
+- tapOn: "Show details"
 - assertVisible: "Verify persistence"
-# Completion is represented by the persisted 3/3 count and checked stage rows;
-# the mobile card intentionally has no separate COMPLETE badge.
+- back
