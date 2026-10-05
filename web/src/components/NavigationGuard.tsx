@@ -46,7 +46,9 @@ export function useEditorGuard(dirty: boolean, pending = false, overlay = false)
   const id = useId();
   const register = guard.register;
   useEffect(() => { register(id, { dirty, pending, overlay }); return () => register(id, null); }, [register, id, dirty, pending, overlay]);
-  const request = (action: () => void) => guard.request(action, { dirty, pending, overlay });
+  // Once the user confirms leaving, this editor's unsaved state is moot. Dropping it before the action runs keeps the
+  // route blocker from asking a second time about the very navigation the user just approved.
+  const request = (action: () => void) => guard.request(() => { register(id, null); action(); }, { dirty, pending, overlay });
   return Object.assign(request, { committed: (action: () => void) => { register(id, null); action(); } });
 }
 export function useNavigationGuard() { return useContext(Context).request; }
