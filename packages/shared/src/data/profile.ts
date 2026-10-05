@@ -1,6 +1,8 @@
 import { supabase } from '../supabase/client';
 import { deviceTimeZone } from '../logic/date-utils';
 import { normalizeProfileEdit, type ProfileEditInput } from '../logic/validation';
+import type { ThemeMode } from '../theme/palettes';
+import { isThemeMode } from '../theme/theme-mode';
 
 export interface ProfileData {
   displayName: string;
@@ -77,4 +79,23 @@ export async function saveAccountPalette(palette: string): Promise<string> {
   const { data, error } = await supabase.rpc('set_profile_palette', { p_palette: palette });
   if (error) throw error;
   return data as string;
+}
+
+/** The theme the account chose, or null when it cannot be read. Never throws: a theme is cosmetic. */
+export async function fetchAccountTheme(userId: string): Promise<ThemeMode | null> {
+  try {
+    const { data, error } = await supabase.from('profiles').select('theme').eq('user_id', userId).maybeSingle();
+    if (error) return null;
+    const theme = (data as { theme: unknown } | null)?.theme;
+    return isThemeMode(theme) ? theme : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAccountTheme(theme: ThemeMode): Promise<ThemeMode> {
+  const { data, error } = await supabase.rpc('set_profile_theme', { p_theme: theme });
+  if (error) throw error;
+  if (!isThemeMode(data)) throw new Error('The System returned a theme it does not recognise.');
+  return data;
 }

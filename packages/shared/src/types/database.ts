@@ -432,6 +432,10 @@ export interface Database {
         Args: { p_palette: string };
         Returns: string;
       };
+      set_profile_theme: {
+        Args: { p_theme: string };
+        Returns: string;
+      };
     };
   };
 }

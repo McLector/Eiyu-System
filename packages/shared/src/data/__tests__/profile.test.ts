@@ -1,5 +1,5 @@
 import { supabase } from '../../supabase/client';
-import { fetchAccountPalette, saveAccountPalette, updateProfile } from '../profile';
+import { fetchAccountPalette, fetchAccountTheme, saveAccountPalette, saveAccountTheme, updateProfile } from '../profile';
 
 jest.mock('../../supabase/client', () => ({
   supabase: { rpc: jest.fn() },
@@ -83,5 +83,57 @@ describe('account palette', () => {
   it('surfaces a failed save so the caller can decide', async () => {
     (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: new Error('denied') });
     await expect(saveAccountPalette('violet')).rejects.toThrow('denied');
+  });
+});
+
+describe('account theme', () => {
+  const chain = (result: { data: unknown; error: unknown }) => {
+    const maybeSingle = jest.fn().mockResolvedValue(result);
+    const eq = jest.fn(() => ({ maybeSingle }));
+    const select = jest.fn(() => ({ eq }));
+    (supabase as unknown as { from: jest.Mock }).from = jest.fn(() => ({ select }));
+    return { select, eq, maybeSingle };
+  };
+
+  it('reads the theme of the signed-in account', async () => {
+    const { select, eq } = chain({ data: { theme: 'light' }, error: null });
+    await expect(fetchAccountTheme('user-1')).resolves.toBe('light');
+    expect(supabase.from).toHaveBeenCalledWith('profiles');
+    expect(select).toHaveBeenCalledWith('theme');
+    expect(eq).toHaveBeenCalledWith('user_id', 'user-1');
+  });
+
+  it.each(['LIGHT', '', 'blue', null])('is null for the stored value %j', async value => {
+    chain({ data: { theme: value }, error: null });
+    await expect(fetchAccountTheme('user-1')).resolves.toBeNull();
+  });
+
+  it('is null when there is no row or the read errors', async () => {
+    chain({ data: null, error: null });
+    await expect(fetchAccountTheme('user-1')).resolves.toBeNull();
+    chain({ data: null, error: new Error('denied') });
+    await expect(fetchAccountTheme('user-1')).resolves.toBeNull();
+  });
+
+  it('is null, never a throw, when the request itself fails', async () => {
+    const maybeSingle = jest.fn().mockRejectedValue(new Error('network down'));
+    (supabase as unknown as { from: jest.Mock }).from = jest.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }));
+    await expect(fetchAccountTheme('user-1')).resolves.toBeNull();
+  });
+
+  it('saves the theme through the owner-scoped RPC', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: 'light', error: null });
+    await expect(saveAccountTheme('light')).resolves.toBe('light');
+    expect(supabase.rpc).toHaveBeenCalledWith('set_profile_theme', { p_theme: 'light' });
+  });
+
+  it('surfaces a failed save (for example the migration is not applied yet)', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: new Error('function not found') });
+    await expect(saveAccountTheme('dark')).rejects.toThrow('function not found');
+  });
+
+  it('throws when the server answers with something that is not a theme', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: 'purple', error: null });
+    await expect(saveAccountTheme('dark')).rejects.toThrow();
   });
 });

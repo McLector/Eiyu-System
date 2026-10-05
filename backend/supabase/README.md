@@ -311,6 +311,10 @@ with checks(marker, ok) as (
     has_function_privilege('authenticated',to_regprocedure('public.set_profile_palette(text)'),'EXECUTE')
     and not has_function_privilege('anon',to_regprocedure('public.set_profile_palette(text)'),'EXECUTE')
     and has_column_privilege('authenticated','public.profiles','palette','UPDATE'), false)
+  union all select '041 profiles: the account theme', coalesce(
+    has_function_privilege('authenticated',to_regprocedure('public.set_profile_theme(text)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.set_profile_theme(text)'),'EXECUTE')
+    and has_column_privilege('authenticated','public.profiles','theme','UPDATE'), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -322,7 +326,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–040
+re-run an old file over a newer definition. This query covers migrations 001–041
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -371,7 +375,11 @@ Media cleanup uses an owner-only durable manifest. Acknowledge only successful d
 
 ## Colour palette rollout (040)
 
-Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional for the web client: the client reads the palette in a call that ignores a missing column, and a failed save keeps the choice in the browser, so deploying either side first breaks nothing. Until 040 is applied the palette simply stays per browser. Mobile does not read it yet. Test with `supabase/tests/021_profile_palette.test.sql`.
+Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional for the web client: the client reads the palette in a call that ignores a missing column, and a failed save keeps the choice in the browser, so deploying either side first breaks nothing. Until 040 is applied the palette simply stays per browser. Mobile reads and saves it the same way. Test with `supabase/tests/021_profile_palette.test.sql`.
+
+## Theme rollout (041)
+
+Apply **041** (`041_profile_theme.sql`) and verify its marker. Both clients treat it as optional: a failed save keeps the theme on the device and re-sends it on the next launch, so deploying either side first breaks nothing. Until 041 is applied the theme simply stays per device. Test with `supabase/tests/022_profile_theme.test.sql`.
 
 ## Gym quick-log rollout (039)
 
