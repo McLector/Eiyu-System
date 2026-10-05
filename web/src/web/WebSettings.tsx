@@ -1,8 +1,11 @@
 import { MoonIcon, SunIcon } from '../Icons';
+import type { Palette } from '../palette';
 
 interface Props {
   darkMode: boolean;
   onToggleDark: () => void;
+  palette: Palette;
+  onPaletteChange: (palette: Palette) => void;
   onShowHistory: () => void;
   onLogout: () => void;
   signOutError?: string | null;
@@ -28,6 +31,21 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   );
 }
 
+const PALETTES: { id: Palette; label: string }[] = [{ id: 'cyan', label: 'Cyan' }, { id: 'blue', label: 'System blue' }];
+
+function PaletteChoice({ palette, disabled, onChange }: { palette: Palette; disabled: boolean; onChange: (palette: Palette) => void }) {
+  return (
+    <div role="radiogroup" aria-label="Colour palette" className="palette-options">
+      {PALETTES.map(({ id, label }) => (
+        <label key={id} className={`palette-option${palette === id ? ' is-selected' : ''}${disabled ? ' is-disabled' : ''}`}>
+          <input type="radio" name="palette" value={id} checked={palette === id} disabled={disabled} onChange={() => { if (palette !== id) onChange(id); }} />
+          <span>{label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function SettingRow({ label, sub, right }: { label: string; sub?: string; right: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0' }}>
@@ -44,7 +62,7 @@ function SectionLabel({ label, first }: { label: string; first?: boolean }) {
   return <div style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', color: 'var(--c-dim-flat)', marginTop: first ? 0 : 24, marginBottom: 4 }}>{label}</div>;
 }
 
-export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onLogout, signOutError, embedded }: Props) {
+export default function WebSettings({ darkMode, onToggleDark, palette, onPaletteChange, onShowHistory, onLogout, signOutError, embedded }: Props) {
   return (
     <div style={{ maxWidth: 560 }}>
       {!embedded && <>
@@ -63,6 +81,12 @@ export default function WebSettings({ darkMode, onToggleDark, onShowHistory, onL
             <MoonIcon />
           </div>
         }
+      />
+
+      <SettingRow
+        label="Colour palette"
+        sub={darkMode ? 'Preview the System blue look' : 'Dark mode only. Switch to dark to use System blue.'}
+        right={<PaletteChoice palette={palette} disabled={!darkMode} onChange={onPaletteChange} />}
       />
 
       <div className="divider-flat" />

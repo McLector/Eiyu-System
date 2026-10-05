@@ -160,5 +160,13 @@ select ok(coalesce(exists (select 1 from pg_constraint where conrelid = 'public.
       from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false), false),
   '038 Backlog quests, genre, optional time and server-owned moves are in place');
 
+-- Migration 039: Gym quick-log weights and the two newest weights per exercise.
+select ok(coalesce(
+    has_function_privilege('authenticated', to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'), 'EXECUTE')
+    and not has_function_privilege('anon', to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'), 'EXECUTE')
+    and has_function_privilege('authenticated', to_regprocedure('public.recent_gym_weights(uuid)'), 'EXECUTE')
+    and not has_function_privilege('anon', to_regprocedure('public.recent_gym_weights(uuid)'), 'EXECUTE'), false),
+  '039 Gym quick-log weights and recent weights are in place');
+
 select * from finish();
 rollback;

@@ -7,7 +7,7 @@ import { isConfirmedFailure, UncertainSaveError } from './save-outcome';
 
 /** R-32/R-33: real Long Quests, replacing the mock data that shipped with the UI. */
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
-  const quests = await readBatches((from, to) => supabase.from('long_quests').select('id, name, stat, description, completed_at').eq('user_id', userId).order('created_at').order('id').range(from, to));
+  const quests = await readBatches((from, to) => supabase.from('long_quests').select('id, name, stat, description, completed_at, created_at').eq('user_id', userId).order('created_at').order('id').range(from, to));
   if (!quests.length) return [];
   const stages = await readBatches((from, to) => supabase.from('long_quest_stages').select('id, long_quest_id, name, done, position, description').eq('user_id', userId).order('long_quest_id').order('position').order('id').range(from, to));
 
@@ -23,6 +23,7 @@ export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
     stat: q.stat,
     description: q.description,
     completedAt: q.completed_at,
+    createdAt: q.created_at,
     stages: stagesByQuest.get(q.id) ?? [],
   }));
 }

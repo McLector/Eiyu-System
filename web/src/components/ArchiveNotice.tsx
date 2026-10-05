@@ -13,6 +13,8 @@ export type FeedbackTone = 'info' | 'success' | 'warning' | 'danger';
 export function announceFeedback(message: string, owner = activeOwner, tone: FeedbackTone = 'success') {
   window.dispatchEvent(new CustomEvent('eiyu:archived', { detail: { id: crypto.randomUUID(), owner, message, tone } }));
 }
+/** How long a notice takes to fade out; matches --dur-base in index.css. */
+export const NOTICE_FADE_MS = 200;
 interface Notice { id: string; owner: string; type?: QuestType; message?: string; tone?: FeedbackTone; undo?: () => Promise<void> }
 /** The bar mounts with a negative delay equal to the time already elapsed, so a remount (portal target change) never restarts it. */
 function NoticeTimer({ paused, elapsed }: { paused: boolean; elapsed: () => number }) {
@@ -25,6 +27,8 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   const [queue, setQueue] = useState<Notice[]>([]);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  // The id of the notice that is fading out. It stays on screen, inert to hover and focus, until the fade is done.
+  const [leaving, setLeaving] = useState<string | null>(null);
   const paused = hovered || focused;
   const remaining = useRef(8000);
   const runStart = useRef<number | null>(null);
@@ -35,6 +39,7 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   useEffect(() => {
     activeOwner = owner;
     setQueue([]);
+    setLeaving(null);
     setHovered(false); setFocused(false);
     const show = (event: Event) => {
       const next = (event as CustomEvent<Notice>).detail;
@@ -55,12 +60,21 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   }, [owner]);
   useEffect(() => { remaining.current = 8000; runStart.current = null; timerFor.current = notice?.id ?? null; }, [notice?.id]);
   useEffect(() => {
-    if (!notice || paused) return;
+    if (!notice || paused || leaving === notice.id) return;
     const start = Date.now();
     runStart.current = start;
-    const timer = window.setTimeout(() => setQueue(q => q.slice(1)), remaining.current);
+    const timer = window.setTimeout(() => setLeaving(notice.id), remaining.current);
     return () => { window.clearTimeout(timer); runStart.current = null; remaining.current = Math.max(0, remaining.current - (Date.now() - start)); };
-  }, [notice, paused]);
+  }, [notice, paused, leaving]);
+  // A timer rather than transitionend: that event never fires under reduced motion or without a layout engine.
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(() => {
+      setQueue(q => q[0]?.id === leaving ? q.slice(1) : q);
+      setLeaving(null);
+    }, NOTICE_FADE_MS);
+    return () => window.clearTimeout(timer);
+  }, [leaving]);
   useEffect(() => {
     const update = () => setTarget(Array.from(document.querySelectorAll('[data-eiyu-dialog] .compact-dialog-body')).at(-1) ?? null);
     update();
@@ -73,19 +87,18 @@ export default function ArchiveNotice({ onOpen }: { onOpen: () => void }) {
   useEffect(() => { setHovered(false); setFocused(false); }, [target]);
   const undo = async () => {
     const run = notice?.undo;
-    setQueue(q => q.slice(1));
+    if (notice) setLeaving(notice.id);
     if (!run) return;
     try { await run(); } catch (err) { announceFeedback(`Could not undo that: ${formatError(err)}`, owner, 'danger'); }
   };
   if (!notice || notice.owner !== owner) return null;
-  const content = <div className="archive-notice feedback-card" data-tone={notice.tone ?? (notice.message ? 'success' : 'warning')} role="status" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
+  const content = <div className={`archive-notice feedback-card${leaving === notice.id ? ' is-leaving' : ''}`} data-tone={notice.tone ?? (notice.message ? 'success' : 'warning')} role="status" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
     {notice.message ? <span>{notice.message}</span> : <>
       <ArchiveIcon />
       <span><strong>{notice.type === 'habit' ? 'Habit' : 'Quest'} archived ✓</strong><br />Your archived habits are available from your profile.</span>
       {notice.undo && <button type="button" className="btn-quiet btn-compact" onClick={() => void undo()}><UndoIcon size={14} /> Undo</button>}
-      <button type="button" className="btn-secondary btn-compact" onClick={() => { setQueue(q => q.slice(1)); onOpen(); }}>View archived habits</button>
+      <button type="button" className="btn-secondary btn-compact" onClick={() => { setLeaving(notice.id); onOpen(); }}>View archived habits</button>
     </>}
-    <button className="phase4-close" aria-label="Dismiss archive notice" onClick={() => setQueue(q => q.slice(1))}>×</button>
     {!notice.message && <NoticeTimer key={notice.id} paused={paused} elapsed={() => elapsed(notice.id)} />}
   </div>;
   return target ? createPortal(content, target) : content;

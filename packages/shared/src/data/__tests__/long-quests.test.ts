@@ -134,6 +134,41 @@ describe('fetchLongQuests', () => {
   });
 });
 
+describe('fetchLongQuests created date', () => {
+  beforeEach(() => {
+    (supabase.from as jest.Mock).mockReset();
+  });
+
+  it('selects created_at and returns it as createdAt, without changing the order the rows arrive in', async () => {
+    const quests = chainable({
+      data: [
+        { id: 'lq-1', name: 'First', stat: 'INT', description: null, completed_at: null, created_at: '2026-09-12T08:30:00Z' },
+        { id: 'lq-2', name: 'Second', stat: 'STR', description: null, completed_at: '2026-10-01T10:00:00Z', created_at: '2026-09-20T08:30:00Z' },
+      ],
+      error: null,
+    });
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return quests;
+      if (table === 'long_quest_stages') return chainable({ data: [], error: null });
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    const result = await fetchLongQuests('user-1');
+
+    expect(quests.select).toHaveBeenCalledWith(expect.stringContaining('created_at'));
+    expect(result.map(q => [q.id, q.createdAt])).toEqual([['lq-1', '2026-09-12T08:30:00Z'], ['lq-2', '2026-09-20T08:30:00Z']]);
+  });
+
+  it('leaves createdAt undefined for a row that did not carry it, instead of inventing a date', async () => {
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'long_quests') return chainable({ data: [{ id: 'lq-1', name: 'Old', stat: 'INT', description: null, completed_at: null }], error: null });
+      return chainable({ data: [], error: null });
+    });
+    const [quest] = await fetchLongQuests('user-1');
+    expect(quest.createdAt).toBeUndefined();
+  });
+});
+
 describe('updateLongQuest', () => {
   beforeEach(() => {
     (supabase.from as jest.Mock).mockReset();

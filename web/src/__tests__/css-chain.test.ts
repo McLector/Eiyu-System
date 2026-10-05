@@ -22,6 +22,22 @@ describe('chain progression and quest card stylesheet', () => {
       expect(rule?.body, selector).toMatch(/overflow-wrap:\s*anywhere/);
     }
   });
+  it('lays the selected chain beside a 250px chain list and stacks them on narrow screens', () => {
+    expect(rules.find(rule => rule.selector === '.chain-layout')?.body).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)\s+250px/);
+    const stacked = css.match(/@media \(max-width: 899px\) \{([^@]*)\}\s*\n/)?.[1] ?? '';
+    expect(stacked).toMatch(/\.chain-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    // The picker moves above the chain so you choose before you read.
+    expect(stacked).toMatch(/\.chain-nav\s*\{[^}]*order:\s*-1/);
+  });
+  it('lets a long chain name truncate in the picker instead of pushing its count out', () => {
+    expect(rules.find(rule => rule.selector === '.chain-nav-name')?.body).toMatch(/text-overflow:\s*ellipsis/);
+    expect(rules.find(rule => rule.selector === '.chain-nav-count')?.body).toMatch(/flex:\s*none/);
+  });
+  it('no longer styles the accordion that the chain list replaced', () => {
+    for (const gone of ['.chain-card', '.chain-head', '.chain-body', '.chain-stage-more', '.long-quest-list']) {
+      expect(css, gone).not.toContain(gone);
+    }
+  });
   // Measured in the browser: opacity .7 put the "Locked" chip at 2.7-2.8:1 and "Show details" at 2.9-3.1:1 in both themes.
   it('does not fade a locked stage with opacity, which drops its small text below 4.5:1', () => {
     const locked = rules.filter(rule => rule.selector === '.chain-stage.is-locked');

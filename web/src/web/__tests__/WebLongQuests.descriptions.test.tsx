@@ -75,7 +75,7 @@ describe('web Long Quest stage descriptions', () => {
 
     const { container } = render(<WebLongQuests />);
     // The first chain opens by default and its current stage shows its details.
-    expect(screen.getByRole('button', { name: /Campaign/ })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /Campaign/ })).toHaveAttribute('aria-current', 'true');
     expect(container).toHaveTextContent('<strong>literal</strong> 勇者');
     expect(container.querySelector('strong')).toBeNull();
 

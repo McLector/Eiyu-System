@@ -147,17 +147,16 @@ async function main() {
     await page.locator('video.gym-media').evaluate(v=>v.play());
     await page.waitForFunction(()=>{const video=document.querySelector('video.gym-media');return video && !video.paused && video.currentTime>0;});
     report.flows.push('signed-media retry, anonymous access denied, MP4 replacement/playback on demand and old-object cleanup');
-    await page.getByRole('button',{name:'Start workout',exact:true}).click();
     const weight = page.getByRole('spinbutton',{name:'Current weight for Bench press in kg',exact:true});
-    await weight.fill('40');
-    await page.getByRole('button',{name:'Finish workout',exact:true}).click();
-    await page.getByRole('status').filter({hasText:'Workout completed.'}).waitFor();
-    await page.getByRole('button',{name:'Start workout',exact:true}).click();
+    await weight.fill('40'); await weight.press('Enter');
+    await page.getByRole('status').filter({hasText:'Bench press: 40 kg logged.'}).waitFor();
+    await weight.fill('42.5');
+    await page.getByRole('button',{name:'Log weight for Bench press',exact:true}).click();
+    await page.getByRole('status').filter({hasText:'Bench press: 42.5 kg logged.'}).waitFor();
     await page.getByText('40 kg',{exact:true}).waitFor();
-    assert.equal(await weight.inputValue(),'');
     await page.reload();
-    await page.getByRole('button',{name:'Save draft',exact:true}).waitFor();
-    report.flows.push('routine/exercise creation, private GIF upload/playback, session finish, previous weight, draft refresh');
+    await page.waitForFunction(()=>document.querySelector('[aria-label="Current weight for Bench press in kg"]')?.value==='42.5');
+    report.flows.push('routine/exercise creation, private GIF upload/playback, quick-logged weights, Current and Previous, refresh');
     for (const [width,height] of [[320,568],[390,844],[768,1024],[1024,768],[1280,720],[1440,900],[1920,1080]]) {
       await page.setViewportSize({width,height});
       for (const theme of ['dark','light']) {
@@ -165,7 +164,7 @@ async function main() {
           await page.goto(`${WEB}/${route}`);
           await page.getByRole('button',{name:/Layout Hero.*rank/}).waitFor();
           if (route==='board') await page.getByRole('region',{name:'Daily Quest',exact:true}).waitFor();
-          if (route==='gym') await page.getByRole('button',{name:'Save draft',exact:true}).waitFor();
+          if (route==='gym') await page.getByRole('spinbutton',{name:/^Current weight for /}).waitFor();
           if (route==='longquests') await page.getByText('Reward journey',{exact:true}).waitFor();
           if (route==='status') await page.getByRole('tab',{name:'STATS',exact:true}).waitFor();
           await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
@@ -206,7 +205,7 @@ async function main() {
       await zoomPage.goto(`${WEB}/${route}`);
       await zoomPage.getByRole('button',{name:/Layout Hero.*rank/}).waitFor();
       if(route==='board') await zoomPage.getByRole('region',{name:'Daily Quest',exact:true}).waitFor();
-      if(route==='gym') await zoomPage.getByRole('button',{name:'Save draft',exact:true}).waitFor();
+      if(route==='gym') await zoomPage.getByRole('spinbutton',{name:/^Current weight for /}).waitFor();
       if(route==='longquests') await zoomPage.getByText('Reward journey',{exact:true}).waitFor();
       await zoomPage.evaluate(()=>document.fonts.ready);
       const zoom = await zoomPage.evaluate(()=>({width:innerWidth,dpr:devicePixelRatio,scale:visualViewport.scale,overflow:document.documentElement.scrollWidth>innerWidth+1,narrow:matchMedia('(max-width:767px)').matches,controlsFit:[...document.querySelectorAll('.phase4-primary-nav a,.board-lane-tabs button')].every(e=>e.getBoundingClientRect().right<=innerWidth+1)}));

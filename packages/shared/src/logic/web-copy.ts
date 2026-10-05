@@ -10,12 +10,11 @@ import { formatError } from './format-error';
 
 export const GYM_COPY = {
   loadingHistory: 'Reading the training log…',
-  emptyHistory: 'No workouts on record. Finish one and it appears here.',
+  emptyHistory: 'No weights logged yet. Log one and it appears here.',
   noRoutine: 'No routine yet. Create one, then add its exercises.',
   refreshFailed: "The System couldn't refresh. Your saved progress is safe.",
   confirmSave: 'Confirm save result',
   uploadHeld: 'Your upload is held until the save is confirmed.',
-  exerciseRemoved: 'This exercise was removed from the routine. Its saved workout details remain.',
 } as const;
 
 /** "<what>. The System couldn't refresh — <cause>" for a save that succeeded but whose reload failed. */

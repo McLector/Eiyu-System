@@ -66,6 +66,8 @@ export interface LongQuest {
   description: string | null;
   /** Immutable timestamp of the first time every stage was completed. */
   completedAt: string | null;
+  /** When the chain was created; absent on rows read before the column was selected. */
+  createdAt?: string;
   stages: QuestStage[];
 }
 
