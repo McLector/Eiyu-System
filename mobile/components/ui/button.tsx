@@ -12,6 +12,8 @@ interface Props {
   variant: ButtonVariant;
   label: string;
   onPress: () => void;
+  onPressIn?: () => void;
+  onPressOut?: () => void;
   disabled?: boolean;
   busy?: boolean;
   icon?: ReactNode;
@@ -30,7 +32,7 @@ function colours(t: Readonly<Record<string, string>>, variant: ButtonVariant) {
 }
 
 /** The HUD button: Rajdhani caps, 4px corners, 48dp tall. A busy button keeps its label and ignores further presses. */
-export function Button({ variant, label, onPress, disabled, busy, icon, accessibilityLabel, testID, style }: Props) {
+export function Button({ variant, label, onPress, onPressIn, onPressOut, disabled, busy, icon, accessibilityLabel, testID, style }: Props) {
   const t = useTokens();
   const reduced = useReducedMotion();
   const c = colours(t, variant);
@@ -43,6 +45,8 @@ export function Button({ variant, label, onPress, disabled, busy, icon, accessib
       accessibilityState={{ disabled: !!disabled, busy: !!busy }}
       disabled={inactive}
       onPress={onPress}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
       style={({ pressed }) => [
         styles.base,
         { backgroundColor: c.background, borderColor: c.border },
