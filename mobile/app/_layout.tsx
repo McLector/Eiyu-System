@@ -95,7 +95,7 @@ function AppNavigator() {
         />
         <Stack.Screen
           name="long-quest-editor"
-          options={{ presentation: 'modal', headerShown: false, animation: 'slide_from_bottom' }}
+          options={{ presentation: 'card', headerShown: false, animation: 'slide_from_bottom' }}
         />
       </Stack.Protected>
     </Stack>

@@ -1,395 +1,295 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-
-import { StatIcon } from '@/components/eiyu/icons';
-import { Screen } from '@/components/eiyu/screen';
-import { fonts } from '@/constants/eiyu-theme';
-import { useEiyu } from '@/contexts/eiyu-store';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  STAGE_DESCRIPTION_MAX_LENGTH,
-  STATS,
-  STAT_COLORS,
   formatError,
   isStageDescriptionWithinLimit,
+  NAVIGATION_GUARD_COPY,
   normalizeNameBoundaries,
-  suggestStages,
+  STAGE_DESCRIPTION_MAX_LENGTH,
+  STATS,
+  UncertainSaveError,
   validateQuestName,
   type Stat,
 } from '@eiyu/shared';
 
-const MIN_STAGES = 2;
-const MAX_STAGES = 8;
+import { PlusIcon } from '@/components/eiyu/icons';
+import { Button } from '@/components/ui/button';
+import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
+import { Field } from '@/components/ui/field';
+import { StatChip } from '@/components/ui/stat-chip';
+import { StateBlock } from '@/components/ui/state-block';
+import { fonts } from '@/constants/eiyu-theme';
+import { useEiyu } from '@/contexts/eiyu-store';
+import { useTokens } from '@/contexts/theme-store';
+import { hapticSuccess } from '@/lib/haptics';
+
+const MIN_STAGES = 1;
 
 type StageField = { id: string | null; name: string; description: string | null };
+const blankStage = (): StageField => ({ id: null, name: '', description: null });
 
 export default function LongQuestEditorScreen() {
-  const { theme, user, saveLongQuest } = useEiyu();
+  const t = useTokens();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const { user, saveLongQuest, forgetLongQuestSave, retryLongQuests } = useEiyu();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const quest = id ? user.longQuests.find(q => q.id === id) ?? null : null;
 
   const [name, setName] = useState(quest?.name ?? '');
+  const [nameTouched, setNameTouched] = useState(false);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [description, setDescription] = useState(quest?.description ?? '');
   const [stages, setStages] = useState<StageField[]>(
-    quest
-      ? quest.stages.map(s => ({ id: s.id, name: s.name, description: s.description }))
-      : [
-          { id: null, name: '', description: null },
-          { id: null, name: '', description: null },
-          { id: null, name: '', description: null },
-        ]
+    quest ? quest.stages.map(s => ({ id: s.id, name: s.name, description: s.description })) : [blankStage(), blankStage()]
   );
-  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [suggestingStages, setSuggestingStages] = useState(false);
-  const [suggestStagesError, setSuggestStagesError] = useState<string | null>(null);
-  const nameError = quest?.name === name ? null : validateQuestName(name);
+  const [leavePrompt, setLeavePrompt] = useState<'discard' | 'busy' | null>(null);
+  const committed = useRef(false);
+  const heldAction = useRef<unknown>(null);
+  const busy = saving || uncertain;
 
-  const handleSuggestStages = async () => {
-    if (!name.trim() || suggestingStages) return;
-    setSuggestingStages(true);
-    setSuggestStagesError(null);
-    try {
-      const result = await suggestStages(name.trim(), stat);
-      setStages(result.map(stageName => ({ id: null, name: stageName, description: null })));
-    } catch (err) {
-      setSuggestStagesError(formatError(err));
-    } finally {
-      setSuggestingStages(false);
-    }
+  const snapshot = () => JSON.stringify({ name, stat, description, stages });
+  const [initialSnapshot] = useState(snapshot);
+  const dirty = snapshot() !== initialSnapshot;
+
+  // Leaving (Back, swipe, the close button) with unsaved edits asks first; a save that is running or unconfirmed
+  // blocks leaving instead; a finished save does neither.
+  useEffect(() => navigation.addListener('beforeRemove', event => {
+    if (committed.current || (!dirty && !busy)) return;
+    event.preventDefault();
+    heldAction.current = event.data.action;
+    setLeavePrompt(busy ? 'busy' : 'discard');
+  }), [navigation, dirty, busy]);
+
+  const release = () => {
+    committed.current = true;
+    setLeavePrompt(null);
+    navigation.dispatch(heldAction.current as Parameters<typeof navigation.dispatch>[0]);
+  };
+  // The save may or may not have landed. Drop the remembered ids (a later create starts clean) and refresh the list so
+  // the answer shows up there.
+  const leaveUnconfirmed = () => {
+    forgetLongQuestSave();
+    void retryLongQuests();
+    release();
   };
 
-  const setStageNameAt = (i: number, value: string) => {
-    setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, name: value } : s)));
-  };
+  const editing = quest !== null;
+  const nameProblem = editing && name === quest.name ? null : validateQuestName(name);
+  const nameError = nameTouched ? nameProblem : null;
+  const filled = stages.map(s => ({ ...s, name: s.name.trim() })).filter(s => s.name.length > 0);
+  const valid = !nameProblem && filled.length >= MIN_STAGES;
+  const isDone = (stageId: string | null) => !!quest?.stages.find(s => s.id === stageId)?.done;
 
-  const setStageDescriptionAt = (i: number, value: string) => {
-    if (!isStageDescriptionWithinLimit(value)) return;
-    setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, description: value } : s)));
-  };
-
-  const addStage = () => {
-    if (stages.length >= MAX_STAGES) return;
-    setStages(prev => [...prev, { id: null, name: '', description: null }]);
-  };
-
+  const setStageAt = (i: number, patch: Partial<StageField>) => setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   const removeStage = (i: number) => {
-    if (stages.length <= MIN_STAGES) return;
+    if (stages.length <= MIN_STAGES || isDone(stages[i].id)) return;
     setStages(prev => prev.filter((_, idx) => idx !== i));
   };
 
-  const filledStages = stages
-    .map(s => ({ ...s, name: s.name.trim() }))
-    .filter(s => s.name.length > 0);
-  const valid = !nameError && filledStages.length >= MIN_STAGES;
-
   const handleSave = async () => {
-    if (!valid || submitting) return;
-    setSubmitting(true);
+    if (!valid || saving) return;
+    setSaving(true);
     setError(null);
     try {
       await saveLongQuest(
         {
-          name: quest?.name === name ? name : normalizeNameBoundaries(name),
+          name: editing && name === quest.name ? name : normalizeNameBoundaries(name),
           stat,
           description: description.trim() || undefined,
-          stages: filledStages.map(s => ({ id: s.id, name: s.name, description: s.description })),
+          stages: filled.map(s => ({ id: s.id, name: s.name, description: s.description })),
         },
         quest?.id
       );
+      setUncertain(false);
+      hapticSuccess();
+      committed.current = true;
       router.back();
     } catch (err) {
-      setError(formatError(err));
+      setUncertain(err instanceof UncertainSaveError);
+      setError(`The System couldn't ${editing ? 'save that change' : 'create that quest'} — ${formatError(err)}`);
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
 
-  const fieldStyle = { backgroundColor: theme.track, borderColor: theme.accentBorder, color: theme.text };
+  const close = () => router.back();
+  const closeButton = (
+    <Pressable
+      testID="long-quest-editor-close"
+      accessibilityRole="button"
+      accessibilityLabel="Close long quest editor"
+      onPress={close}
+      style={styles.close}>
+      <View style={styles.closeGlyph}><PlusIcon size={22} color={t['muted-flat']} /></View>
+    </Pressable>
+  );
+
+  if (id && !quest) {
+    return (
+      <View style={[styles.root, { backgroundColor: t['page-flat'] }]}>
+        <View style={[styles.header, { paddingTop: insets.top, borderBottomColor: t['divider-flat'] }]}>
+          <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>EDIT LONG QUEST</Text>
+          {closeButton}
+        </View>
+        <StateBlock kind="empty" title="CHAIN NOT FOUND">This chain was deleted or is no longer available.</StateBlock>
+      </View>
+    );
+  }
 
   return (
-    <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
-      <View style={[styles.sheet, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
-        <View style={[styles.handle, { backgroundColor: theme.accentBorder }]} />
-        <View style={styles.headerRow}>
-          <Text style={[styles.headerTitle, { color: theme.text, fontFamily: fonts.display }]}>
-            {quest ? 'EDIT LONG QUEST' : 'NEW LONG QUEST'}
-          </Text>
-          <Pressable onPress={() => router.back()}>
-            <Text style={[styles.closeX, { color: theme.dim }]}>×</Text>
-          </Pressable>
-        </View>
+    <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t['page-flat'] }]}>
+      <View style={[styles.header, { paddingTop: insets.top, borderBottomColor: t['divider-flat'] }]}>
+        <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>
+          {editing ? 'EDIT LONG QUEST' : 'NEW LONG QUEST'}
+        </Text>
+        {closeButton}
+      </View>
 
-        <Screen edges={['bottom']} fill={false} contentContainerStyle={{ gap: 16 }}>
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>QUEST NAME <Text style={{ color: theme.dim, fontSize: 10 }}>(required)</Text></Text>
-            <TextInput
-              style={[styles.field, fieldStyle]}
-              placeholder="e.g. Ship a Side Project"
-              placeholderTextColor={theme.dim}
-              value={name}
-              onChangeText={setName}
-              accessibilityLabel="Long quest name"
-              accessibilityHint={nameError ?? undefined}
-            />
-            {nameError && <Text testID="long-quest-name-error" accessibilityRole="alert" style={styles.errorText}>{nameError}</Text>}
-          </View>
+      <View testID="long-quest-editor-form" style={styles.form}>
+        <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formContent}>
+          <Field
+            label="Quest name"
+            placeholder="e.g. Ship a Side Project"
+            value={name}
+            onChangeText={value => { setName(value); setNameTouched(true); }}
+            onBlur={() => setNameTouched(true)}
+            editable={!busy}
+            error={nameError ?? undefined}
+            errorTestID="long-quest-name-error"
+          />
 
           <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>STAT</Text>
-            <View style={styles.statRow}>
-              {STATS.map(s => {
-                const active = stat === s;
-                const color = STAT_COLORS[s];
-                return (
-                  <Pressable
-                    key={s}
-                    onPress={() => setStat(s)}
-                    style={[
-                      styles.statButton,
-                      {
-                        borderColor: active ? color : theme.glassBorder,
-                        backgroundColor: active ? `${color}15` : 'transparent',
-                      },
-                    ]}>
-                    <StatIcon stat={s} size={14} />
-                    <Text
-                      style={[
-                        styles.statButtonText,
-                        { color: active ? color : theme.dim, fontFamily: fonts.display },
-                      ]}>
-                      {s}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>STAT</Text>
+            <View accessibilityRole="radiogroup" accessibilityLabel="Stat" style={styles.row}>
+              {STATS.map(s => <StatChip key={s} stat={s} selected={stat === s} disabled={busy} onPress={() => setStat(s)} />)}
             </View>
           </View>
 
-          <View>
-            <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-              NOTE <Text style={{ color: theme.dim, fontSize: 10 }}>(optional)</Text>
-            </Text>
-            <TextInput
-              style={[styles.field, styles.descriptionField, fieldStyle]}
-              placeholder="Context, why it matters…"
-              placeholderTextColor={theme.dim}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
-            />
-          </View>
+          <Field
+            label="Note"
+            placeholder="Context, why it matters…"
+            value={description}
+            onChangeText={setDescription}
+            editable={!busy}
+            multiline
+          />
 
-          <View>
-            <View style={styles.stagesHeaderRow}>
-              <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-                STAGES <Text style={{ color: theme.dim, fontSize: 10 }}>(in order, at least 2)</Text>
-              </Text>
-              <Pressable onPress={handleSuggestStages} disabled={!name.trim() || suggestingStages}>
-                <Text
-                  style={[
-                    styles.suggestText,
-                    { color: theme.accent, fontFamily: fonts.display, opacity: !name.trim() || suggestingStages ? 0.5 : 1 },
-                  ]}>
-                  {suggestingStages ? 'THINKING…' : '✨ SUGGEST STAGES'}
-                </Text>
-              </Pressable>
-            </View>
-            {suggestStagesError && <Text style={[styles.errorText, { marginBottom: 8 }]}>{suggestStagesError}</Text>}
-            <View style={{ gap: 8 }}>
-              {stages.map((s, i) => (
-                <View key={i} style={styles.stageInputRow}>
-                  <Text style={[styles.stageIndex, { color: theme.dim, fontFamily: fonts.mono }]}>
-                    {i + 1}
-                  </Text>
+          <View style={styles.stages}>
+            <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>STAGES (IN ORDER)</Text>
+            {stages.map((s, i) => {
+              const done = isDone(s.id);
+              const canRemove = stages.length > MIN_STAGES;
+              return (
+                <View key={i} style={styles.stage}>
                   <View style={styles.stageFields}>
-                    <TextInput
+                    <Field
                       testID={`long-quest-stage-name-${i + 1}`}
+                      label={`Stage ${i + 1}`}
                       accessibilityLabel={`Stage ${i + 1}: ${s.name || 'empty'}`}
-                      style={[styles.field, fieldStyle]}
                       placeholder={`Stage ${i + 1}`}
-                      placeholderTextColor={theme.dim}
                       value={s.name}
-                      onChangeText={v => setStageNameAt(i, v)}
+                      onChangeText={value => setStageAt(i, { name: value })}
+                      editable={!busy}
+                      hint={done ? 'Done stages stay in the chain.' : undefined}
                     />
-                    <TextInput
-                      accessibilityLabel={`Stage ${i + 1} description (optional)`}
-                      style={[styles.field, styles.stageDescriptionField, fieldStyle]}
+                    <Field
+                      label={`Stage ${i + 1} description (optional)`}
                       placeholder="Stage description (optional)"
-                      placeholderTextColor={theme.dim}
                       value={s.description ?? ''}
-                      onChangeText={v => setStageDescriptionAt(i, v)}
+                      onChangeText={value => { if (isStageDescriptionWithinLimit(value)) setStageAt(i, { description: value }); }}
                       accessibilityHint={`Maximum ${STAGE_DESCRIPTION_MAX_LENGTH} characters`}
+                      editable={!busy}
                       multiline
-                      textAlignVertical="top"
                     />
                   </View>
-                  {stages.length > MIN_STAGES && (
-                    <Pressable onPress={() => removeStage(i)} style={styles.stageRemove}>
-                      <Text style={{ color: theme.dim, fontSize: 18, lineHeight: 18 }}>×</Text>
+                  {canRemove ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove stage ${i + 1}`}
+                      accessibilityState={{ disabled: busy || done }}
+                      disabled={busy || done}
+                      onPress={() => removeStage(i)}
+                      style={[styles.remove, (busy || done) && styles.dimmed]}>
+                      <View style={styles.closeGlyph}><PlusIcon size={20} color={t['muted-flat']} /></View>
                     </Pressable>
-                  )}
+                  ) : null}
                 </View>
-              ))}
-            </View>
-            {stages.length < MAX_STAGES && (
-              <Pressable onPress={addStage} style={{ marginTop: 8 }}>
-                <Text style={[styles.addStageText, { color: theme.accent, fontFamily: fonts.display }]}>
-                  + ADD STAGE
-                </Text>
-              </Pressable>
-            )}
+              );
+            })}
+            <Button
+              variant="secondary"
+              label="ADD STAGE"
+              icon={<PlusIcon size={16} color={t['accent-text']} />}
+              disabled={busy}
+              onPress={() => setStages(prev => [...prev, blankStage()])}
+            />
           </View>
-
-          {error && <Text style={styles.errorText}>{error}</Text>}
-
-          <Pressable
-            testID="long-quest-save"
-            disabled={!valid || submitting}
-            onPress={handleSave}
-            style={[
-              styles.saveButton,
-              {
-                backgroundColor: valid ? theme.accentGlass : 'transparent',
-                borderColor: valid ? theme.accentBorder : theme.glassBorder,
-                opacity: submitting ? 0.6 : 1,
-              },
-            ]}>
-            <Text
-              style={[
-                styles.saveButtonText,
-                { color: valid ? theme.accent : theme.dim, fontFamily: fonts.display },
-              ]}>
-              {submitting ? (quest ? 'SAVING…' : 'CREATING…') : quest ? 'SAVE CHANGES' : 'CREATE LONG QUEST'}
-            </Text>
-          </Pressable>
-        </Screen>
+        </KeyboardAwareScrollView>
       </View>
-    </View>
+
+      <View testID="long-quest-editor-footer" style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: Math.max(12, insets.bottom) }]}>
+        {error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+        <Button
+          testID="long-quest-save"
+          variant="primary"
+          label={saving ? 'SAVING…' : uncertain ? 'CHECK SAVE RESULT' : editing ? 'SAVE CHANGES' : 'CREATE LONG QUEST'}
+          accessibilityLabel={saving ? 'Saving' : uncertain ? 'CHECK SAVE RESULT' : editing ? 'SAVE CHANGES' : 'CREATE LONG QUEST'}
+          disabled={!valid}
+          busy={saving}
+          onPress={() => void handleSave()}
+        />
+      </View>
+
+      <DiscardChangesModal
+        visible={leavePrompt === 'discard'}
+        testID="long-quest-discard-modal"
+        message="Your unsaved long quest changes will be lost."
+        onKeep={() => setLeavePrompt(null)}
+        onDiscard={release}
+      />
+      <Modal testID="long-quest-busy-modal" visible={leavePrompt === 'busy'} transparent animationType="fade" onRequestClose={() => setLeavePrompt(null)}>
+        <View style={[styles.overlay, { backgroundColor: t.overlay }]} accessibilityViewIsModal>
+          <View style={[styles.dialog, { backgroundColor: t.modal, borderColor: t['accent-border'] }]}>
+            <Text accessibilityRole="header" style={[styles.dialogTitle, { color: t.text, fontFamily: fonts.display }]}>{NAVIGATION_GUARD_COPY.busyTitle}</Text>
+            <Text style={[styles.dialogText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{NAVIGATION_GUARD_COPY.busyBody}</Text>
+            <View style={styles.dialogActions}>
+              {uncertain && !saving ? <Button variant="quiet" label="Leave without confirming" onPress={leaveUnconfirmed} /> : null}
+              <Button variant="secondary" label="Stay" onPress={() => setLeavePrompt(null)} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    borderWidth: 1,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 32,
-    maxHeight: '88%',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 20,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 20,
-    letterSpacing: 1,
-  },
-  closeX: {
-    fontSize: 22,
-    lineHeight: 22,
-  },
-  label: {
-    fontSize: 11,
-    letterSpacing: 1.5,
-    marginBottom: 7,
-  },
-  field: {
-    borderWidth: 1,
-    borderRadius: 12,
-    fontFamily: fonts.body,
-    fontSize: 14,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-  },
-  descriptionField: {
-    minHeight: 76,
-  },
-  statRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  statButton: {
-    flex: 1,
-    height: 44,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-  },
-  statButtonText: {
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  stagesHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 7,
-  },
-  suggestText: {
-    fontSize: 11,
-    letterSpacing: 1,
-  },
-  stageInputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  stageFields: {
-    flex: 1,
-    gap: 6,
-  },
-  stageDescriptionField: {
-    minHeight: 64,
-  },
-  stageIndex: {
-    fontSize: 12,
-    width: 14,
-    textAlign: 'center',
-    marginTop: 14,
-  },
-  stageRemove: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addStageText: {
-    fontSize: 12,
-    letterSpacing: 1,
-  },
-  errorText: {
-    fontSize: 12,
-    color: '#f87171',
-  },
-  saveButton: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: 15,
-    letterSpacing: 1,
-  },
+  root: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 20, paddingRight: 4, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth },
+  title: { flex: 1, fontSize: 20, letterSpacing: 1 },
+  close: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  closeGlyph: { transform: [{ rotate: '45deg' }] },
+  form: { flex: 1 },
+  formContent: { padding: 20, gap: 18 },
+  label: { fontSize: 11, letterSpacing: 1.2, marginBottom: 6 },
+  row: { flexDirection: 'row', gap: 8 },
+  stages: { gap: 12 },
+  stage: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
+  stageFields: { flex: 1, gap: 8 },
+  remove: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  dimmed: { opacity: 0.45 },
+  note: { fontSize: 12, lineHeight: 17 },
+  footer: { flexShrink: 0, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
+  overlay: { flex: 1, justifyContent: 'center', padding: 20 },
+  dialog: { width: '100%', maxWidth: 480, alignSelf: 'center', borderWidth: 1, borderRadius: 4, padding: 20, gap: 10 },
+  dialogTitle: { fontSize: 18, letterSpacing: 0.8 },
+  dialogText: { fontSize: 14, lineHeight: 21 },
+  dialogActions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8, marginTop: 8 },
 });
