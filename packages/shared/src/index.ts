@@ -34,3 +34,4 @@ export * from './logic/gym';
 export * from './data/gym';
 export * from './data/save-outcome';
 export * from './theme/palettes';
+export * from './theme/palette-tokens';
