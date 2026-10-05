@@ -313,6 +313,8 @@ export interface Database {
       save_gym_exercise: { Args: { p_id: string; p_input: Json }; Returns: string };
       remove_gym_exercise: { Args: { p_id: string }; Returns: undefined };
       previous_gym_weights: { Args: { p_routine_id: string }; Returns: import('./gym').GymPreviousWeight[] };
+      log_gym_weight: { Args: { p_log_id: string; p_exercise_id: string; p_weight: number }; Returns: undefined };
+      recent_gym_weights: { Args: { p_routine_id: string }; Returns: import('./gym').GymRecentWeight[] };
       list_gym_media_cleanup: { Args: { p_after: string; p_limit: number }; Returns: { path: string }[] };
       ack_gym_media_cleanup: { Args: { p_path: string }; Returns: undefined };
       increment_stat_xp: {

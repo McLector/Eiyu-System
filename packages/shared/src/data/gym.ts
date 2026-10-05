@@ -1,5 +1,5 @@
 import { supabase } from '../supabase/client';
-import type { GymData, GymEntry, GymExercise, GymRoutine, GymUnit, GymPreviousWeight } from '../types/gym';
+import type { GymData, GymEntry, GymExercise, GymRoutine, GymUnit, GymPreviousWeight, GymRecentWeight } from '../types/gym';
 import { normalizeEditableQuestName } from '../logic/validation';
 import { normalizeGymExercise } from '../logic/gym';
 import { readBatches } from './pagination';
@@ -8,13 +8,11 @@ import { isConfirmedFailure, UncertainSaveError } from './save-outcome';
 const uncertainWrites = new Map<string, string>();
 
 export async function fetchGym(userId: string): Promise<GymData> {
-  const [routines, exercises, sessions] = await Promise.all([
+  const [routines, exercises] = await Promise.all([
     readBatches((from, to) => supabase.from('gym_routines').select('*').eq('user_id', userId).order('created_at').order('id').range(from, to)),
     readBatches((from, to) => supabase.from('gym_exercises').select('*').eq('user_id', userId).order('position').order('id').range(from, to)),
-    readBatches((from, to) => supabase.from('gym_sessions').select('*').eq('user_id', userId).eq('status', 'draft').order('id').range(from, to)),
   ]);
-  const entries = await fetchGymEntries(userId, sessions.map(s => s.id));
-  return { routines, exercises, sessions, entries };
+  return { routines, exercises };
 }
 export async function fetchGymEntries(userId: string, ids: string[]): Promise<GymEntry[]> {
   const entries: GymEntry[] = [];
@@ -34,6 +32,22 @@ export async function fetchGymHistory(userId: string, page = 0, routineId?: stri
 }
 export async function fetchPreviousGymWeights(routineId: string): Promise<GymPreviousWeight[]> {
   return readBatches((from, to) => supabase.rpc('previous_gym_weights', { p_routine_id: routineId }).range(from, to)) as Promise<GymPreviousWeight[]>;
+}
+/** The two newest logged weights of every exercise in a routine: recency 1 is Current, recency 2 is Previous. */
+export async function fetchRecentGymWeights(routineId: string): Promise<GymRecentWeight[]> {
+  return readBatches((from, to) => supabase.rpc('recent_gym_weights', { p_routine_id: routineId }).range(from, to)) as Promise<GymRecentWeight[]>;
+}
+/**
+ * Log one weight. `logId` is chosen by the caller and kept for retries: the server stores it as the log's id, so a
+ * retry of a log that already landed changes nothing.
+ */
+export async function logGymWeight(logId: string, exerciseId: string, weight: number): Promise<void> {
+  const { error } = await supabase.rpc('log_gym_weight', { p_log_id: logId, p_exercise_id: exerciseId, p_weight: weight });
+  if (!error) return;
+  if (isConfirmedFailure(error)) throw error;
+  const landed = await supabase.from('gym_sessions').select('id').eq('id', logId).maybeSingle();
+  if (!landed.error && landed.data) return;
+  throw new UncertainSaveError();
 }
 export async function saveGymRoutine(userId: string, name: string, unit: GymUnit, id?: string, creationId?: string): Promise<string> {
   const stableId = id ?? creationId ?? crypto.randomUUID();

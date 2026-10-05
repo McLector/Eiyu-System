@@ -1,4 +1,4 @@
-import { fetchGym, fetchGymHistory, saveGymRoutine, saveGymSession } from '../gym';
+import { fetchGym, fetchGymHistory, fetchRecentGymWeights, logGymWeight, saveGymRoutine, saveGymSession } from '../gym';
 import { fetchLongQuests, saveAtomicLongQuest, setStageDoneWithReceipt } from '../long-quests';
 import { supabase } from '../../supabase/client';
 import { UncertainSaveError } from '../save-outcome';
@@ -16,13 +16,15 @@ function builder(rows: unknown[], result?: { data: unknown; error: unknown }) {
   return query;
 }
 beforeEach(() => { jest.resetAllMocks(); });
-it('reads more than 1000 exercises and draft snapshots in bounded batches', async () => {
+it('reads more than 1000 exercises in bounded batches and no longer reads workout drafts', async () => {
   const exercises=Array.from({length:1207},(_,i)=>({id:'exercise-'+i}));
-  const entries=Array.from({length:1207},(_,i)=>({id:'entry-'+i}));
-  (supabase.from as jest.Mock).mockImplementation(table=>builder(table==='gym_exercises'?exercises:table==='gym_entries'?entries:table==='gym_sessions'?[{id:'draft'}]:[]));
+  const tables: string[]=[];
+  (supabase.from as jest.Mock).mockImplementation(table=>{tables.push(table);return builder(table==='gym_exercises'?exercises:[{id:'routine'}]);});
   const data=await fetchGym('owner');
-  expect(data.exercises).toHaveLength(1207); expect(data.entries).toHaveLength(1207);
-  expect(data.sessions).toEqual([{id:'draft'}]);
+  expect(data.exercises).toHaveLength(1207);
+  expect(data.routines).toEqual([{id:'routine'}]);
+  expect(Object.keys(data).sort()).toEqual(['exercises','routines']);
+  expect([...new Set(tables)].sort()).toEqual(['gym_exercises','gym_routines']);
 });
 it('pages completed history independently of all-workspace reads', async () => {
   const sessions=Array.from({length:11},(_,i)=>({id:'session-'+i}));
@@ -74,4 +76,53 @@ it('reconciles uncertain atomic definitions and rewards before another write', a
   (supabase.rpc as jest.Mock).mockResolvedValueOnce({data:receipt,error:null});
   expect(await setStageDoneWithReceipt('s',true,'reward-request')).toMatchObject({replayed:true,done:true});
   expect((supabase.rpc as jest.Mock).mock.calls.filter(c=>c[0]==='set_long_quest_stage_done_receipt')).toHaveLength(1);
+});
+describe('quick-logging a weight', () => {
+  const ids = { log: 'log-1', exercise: 'exercise-1' };
+  it('logs through the RPC with the client-chosen log id', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({data:null,error:null});
+    await expect(logGymWeight(ids.log, ids.exercise, 102.5)).resolves.toBeUndefined();
+    expect(supabase.rpc).toHaveBeenCalledWith('log_gym_weight',{p_log_id:'log-1',p_exercise_id:'exercise-1',p_weight:102.5});
+  });
+  it('lets a confirmed database rejection through untouched, without looking for a landed log', async () => {
+    const rejection={code:'P0001',message:'Weight must be from 0 to 1000000 with at most three decimals.'};
+    (supabase.rpc as jest.Mock).mockResolvedValue({data:null,error:rejection});
+    await expect(logGymWeight(ids.log, ids.exercise, -1)).rejects.toBe(rejection);
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+  it('treats an unconfirmed failure as a success when the log did land', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({data:null,error:{message:'response lost'}});
+    const lookup=builder([{id:'log-1'}]);
+    (supabase.from as jest.Mock).mockReturnValue(lookup);
+    await expect(logGymWeight(ids.log, ids.exercise, 80)).resolves.toBeUndefined();
+    expect(supabase.from).toHaveBeenCalledWith('gym_sessions');
+    expect(lookup.eq).toHaveBeenCalledWith('id','log-1');
+  });
+  it('reports an uncertain result when the log cannot be found, and a retry reuses the same log id', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({data:null,error:{message:'offline'}});
+    (supabase.from as jest.Mock).mockImplementation(()=>builder([]));
+    await expect(logGymWeight(ids.log, ids.exercise, 80)).rejects.toBeInstanceOf(UncertainSaveError);
+    await expect(logGymWeight(ids.log, ids.exercise, 80)).rejects.toBeInstanceOf(UncertainSaveError);
+    const sent=(supabase.rpc as jest.Mock).mock.calls.map(call=>call[1].p_log_id);
+    expect(sent).toEqual(['log-1','log-1']);
+  });
+  it('reports an uncertain result when the lookup itself fails', async () => {
+    (supabase.rpc as jest.Mock).mockResolvedValue({data:null,error:{message:'offline'}});
+    (supabase.from as jest.Mock).mockImplementation(()=>builder([],{data:null,error:{message:'offline'}}));
+    await expect(logGymWeight(ids.log, ids.exercise, 80)).rejects.toBeInstanceOf(UncertainSaveError);
+  });
+});
+describe('recent gym weights', () => {
+  it('reads the newest two weights of a routine through the RPC in bounded batches', async () => {
+    const rows=Array.from({length:1207},(_,i)=>({exercise_id:'e'+i,weight:i,unit:'kg',logged_at:'2026-10-01T00:00:00Z',recency:1}));
+    const calls: unknown[][]=[];
+    (supabase.rpc as jest.Mock).mockImplementation((name,args)=>{calls.push([name,args]);return builder(rows);});
+    const result=await fetchRecentGymWeights('routine-1');
+    expect(result).toHaveLength(1207);
+    expect(calls.every(call=>call[0]==='recent_gym_weights'&&JSON.stringify(call[1])===JSON.stringify({p_routine_id:'routine-1'}))).toBe(true);
+  });
+  it('throws when the RPC fails instead of showing an empty Current', async () => {
+    (supabase.rpc as jest.Mock).mockImplementation(()=>builder([],{data:null,error:{message:'boom'}}));
+    await expect(fetchRecentGymWeights('routine-1')).rejects.toBeTruthy();
+  });
 });
