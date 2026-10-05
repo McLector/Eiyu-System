@@ -3,7 +3,7 @@ import type { ComponentType } from 'react';
 
 import {
   ArchiveIcon, CompletionDotIcon, DumbbellIcon, EditIcon, GripIcon, ListIcon, LockIcon, MailIcon, MoveIcon, NoteIcon,
-  PlayIcon, RestoreIcon, SignOutIcon, SnowflakeIcon, SparkleIcon, TrashIcon, UndoIcon,
+  MoreIcon, PlayIcon, RestoreIcon, SignOutIcon, SnowflakeIcon, SparkleIcon, TrashIcon, UndoIcon,
 } from '../icons';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -13,7 +13,7 @@ const NEW_ICONS: [string, ComponentType<IconProps>][] = [
   ['DumbbellIcon', DumbbellIcon], ['SignOutIcon', SignOutIcon], ['MailIcon', MailIcon], ['NoteIcon', NoteIcon],
   ['SparkleIcon', SparkleIcon], ['CompletionDotIcon', CompletionDotIcon], ['EditIcon', EditIcon], ['ArchiveIcon', ArchiveIcon],
   ['TrashIcon', TrashIcon], ['MoveIcon', MoveIcon], ['GripIcon', GripIcon], ['ListIcon', ListIcon],
-  ['RestoreIcon', RestoreIcon], ['UndoIcon', UndoIcon], ['PlayIcon', PlayIcon], ['LockIcon', LockIcon],
+  ['RestoreIcon', RestoreIcon], ['UndoIcon', UndoIcon], ['PlayIcon', PlayIcon], ['LockIcon', LockIcon], ['MoreIcon', MoreIcon],
 ];
 const DUOTONE = ['MailIcon', 'NoteIcon', 'SparkleIcon', 'CompletionDotIcon'];
 

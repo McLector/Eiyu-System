@@ -340,3 +340,13 @@ export function LockIcon({ size = 16, color }: GlyphProps) {
     </Glyph>
   );
 }
+
+export function MoreIcon({ size = 20, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Circle cx="5" cy="12" r="1.8" fill={color} />
+      <Circle cx="12" cy="12" r="1.8" fill={color} />
+      <Circle cx="19" cy="12" r="1.8" fill={color} />
+    </Glyph>
+  );
+}
