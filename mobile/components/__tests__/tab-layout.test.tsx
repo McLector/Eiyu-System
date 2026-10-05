@@ -36,10 +36,10 @@ beforeEach(() => {
 });
 
 describe('tab layout', () => {
-  it('has Board, Status and Chain, in that order, and no old Long Quests route', async () => {
+  it('has Board, Status, Chain and Gym, in that order, and no old Long Quests route', async () => {
     await renderWithTheme(<TabLayout />);
-    expect(mockCaptured.screens.map(s => s.name)).toEqual(['board', 'status', 'chain']);
-    expect(mockCaptured.screens.map(s => s.options.title)).toEqual(['BOARD', 'STATUS', 'CHAIN']);
+    expect(mockCaptured.screens.map(s => s.name)).toEqual(['board', 'status', 'chain', 'gym']);
+    expect(mockCaptured.screens.map(s => s.options.title)).toEqual(['BOARD', 'STATUS', 'CHAIN', 'GYM']);
   });
 
   it('draws a flat bar from the palette: no blur layer, solid navigation colours', async () => {

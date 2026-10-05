@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 
 import AccountHeader from '@/components/eiyu/account-header';
-import { BoardIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
+import { BoardIcon, DumbbellIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
 
@@ -57,6 +57,13 @@ export default function TabLayout() {
         options={{
           title: 'CHAIN',
           tabBarIcon: ({ color }) => <ScrollIcon color={color} size={22} />,
+        }}
+      />
+      <Tabs.Screen
+        name="gym"
+        options={{
+          title: 'GYM',
+          tabBarIcon: ({ color }) => <DumbbellIcon color={color} size={22} />,
         }}
       />
     </Tabs>

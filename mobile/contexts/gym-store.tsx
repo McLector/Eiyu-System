@@ -39,6 +39,8 @@ interface GymStore {
   recentError: boolean;
   retryRecent: () => void;
 
+  /** Every routine, deleted ones too: workout history still names them. */
+  allRoutines: GymRoutine[];
   /** Routines the picker offers: not deleted, and archived ones only on request. */
   routines: GymRoutine[];
   routine: GymRoutine | undefined;
@@ -68,10 +70,11 @@ interface GymStore {
 
   archiveRoutine: () => Promise<void>;
   deleteRoutine: () => Promise<void>;
-  removeExercise: (exercise: GymExercise) => Promise<void>;
+  /** True when the removal was confirmed. */
+  removeExercise: (exercise: GymExercise) => Promise<boolean>;
   moveExercise: (exercise: GymExercise, delta: -1 | 1) => Promise<void>;
   /** After an editor saved something: reload and say so. */
-  refreshAfterSave: (what: string, select?: string) => Promise<void>;
+  refreshAfterSave: (what: string, select?: string, warning?: string) => Promise<void>;
   setNotice: (message: string | null) => void;
 }
 
@@ -122,24 +125,27 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
       if (paths.length < 100) return;
     }
   }, []);
-  useEffect(() => { void cleanup().catch(err => setNotice(gymCleanupPending(err))); }, [cleanup, userId]);
+  useEffect(() => { if (userId) void cleanup().catch(err => setNotice(gymCleanupPending(err))); }, [cleanup, userId]);
 
   const refresh = useCallback(async () => {
     await qc.invalidateQueries({ queryKey: ['gym', userId] }, { throwOnError: true });
     await qc.invalidateQueries({ queryKey: ['gym-recent', userId] }, { throwOnError: true });
   }, [qc, userId]);
 
-  const run = useCallback(async (task: () => Promise<void>) => {
-    if (inFlight.current) return;
+  /** Runs one save; true when it was confirmed, false when it failed, was unconfirmed, or another one was running. */
+  const run = useCallback(async (task: () => Promise<void>): Promise<boolean> => {
+    if (inFlight.current) return false;
     inFlight.current = true; setPending(true); setError(null); setNotice(null);
     try {
       await task();
       setUncertain(false); retryTask.current = null;
       try { await refresh(); } catch (err) { setNotice(gymSavedRefreshFailed('Saved', err)); }
+      return true;
     } catch (err) {
       setUncertain(err instanceof UncertainSaveError);
       retryTask.current = err instanceof UncertainSaveError ? task : null;
       setError(formatError(err));
+      return false;
     } finally { inFlight.current = false; setPending(false); }
   }, [refresh]);
 
@@ -177,7 +183,7 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
     retryLoad: () => { void query.refetch(); },
     recentError: recent.isError,
     retryRecent: () => { void recent.refetch(); },
-    routines, routine, selectRoutine: setSelected, showArchived, setShowArchived, exercises, unit, logged,
+    allRoutines: data.routines, routines, routine, selectRoutine: setSelected, showArchived, setShowArchived, exercises, unit, logged,
     draft, setDraft: (id, value) => setWeights(previous => ({ ...previous, [id]: value })), dirty, resetDrafts, logWeight,
     pending, error, notice, uncertain, cleanupPending: isGymCleanupNotice(notice),
     clearError: () => setError(null),
@@ -198,8 +204,8 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
         await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted')));
       });
     },
-    removeExercise: async exercise => {
-      await run(async () => {
+    removeExercise: exercise => {
+      return run(async () => {
         await removeGymExercise(exercise.id);
         await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed')));
       });
@@ -212,9 +218,9 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
       [ids[at], ids[at + delta]] = [ids[at + delta], ids[at]];
       await run(async () => { await moveGymExercises(routine, ids); });
     },
-    refreshAfterSave: async (what, select) => {
+    refreshAfterSave: async (what, select, warning) => {
       if (select) setSelected(select);
-      try { await refresh(); setNotice(`${what} saved.`); } catch (err) { setNotice(gymSavedRefreshFailed(`${what} saved`, err)); }
+      try { await refresh(); setNotice(warning ?? `${what} saved.`); } catch (err) { setNotice(gymSavedRefreshFailed(`${what} saved`, err)); }
     },
     setNotice,
   };

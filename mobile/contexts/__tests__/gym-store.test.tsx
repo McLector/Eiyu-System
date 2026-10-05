@@ -64,9 +64,10 @@ describe('gym store: reading', () => {
     expect(gym!.routines.map(r => r.id)).toEqual(['r0', 'r1']);
   });
 
-  it('never lists a deleted routine', async () => {
+  it('never lists a deleted routine, but still knows it for the history', async () => {
     await mount({ routines: [routine({ deleted_at: '2026-10-02' })], exercises: [] });
     expect(gym!.routine).toBeUndefined();
+    expect(gym!.allRoutines.map(r => r.id)).toEqual(['r1']);
   });
 
   it('lists only the selected routine\'s exercises and reads Current and Previous in the routine unit', async () => {
@@ -172,10 +173,21 @@ describe('gym store: exercises and routines', () => {
   it('removes an exercise and then runs media cleanup', async () => {
     await mount();
     mockShared.listGymMediaCleanup.mockResolvedValueOnce([{ path: 'user-1/r1/a.gif' }]).mockResolvedValue([]);
-    await act(async () => { await gym!.removeExercise(gym!.exercises[0]); });
+    let removed: boolean | undefined;
+    await act(async () => { removed = await gym!.removeExercise(gym!.exercises[0]); });
+    expect(removed).toBe(true);
     expect(mockShared.removeGymExercise).toHaveBeenCalledWith('e1');
     expect(mockShared.deleteGymMedia).toHaveBeenCalledWith('user-1/r1/a.gif');
     expect(mockShared.acknowledgeGymMediaCleanup).toHaveBeenCalledWith('user-1/r1/a.gif');
+  });
+
+  it('reports a removal that failed', async () => {
+    await mount();
+    mockShared.removeGymExercise.mockRejectedValueOnce(new Error('nope'));
+    let removed: boolean | undefined;
+    await act(async () => { removed = await gym!.removeExercise(gym!.exercises[0]); });
+    expect(removed).toBe(false);
+    expect(gym!.error).toMatch(/nope/);
   });
 
   it('turns a failed cleanup into a notice that offers the retry', async () => {

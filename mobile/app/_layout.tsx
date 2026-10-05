@@ -18,6 +18,7 @@ import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/contexts/auth-store';
 import { EiyuProvider, persister, queryClient } from '@/contexts/eiyu-store';
+import { GymProvider } from '@/contexts/gym-store';
 import { AppThemeProvider } from '@/contexts/theme-store';
 import { DevBall } from '@/components/eiyu/dev-ball';
 import { ThemedShell } from '@/components/eiyu/themed-shell';
@@ -56,7 +57,9 @@ export default function RootLayout() {
               {/* Improvement-pass #1: app-wide keyboard handling (Android edge-to-edge
                   makes classic adjustResize unreliable). */}
               <KeyboardProvider>
-                <AppNavigator />
+                <GymProvider>
+                  <AppNavigator />
+                </GymProvider>
                 {/* Improvement-pass #10: __DEV__-only testing ball; renders null in production. */}
                 <DevBall />
               </KeyboardProvider>
@@ -95,6 +98,14 @@ function AppNavigator() {
         />
         <Stack.Screen
           name="long-quest-editor"
+          options={{ presentation: 'card', headerShown: false, animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="gym-routine-editor"
+          options={{ presentation: 'card', headerShown: false, animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="gym-exercise-editor"
           options={{ presentation: 'card', headerShown: false, animation: 'slide_from_bottom' }}
         />
       </Stack.Protected>
