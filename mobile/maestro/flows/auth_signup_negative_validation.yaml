@@ -95,8 +95,8 @@ appId: com.mclector.eiyusystem
     index: 1
 - inputText: "ValidPass123"
 - hideKeyboard
-# Terms deliberately left unchecked - this error comes from a plain
-# setError() call in handleSubmit, not the fieldErrors validation object.
+# Terms deliberately left unchecked - the inline consent error (web wording)
+# shows under the checkbox once a submit has been attempted.
 - tapOn: "BEGIN JOURNEY"
-- assertVisible: "Please accept the Privacy Policy & Terms to continue."
+- assertVisible: "Accept the Privacy Policy and Terms to continue."
 - assertNotVisible: "BOARD"

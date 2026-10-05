@@ -1,39 +1,43 @@
 import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-
-import { GhostButton } from '@/components/eiyu/ghost-button';
-import { GlassView } from '@/components/eiyu/glass-view';
-import { PageBackground } from '@/components/eiyu/page-background';
-import { Screen } from '@/components/eiyu/screen';
-import { CheckIcon } from '@/components/eiyu/icons';
-import { fonts } from '@/constants/eiyu-theme';
-import { useAuth } from '@/contexts/auth-store';
-import { useEiyu } from '@/contexts/eiyu-store';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  authErrorMessage,
+  confirmEmailMessage,
   LEGAL_DOCUMENTS,
   MIN_PASSWORD_LENGTH,
   normalizeNameBoundaries,
   passwordStrength,
+  resetLinkSentMessage,
   validateConfirmPassword,
   validateDisplayName,
   validateEmail,
   validatePassword,
+  type AuthMode,
   type LegalDocumentId,
 } from '@eiyu/shared';
 
-type AuthMode = 'login' | 'signup' | 'forgot';
+import { CheckIcon, MailIcon } from '@/components/eiyu/icons';
+import { Screen } from '@/components/eiyu/screen';
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
+import { Sheet } from '@/components/ui/sheet';
+import { SignaturePanel } from '@/components/ui/signature-panel';
+import { fonts } from '@/constants/eiyu-theme';
+import { useAuth } from '@/contexts/auth-store';
+import { useTokens } from '@/contexts/theme-store';
 
 interface Notice {
-  emoji: string;
+  icon: 'mail' | 'check';
   title: string;
   message: string;
 }
 
 const STRENGTH_LABELS = ['Weak', 'Okay', 'Good', 'Strong'] as const;
-const STRENGTH_COLORS = ['#f87171', '#fbbf24', '#4ade80', '#4ade80'] as const;
+const SUBTITLES: Record<AuthMode, string> = { login: 'Enter the system', signup: 'Begin your journey', forgot: 'Reset access' };
+const SUBMIT_LABELS: Record<AuthMode, string> = { login: 'ENTER SYSTEM', signup: 'BEGIN JOURNEY', forgot: 'SEND RECOVERY LINK' };
 
 export default function AuthScreen() {
-  const { theme } = useEiyu();
+  const t = useTokens();
   const { signIn, signUp, resetPassword } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -48,31 +52,19 @@ export default function AuthScreen() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
 
-  /** Switch auth mode without leaking submit-state, stale errors, or secrets
-   * across forms. Password/confirm/terms are cleared deliberately: a login-
-   * typed password silently pre-filling signup would let an account be created
-   * with a secret the user never knowingly entered there, and a ticked terms
-   * box carried across modes would record an acknowledgement that never
-   * happened. Email is KEPT on purpose - it's the same person registering.
-   * (Found live on-device: login -> Register showed a filled password + strength meter.) */
+  /** Switch auth mode without leaking submit-state, stale errors, or secrets across forms. Password, confirmation and
+   * consent are cleared on purpose: a login-typed password pre-filling signup would create an account with a secret the
+   * user never knowingly entered there, and a ticked consent box carried over would record an agreement that never
+   * happened. The email stays: it is the same person. */
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
-    // fieldInvalid() gates on `attempted`; leaving it set would show stale
-    // validation errors on the new form before the user has submitted it.
     setAttempted(false);
     setPassword('');
     setConfirm('');
     setAcceptedTerms(false);
   };
 
-  const resetToLogin = () => {
-    setNotice(null);
-    switchMode('login');
-  };
-
-  /** Per-field validation (improvement-pass #13): inline errors replace the single error blob.
-   * Errors only render once the user has attempted a submit, then update live. */
   const fieldErrors = useMemo(
     () => ({
       name: mode === 'signup' ? validateDisplayName(name) : null,
@@ -80,548 +72,254 @@ export default function AuthScreen() {
       password: mode !== 'forgot' ? validatePassword(password) : null,
       confirm: mode === 'signup' ? validateConfirmPassword(password, confirm) : null,
     }),
-    [mode, name, email, password, confirm]
+    [mode, name, email, password, confirm],
   );
+  const termsMissing = mode === 'signup' && !acceptedTerms;
+  const valid = !Object.values(fieldErrors).some(Boolean) && !termsMissing;
+  const shown = (key: keyof typeof fieldErrors) => (attempted ? fieldErrors[key] ?? undefined : undefined);
 
-  type FieldKey = keyof typeof fieldErrors;
-  const fieldInvalid = (key: FieldKey) => attempted && Boolean(fieldErrors[key]);
-
-  const strength = passwordStrength(mode === 'signup' ? password : '');
-  const strengthTooShort = mode === 'signup' && password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+  const score = passwordStrength(mode === 'signup' ? password : '');
+  const tooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
+  const strengthColor = tooShort ? t.danger : score === 0 ? t.danger : score === 1 ? t.warning : t.success;
 
   const handleSubmit = async () => {
+    if (submitting) return;
     setAttempted(true);
+    if (!valid) return;
     setError(null);
-
-    if (Object.values(fieldErrors).some(Boolean)) return;
-
-    if (mode === 'signup' && !acceptedTerms) {
-      setError('Please accept the Privacy Policy & Terms to continue.');
-      return;
-    }
-
     setSubmitting(true);
     try {
       if (mode === 'forgot') {
         const { error: err } = await resetPassword(email.trim());
-        if (err) {
-          setError(err);
-          return;
-        }
-        setNotice({
-          emoji: '📨',
-          title: 'Recovery Link Sent',
-          message: `Check ${email} for instructions`,
-        });
+        if (err) setError(authErrorMessage('forgot', err));
+        else setNotice({ icon: 'mail', title: 'MESSAGE DISPATCHED', message: resetLinkSentMessage(email.trim()) });
         return;
       }
-
       if (mode === 'signup') {
-        const { error: err, needsEmailConfirmation } = await signUp(
-          email.trim(),
-          password,
-          normalizeNameBoundaries(name)
-        );
-        if (err) {
-          setError(err);
-          return;
-        }
-        if (needsEmailConfirmation) {
-          setNotice({
-            emoji: '✅',
-            title: 'Confirm Your Email',
-            message: `We sent a confirmation link to ${email}. Sign in once you've confirmed.`,
-          });
-        }
-        // if no confirmation needed, the session updates and Stack.Protected
-        // redirects to the tabs automatically.
+        const { error: err, needsEmailConfirmation } = await signUp(email.trim(), password, normalizeNameBoundaries(name));
+        if (err) setError(authErrorMessage('signup', err));
+        // With no confirmation needed the session arrives and the protected stack moves to the tabs by itself.
+        else if (needsEmailConfirmation) setNotice({ icon: 'check', title: 'ALMOST THERE', message: confirmEmailMessage(email.trim()) });
         return;
       }
-
       const { error: err } = await signIn(email.trim(), password);
-      if (err) setError(err);
+      if (err) setError(authErrorMessage('login', err));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const fieldStyle = {
-    backgroundColor: theme.track,
-    borderColor: theme.accentBorder,
-    color: theme.text,
+  const backToLogin = () => {
+    setNotice(null);
+    switchMode('login');
   };
 
-  return (
-    <View style={{ flex: 1, backgroundColor: theme.body }}>
-      <PageBackground />
-      <Screen
-        edges={['top', 'bottom']}
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scroll}>
-          <View style={styles.logoWrap}>
-            <View
-              style={[
-                styles.logoBox,
-                { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder },
-              ]}>
-              <Text style={[styles.logoGlyph, { color: theme.accent, fontFamily: fonts.display }]}>
-                英
-              </Text>
-            </View>
-            <Text style={[styles.title, { color: theme.text, fontFamily: fonts.display }]}>
-              EIYU SYSTEM
-            </Text>
-            <Text style={[styles.subtitle, { color: theme.muted, fontFamily: fonts.body }]}>
-              {mode === 'login' ? 'Enter the system' : mode === 'signup' ? 'Begin your journey' : 'Reset access'}
-            </Text>
-          </View>
+  const linkStyle = [styles.link, { color: t['accent-text'], fontFamily: fonts.body }];
 
-          <GlassView style={styles.card}>
-            {notice ? (
-              <View style={styles.recoveryDone}>
-                <Text style={styles.recoveryEmoji}>{notice.emoji}</Text>
-                <Text style={[styles.recoveryTitle, { color: theme.accent, fontFamily: fonts.display }]}>
-                  {notice.title}
-                </Text>
-                <Text style={[styles.recoverySub, { color: theme.muted, fontFamily: fonts.body }]}>
-                  {notice.message}
-                </Text>
-                <GhostButton label="BACK TO LOGIN" onPress={resetToLogin} />
+  return (
+    <View style={[styles.root, { backgroundColor: t['page-flat'] }]}>
+      <Screen edges={['top', 'bottom']} contentContainerStyle={styles.scroll}>
+        <View style={styles.brand}>
+          <View style={[styles.logo, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
+            <Text style={[styles.logoGlyph, { color: t['accent-text'], fontFamily: fonts.display }]}>英</Text>
+          </View>
+          <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>EIYU SYSTEM</Text>
+          <Text style={[styles.subtitle, { color: t['muted-flat'], fontFamily: fonts.body }]}>{SUBTITLES[mode]}</Text>
+        </View>
+
+        <SignaturePanel style={styles.card}>
+          <View style={[styles.accentLine, { backgroundColor: t.accent }]} />
+          {notice ? (
+            <View style={styles.notice}>
+              <View
+                testID={`auth-notice-${notice.icon}`}
+                style={[
+                  styles.badge,
+                  notice.icon === 'mail'
+                    ? { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }
+                    : { backgroundColor: t['success-glass'], borderColor: t['success-border'] },
+                ]}>
+                {notice.icon === 'mail'
+                  ? <MailIcon size={24} color={t['accent-text']} />
+                  : <CheckIcon size={24} color={t.success} />}
               </View>
-            ) : (
-              <View style={{ gap: 12 }}>
-                {mode === 'signup' && (
-                  <View>
-                    <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-                      DISPLAY NAME
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.field,
-                        fieldStyle,
-                        fieldInvalid('name') && styles.fieldErrorBorder,
-                      ]}
-                      placeholder="Kaito Mizuru"
-                      placeholderTextColor={theme.dim}
-                      autoCapitalize="words"
-                      value={name}
-                      onChangeText={setName}
-                      accessibilityLabel="Display name"
-                    />
-                    {fieldInvalid('name') && (
-                      <Text style={styles.fieldError}>{fieldErrors.name}</Text>
-                    )}
-                  </View>
-                )}
+              <Text accessibilityRole="header" style={[styles.noticeTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{notice.title}</Text>
+              <Text style={[styles.noticeBody, { color: t['muted-flat'], fontFamily: fonts.body }]}>{notice.message}</Text>
+              <Button variant="secondary" label="BACK TO LOGIN" onPress={backToLogin} style={styles.full} />
+            </View>
+          ) : (
+            <View style={styles.form}>
+              {mode === 'signup' ? (
+                <Field label="Display name" placeholder="Kaito Mizuru" autoCapitalize="words" value={name} onChangeText={setName} error={shown('name')} />
+              ) : null}
+              <Field
+                label="Email address"
+                placeholder="you@example.com"
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+                error={shown('email')}
+              />
+              {mode !== 'forgot' ? (
                 <View>
-                  <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-                    EMAIL
-                  </Text>
-                  <TextInput
-                    style={[
-                      styles.field,
-                      fieldStyle,
-                      fieldInvalid('email') && styles.fieldErrorBorder,
-                    ]}
-                    placeholder="you@example.com"
-                    placeholderTextColor={theme.dim}
-                    autoCapitalize="none"
-                    autoComplete="email"
-                    keyboardType="email-address"
-                    value={email}
-                    onChangeText={setEmail}
-                    accessibilityLabel="Email address"
+                  <Field
+                    label="Password"
+                    placeholder="••••••••"
+                    secureTextEntry
+                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                    value={password}
+                    onChangeText={setPassword}
+                    error={shown('password')}
                   />
-                  {fieldInvalid('email') && (
-                    <Text style={styles.fieldError}>{fieldErrors.email}</Text>
-                  )}
-                </View>
-                {mode !== 'forgot' && (
-                  <View>
-                    <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-                      PASSWORD
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.field,
-                        fieldStyle,
-                        fieldInvalid('password') && styles.fieldErrorBorder,
-                      ]}
-                      placeholder="••••••••"
-                      placeholderTextColor={theme.dim}
-                      secureTextEntry
-                      autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                      value={password}
-                      onChangeText={setPassword}
-                      accessibilityLabel="Password"
-                    />
-                    {fieldInvalid('password') && (
-                      <Text style={styles.fieldError}>{fieldErrors.password}</Text>
-                    )}
-                    {mode === 'signup' && password.length > 0 && (
-                      <View style={styles.strengthRow}>
+                  {mode === 'signup' && password.length > 0 ? (
+                    <View style={styles.strength}>
+                      <View style={styles.strengthBars}>
                         {[1, 2, 3].map(seg => (
-                          <View
-                            key={seg}
-                            style={[
-                              styles.strengthSeg,
-                              {
-                                backgroundColor:
-                                  seg <= strength ? STRENGTH_COLORS[strength] : theme.track,
-                              },
-                            ]}
-                          />
+                          <View key={seg} style={[styles.strengthSeg, { backgroundColor: seg <= score ? strengthColor : t['glass-border'] }]} />
                         ))}
-                        <Text
-                          style={[
-                            styles.strengthLabel,
-                            { color: strengthTooShort ? '#f87171' : STRENGTH_COLORS[strength], fontFamily: fonts.body },
-                          ]}>
-                          {strengthTooShort ? 'Too short' : STRENGTH_LABELS[strength]}
-                        </Text>
                       </View>
-                    )}
-                  </View>
-                )}
-                {mode === 'signup' && (
-                  <View>
-                    <Text style={[styles.label, { color: theme.muted, fontFamily: fonts.display }]}>
-                      CONFIRM PASSWORD
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.field,
-                        fieldStyle,
-                        fieldInvalid('confirm') && styles.fieldErrorBorder,
-                      ]}
-                      placeholder="••••••••"
-                      placeholderTextColor={theme.dim}
-                      secureTextEntry
-                      autoComplete="new-password"
-                      value={confirm}
-                      onChangeText={setConfirm}
-                      accessibilityLabel="Confirm password"
-                    />
-                    {fieldInvalid('confirm') && (
-                      <Text style={styles.fieldError}>{fieldErrors.confirm}</Text>
-                    )}
-                  </View>
-                )}
-                {mode === 'signup' && (
-                  <View style={styles.termsRow}>
-                    <Pressable
-                      onPress={() => setAcceptedTerms(v => !v)}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: acceptedTerms }}
-                      accessibilityLabel="Accept Privacy Policy and Terms">
-                    <View
-                      testID="terms-checkbox"
-                      style={[
-                        styles.termsCheckbox,
-                        acceptedTerms && styles.termsCheckboxOn,
-                      ]}>
-                      {acceptedTerms && <CheckIcon size={12} color="#4ade80" />}
+                      <Text style={[styles.strengthLabel, { color: strengthColor, fontFamily: fonts.body }]}>
+                        {tooShort ? 'Too short' : STRENGTH_LABELS[score]}
+                      </Text>
                     </View>
+                  ) : null}
+                </View>
+              ) : null}
+              {mode === 'signup' ? (
+                <Field
+                  label="Confirm password"
+                  placeholder="••••••••"
+                  secureTextEntry
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChangeText={setConfirm}
+                  error={shown('confirm')}
+                />
+              ) : null}
+              {mode === 'signup' ? (
+                <View>
+                  <View style={styles.terms}>
+                    <Pressable
+                      testID="terms-checkbox"
+                      accessibilityRole="checkbox"
+                      accessibilityLabel="I agree to the Privacy Policy & Terms"
+                      accessibilityState={{ checked: acceptedTerms }}
+                      onPress={() => setAcceptedTerms(v => !v)}
+                      style={styles.checkTarget}>
+                      <View
+                        style={[
+                          styles.checkbox,
+                          acceptedTerms
+                            ? { borderColor: t['success-border'], backgroundColor: t['success-glass'] }
+                            : { borderColor: t['accent-border'], backgroundColor: 'transparent' },
+                        ]}>
+                        {acceptedTerms ? <CheckIcon size={13} color={t.success} /> : null}
+                      </View>
                     </Pressable>
                     <View style={styles.termsCopy}>
-                      <Text style={[styles.termsText, { color: theme.muted, fontFamily: fonts.body }]}>I agree to the</Text>
-                      <View style={styles.legalLinksRow}>
-                        <Pressable role="link" aria-label="Privacy Policy" onPress={() => setLegalDocument('privacy')}>
-                          <Text style={[styles.legalLink, { color: theme.accent, fontFamily: fonts.body }]}>Privacy Policy</Text>
+                      <Text style={[styles.termsText, { color: t['muted-flat'], fontFamily: fonts.body }]}>I agree to the</Text>
+                      <View style={styles.links}>
+                        <Pressable role="link" aria-label="Privacy Policy" onPress={() => setLegalDocument('privacy')} style={styles.linkTarget}>
+                          <Text style={linkStyle}>Privacy Policy</Text>
                         </Pressable>
-                        <Text style={[styles.termsText, { color: theme.muted, fontFamily: fonts.body }]}>and</Text>
-                        <Pressable role="link" aria-label="Terms of Use" onPress={() => setLegalDocument('terms')}>
-                          <Text style={[styles.legalLink, { color: theme.accent, fontFamily: fonts.body }]}>Terms of Use</Text>
+                        <Text style={[styles.termsText, { color: t['muted-flat'], fontFamily: fonts.body }]}>and</Text>
+                        <Pressable role="link" aria-label="Terms of Use" onPress={() => setLegalDocument('terms')} style={styles.linkTarget}>
+                          <Text style={linkStyle}>Terms of Use</Text>
                         </Pressable>
                       </View>
                     </View>
                   </View>
-                )}
-                {mode === 'login' && (
-                  <Pressable onPress={() => switchMode('forgot')} style={{ alignSelf: 'flex-end' }}>
-                    <Text style={[styles.forgot, { color: theme.dim, fontFamily: fonts.body }]}>
-                      Forgot password?
+                  {attempted && termsMissing ? (
+                    <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>
+                      Accept the Privacy Policy and Terms to continue.
                     </Text>
-                  </Pressable>
-                )}
-                {error && (
-                  <Text style={[styles.error, { fontFamily: fonts.body }]}>{error}</Text>
-                )}
-                <GhostButton
-                  label={
-                    submitting
-                      ? 'PLEASE WAIT…'
-                      : mode === 'login'
-                        ? 'ENTER SYSTEM'
-                        : mode === 'signup'
-                          ? 'BEGIN JOURNEY'
-                          : 'SEND RECOVERY LINK'
-                  }
-                  onPress={handleSubmit}
-                  disabled={submitting}
-                  style={{ marginTop: 4 }}
-                />
-              </View>
-            )}
-          </GlassView>
-
-          {!notice && (
-            <View style={styles.switchRow}>
-              <Text style={[styles.switchText, { color: theme.dim, fontFamily: fonts.body }]}>
-                {mode === 'login' ? 'New adventurer?' : mode === 'signup' ? 'Already enrolled?' : ''}
-              </Text>
-              {mode !== 'forgot' && (
-                <Pressable
-                  onPress={() => {
-                    switchMode(mode === 'login' ? 'signup' : 'login');
-                  }}>
-                  <Text style={[styles.switchLink, { color: theme.accent, fontFamily: fonts.body }]}>
-                    {mode === 'login' ? 'Register' : 'Sign in'}
-                  </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              {mode === 'login' ? (
+                <Pressable accessibilityRole="button" accessibilityLabel="Forgot password?" onPress={() => switchMode('forgot')} style={styles.forgot}>
+                  <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>Forgot password?</Text>
                 </Pressable>
-              )}
-              {mode === 'forgot' && (
-                <Pressable onPress={resetToLogin}>
-                  <Text style={[styles.switchLink, { color: theme.accent, fontFamily: fonts.body }]}>
-                    Back to login
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-          )}
-
-        <Modal
-          visible={activeLegalDocument !== null}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setLegalDocument(null)}>
-          <View style={styles.modalOverlay}>
-            <View
-              role="dialog"
-              aria-label={activeLegalDocument?.title}
-              aria-modal
-              accessibilityViewIsModal
-              onAccessibilityEscape={() => setLegalDocument(null)}
-              style={[styles.modalCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
-              <Text style={[styles.modalTitle, { color: theme.text, fontFamily: fonts.display }]}>
-                {activeLegalDocument?.title.toUpperCase()}
-              </Text>
-              <ScrollView
-                accessibilityLabel={`${activeLegalDocument?.title ?? 'Legal document'} content`}
-                contentInsetAdjustmentBehavior="automatic"
-                showsVerticalScrollIndicator
-                style={styles.modalScroll}
-                contentContainerStyle={styles.modalScrollContent}>
-                {activeLegalDocument?.sections.map(section => (
-                  <View key={section.heading}>
-                    <Text style={[styles.modalSectionTitle, { color: theme.muted, fontFamily: fonts.display }]}>
-                      {section.heading}
-                    </Text>
-                    <Text selectable style={[styles.modalBody, { color: theme.muted, fontFamily: fonts.body }]}>
-                      {section.body}
-                    </Text>
-                  </View>
-                ))}
-              </ScrollView>
-              <GhostButton
-                label={`Close ${activeLegalDocument?.title ?? 'document'}`}
-                onPress={() => setLegalDocument(null)}
+              ) : null}
+              {error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+              <Button
+                variant="primary"
+                label={submitting ? 'WORKING…' : SUBMIT_LABELS[mode]}
+                busy={submitting}
+                onPress={() => void handleSubmit()}
+                style={styles.full}
               />
             </View>
+          )}
+        </SignaturePanel>
+
+        {!notice ? (
+          <View style={styles.switchRow}>
+            {mode !== 'forgot' ? (
+              <Text style={[styles.switchText, { color: t['dim-flat'], fontFamily: fonts.body }]}>{mode === 'login' ? 'New adventurer?' : 'Already enrolled?'}</Text>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}
+              style={styles.linkTarget}>
+              <Text style={linkStyle}>{mode === 'login' ? 'Register' : mode === 'signup' ? 'Sign in' : 'Back to login'}</Text>
+            </Pressable>
           </View>
-        </Modal>
-        </Screen>
-      </View>
+        ) : null}
+      </Screen>
+
+      <Sheet
+        visible={activeLegalDocument !== null}
+        title={activeLegalDocument?.title}
+        closeLabel={`Close ${activeLegalDocument?.title ?? 'document'}`}
+        onClose={() => setLegalDocument(null)}
+        testID="legal-sheet">
+        {activeLegalDocument?.sections.map(section => (
+          <View key={section.heading} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{section.heading}</Text>
+            <Text selectable style={[styles.sectionBody, { color: t['muted-flat'], fontFamily: fonts.body }]}>{section.body}</Text>
+          </View>
+        ))}
+      </Sheet>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flexGrow: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 40,
-  },
-  logoWrap: {
-    alignItems: 'center',
-    marginBottom: 32,
-    width: '100%',
-    maxWidth: 360,
-  },
-  logoBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  logoGlyph: {
-    fontSize: 22,
-  },
-  title: {
-    fontSize: 28,
-    letterSpacing: 3,
-  },
-  subtitle: {
-    fontSize: 13,
-    marginTop: 4,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 360,
-    padding: 24,
-  },
-  label: {
-    fontSize: 12,
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  field: {
-    borderWidth: 1,
-    borderRadius: 12,
-    fontFamily: fonts.body,
-    fontSize: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  forgot: {
-    fontSize: 12,
-  },
-  error: {
-    fontSize: 12,
-    color: '#f87171',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 20,
-  },
-  switchText: {
-    fontSize: 13,
-  },
-  switchLink: {
-    fontSize: 13,
-    textDecorationLine: 'underline',
-  },
-  recoveryDone: {
-    alignItems: 'center',
-    paddingVertical: 16,
-    gap: 4,
-  },
-  recoveryEmoji: {
-    fontSize: 28,
-    marginBottom: 8,
-  },
-  recoveryTitle: {
-    fontSize: 18,
-    marginBottom: 2,
-  },
-  recoverySub: {
-    fontSize: 13,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  fieldError: {
-    fontSize: 12,
-    color: '#f87171',
-    marginTop: 5,
-  },
-  fieldErrorBorder: {
-    borderColor: '#f87171',
-  },
-  strengthRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 8,
-  },
-  strengthSeg: {
-    height: 4,
-    width: 32,
-    borderRadius: 2,
-  },
-  strengthLabel: {
-    fontSize: 11,
-    marginLeft: 4,
-  },
-  termsRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginTop: 2,
-  },
-  termsCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: 'rgba(120,140,160,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 1,
-  },
-  termsCheckboxOn: {
-    backgroundColor: 'rgba(74,222,128,0.15)',
-    borderColor: 'rgba(74,222,128,0.5)',
-  },
-  termsText: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  termsCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  legalLinksRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legalLink: {
-    fontSize: 13,
-    lineHeight: 20,
-    textDecorationLine: 'underline',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: 20,
-    gap: 10,
-  },
-  modalTitle: {
-    fontSize: 18,
-    letterSpacing: 1.5,
-  },
-  modalScroll: {
-    flexShrink: 1,
-  },
-  modalScrollContent: {
-    gap: 10,
-    paddingBottom: 8,
-  },
-  modalSectionTitle: {
-    fontSize: 11,
-    letterSpacing: 1.2,
-    marginTop: 10,
-    marginBottom: 3,
-  },
-  modalBody: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
+  root: { flex: 1 },
+  scroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, paddingVertical: 32 },
+  brand: { alignItems: 'center', marginBottom: 28, width: '100%', maxWidth: 440 },
+  logo: { width: 56, height: 56, borderRadius: 16, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  logoGlyph: { fontSize: 24 },
+  title: { fontSize: 28, letterSpacing: 3 },
+  subtitle: { fontSize: 13, marginTop: 6 },
+  card: { width: '100%', maxWidth: 440, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 20 },
+  accentLine: { height: 2, borderRadius: 1, opacity: 0.7, marginBottom: 20 },
+  form: { gap: 14 },
+  full: { width: '100%' },
+  strength: { marginTop: 8, gap: 4 },
+  strengthBars: { flexDirection: 'row', gap: 3 },
+  strengthSeg: { flex: 1, height: 3, borderRadius: 2 },
+  strengthLabel: { fontSize: 11 },
+  terms: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
+  checkTarget: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  checkbox: { width: 22, height: 22, borderRadius: 5, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  termsCopy: { flex: 1, minHeight: 48, justifyContent: 'center' },
+  termsText: { fontSize: 13, lineHeight: 18 },
+  links: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 5 },
+  linkTarget: { minHeight: 48, justifyContent: 'center' },
+  link: { fontSize: 13, textDecorationLine: 'underline' },
+  forgot: { alignSelf: 'flex-end', minHeight: 48, justifyContent: 'center' },
+  note: { fontSize: 12, lineHeight: 17 },
+  notice: { alignItems: 'center', paddingVertical: 8, gap: 6 },
+  badge: { width: 56, height: 56, borderRadius: 16, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  noticeTitle: { fontSize: 18, letterSpacing: 0.7 },
+  noticeBody: { fontSize: 13, lineHeight: 19, textAlign: 'center', marginBottom: 14 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', columnGap: 6, marginTop: 12 },
+  switchText: { fontSize: 13 },
+  section: { marginBottom: 18 },
+  sectionTitle: { fontSize: 13, letterSpacing: 1.1, marginBottom: 6 },
+  sectionBody: { fontSize: 14, lineHeight: 22 },
 });

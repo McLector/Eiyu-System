@@ -5,7 +5,7 @@ import { PALETTE_TOKENS, PALETTES } from '@eiyu/shared';
 
 // A misspelled token name renders as "no colour" and nothing complains, so every name a component reads is checked here.
 const ROOT = path.resolve(__dirname, '..', '..');
-const SCAN: string[] = ['components/ui', 'components/board', 'components/eiyu/account-header.tsx', 'components/eiyu/archived-habits-sheet.tsx', 'app/(tabs)/_layout.tsx'];
+const SCAN: string[] = ['components/ui', 'components/board', 'components/eiyu/account-header.tsx', 'components/eiyu/archived-habits-sheet.tsx', 'app/auth.tsx', 'app/(tabs)/_layout.tsx'];
 
 function sourceFiles(entry: string): string[] {
   const full = path.join(ROOT, entry);
