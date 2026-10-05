@@ -107,6 +107,20 @@ describe('QuestCard', () => {
     expect(onMove).toHaveBeenCalledOnce();
   });
 
+  it('points the move arrow the way the quest travels: right into Backlog, left back to One-time', async () => {
+    // The board lanes run One-time then Backlog from left to right.
+    const user = userEvent.setup();
+    const onMove = vi.fn();
+    const arrow = (name: string) => screen.getByRole('menuitem', { name }).querySelector('svg') as SVGElement;
+    renderCard(quest({ questType: 'one_time', days: [] }), { onMove });
+    await menuNames(user);
+    expect(arrow('Move Walk to Backlog').style.transform).toBe('');
+    cleanup();
+    renderCard(quest({ questType: 'backlog', days: [], genre: 'tool', timeSet: false, easyVersion: null }), { onMove });
+    await menuNames(user);
+    expect(arrow('Move Walk to One-time').style.transform).toBe('scaleX(-1)');
+  });
+
   it('shows no genre chip on a habit', () => {
     renderCard(quest({ genre: 'tool' }));
     expect(within(card()).queryByText('Tool')).toBeNull();
