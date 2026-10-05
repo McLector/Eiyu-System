@@ -12,18 +12,14 @@ appId: com.mclector.eiyusystem
 - assertVisible:
     id: "board-lane-tab-one-time"
 - assertVisible:
-    id: "board-lane-tab-all-habits"
-- assertVisible:
-    id: "board-lane-tab-archived"
-- tapOn:
-    id: "board-lane-tab-all-habits"
+    id: "board-lane-tab-backlog"
+- tapOn: "ALL HABITS"
 - assertVisible: ${HABIT_NAME}
-- tapOn:
-    id: "board-lane-tab-archived"
-- assertVisible: "ARCHIVED"
+- tapOn: "Close"
 - tapOn:
     id: "board-lane-tab-daily"
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - runFlow: ../_helpers/delete_open_quest.yaml
 - assertNotVisible: ${HABIT_NAME}

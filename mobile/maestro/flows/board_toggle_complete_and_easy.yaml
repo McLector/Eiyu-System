@@ -37,5 +37,6 @@ appId: com.mclector.eiyusystem
 # maestro/README.md).
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Toggle Complete Habit"

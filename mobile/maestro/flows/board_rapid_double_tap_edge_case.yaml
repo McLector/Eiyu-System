@@ -39,5 +39,6 @@ appId: com.mclector.eiyusystem
 # sidesteps the checkbox/edit-trigger label collision (see maestro/README.md).
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Rapid Tap Habit"

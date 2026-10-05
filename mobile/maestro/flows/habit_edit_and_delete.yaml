@@ -22,6 +22,7 @@ appId: com.mclector.eiyusystem
 # toggling completion, even with an index). testID sidesteps it.
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - assertVisible: "EDIT QUEST"
 - tapOn: "e.g. Code for 2 hours"
 - eraseText
@@ -40,5 +41,6 @@ appId: com.mclector.eiyusystem
 
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Habit After Edit"

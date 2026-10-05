@@ -1,38 +1,24 @@
 appId: com.mclector.eiyusystem
 ---
-# Phase 3 local lane journey. It exercises the native phone selector against
-# the same authenticated disposable account used by the browser checks.
+# Lane journey on the redesigned Board: three lanes (Daily, One-time, Backlog) selected by tab or swipe;
+# All Habits is a sheet opened from the Daily lane; Archived lives in the account menu.
 - tapOn: "BOARD"
 - extendedWaitUntil:
     visible: "P2 Notification Retry"
     timeout: 30000
-- swipe:
-    start: 90%, 35%
-    end: 20%, 75%
-    duration: 500
 - assertVisible:
     id: "board-lane-tab-daily"
+- assertVisible:
+    id: "board-lane-tab-one-time"
+- assertVisible:
+    id: "board-lane-tab-backlog"
 - assertVisible: "P2 Notification Retry"
-- tapOn:
-    id: "board-lane-tab-all-habits"
-- assertVisible:
-    id: "board-lane-tab-all-habits"
+- tapOn: "ALL HABITS"
 - assertVisible: "ALL HABITS"
-- scrollUntilVisible:
-    element:
-      id: "board-lane-tab-archived"
-    direction: RIGHT
-    centerElement: true
+- tapOn: "Close"
 - tapOn:
-    id: "board-lane-tab-archived"
-- assertVisible: "ARCHIVED"
-- assertVisible:
-    id: "board-archived-empty"
-- scrollUntilVisible:
-    element:
-      id: "board-lane-tab-daily"
-    direction: LEFT
-    centerElement: true
+    id: "board-lane-tab-backlog"
+- assertVisible: "BACKLOG"
 - tapOn:
     id: "board-lane-tab-daily"
 - assertVisible: "P2 Notification Retry"

@@ -8,6 +8,7 @@ appId: com.mclector.eiyusystem
 - assertVisible: "M{80}"
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - assertVisible: "EDIT QUEST"
 - scrollUntilVisible:
     element: "SAVE CHANGES"

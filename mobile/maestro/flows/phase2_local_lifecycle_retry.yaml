@@ -1,5 +1,8 @@
 appId: com.mclector.eiyusystem
 ---
+# STALE (mobile redesign, slice 1b): this flow walks the old Board lanes (All Habits / Archived tabs, per-row Archive and Delete buttons, long-press Penalty).
+# Those moved: All Habits is a sheet behind the ALL HABITS button, archived quests are in the account menu, row actions are in the more-button sheet.
+# Rewrite the lane and lifecycle steps against the new Board before relying on it.
 # Local-only Phase 2 retry. The browser restores and archives this account's
 # quest against the disposable Supabase stack before this flow starts.
 - tapOn:

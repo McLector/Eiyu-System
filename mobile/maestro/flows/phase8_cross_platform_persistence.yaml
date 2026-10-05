@@ -44,9 +44,10 @@ appId: com.anonymous.eiyusystem
 
 # Saturday is an off-day for the browser-created M/W/F habit. The same
 # persisted definition is visible in All Habits, not the normal daily list.
-- assertVisible: "ALL HABITS"
+- tapOn: "ALL HABITS"
 - assertVisible: "MWF Journey Habit"
 - assertVisible: "OFF DAY"
+- tapOn: "Close"
 
 # The browser completed the one-time quest on Sep 12. This Android switch ran
 # after the account-local midnight boundary, so it must not leak into Sep 13's

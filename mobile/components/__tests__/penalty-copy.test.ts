@@ -14,12 +14,23 @@ describe('Penalty terminology on active mobile surfaces', () => {
     expect(editor).not.toContain('SUGGEST EASY VERSIONS');
   });
 
-  it('uses Penalty on board recovery copy and accessible actions', () => {
-    const board = source('../../app/(tabs)/board.tsx');
-    expect(board).toContain('Penalty:');
-    expect(board).toContain('Complete penalty');
-    expect(board).not.toContain('Easy version:');
-    expect(board).not.toContain('Complete easy version');
+  it('uses Penalty on the recovery sheet, and never the old "easy version" wording on any Board surface', () => {
+    expect(source('../board/recovery-sheet.tsx')).toContain('Penalty:');
+    for (const file of [
+      '../../app/(tabs)/board.tsx',
+      '../board/recovery-sheet.tsx',
+      '../board/quest-details-sheet.tsx',
+      '../board/quest-row.tsx',
+      '../board/all-habits-sheet.tsx',
+    ]) {
+      const code = source(file);
+      expect(code).not.toContain('Easy version:');
+      expect(code).not.toContain('Complete easy version');
+    }
+  });
+
+  it('names the Penalty in the quest details', () => {
+    expect(source('../board/quest-details-sheet.tsx')).toContain('PENALTY');
   });
 
   it('uses Penalty in history and recovery notifications', () => {

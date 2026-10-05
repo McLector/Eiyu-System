@@ -1,33 +1,28 @@
-import { act, fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
 import type { Quest, UserProfile } from '@eiyu/shared';
 import { initialUser } from '@eiyu/shared';
-import { consumeBoardReturnIntent, publishBoardReturnIntent } from '../../lib/board-return-intent';
-import BoardScreen from '../../app/(tabs)/board';
 
-const mockRouter = { push: jest.fn() };
-let mockFocusCallbacks: Array<() => unknown> = [];
+import BoardScreen from '../../app/(tabs)/board';
+import { consumeBoardReturnIntent, publishBoardReturnIntent } from '../../lib/board-return-intent';
+import { hapticLight, hapticSuccess } from '../../lib/haptics';
+import { renderWithTheme, TestThemeProvider } from '../ui/test-theme';
+
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let mockFocusCallbacks: (() => unknown)[] = [];
 let mockStoreValue: any;
 
-jest.mock('expo-router', () => ({ router: mockRouter, useFocusEffect: (callback: () => unknown) => { mockFocusCallbacks.push(callback); } }));
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn(), setParams: jest.fn() },
+  useFocusEffect: (callback: () => unknown) => { mockFocusCallbacks.push(callback); },
+}));
+const mockRouter = jest.requireMock('expo-router').router as { push: jest.Mock; setParams: jest.Mock };
 jest.mock('@/contexts/eiyu-store', () => ({ useEiyu: () => mockStoreValue }));
 jest.mock('@/lib/haptics', () => ({ hapticLight: jest.fn(), hapticSuccess: jest.fn() }));
-jest.mock('@/components/eiyu/icons', () => ({
-  CheckIcon: () => null,
-  PlusIcon: () => null,
-  SnowflakeIcon: () => null,
-  StatIcon: () => null,
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
-jest.mock('@/components/eiyu/divider', () => ({ Divider: () => null }));
-jest.mock('@/components/eiyu/ghost-button', () => ({
-  GhostButton: ({ label, onPress }: { label: string; onPress: () => void }) => {
-    const { Pressable, Text } = jest.requireActual('react-native');
-    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}><Text>{label}</Text></Pressable>;
-  },
-}));
-jest.mock('@/components/eiyu/glass-view', () => ({ GlassView: 'View' }));
-jest.mock('@/components/eiyu/page-background', () => ({ PageBackground: () => null }));
-jest.mock('@/components/eiyu/screen', () => ({ Screen: 'View' }));
 
 const habit: Quest = {
   id: 'daily', name: 'Daily habit', stat: 'STR', difficulty: 'Medium',
@@ -35,9 +30,15 @@ const habit: Quest = {
   time: '08:00', days: [1, 3, 5], streak: 0, frozen: false, dailyEligible: true,
   completed: false, targetCount: null, progressCount: 0,
 };
+const backlogItem: Quest = {
+  ...habit, id: 'idea', name: 'Try Zig', questType: 'backlog', days: [], dailyEligible: false, genre: 'tool', timeSet: false,
+};
 
 function setup() {
   mockRouter.push.mockClear();
+  mockRouter.setParams.mockClear();
+  (hapticLight as jest.Mock).mockClear();
+  (hapticSuccess as jest.Mock).mockClear();
   mockFocusCallbacks = [];
   consumeBoardReturnIntent();
   const quests: Quest[] = [
@@ -47,114 +48,290 @@ function setup() {
   ];
   const user: UserProfile = { ...initialUser, timeZone: 'UTC', rank: 'E', quests, longQuests: [] };
   mockStoreValue = {
-    theme: {
-      body: '#000', modal: '#111', overlay: '#000', glassBorder: '#333', handle: '#444', text: '#fff',
-      dim: '#999', track: '#222', accentBorder: '#555', accent: '#0ff', muted: '#aaa', accentStrong: '#0ff', accentGlass: '#022',
-    },
     user,
+    backlog: [],
     questsLoading: false,
     questsError: null,
     questsHaveCachedData: true,
     retryQuests: jest.fn(),
     toggleQuest: jest.fn(),
-    completeEasy: jest.fn(),
     adjustProgress: jest.fn(),
     completeRecovery: jest.fn(),
     reminderWarning: null,
+    retryReminders: jest.fn(),
     archiveQuest: jest.fn().mockResolvedValue(undefined),
     restoreQuest: jest.fn().mockResolvedValue(undefined),
     deleteQuest: jest.fn().mockResolvedValue(undefined),
+    moveToOneTime: jest.fn().mockResolvedValue(undefined),
+    moveToBacklog: jest.fn().mockResolvedValue(undefined),
   };
 }
+const board = () => renderWithTheme(<BoardScreen />);
+const oneTimeQuest = (overrides: Partial<Quest> = {}): Quest => ({ ...habit, id: 'one-time', name: 'Today only', questType: 'one_time', days: [], ...overrides } as Quest);
+const openActions = async (user: ReturnType<typeof userEvent.setup>, name: string) => {
+  await user.press(screen.getByRole('button', { name: `More actions for ${name}` }));
+};
+const choose = async (user: ReturnType<typeof userEvent.setup>, action: string) => {
+  await user.press(screen.getByRole('menuitem', { name: action }));
+};
 
 describe('mobile BoardScreen lanes', () => {
   beforeEach(setup);
 
-  it('counts a mixed board and keeps each actionable quest in its own card', async () => {
-    const oneTime = { ...habit, id: 'one-time', name: 'Today only', questType: 'one_time' as const, days: [], completed: true };
-    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, oneTime] };
+  it('counts a mixed board and keeps each actionable quest in its own lane', async () => {
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, oneTimeQuest({ completed: true })] };
     const user = userEvent.setup();
-    await render(<BoardScreen />);
+    await board();
     expect(screen.getByText('1/2')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Archive Daily habit' })).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Delete Daily habit' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Open Daily habit details' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Open Today only details' })).toBeNull();
     await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
-    expect(screen.getByRole('button', { name: 'Archive Today only' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Open Today only details' })).toBeOnTheScreen();
   });
 
   it('counts a one-time-only board', async () => {
-    const oneTime = { ...habit, id: 'one-time', name: 'Today only', questType: 'one_time' as const, days: [], completed: true };
-    mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTime] };
-    await render(<BoardScreen />);
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTimeQuest({ completed: true })] };
+    await board();
     expect(screen.getByText('1/1')).toBeOnTheScreen();
   });
 
-  it('keeps the note accessible independently from quest details', async () => {
+  it('keeps a quest note out of the row and shows it in the details instead', async () => {
     mockStoreValue.user = { ...mockStoreValue.user, quests: [{ ...habit, description: 'A longer note' }] };
     const user = userEvent.setup();
-    await render(<BoardScreen />);
-    await user.press(screen.getByRole('button', { name: 'Show note for Daily habit' }));
-    expect(screen.getByRole('button', { name: 'Hide note for Daily habit' })).toBeOnTheScreen();
+    await board();
+    expect(screen.queryByText('A longer note')).toBeNull();
+    await user.press(screen.getByRole('button', { name: 'Open Daily habit details' }));
+    expect(screen.getByText('QUEST DETAILS')).toBeOnTheScreen();
+    expect(screen.getByText('A longer note')).toBeOnTheScreen();
     expect(mockRouter.push).not.toHaveBeenCalled();
   });
 
-  it('disables repeated archive and delete actions while an archive is pending', async () => {
+  it('opens the editor from the details sheet', async () => {
+    const user = userEvent.setup();
+    await board();
+    await user.press(screen.getByRole('button', { name: 'Open Daily habit details' }));
+    await user.press(screen.getByRole('button', { name: 'Edit quest' }));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/quest-editor', params: { id: 'daily' } });
+  });
+
+  it('offers three lanes by name, with Backlog in place of All Habits and Archived', async () => {
+    await board();
+    for (const label of ['DAILY QUEST', 'ONE TIME QUEST', 'BACKLOG']) expect(screen.getByRole('tab', { name: label })).toBeOnTheScreen();
+    expect(screen.queryByRole('tab', { name: 'ALL HABITS' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'ARCHIVED' })).toBeNull();
+  });
+
+  it('keeps the lane selector a wrapping row for narrow and large-text screens', async () => {
+    await board();
+    const laneTabs = screen.getByTestId('board-lane-tabs');
+    expect(laneTabs.props.horizontal).toBeUndefined();
+    expect(laneTabs.props.style.flexWrap).toBe('wrap');
+  });
+
+  it('shows only the Daily habits that are due, and reaches the rest through All Habits', async () => {
+    const user = userEvent.setup();
+    await board();
+    expect(screen.getByText('Daily habit')).toBeOnTheScreen();
+    expect(screen.queryByText('Off-day habit')).toBeNull();
+    await user.press(screen.getByRole('button', { name: 'ALL HABITS' }));
+    expect(screen.getByText('Off-day habit')).toBeOnTheScreen();
+    expect(screen.queryByText('Archived habit')).toBeNull();
+  });
+
+  it('lists Backlog quests in the Backlog lane', async () => {
+    mockStoreValue.backlog = [backlogItem];
+    const user = userEvent.setup();
+    await board();
+    expect(screen.queryByText('Try Zig')).toBeNull();
+    await user.press(screen.getByRole('tab', { name: 'BACKLOG' }));
+    expect(screen.getByText('Try Zig')).toBeOnTheScreen();
+    expect(screen.queryByTestId('quest-checkbox')).toBeNull();
+  });
+
+  it('says what an empty lane is for', async () => {
+    const user = userEvent.setup();
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [] };
+    await board();
+    expect(screen.getByText('No habits are scheduled for today. Create one or check All Habits.')).toBeOnTheScreen();
+    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    expect(screen.getByText('No one-time quests scheduled for today.')).toBeOnTheScreen();
+    await user.press(screen.getByRole('tab', { name: 'BACKLOG' }));
+    expect(screen.getByText(/Nothing in the Backlog/)).toBeOnTheScreen();
+  });
+
+  it('follows a swipe to another lane, and hides the lanes that are off screen from screen readers', async () => {
+    mockStoreValue.backlog = [backlogItem];
+    await board();
+    await act(async () => { screen.getByTestId('board-pager').props.onPageSelected({ nativeEvent: { position: 2 } }); });
+    expect(screen.getByRole('tab', { name: 'BACKLOG' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByText('Try Zig')).toBeOnTheScreen();
+    expect(screen.queryByText('Daily habit')).toBeNull();
+  });
+});
+
+describe('mobile BoardScreen completing quests', () => {
+  beforeEach(setup);
+
+  it('completes a quest with a success cue and an XP flash', async () => {
+    await board();
+    await userEvent.setup().press(screen.getByTestId('quest-checkbox'));
+    expect(mockStoreValue.toggleQuest).toHaveBeenCalledWith('daily');
+    expect(hapticSuccess).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/^\+\d+ XP$/)).toBeOnTheScreen();
+  });
+
+  it('undoes a completed quest with a light cue and no XP flash', async () => {
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [{ ...habit, completed: true }] };
+    await board();
+    await userEvent.setup().press(screen.getByTestId('quest-checkbox'));
+    expect(mockStoreValue.toggleQuest).toHaveBeenCalledWith('daily');
+    expect(hapticLight).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/XP$/)).toBeNull();
+  });
+
+  it('steps the progress of a quest with a target', async () => {
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [{ ...habit, targetCount: 5, progressCount: 1 }] };
+    await board();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Increase progress for Daily habit' }));
+    expect(mockStoreValue.adjustProgress).toHaveBeenCalledWith('daily', 1);
+  });
+});
+
+describe('mobile BoardScreen quest actions', () => {
+  beforeEach(setup);
+
+  it('opens the actions from the more button and from a long press', async () => {
+    const user = userEvent.setup();
+    await board();
+    await openActions(user, 'Daily habit');
+    expect(screen.getByRole('menuitem', { name: 'Archive' })).toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'Close' }));
+    await fireEvent(screen.getByTestId('quest-edit-trigger'), 'longPress');
+    expect(await screen.findByRole('menuitem', { name: 'Archive' })).toBeOnTheScreen();
+  });
+
+  it('offers a habit no move, and Edit goes to the editor', async () => {
+    const user = userEvent.setup();
+    await board();
+    await openActions(user, 'Daily habit');
+    expect(screen.queryByRole('menuitem', { name: /Move to/ })).toBeNull();
+    await choose(user, 'Edit quest');
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/quest-editor', params: { id: 'daily' } });
+  });
+
+  it('holds the row while an archive is pending, calls it once, and then offers Undo', async () => {
     const user = userEvent.setup();
     let release!: () => void;
     mockStoreValue.archiveQuest.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
-    await render(<BoardScreen />);
-    await user.press(screen.getByRole('button', { name: 'Archive Daily habit' }));
-    expect(screen.getByRole('button', { name: 'Archive Daily habit' })).toBeDisabled();
-    expect(screen.getByText('ARCHIVING…')).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Delete Daily habit' })).toBeDisabled();
-    await user.press(screen.getByRole('button', { name: 'Archive Daily habit' }));
+    await board();
+    await openActions(user, 'Daily habit');
+    await choose(user, 'Archive');
+    const more = screen.getByRole('button', { name: 'More actions for Daily habit' });
+    expect(more).toBeDisabled();
+    expect(more).toBeBusy();
+    await user.press(more);
     expect(mockStoreValue.archiveQuest).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Habit archived')).toBeNull();
     await act(async () => { release(); });
-    expect(screen.getByRole('button', { name: 'Archive Daily habit' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'More actions for Daily habit' })).toBeEnabled();
+    expect(screen.getByText('Habit archived')).toBeOnTheScreen();
   });
 
-  it('uses a phone lane selector to reach All Habits and Archived without hiding actions', async () => {
+  it('undoes an archive from the notice', async () => {
     const user = userEvent.setup();
-    await render(<BoardScreen />);
-
-    expect(screen.getByRole('tab', { name: 'DAILY QUEST' })).toBeOnTheScreen();
-    expect(screen.getByText('Daily habit')).toBeOnTheScreen();
-    expect(screen.queryByText('Off-day habit')).not.toBeOnTheScreen();
-
-    await user.press(screen.getByRole('tab', { name: 'ALL HABITS' }));
-    expect(screen.getByText('Off-day habit')).toBeOnTheScreen();
-    expect(screen.queryByText('Archived habit')).not.toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Edit Off-day habit' })).toBeOnTheScreen();
-
-    await user.press(screen.getByRole('tab', { name: 'ARCHIVED' }));
-    expect(screen.getByText('Archived habit')).toBeOnTheScreen();
-    expect(screen.queryByText('Off-day habit')).not.toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Edit Archived habit' })).toBeOnTheScreen();
+    await board();
+    await openActions(user, 'Daily habit');
+    await choose(user, 'Archive');
+    await user.press(await screen.findByRole('button', { name: 'Undo' }));
+    expect(mockStoreValue.restoreQuest).toHaveBeenCalledWith('daily');
+    await waitFor(() => expect(screen.queryByText('Habit archived')).toBeNull());
   });
 
-  it('requires a named retention confirmation before deleting an archived card', async () => {
+  it('sends "View archived habits" to the account menu\'s archived sheet', async () => {
     const user = userEvent.setup();
-    const rendered = await render(<BoardScreen />);
-    await user.press(screen.getByRole('tab', { name: 'ARCHIVED' }));
-    await user.press(screen.getByRole('button', { name: 'Delete Archived habit' }));
+    await board();
+    await openActions(user, 'Daily habit');
+    await choose(user, 'Archive');
+    await user.press(await screen.findByRole('button', { name: 'View archived habits' }));
+    expect(mockRouter.setParams).toHaveBeenCalledWith({ account: 'archived' });
+  });
+
+  it('does not show an archive notice when the archive fails', async () => {
+    const user = userEvent.setup();
+    mockStoreValue.archiveQuest.mockRejectedValueOnce(new Error('offline'));
+    await board();
+    await openActions(user, 'Daily habit');
+    await choose(user, 'Archive');
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText('Habit archived')).toBeNull();
+  });
+
+  it('moves a Backlog quest to One-time', async () => {
+    mockStoreValue.backlog = [backlogItem];
+    const user = userEvent.setup();
+    await board();
+    await user.press(screen.getByRole('tab', { name: 'BACKLOG' }));
+    await openActions(user, 'Try Zig');
+    expect(screen.queryByRole('menuitem', { name: 'Archive' })).toBeNull();
+    await choose(user, 'Move to One-time');
+    expect(mockStoreValue.moveToOneTime).toHaveBeenCalledWith('idea');
+    expect(hapticLight).toHaveBeenCalled();
+  });
+
+  it('moves an unfinished One-time quest to Backlog, but not a finished one', async () => {
+    const user = userEvent.setup();
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTimeQuest(), oneTimeQuest({ id: 'done', name: 'Finished', completed: true })] };
+    await board();
+    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    await openActions(user, 'Finished');
+    expect(screen.queryByRole('menuitem', { name: 'Move to Backlog' })).toBeNull();
+    await user.press(screen.getByRole('button', { name: 'Close' }));
+    await openActions(user, 'Today only');
+    await choose(user, 'Move to Backlog');
+    expect(mockStoreValue.moveToBacklog).toHaveBeenCalledWith('one-time');
+  });
+
+  it('calls a move once when it is pressed twice in a row', async () => {
+    const user = userEvent.setup();
+    let release!: () => void;
+    mockStoreValue.moveToBacklog.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTimeQuest()] };
+    await board();
+    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    await openActions(user, 'Today only');
+    await choose(user, 'Move to Backlog');
+    await user.press(screen.getByRole('button', { name: 'More actions for Today only' }));
+    expect(mockStoreValue.moveToBacklog).toHaveBeenCalledTimes(1);
+    await act(async () => { release(); });
+  });
+});
+
+describe('mobile BoardScreen deleting', () => {
+  beforeEach(setup);
+
+  it('requires a named retention confirmation before deleting', async () => {
+    const user = userEvent.setup();
+    const rendered = await board();
+    await openActions(user, 'Daily habit');
+    await choose(user, 'Delete permanently');
 
     const focus = jest.spyOn(AccessibilityInfo, 'sendAccessibilityEvent').mockImplementation(() => {});
     await act(async () => { fireEvent(rendered.getByTestId('board-delete-modal'), 'show'); });
     expect(focus).toHaveBeenCalledWith(expect.anything(), 'focus');
     focus.mockRestore();
 
-    expect(screen.getByText('DELETE Archived habit PERMANENTLY?')).toBeOnTheScreen();
+    expect(screen.getByText('DELETE Daily habit PERMANENTLY?')).toBeOnTheScreen();
     expect(screen.getByText(/History, Weekly Review, and earned XP remain/)).toBeOnTheScreen();
     expect(mockStoreValue.deleteQuest).not.toHaveBeenCalled();
     await act(async () => { rendered.getByTestId('board-delete-modal').props.onRequestClose(); });
     expect(mockStoreValue.deleteQuest).not.toHaveBeenCalled();
     await waitFor(() => expect(rendered.queryByTestId('board-delete-modal')).toBeNull());
 
-    await user.press(screen.getByRole('button', { name: 'Delete Archived habit' }));
+    await openActions(user, 'Daily habit');
+    await choose(user, 'Delete permanently');
     await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
     expect(mockStoreValue.deleteQuest).toHaveBeenCalledTimes(1);
-    expect(mockStoreValue.deleteQuest).toHaveBeenCalledWith('archived');
+    expect(mockStoreValue.deleteQuest).toHaveBeenCalledWith('daily');
   });
 
   it('blocks Back and repeat confirmation while pending, then keeps an error for retry', async () => {
@@ -163,14 +340,14 @@ describe('mobile BoardScreen lanes', () => {
     mockStoreValue.deleteQuest
       .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectDelete = reject; }))
       .mockResolvedValueOnce(undefined);
-    const rendered = await render(<BoardScreen />);
-    await user.press(screen.getByRole('tab', { name: 'ARCHIVED' }));
-    await user.press(screen.getByRole('button', { name: 'Delete Archived habit' }));
+    const rendered = await board();
+    await openActions(user, 'Daily habit');
+    await choose(user, 'Delete permanently');
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
       await Promise.resolve();
     });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm permanent delete' })).toBeBusy());
     await act(async () => { rendered.getByTestId('board-delete-modal').props.onRequestClose(); });
     expect(rendered.getByTestId('board-delete-modal')).toBeOnTheScreen();
     await user.press(screen.getByRole('button', { name: 'Confirm permanent delete' }));
@@ -183,11 +360,35 @@ describe('mobile BoardScreen lanes', () => {
     expect(mockStoreValue.deleteQuest).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(rendered.queryByTestId('board-delete-modal')).toBeNull());
   });
+});
+
+describe('mobile BoardScreen recovery', () => {
+  beforeEach(setup);
+
+  it('shows a banner for frozen streaks and completes the recovery from its sheet', async () => {
+    const user = userEvent.setup();
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [{ ...habit, id: 'ice', name: 'Frozen habit', frozen: true, frozenHoursLeft: 5 }] };
+    await board();
+    expect(screen.queryByText('Mark Recovery Complete')).toBeNull();
+    await user.press(screen.getByRole('button', { name: /Recovery required/ }));
+    expect(screen.getByText('Penalty: One minute')).toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'Mark recovery complete for Frozen habit' }));
+    expect(mockStoreValue.completeRecovery).toHaveBeenCalledWith('ice');
+    expect(screen.getByText(/^\+\d+ XP$/)).toBeOnTheScreen();
+  });
+
+  it('shows no banner when nothing is frozen', async () => {
+    await board();
+    expect(screen.queryByRole('button', { name: /Recovery required/ })).toBeNull();
+  });
+});
+
+describe('mobile BoardScreen load states', () => {
+  beforeEach(setup);
 
   it('keeps saved quest rows visible with a friendly offline banner after a failed update', async () => {
     mockStoreValue.questsError = "You're offline. Your update wasn't saved. Your saved quests are still shown.";
-    await render(<BoardScreen />);
-
+    await board();
     expect(screen.getByText('Daily habit')).toBeOnTheScreen();
     expect(screen.getByText(/You're offline/)).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Retry quests' })).toBeOnTheScreen();
@@ -197,29 +398,43 @@ describe('mobile BoardScreen lanes', () => {
   it('offers a full-page Retry state when a first quest load fails without cache', async () => {
     mockStoreValue.questsHaveCachedData = false;
     mockStoreValue.questsError = "You're offline. Your quests couldn't be loaded. Check your connection or retry.";
-    await render(<BoardScreen />);
-
+    await board();
     expect(screen.getByText(/Couldn't load quests:/)).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Retry quests' })).toBeOnTheScreen();
     expect(screen.queryByText('Daily habit')).toBeNull();
   });
 
-  it('lays out all four named lane tabs in a wrapping selector for narrow and large-text screens', async () => {
-    await render(<BoardScreen />);
-    const laneTabs = screen.getByTestId('board-lane-tabs');
-    expect(laneTabs.props.horizontal).toBeUndefined();
-    expect(laneTabs.props.style.flexWrap).toBe('wrap');
-    for (const label of ['DAILY QUEST', 'ONE TIME QUEST', 'ALL HABITS', 'ARCHIVED']) {
-      expect(screen.getByRole('tab', { name: label })).toBeOnTheScreen();
-    }
+  it('shows a loading state while the first load runs', async () => {
+    mockStoreValue.questsHaveCachedData = false;
+    mockStoreValue.questsLoading = true;
+    await board();
+    expect(screen.getByText(/Loading today's quests/)).toBeOnTheScreen();
+    expect(screen.queryByText('Daily habit')).toBeNull();
   });
 
-  it('consumes the one-time return intent once and opens the One Time lane', async () => {
-    const oneTime = { ...habit, id: 'one-time', name: 'Created from Daily', questType: 'one_time' as const, days: [], dailyEligible: true };
-    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, oneTime] };
-    publishBoardReturnIntent('one-time');
-    await render(<BoardScreen />);
+  it('runs Retry', async () => {
+    mockStoreValue.questsError = 'Something failed';
+    await board();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Retry quests' }));
+    expect(mockStoreValue.retryQuests).toHaveBeenCalledTimes(1);
+  });
 
+  it('shows a reminder warning with its own Retry', async () => {
+    mockStoreValue.reminderWarning = 'Quest archived, but reminders could not be updated: nope';
+    await board();
+    expect(screen.getByRole('alert', { name: /reminders could not be updated/ })).toBeOnTheScreen();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Retry reminders' }));
+    expect(mockStoreValue.retryReminders).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('mobile BoardScreen lane memory and adding', () => {
+  beforeEach(setup);
+
+  it('consumes the one-time return intent once and opens the One Time lane', async () => {
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, oneTimeQuest({ name: 'Created from Daily', dailyEligible: true })] };
+    publishBoardReturnIntent('one-time');
+    await board();
     await act(async () => { mockFocusCallbacks[0]?.(); });
     expect(screen.getByRole('tab', { name: 'ONE TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.getByText('Created from Daily')).toBeOnTheScreen();
@@ -227,30 +442,39 @@ describe('mobile BoardScreen lanes', () => {
   });
 
   it('does not change a selected lane when an unrelated refresh adds a one-time quest', async () => {
-    const rendered = await render(<BoardScreen />);
-    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, { ...habit, id: 'remote-one-time', questType: 'one_time', days: [] }] };
-    rendered.rerender(<BoardScreen />);
+    const rendered = await board();
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [habit, oneTimeQuest({ id: 'remote-one-time' })] };
+    await rendered.rerender(<TestThemeProvider><BoardScreen /></TestThemeProvider>);
     expect(screen.getByRole('tab', { name: 'DAILY QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
   });
 
   it('contains an 80-character profile name beside the rank badge', async () => {
     const longName = 'M'.repeat(80);
     mockStoreValue.user = { ...mockStoreValue.user, name: longName };
-    await render(<BoardScreen />);
-
+    await board();
     const profileName = screen.getByTestId('board-profile-name');
-    expect(profileName.props.children).toBe(longName);
+    expect(profileName).toHaveTextContent(longName);
     expect(profileName.props.numberOfLines).toBe(2);
     expect(profileName.props.ellipsizeMode).toBe('tail');
   });
 
-  it('keeps both quest-type choices inside the chooser scroll viewport', async () => {
+  it('keeps both quest-type choices inside the chooser scroll viewport, and starts the editor for the one picked', async () => {
     const user = userEvent.setup();
-    await render(<BoardScreen />);
+    await board();
     await user.press(screen.getByRole('button', { name: 'ADD A QUEST' }));
-
     expect(screen.getByTestId('board-type-chooser-scroll')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Create a habit quest' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Create a one-time quest' })).toBeOnTheScreen();
+    expect(screen.queryByRole('button', { name: 'Create a backlog quest' })).toBeNull();
+    await user.press(screen.getByRole('button', { name: 'Create a one-time quest' }));
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/quest-editor', params: { type: 'one_time', returnLane: 'one-time' } });
+  });
+
+  it('starts the habit editor for a habit', async () => {
+    const user = userEvent.setup();
+    await board();
+    await user.press(screen.getByRole('button', { name: 'ADD A QUEST' }));
+    await user.press(screen.getByRole('button', { name: 'Create a habit quest' }));
+    expect(mockRouter.push).toHaveBeenCalledWith('/quest-editor');
   });
 });

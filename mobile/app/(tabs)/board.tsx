@@ -1,298 +1,56 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  FadeInUp,
-  FadeOutUp,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import PagerView from 'react-native-pager-view';
+import {
+  accountDateKey,
+  boardTodayProgress,
+  EASY_XP,
+  formatError,
+  FULL_XP,
+  partitionBoardQuests,
+  type Quest,
+} from '@eiyu/shared';
 
-import { CheckIcon, PlusIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
-import { GhostButton } from '@/components/eiyu/ghost-button';
-import { GlassView } from '@/components/eiyu/glass-view';
-import { PageBackground } from '@/components/eiyu/page-background';
-import { Screen } from '@/components/eiyu/screen';
-import { boardTodayProgress, DAYS, EASY_XP, formatDisplayDate, formatError, FULL_XP, partitionBoardQuests, profileInitials, RANK_CONFIG, STATS, STAT_COLORS, type Quest, type Rank } from '@eiyu/shared';
+import { AddQuestSheet, type QuestTypeChoice } from '@/components/board/add-quest-sheet';
+import { AllHabitsSheet } from '@/components/board/all-habits-sheet';
+import { DeleteQuestModal } from '@/components/board/delete-quest-modal';
+import { ProfileStrip } from '@/components/board/profile-strip';
+import { questActions, type QuestActionKey } from '@/components/board/quest-actions';
+import { QuestDetailsSheet } from '@/components/board/quest-details-sheet';
+import { QuestRow } from '@/components/board/quest-row';
+import { RecoverySheet } from '@/components/board/recovery-sheet';
+import { ListIcon, PlusIcon, SnowflakeIcon } from '@/components/eiyu/icons';
+import { ActionSheet } from '@/components/ui/action-sheet';
+import { Button } from '@/components/ui/button';
+import { StateBlock } from '@/components/ui/state-block';
+import { UndoBar } from '@/components/ui/undo-bar';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { hapticLight, hapticSuccess } from '@/lib/haptics';
+import { useTokens } from '@/contexts/theme-store';
 import { consumeBoardReturnIntent } from '@/lib/board-return-intent';
+import { hapticLight, hapticSuccess } from '@/lib/haptics';
 
-type BoardLaneId = 'daily' | 'one-time' | 'all-habits' | 'archived';
+type LaneId = 'daily' | 'one-time' | 'backlog';
+const LANES: { id: LaneId; label: string }[] = [
+  { id: 'daily', label: 'DAILY QUEST' },
+  { id: 'one-time', label: 'ONE TIME QUEST' },
+  { id: 'backlog', label: 'BACKLOG' },
+];
+/** The kinds the add sheet offers. Backlog joins once the quest editor can create one. */
+const OFFERED_TYPES: QuestTypeChoice[] = ['habit', 'one_time'];
+/** The tab bar floats over the content at normal font size; this keeps the footer clear of it. */
+const TAB_BAR_OVERLAY = 73;
 
-/**
- * The per-stat XP bar, animated. It used to set `width: \`${pct}%\`` directly,
- * which made the one visual that represents "you gained XP" snap to its new
- * value between frames - the gain was over before the eye could register it.
- * Animating scaleX (not width) keeps the whole thing on the UI thread, so the
- * fill still glides while JS is busy committing the completion.
- */
-function StatXpBar({ pct, color, track, stat, level }: {
-  pct: number;
-  color: string;
-  track: string;
-  stat: string;
-  level: number;
-}) {
-  const progress = useSharedValue(pct / 100);
-
-  useEffect(() => {
-    progress.value = withTiming(pct / 100, {
-      duration: 550,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [pct, progress]);
-
-  const fillStyle = useAnimatedStyle(() => ({ transform: [{ scaleX: progress.value }] }));
-
-  return (
-    <View
-      style={[styles.xpTrack, { backgroundColor: track }]}
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityValue={{ now: pct, min: 0, max: 100 }}
-      accessibilityLabel={`${stat} XP progress: ${pct}% to level ${level + 1}`}>
-      <Animated.View style={[styles.xpFill, { backgroundColor: color }, fillStyle]} />
-    </View>
-  );
-}
-
-function RankBadge({ rank }: { rank: Rank }) {
-  const cfg = RANK_CONFIG[rank];
-  return (
-    <View
-      style={[
-        styles.rankBadge,
-        { backgroundColor: cfg.bg, borderColor: cfg.color, shadowColor: cfg.glow },
-      ]}>
-      <Text style={[styles.rankText, { color: cfg.color, fontFamily: fonts.display }]}>{rank}</Text>
-    </View>
-  );
-}
-
-function recoveryDeadlineLabel(quest: Quest) {
-  if (!quest.recoveryDeadline) return `${quest.frozenHoursLeft ?? 0}h left`;
-  return `Until ${new Intl.DateTimeFormat(undefined, {
-    timeZone: quest.recoveryTimeZone,
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  }).format(new Date(quest.recoveryDeadline))}`;
-}
-
-function QuestRow({
-  quest,
-  onToggle,
-  onCompleteEasy,
-  onEdit,
-  onAdjustProgress,
-  onArchive,
-  onDelete,
-  pending,
-  xpToast,
-}: {
-  quest: Quest;
-  onToggle: () => void;
-  onCompleteEasy: () => void;
-  onEdit: () => void;
-  onAdjustProgress: (delta: number) => void;
-  onArchive: () => void;
-  onDelete: () => void;
-  pending: boolean;
-  xpToast: number | null;
-}) {
-  const { theme } = useEiyu();
-  const [noteOpen, setNoteOpen] = useState(false);
-  const isCompleted = quest.completed;
-  const isFrozen = quest.frozen && !isCompleted;
-  const diffColor = quest.difficulty === 'Hard' ? '#f87171' : quest.difficulty === 'Medium' ? '#fbbf24' : '#4ade80';
-  const diffBg = quest.difficulty === 'Hard' ? 'rgba(248,113,113,0.12)' : quest.difficulty === 'Medium' ? 'rgba(251,191,36,0.12)' : 'rgba(74,222,128,0.1)';
-  const diffBorder = quest.difficulty === 'Hard' ? 'rgba(248,113,113,0.2)' : quest.difficulty === 'Medium' ? 'rgba(251,191,36,0.2)' : 'rgba(74,222,128,0.15)';
-
-  return (
-    <View style={{ opacity: isCompleted ? 0.55 : 1 }}>
-      <View style={styles.questRow}>
-        <View>
-          {quest.targetCount == null ? (
-            <Pressable
-              testID="quest-checkbox"
-              onPress={onToggle}
-              onLongPress={onCompleteEasy}
-              hitSlop={8}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: isCompleted }}
-              accessibilityLabel={`${quest.name}${isCompleted ? ' (completed)' : ''}`}
-              accessibilityActions={[{ name: 'longpress', label: 'Complete penalty' }]}
-              onAccessibilityAction={event => {
-                if (event.nativeEvent.actionName === 'longpress') onCompleteEasy();
-              }}
-              style={[
-                styles.checkbox,
-                {
-                  borderColor: isCompleted
-                    ? 'rgba(74,222,128,0.5)'
-                    : isFrozen
-                      ? 'rgba(96,165,250,0.4)'
-                      : theme.accentBorder,
-                  backgroundColor: isCompleted ? 'rgba(74,222,128,0.15)' : 'transparent',
-                },
-              ]}>
-              {isCompleted && <CheckIcon size={14} color="#4ade80" />}
-            </Pressable>
-          ) : (
-            <View
-              style={styles.progressStepper}
-              accessibilityLabel={`${quest.name}, ${quest.progressCount} of ${quest.targetCount}`}>
-              <Pressable
-                onPress={() => onAdjustProgress(-1)}
-                disabled={quest.progressCount <= 0}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Decrease progress"
-                style={[
-                  styles.stepperButton,
-                  { opacity: quest.progressCount <= 0 ? 0.4 : 1, borderColor: theme.accentBorder },
-                ]}>
-                <Text style={[styles.stepperButtonText, { color: theme.text }]}>−</Text>
-              </Pressable>
-              <Text accessibilityLabel={`${quest.name}, ${quest.progressCount} of ${quest.targetCount} completed`} style={[styles.mono, { color: isCompleted ? '#4ade80' : theme.text, minWidth: 34, textAlign: 'center' }]}>
-                {quest.progressCount}/{quest.targetCount}
-              </Text>
-              <Pressable
-                onPress={() => onAdjustProgress(1)}
-                disabled={quest.progressCount >= quest.targetCount}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Increase progress"
-                style={[
-                  styles.stepperButton,
-                  { opacity: quest.progressCount >= quest.targetCount ? 0.4 : 1, borderColor: theme.accentBorder },
-                ]}>
-                <Text style={[styles.stepperButtonText, { color: theme.text }]}>+</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.questInfo}>
-        <Pressable testID="quest-edit-trigger" accessibilityRole="button" accessibilityLabel={`Open ${quest.name} details`} onPress={onEdit}>
-          <Text
-            style={[
-              styles.questName,
-              {
-                color: isCompleted ? theme.muted : theme.text,
-                textDecorationLine: isCompleted ? 'line-through' : 'none',
-                fontFamily: fonts.body,
-              },
-            ]}>
-            {quest.name}
-          </Text>
-          <View style={styles.questMetaRow}>
-            {quest.questType === 'one_time' ? (
-              <View style={styles.oneTimePill}>
-                <Text style={styles.oneTimePillText}>TODAY</Text>
-              </View>
-            ) : (
-              quest.streak > 0 && (
-                <Text style={[styles.mono, { color: theme.muted }]}>🔥 {quest.streak}</Text>
-              )
-            )}
-            <Text style={[styles.questTime, { color: theme.dim, fontFamily: fonts.body }]}>{quest.time}</Text>
-          </View>
-        </Pressable>
-          {quest.description && (
-            <Pressable
-              onPress={() => setNoteOpen(o => !o)}
-              hitSlop={6}
-              accessibilityRole="button"
-              accessibilityLabel={`${noteOpen ? 'Hide' : 'Show'} note for ${quest.name}`}>
-              <Text
-                numberOfLines={noteOpen ? undefined : 1}
-                style={[styles.questNote, { color: theme.muted, fontFamily: fonts.body }]}>
-                📝 {quest.description}
-              </Text>
-            </Pressable>
-          )}
-        </View>
-
-        {xpToast !== null && (
-          <Animated.View
-            entering={FadeInUp.duration(180)}
-            exiting={FadeOutUp.duration(520)}
-            style={styles.xpToast}
-            pointerEvents="none">
-            <Text style={[styles.xpToastText, { fontFamily: fonts.mono }]}>+{xpToast} XP</Text>
-          </Animated.View>
-        )}
-
-        <View style={styles.questTags}>
-          {isFrozen && <SnowflakeIcon size={13} />}
-          <View style={styles.statTag}>
-            <StatIcon stat={quest.stat} size={14} />
-            <Text style={[styles.statTagText, { color: STAT_COLORS[quest.stat], fontFamily: fonts.body }]}>
-              {quest.stat}
-            </Text>
-          </View>
-          <View style={[styles.diffTag, { backgroundColor: diffBg, borderColor: diffBorder }]}>
-            <Text style={[styles.diffTagText, { color: diffColor, fontFamily: fonts.display }]}>
-              {quest.difficulty[0]}
-            </Text>
-          </View>
-        </View>
-      </View>
-      <View style={styles.questLifecycle}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Archive ${quest.name}`} disabled={pending} onPress={onArchive} style={styles.catalogAction}><Text style={[styles.catalogActionText, { color: theme.muted, fontFamily: fonts.display }]}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${quest.name}`} disabled={pending} onPress={onDelete} style={styles.catalogAction}><Text style={[styles.catalogActionText, { color: '#f87171', fontFamily: fonts.display }]}>DELETE</Text></Pressable>
-      </View>
-    </View>
-  );
-}
-
-function HabitCatalogRow({ quest, onEdit, onArchive, onRestore, onDelete, pending }: { quest: Quest; onEdit: () => void; onArchive?: () => void; onRestore?: () => void; onDelete?: () => void; pending: boolean }) {
-  const { theme } = useEiyu();
-  const schedule = quest.days.length === 7 ? 'Every day' : quest.days.map(day => DAYS[day]).join(', ');
-
-  return (
-    <View style={styles.catalogRow}>
-      <Pressable onPress={onEdit} accessibilityRole="button" accessibilityLabel={`Edit ${quest.name}`} style={styles.questInfo}>
-        <Text style={[styles.questName, { color: theme.text, fontFamily: fonts.body }]}>{quest.name}</Text>
-        <Text style={[styles.catalogSchedule, { color: theme.muted, fontFamily: fonts.body }]}>
-          {quest.archived ? (quest.questType === 'one_time' ? 'One-time quest' : 'Recurring habit') : `${schedule || 'No scheduled days'}${quest.dailyEligible && quest.completed ? ' · Completed today' : ''}${quest.dailyEligible && quest.targetCount != null ? ` · ${quest.progressCount}/${quest.targetCount}` : ''}`}
-        </Text>
-      </Pressable>
-      <View style={styles.catalogActions}>
-        <View style={[styles.catalogStatus, { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder }]}>
-          <Text style={[styles.catalogStatusText, { color: quest.archived ? theme.muted : quest.completed && quest.dailyEligible ? '#4ade80' : theme.accent }]}>
-            {quest.archived ? 'ARCHIVED' : quest.completed && quest.dailyEligible ? 'DONE' : quest.dailyEligible ? 'TODAY' : 'OFF DAY'}
-          </Text>
-        </View>
-        {quest.archived ? (
-          <>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Restore ${quest.name}`} disabled={pending} onPress={onRestore} style={styles.catalogAction}><Text style={[styles.catalogActionText, { color: theme.accent, fontFamily: fonts.display }]}>{pending ? 'RESTORING…' : 'RESTORE'}</Text></Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${quest.name}`} disabled={pending} onPress={onDelete} style={styles.catalogAction}><Text style={[styles.catalogActionText, { color: '#f87171', fontFamily: fonts.display }]}>DELETE</Text></Pressable>
-          </>
-        ) : (
-          <>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Archive ${quest.name}`} disabled={pending} onPress={onArchive} style={styles.catalogAction}><Text style={[styles.catalogActionText, { color: theme.muted, fontFamily: fonts.display }]}>{pending ? 'ARCHIVING…' : 'ARCHIVE'}</Text></Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${quest.name}`} disabled={pending} onPress={onDelete} style={styles.catalogAction}><Text style={[styles.catalogActionText, { color: '#f87171', fontFamily: fonts.display }]}>DELETE</Text></Pressable>
-          </>
-        )}
-      </View>
-    </View>
-  );
-}
+interface ArchiveNotice { id: number; questId: string; kind: 'Habit' | 'Quest' }
 
 export default function BoardScreen() {
+  const t = useTokens();
+  const { fontScale } = useWindowDimensions();
   const {
     user,
-    theme,
+    backlog,
     toggleQuest,
-    completeEasy,
     adjustProgress,
     completeRecovery,
     questsLoading,
@@ -304,51 +62,82 @@ export default function BoardScreen() {
     archiveQuest,
     restoreQuest,
     deleteQuest,
+    moveToOneTime,
+    moveToBacklog,
   } = useEiyu();
+
+  const [activeLane, setActiveLane] = useState<LaneId>('daily');
+  const pagerRef = useRef<PagerView>(null);
   const [xpToast, setXpToast] = useState<{ id: string; xp: number } | null>(null);
-  const [showTypeChooser, setShowTypeChooser] = useState(false);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [actionTarget, setActionTarget] = useState<Quest | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<Quest | null>(null);
+  const [allHabitsOpen, setAllHabitsOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [notice, setNotice] = useState<ArchiveNotice | null>(null);
+  const noticeSeq = useRef(0);
   const [deleteTarget, setDeleteTarget] = useState<Quest | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteInFlight = useRef(false);
-  const deleteCancelRef = useRef<View>(null);
-  const [activeLane, setActiveLane] = useState<BoardLaneId>('daily');
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
+  const inFlight = useRef(new Set<string>());
+
   useFocusEffect(useCallback(() => {
     const returnLane = consumeBoardReturnIntent();
     if (returnLane) setActiveLane(returnLane);
   }, []));
-  const [pendingLifecycleIds, setPendingLifecycleIds] = useState<Set<string>>(() => new Set());
-  const lifecycleInFlight = useRef(new Set<string>());
-  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits, archivedQuests } = partitionBoardQuests(user.quests);
+
+  // The tab and a swipe both end up here: keep the pager on the selected lane.
+  useEffect(() => {
+    pagerRef.current?.setPage?.(LANES.findIndex(lane => lane.id === activeLane));
+  }, [activeLane]);
+
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
+  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
   const { completed, total } = boardTodayProgress({ dailyQuests, oneTimeQuests });
-  const initials = profileInitials(user.name);
-  const laneOptions: { id: BoardLaneId; label: string; count: number }[] = [
-    { id: 'daily', label: 'DAILY QUEST', count: dailyQuests.length },
-    { id: 'one-time', label: 'ONE TIME QUEST', count: oneTimeQuests.length },
-    { id: 'all-habits', label: 'ALL HABITS', count: allHabits.length },
-    { id: 'archived', label: 'ARCHIVED', count: archivedQuests.length },
-  ];
+  const counts: Record<LaneId, number> = { daily: dailyQuests.length, 'one-time': oneTimeQuests.length, backlog: backlog.length };
 
   const flashXp = (id: string, xp: number) => {
     setXpToast({ id, xp });
-    setTimeout(() => setXpToast(current => (current?.id === id ? null : current)), 900);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setXpToast(current => (current?.id === id ? null : current)), 900);
   };
 
-  const openDelete = (quest: Quest) => {
-    setDeleteError(null);
-    setDeleteTarget(quest);
-  };
-
+  /** One action at a time per quest: a second one is ignored until the first settles. Failures reach the Retry banner via the store. */
   const queueLifecycle = (id: string, action: () => Promise<void>) => {
-    if (lifecycleInFlight.current.has(id)) return;
-    lifecycleInFlight.current.add(id);
-    setPendingLifecycleIds(new Set(lifecycleInFlight.current));
-    void action().catch(() => {
-      // The provider exposes the failure through the board Retry state.
-    }).finally(() => {
-      lifecycleInFlight.current.delete(id);
-      setPendingLifecycleIds(new Set(lifecycleInFlight.current));
+    if (inFlight.current.has(id)) return;
+    inFlight.current.add(id);
+    setPendingIds(new Set(inFlight.current));
+    void action().catch(() => {}).finally(() => {
+      inFlight.current.delete(id);
+      setPendingIds(new Set(inFlight.current));
     });
+  };
+
+  const archive = (quest: Quest) => queueLifecycle(quest.id, async () => {
+    await archiveQuest(quest.id);
+    hapticLight();
+    noticeSeq.current += 1;
+    setNotice({ id: noticeSeq.current, questId: quest.id, kind: quest.questType === 'habit' ? 'Habit' : 'Quest' });
+  });
+
+  const move = (quest: Quest, direction: 'to-one-time' | 'to-backlog') => queueLifecycle(quest.id, async () => {
+    await (direction === 'to-one-time' ? moveToOneTime(quest.id) : moveToBacklog(quest.id));
+    hapticLight();
+  });
+
+  const openEditor = (quest: Quest) => router.push({ pathname: '/quest-editor', params: { id: quest.id } });
+
+  const runAction = (key: QuestActionKey, quest: Quest) => {
+    if (key === 'details') setDetailsTarget(quest);
+    else if (key === 'edit') openEditor(quest);
+    else if (key === 'move-to-one-time') move(quest, 'to-one-time');
+    else if (key === 'move-to-backlog') move(quest, 'to-backlog');
+    else if (key === 'archive') archive(quest);
+    else { setDeleteError(null); setDeleteTarget(quest); }
   };
 
   const confirmDelete = async () => {
@@ -378,774 +167,193 @@ export default function BoardScreen() {
     toggleQuest(quest.id);
   };
 
-  const handleCompleteEasy = (quest: Quest) => {
-    // One-time quests have no Penalty — the legacy completeEasy action no-ops in the store,
-    // so the toast must not claim XP nothing received.
-    if (!quest.completed && quest.easyVersion) {
-      hapticLight();
-      flashXp(quest.id, EASY_XP);
-    }
-    completeEasy(quest.id);
+  const choose = (type: QuestTypeChoice) => {
+    setAddOpen(false);
+    if (type === 'habit') router.push('/quest-editor');
+    else router.push({ pathname: '/quest-editor', params: { type, returnLane: type === 'one_time' ? 'one-time' : type } });
   };
 
+  const row = (quest: Quest) => (
+    <QuestRow
+      key={quest.id}
+      quest={quest}
+      pending={pendingIds.has(quest.id)}
+      xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+      onToggle={() => handleToggle(quest)}
+      onOpen={() => setDetailsTarget(quest)}
+      onAdjustProgress={delta => adjustProgress(quest.id, delta)}
+      onActions={() => setActionTarget(quest)}
+    />
+  );
+
+  const empty = (text: string) => <Text style={[styles.empty, { color: t['muted-flat'], fontFamily: fonts.body }]}>{text}</Text>;
+
+  const lists: Record<LaneId, React.ReactNode> = {
+    daily: dailyQuests.length === 0 ? empty('No habits are scheduled for today. Create one or check All Habits.') : dailyQuests.map(row),
+    'one-time': oneTimeQuests.length === 0 ? empty('No one-time quests scheduled for today.') : oneTimeQuests.map(row),
+    backlog: backlog.length === 0 ? empty('Nothing in the Backlog. Capture an idea with ADD A QUEST.') : backlog.map(row),
+  };
+
+  const firstLoadFailed = !!questsError && !questsHaveCachedData;
+  const firstLoadRunning = questsLoading && !questsHaveCachedData;
+
   return (
-    <View style={{ flex: 1, backgroundColor: theme.body }}>
-      <PageBackground />
-      <Screen contentContainerStyle={styles.scroll} topGap={24}>
-        {reminderWarning && (
-          <View
-            accessibilityRole="alert"
-            style={[
-              styles.reminderNotice,
-              { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder },
-            ]}>
-            <View style={styles.reminderNoticeRow}>
-              <Text style={[styles.reminderNoticeText, { color: theme.muted, fontFamily: fonts.body }]}>
-                {reminderWarning}
-              </Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Retry reminders" onPress={() => void retryReminders()} style={[styles.reminderRetry, { borderColor: theme.accentBorder }]}>
-                <Text style={[styles.reminderRetryText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
-              </Pressable>
-            </View>
+    <View style={[styles.root, { backgroundColor: t['page-flat'] }]}>
+      <View style={styles.top}>
+        {reminderWarning ? (
+          <View style={[styles.notice, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
+            <Text accessibilityRole="alert" style={[styles.noticeText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{reminderWarning}</Text>
+            <Button variant="secondary" label="Retry" accessibilityLabel="Retry reminders" onPress={() => void retryReminders()} />
           </View>
-        )}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View
-              style={[
-                styles.avatar,
-                { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder },
-              ]}>
-              <Text style={[styles.avatarText, { color: theme.accent, fontFamily: fonts.display }]}>
-                {initials}
-              </Text>
-            </View>
-            <View style={styles.profileCopy}>
-              <Text testID="board-profile-name" numberOfLines={2} ellipsizeMode="tail" style={[styles.userName, { color: theme.text, fontFamily: fonts.display }]}>
-                {user.name}
-              </Text>
-              <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.userClass, { color: theme.muted, fontFamily: fonts.body }]}>
-                {user.userClass}
-              </Text>
-              <Text style={[styles.dateText, { color: theme.dim, fontFamily: fonts.body }]}>
-                {formatDisplayDate(new Date(), user.timeZone)}
-              </Text>
-            </View>
-          </View>
-          <RankBadge rank={user.rank} />
-        </View>
+        ) : null}
 
-        <GlassView style={styles.statBar}>
-          <View style={styles.statGrid}>
-            {STATS.map(stat => {
-              const s = user.stats[stat];
-              const pct = Math.min(100, Math.max(0, Math.round((s.xp / s.xpMax) * 100)));
-              return (
-                <View key={stat} style={styles.statCell}>
-                  <StatIcon stat={stat} size={15} />
-                  <Text style={[styles.statLabel, { color: theme.muted }]}>{stat}</Text>
-                  <Text style={[styles.statLevel, { color: STAT_COLORS[stat], fontFamily: fonts.mono }]}>
-                    {s.level}
-                  </Text>
-                  {/* #14 fix: a level digit alone takes ~5 completions to move,
-                      which read as "my stat didn't increase". The bar gives
-                      per-completion feedback right where quests are completed
-                      (the Status tab already had the full version). */}
-                  <StatXpBar
-                    pct={pct}
-                    color={STAT_COLORS[stat]}
-                    track={theme.track}
-                    stat={stat}
-                    level={s.level}
-                  />
-                </View>
-              );
-            })}
-          </View>
-        </GlassView>
+        <ProfileStrip name={user.name} userClass={user.userClass} rank={user.rank} stats={user.stats} completed={completed} total={total} />
 
-        {recoveryRequired.length > 0 && (
-          <View style={styles.sectionGroup}>
-            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>
-              RECOVERY REQUIRED
-            </Text>
-            {recoveryRequired.map(fq => (
-              <View
-                key={fq.id}
-                style={[
-                  styles.recoveryBanner,
-                  { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(96,165,250,0.3)' },
-                ]}>
-                <View style={styles.recoveryHeader}>
-                  <View style={styles.recoveryTitleRow}>
-                    <SnowflakeIcon size={15} />
-                    <Text style={[styles.recoveryTitle, { fontFamily: fonts.display }]}>
-                      STREAK FROZEN — RECOVERY QUEST
-                    </Text>
-                  </View>
-                  <Text style={[styles.mono, { color: '#93c5fd' }]}>{recoveryDeadlineLabel(fq)}</Text>
-                </View>
-                <Text style={[styles.recoveryName, { color: theme.text, fontFamily: fonts.body }]}>
-                  {fq.name}
-                </Text>
-                <Text style={[styles.recoveryEasy, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Penalty: {fq.easyVersion}
-                </Text>
-                <GhostButton
-                  label="Mark Recovery Complete"
-                  onPress={() => {
-                    flashXp(fq.id, EASY_XP);
-                    completeRecovery(fq.id);
-                  }}
-                />
-              </View>
-            ))}
-          </View>
-        )}
-
-        <View style={styles.questsHeader}>
-          <View>
-            <Text style={[styles.questsTitle, { color: theme.text, fontFamily: fonts.display }]}>BOARD</Text>
-            <Text style={[styles.questsSub, { color: theme.muted, fontFamily: fonts.body }]}>
-              {completed} of {total} due today
-            </Text>
-          </View>
-          <View style={[styles.progressPill, { backgroundColor: theme.accentGlass, borderColor: theme.accentBorder }]}>
-            <Text style={[styles.mono, { color: theme.accent }]}>{completed}/{total}</Text>
-          </View>
-        </View>
-
-        <View testID="board-lane-tabs" style={styles.laneTabs} accessibilityRole="tablist">
-          {laneOptions.map(lane => (
-            <Pressable
-              key={lane.id}
-              testID={`board-lane-tab-${lane.id}`}
-              accessibilityRole="tab"
-              accessibilityLabel={lane.label}
-              accessibilityState={{ selected: activeLane === lane.id }}
-              onPress={() => setActiveLane(lane.id)}
-              style={[
-                styles.laneTab,
-                { borderColor: activeLane === lane.id ? theme.accentBorder : theme.glassBorder },
-                activeLane === lane.id && { backgroundColor: theme.accentGlass },
-              ]}>
-              <Text style={[styles.laneTabText, { color: activeLane === lane.id ? theme.accent : theme.muted, fontFamily: fonts.display }]}>
-                {lane.label} <Text style={[styles.laneTabCount, { color: activeLane === lane.id ? theme.accent : theme.dim }]}>{lane.count}</Text>
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {questsError && questsHaveCachedData && (
-          <View style={styles.errorBlock} accessibilityRole="alert">
-            <Text style={[styles.emptyText, { color: '#f87171' }]}>{questsError}</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retry quests"
-              onPress={retryQuests}
-              style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
-              <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
-            </Pressable>
-          </View>
-        )}
-        {questsError && !questsHaveCachedData ? (
-          <View style={styles.errorBlock}>
-            <Text style={[styles.emptyText, { color: '#f87171' }]}>Couldn&apos;t load quests: {questsError}</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Retry quests"
-              onPress={retryQuests}
-              style={[styles.retryButton, { borderColor: theme.accentBorder }]}>
-              <Text style={[styles.retryButtonText, { color: theme.accent, fontFamily: fonts.display }]}>RETRY</Text>
-            </Pressable>
-          </View>
-        ) : questsLoading && !questsHaveCachedData ? (
-          <Text style={[styles.emptyText, { color: theme.muted }]}>Loading today&apos;s quests…</Text>
-        ) : (
-          <>
-        {activeLane === 'daily' && (
-          <View style={styles.lanePanel} accessibilityLabel="Daily Quest">
-            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>DAILY QUEST</Text>
-              {dailyQuests.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.muted }]}>No habits are scheduled for today. Create one or check All Habits.</Text>
-              ) : dailyQuests.map(quest => (
-                <GlassView key={quest.id} style={styles.questList}><QuestRow quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => handleToggle(quest)} onCompleteEasy={() => handleCompleteEasy(quest)} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => queueLifecycle(quest.id, () => archiveQuest(quest.id))} onDelete={() => openDelete(quest)} xpToast={xpToast?.id === quest.id ? xpToast.xp : null} /></GlassView>
-              ))}
-          </View>
-        )}
-
-        {activeLane === 'one-time' && (
-          <View style={styles.lanePanel} accessibilityLabel="One Time Quest">
-            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ONE TIME QUEST</Text>
-              {oneTimeQuests.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.muted }]}>No one-time quests scheduled for today.</Text>
-              ) : oneTimeQuests.map(quest => (
-                <GlassView key={quest.id} style={styles.questList}><QuestRow quest={quest} pending={pendingLifecycleIds.has(quest.id)} onToggle={() => handleToggle(quest)} onCompleteEasy={() => handleCompleteEasy(quest)} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} onAdjustProgress={delta => adjustProgress(quest.id, delta)} onArchive={() => queueLifecycle(quest.id, () => archiveQuest(quest.id))} onDelete={() => openDelete(quest)} xpToast={xpToast?.id === quest.id ? xpToast.xp : null} /></GlassView>
-              ))}
-          </View>
-        )}
-
-        {activeLane === 'all-habits' && (
-          <View style={styles.lanePanel} accessibilityLabel="All Habits">
-            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ALL HABITS</Text>
-            <GlassView style={styles.questList}>
-              {allHabits.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.muted }]}>No saved habits yet. Add a recurring quest to build your catalog.</Text>
-              ) : allHabits.map(quest => (
-                <HabitCatalogRow key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} onArchive={() => queueLifecycle(quest.id, () => archiveQuest(quest.id))} onDelete={() => openDelete(quest)} />
-              ))}
-            </GlassView>
-          </View>
-        )}
-
-        {activeLane === 'archived' && (
-          <View style={styles.lanePanel} accessibilityLabel="Archived">
-            <Text style={[styles.sectionHeading, { color: theme.text, fontFamily: fonts.display }]}>ARCHIVED</Text>
-            <GlassView style={styles.questList}>
-              {archivedQuests.length === 0 ? (
-                <Text testID="board-archived-empty" style={[styles.emptyText, { color: theme.muted }]}>No archived quests. Archived definitions will stay here with their history.</Text>
-              ) : archivedQuests.map(quest => (
-                <HabitCatalogRow key={quest.id} quest={quest} pending={pendingLifecycleIds.has(quest.id)} onEdit={() => router.push({ pathname: '/quest-editor', params: { id: quest.id } })} onRestore={() => queueLifecycle(quest.id, () => restoreQuest(quest.id))} onDelete={() => openDelete(quest)} />
-              ))}
-            </GlassView>
-          </View>
-        )}
-          </>
-        )}
-
-        <GhostButton
-          label="ADD A QUEST"
-          icon={<PlusIcon size={18} color={theme.accent} />}
-          onPress={() => setShowTypeChooser(true)}
-          style={{ paddingVertical: 16 }}
-        />
-      </Screen>
-
-      <Modal
-        testID="board-delete-modal"
-        visible={!!deleteTarget}
-        transparent
-        animationType="fade"
-        onShow={() => {
-          if (deleteCancelRef.current) AccessibilityInfo.sendAccessibilityEvent(deleteCancelRef.current, 'focus');
-        }}
-        onRequestClose={() => { if (!deleteInFlight.current) setDeleteTarget(null); }}>
-        <View style={styles.chooserOverlay} accessibilityViewIsModal>
-          <View style={[styles.chooserCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}>
-            <Text style={[styles.chooserTitle, { color: theme.text, fontFamily: fonts.display }]}>DELETE {deleteTarget?.name} PERMANENTLY?</Text>
-            <Text style={[styles.chooserSub, { color: theme.muted, fontFamily: fonts.body }]}>This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.</Text>
-            {deleteError && <Text accessibilityRole="alert" style={{ color: '#f87171', fontFamily: fonts.body }}>{deleteError}</Text>}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10 }}>
-              <Pressable ref={deleteCancelRef} testID="board-delete-cancel" accessibilityRole="button" accessibilityLabel="Cancel" disabled={deletePending} onPress={() => { if (!deleteInFlight.current) setDeleteTarget(null); }} style={[styles.catalogAction, styles.deleteConfirmButton, { borderColor: theme.glassBorder }]}><Text style={[styles.catalogActionText, styles.deleteConfirmText, { color: theme.muted, fontFamily: fonts.display }]}>CANCEL</Text></Pressable>
-              <Pressable testID="board-delete-confirm" accessibilityRole="button" accessibilityLabel="Confirm permanent delete" disabled={deletePending} onPress={() => void confirmDelete()} style={[styles.catalogAction, styles.deleteConfirmButton, { borderColor: 'rgba(248,113,113,0.45)' }]}><Text style={[styles.catalogActionText, styles.deleteConfirmText, { color: '#f87171', fontFamily: fonts.display }]}>{deletePending ? 'DELETING…' : 'CONFIRM PERMANENT DELETE'}</Text></Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Improvement-pass #7: pick the quest kind up-front — a repeating habit
-          (streaks) or a one-time todo for today only. */}
-      <Modal
-        visible={showTypeChooser}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowTypeChooser(false)}>
-        <Pressable style={styles.chooserOverlay} onPress={() => setShowTypeChooser(false)}>
-          {/* No-op responder so tapping inside the card (title/subtitle area)
-              doesn't fall through to the backdrop's dismiss handler. */}
+        {recoveryRequired.length > 0 ? (
           <Pressable
-            style={[styles.chooserCard, { backgroundColor: theme.modal, borderColor: theme.glassBorder }]}
-            onPress={() => {}}>
-            <ScrollView testID="board-type-chooser-scroll" style={styles.chooserScroll} contentContainerStyle={styles.chooserContent}>
-              <Text style={[styles.chooserTitle, { color: theme.text, fontFamily: fonts.display }]}>
-                NEW QUEST
-              </Text>
-              <Text style={[styles.chooserSub, { color: theme.muted, fontFamily: fonts.body }]}>
-                What kind of quest is this?
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Create a habit quest"
-                onPress={() => {
-                  setShowTypeChooser(false);
-                  router.push('/quest-editor');
-                }}
-                style={[styles.chooserOption, { borderColor: theme.accentBorder, backgroundColor: theme.accentGlass }]}>
-                <Text style={[styles.chooserOptionTitle, { color: theme.accent, fontFamily: fonts.display }]}>
-                  HABIT QUEST
-                </Text>
-                <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
-                  Repeats on chosen days — build streaks
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Create a one-time quest"
-                onPress={() => {
-                  setShowTypeChooser(false);
-                    router.push({ pathname: '/quest-editor', params: { type: 'one_time', returnLane: 'one-time' } });
-                }}
-                style={[styles.chooserOption, { borderColor: theme.glassBorder }]}>
-                <Text style={[styles.chooserOptionTitle, { color: theme.text, fontFamily: fonts.display }]}>
-                  ONE-TIME QUEST
-                </Text>
-                <Text style={[styles.chooserOptionDesc, { color: theme.muted, fontFamily: fonts.body }]}>
-                  A todo for today only — done or gone, no streak
-                </Text>
-              </Pressable>
-            </ScrollView>
+            accessibilityRole="button"
+            accessibilityLabel={`Recovery required: ${recoveryRequired.length} frozen ${recoveryRequired.length === 1 ? 'streak' : 'streaks'}`}
+            onPress={() => setRecoveryOpen(true)}
+            style={[styles.recovery, { borderColor: t['ice-border'], backgroundColor: t['panel-flat'] }]}>
+            <SnowflakeIcon size={15} color={t.ice} />
+            <Text style={[styles.recoveryText, { color: t.ice, fontFamily: fonts.display }]}>RECOVERY REQUIRED</Text>
+            <Text style={[styles.recoveryCount, { color: t.ice, fontFamily: fonts.mono }]}>{String(recoveryRequired.length)}</Text>
           </Pressable>
-        </Pressable>
-      </Modal>
+        ) : null}
+
+        <View testID="board-lane-tabs" accessibilityRole="tablist" style={styles.tabs}>
+          {LANES.map(lane => {
+            const selected = activeLane === lane.id;
+            return (
+              <Pressable
+                key={lane.id}
+                testID={`board-lane-tab-${lane.id}`}
+                accessibilityRole="tab"
+                accessibilityLabel={lane.label}
+                accessibilityState={{ selected }}
+                onPress={() => setActiveLane(lane.id)}
+                style={[
+                  styles.tab,
+                  { borderColor: selected ? t['accent-border'] : t['glass-border'] },
+                  selected && { backgroundColor: t['accent-glass'] },
+                ]}>
+                <Text style={[styles.tabText, { color: selected ? t['accent-text'] : t['muted-flat'], fontFamily: fonts.display }]}>
+                  {lane.label} <Text style={{ color: selected ? t['accent-text'] : t['dim-flat'] }}>{counts[lane.id]}</Text>
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {questsError && questsHaveCachedData ? (
+          <View style={styles.notice}>
+            <Text accessibilityRole="alert" style={[styles.noticeText, { color: t.danger, fontFamily: fonts.body }]}>{questsError}</Text>
+            <Button variant="secondary" label="Retry quests" onPress={retryQuests} />
+          </View>
+        ) : null}
+      </View>
+
+      {firstLoadFailed ? (
+        <StateBlock kind="error" retryLabel="Retry quests" onRetry={retryQuests}>{`Couldn't load quests: ${questsError}`}</StateBlock>
+      ) : firstLoadRunning ? (
+        <StateBlock kind="loading">{"Loading today's quests…"}</StateBlock>
+      ) : (
+        <PagerView
+          testID="board-pager"
+          ref={pagerRef}
+          style={styles.pager}
+          initialPage={0}
+          onPageSelected={(event: { nativeEvent: { position: number } }) => setActiveLane(LANES[event.nativeEvent.position]?.id ?? 'daily')}>
+          {LANES.map(lane => {
+            const active = activeLane === lane.id;
+            return (
+              <View
+                key={lane.id}
+                collapsable={false}
+                accessibilityElementsHidden={!active}
+                importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+                style={styles.page}>
+                <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">{lists[lane.id]}</ScrollView>
+              </View>
+            );
+          })}
+        </PagerView>
+      )}
+
+      {notice ? (
+        <View style={styles.undo}>
+          <UndoBar
+            key={notice.id}
+            message={`${notice.kind} archived`}
+            onAction={() => restoreQuest(notice.questId)}
+            secondaryLabel="View archived habits"
+            onSecondary={() => router.setParams({ account: 'archived' })}
+            onDismiss={() => setNotice(current => (current?.id === notice.id ? null : current))}
+          />
+        </View>
+      ) : null}
+
+      <View style={[styles.footer, { marginBottom: fontScale > 1.15 ? 0 : TAB_BAR_OVERLAY }]}>
+        {activeLane === 'daily' ? (
+          <Button variant="secondary" label="ALL HABITS" icon={<ListIcon size={16} color={t['accent-text']} />} onPress={() => setAllHabitsOpen(true)} />
+        ) : null}
+        <Button variant="primary" label="ADD A QUEST" icon={<PlusIcon size={18} color={t['on-accent']} />} onPress={() => setAddOpen(true)} />
+      </View>
+
+      <ActionSheet
+        visible={actionTarget !== null}
+        title={actionTarget?.name}
+        actions={actionTarget ? questActions(actionTarget) : []}
+        onSelect={key => { if (actionTarget) runAction(key as QuestActionKey, actionTarget); }}
+        onClose={() => setActionTarget(null)}
+      />
+      <QuestDetailsSheet
+        quest={detailsTarget}
+        accountToday={accountDateKey(new Date(), user.timeZone)}
+        onClose={() => setDetailsTarget(null)}
+        onEdit={() => { if (detailsTarget) openEditor(detailsTarget); setDetailsTarget(null); }}
+      />
+      <AllHabitsSheet
+        visible={allHabitsOpen}
+        habits={allHabits}
+        pendingIds={pendingIds}
+        onOpen={quest => { setAllHabitsOpen(false); setDetailsTarget(quest); }}
+        onActions={quest => { setAllHabitsOpen(false); setActionTarget(quest); }}
+        onClose={() => setAllHabitsOpen(false)}
+      />
+      <RecoverySheet
+        visible={recoveryOpen && recoveryRequired.length > 0}
+        quests={recoveryRequired}
+        onComplete={id => { flashXp(id, EASY_XP); completeRecovery(id); }}
+        onClose={() => setRecoveryOpen(false)}
+      />
+      <AddQuestSheet visible={addOpen} types={OFFERED_TYPES} onChoose={choose} onClose={() => setAddOpen(false)} />
+      <DeleteQuestModal
+        quest={deleteTarget}
+        pending={deletePending}
+        error={deleteError}
+        onCancel={() => { if (!deleteInFlight.current) setDeleteTarget(null); }}
+        onConfirm={() => void confirmDelete()}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  deleteConfirmButton: {
-    minHeight: 44,
-    flexGrow: 1,
-    flexBasis: '35%',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-  },
-  deleteConfirmText: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  chooserOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  chooserCard: {
-    width: '100%',
-    maxWidth: 360,
-    maxHeight: '85%',
-    borderWidth: 1,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  chooserScroll: {
-    flexShrink: 1,
-  },
-  chooserContent: {
-    padding: 20,
-    gap: 12,
-  },
-  chooserTitle: {
-    fontSize: 18,
-    letterSpacing: 1.5,
-  },
-  chooserSub: {
-    fontSize: 13,
-    marginTop: -6,
-  },
-  chooserOption: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    gap: 4,
-  },
-  chooserOptionTitle: {
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-  chooserOptionDesc: {
-    fontSize: 12,
-  },
-  scroll: {
-    paddingHorizontal: 16,
-    paddingBottom: 100,
-    gap: 16,
-  },
-  reminderNotice: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-  },
-  reminderNoticeText: {
-    fontSize: 12,
-    lineHeight: 18,
-    flex: 1,
-  },
-  reminderNoticeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  reminderRetry: {
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  reminderRetryText: {
-    fontSize: 10,
-    letterSpacing: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    gap: 12,
-  },
-  profileCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 17,
-  },
-  userName: {
-    fontSize: 18,
-  },
-  userClass: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  dateText: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  rankBadge: {
-    minWidth: 52,
-    minHeight: 52,
-    paddingHorizontal: 5,
-    paddingVertical: 4,
-    flexShrink: 0,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  rankText: {
-    fontSize: 24,
-    letterSpacing: 1,
-    textAlign: 'center',
-  },
-  statBar: {
-    padding: 16,
-  },
-  statGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statCell: {
-    alignItems: 'center',
-    gap: 4,
-    flex: 1,
-    minWidth: 0,
-  },
-  statLabel: {
-    fontSize: 10,
-    letterSpacing: 1,
-    fontFamily: 'Inter_500Medium',
-  },
-  statLevel: {
-    fontSize: 16,
-  },
-  xpTrack: {
-    height: 3,
-    borderRadius: 1.5,
-    width: '80%',
-    alignSelf: 'center',
-    overflow: 'hidden',
-    marginTop: 2,
-  },
-  xpFill: {
-    height: '100%',
-    width: '100%',
-    borderRadius: 1.5,
-    // scaleX drives progress, so the bar must grow from the left edge
-    // rather than from its centre.
-    transformOrigin: 'left',
-  },
-  oneTimePill: {
-    borderWidth: 1,
-    borderColor: 'rgba(251,191,36,0.35)',
-    backgroundColor: 'rgba(251,191,36,0.12)',
-    borderRadius: 6,
-    paddingVertical: 1,
-    paddingHorizontal: 6,
-  },
-  oneTimePillText: {
-    fontSize: 9,
-    letterSpacing: 0.8,
-    color: '#fbbf24',
-    fontFamily: fonts.displaySemi,
-  },
-  questNote: {
-    fontSize: 12,
-    marginTop: 3,
-  },
-  recoveryBanner: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 16,
-    gap: 6,
-  },
-  recoveryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  recoveryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  recoveryTitle: {
-    fontSize: 13,
-    color: '#93c5fd',
-    letterSpacing: 1,
-  },
-  recoveryName: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  recoveryEasy: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  mono: {
-    fontFamily: 'JetBrainsMono_500Medium',
-    fontSize: 12,
-  },
-  questsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  laneTabs: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingVertical: 2,
-    paddingHorizontal: 2,
-  },
-  laneTab: {
-    flexGrow: 1,
-    flexBasis: 140,
-    minHeight: 42,
-    borderWidth: 1,
-    borderRadius: 9,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  laneTabText: {
-    fontSize: 11,
-    letterSpacing: 0.7,
-  },
-  laneTabCount: {
-    fontSize: 10,
-  },
-  lanePanel: {
-    gap: 8,
-  },
-  questsTitle: {
-    fontSize: 20,
-    letterSpacing: 0.5,
-  },
-  questsSub: {
-    fontSize: 12,
-    marginTop: 1,
-  },
-  progressPill: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 3,
-    paddingHorizontal: 9,
-  },
-  questList: {
-    paddingHorizontal: 16,
-  },
-  questLifecycle: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
-  emptyText: {
-    fontSize: 13,
-    textAlign: 'center',
-    paddingVertical: 20,
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    marginBottom: 8,
-  },
-  sectionGroup: {
-    gap: 8,
-  },
-  sectionHeading: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-  },
-  catalogRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(148,163,184,0.2)',
-  },
-  catalogActions: {
-    alignItems: 'flex-end',
-    gap: 3,
-  },
-  catalogAction: {
-    minHeight: 24,
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  catalogActionText: {
-    fontSize: 9,
-    letterSpacing: 0.6,
-  },
-  catalogSchedule: {
-    fontSize: 11,
-    marginTop: 3,
-  },
-  catalogStatus: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-  },
-  catalogStatusText: {
-    fontFamily: fonts.displaySemi,
-    fontSize: 9,
-    letterSpacing: 0.7,
-  },
-  errorBlock: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    gap: 10,
-  },
-  retryButton: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 20,
-  },
-  retryButtonText: {
-    fontSize: 12,
-    letterSpacing: 1,
-  },
-  questRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  checkbox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  progressStepper: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  stepperButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperButtonText: { fontSize: 16, fontWeight: '600', lineHeight: 18 },
-  /**
-   * Anchored to the quest ROW, bottom-left, so it always sits INSIDE the
-   * row's bounds - the quest list's GlassView clips (overflow: 'hidden'),
-   * and the previous negative offset put this entirely outside its parent.
-   * `bottom` + FadeOutUp means it rises off its resting spot as it leaves.
-   */
-  xpToast: {
-    position: 'absolute',
-    left: 34,
-    bottom: 4,
-    backgroundColor: 'rgba(74,222,128,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(74,222,128,0.55)',
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-  },
-  xpToastText: {
-    fontSize: 13,
-    letterSpacing: 0.5,
-    color: '#4ade80',
-  },
-  questInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  questName: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  questMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  questTime: {
-    fontSize: 11,
-  },
-  questTags: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  statTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statTagText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  diffTag: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-  },
-  diffTagText: {
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
+  root: { flex: 1 },
+  top: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
+  notice: { borderWidth: 1, borderColor: 'transparent', borderRadius: 4, padding: 10, gap: 8 },
+  noticeText: { fontSize: 13, lineHeight: 19 },
+  recovery: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 4, paddingHorizontal: 12 },
+  recoveryText: { flex: 1, fontSize: 13, letterSpacing: 1.2 },
+  recoveryCount: { fontSize: 13 },
+  tabs: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  tab: { flexGrow: 1, flexBasis: '30%', minHeight: 48, borderWidth: 1, borderRadius: 4, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  tabText: { fontSize: 12, letterSpacing: 0.8, textAlign: 'center' },
+  pager: { flex: 1, marginTop: 6 },
+  page: { flex: 1 },
+  list: { paddingHorizontal: 16, paddingBottom: 12 },
+  empty: { fontSize: 14, lineHeight: 21, paddingVertical: 24 },
+  undo: { paddingHorizontal: 16, paddingBottom: 8 },
+  footer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8, justifyContent: 'flex-end' },
 });

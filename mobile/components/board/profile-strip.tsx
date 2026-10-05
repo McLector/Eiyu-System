@@ -72,7 +72,9 @@ export function ProfileStrip({ name, userClass, rank, stats, completed, total }:
           <Text style={[styles.rank, { color: rankConfig.color, borderColor: rankConfig.color, fontFamily: fonts.display }]}>{rank}</Text>
         </View>
         <View style={styles.today}>
-          <Text style={[styles.todayText, { color: t['accent-text'], fontFamily: fonts.mono }]}>{`TODAY ${completed}/${total}`}</Text>
+          {/* The count is its own text so a flow (or a screen reader) can find "3/7" on its own. */}
+          <Text style={[styles.todayText, { color: t['dim-flat'], fontFamily: fonts.display }]}>TODAY</Text>
+          <Text style={[styles.todayText, { color: t['accent-text'], fontFamily: fonts.mono }]}>{`${completed}/${total}`}</Text>
           <View
             accessible
             accessibilityRole="progressbar"

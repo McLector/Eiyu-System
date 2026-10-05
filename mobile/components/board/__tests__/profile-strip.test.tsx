@@ -28,7 +28,8 @@ describe('ProfileStrip collapsed', () => {
     expect(screen.getByTestId('board-profile-name')).toHaveTextContent('Yuki Tanaka');
     expect(screen.getByText('Ranger')).toBeOnTheScreen();
     expect(screen.getByText('C')).toBeOnTheScreen();
-    expect(screen.getByText('TODAY 3/7')).toBeOnTheScreen();
+    expect(screen.getByText('TODAY')).toBeOnTheScreen();
+    expect(screen.getByText('3/7')).toBeOnTheScreen();
   });
 
   it('contains an 80-character name beside the rank badge instead of pushing it away', async () => {
@@ -58,7 +59,7 @@ describe('ProfileStrip collapsed', () => {
 
   it('copes with a day that has nothing due', async () => {
     await strip({ completed: 0, total: 0 });
-    expect(screen.getByText('TODAY 0/0')).toBeOnTheScreen();
+    expect(screen.getByText('0/0')).toBeOnTheScreen();
     expect(screen.getByRole('progressbar', { name: 'Quests completed today' })).toHaveProp('accessibilityValue', { min: 0, max: 0, now: 0 });
   });
 });

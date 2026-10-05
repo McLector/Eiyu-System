@@ -28,6 +28,7 @@ appId: com.mclector.eiyusystem
 # checkbox/edit-trigger label collision (see habit_create_happy.yaml).
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - assertVisible: "EDIT QUEST"
 - runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Maestro One-Time Quest"

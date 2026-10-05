@@ -30,5 +30,6 @@ appId: com.mclector.eiyusystem
 # checkbox, toggling completion, even with an index). testID sidesteps it.
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Maestro Habit Happy Path"

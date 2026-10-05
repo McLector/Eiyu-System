@@ -2,6 +2,9 @@
 # also used by the web leg; the appId matches Expo's generated Android package.
 appId: com.mclector.eiyusystem
 ---
+# STALE (mobile redesign, slice 1b): this flow walks the old Board lanes (All Habits / Archived tabs, per-row Archive and Delete buttons, long-press Penalty).
+# Those moved: All Habits is a sheet behind the ALL HABITS button, archived quests are in the account menu, row actions are in the more-button sheet.
+# Rewrite the lane and lifecycle steps against the new Board before relying on it.
 - runFlow: _helpers/launch_fresh.yaml
 - tapOn: "Email address"
 - inputText: ${PHASE6_EMAIL}
@@ -71,6 +74,7 @@ appId: com.mclector.eiyusystem
     id: "board-lane-tab-one-time"
 - tapOn:
     id: "quest-edit-trigger"
+- tapOn: "Edit quest"
 - extendedWaitUntil:
     visible: "EDIT QUEST"
     timeout: 15000
