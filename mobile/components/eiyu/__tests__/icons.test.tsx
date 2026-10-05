@@ -9,7 +9,7 @@ import {
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 type IconProps = { size?: number; color: string };
-const NEW_ICONS: Array<[string, ComponentType<IconProps>]> = [
+const NEW_ICONS: [string, ComponentType<IconProps>][] = [
   ['DumbbellIcon', DumbbellIcon], ['SignOutIcon', SignOutIcon], ['MailIcon', MailIcon], ['NoteIcon', NoteIcon],
   ['SparkleIcon', SparkleIcon], ['CompletionDotIcon', CompletionDotIcon], ['EditIcon', EditIcon], ['ArchiveIcon', ArchiveIcon],
   ['TrashIcon', TrashIcon], ['MoveIcon', MoveIcon], ['GripIcon', GripIcon], ['ListIcon', ListIcon],
