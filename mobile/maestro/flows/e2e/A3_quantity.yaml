@@ -7,4 +7,11 @@ appId: com.mclector.eiyusystem
     env:
       HABIT_NAME: "E2E Quantity"
       HABIT_TARGET: "3"
-- takeScreenshot: a3-quantity-created
+# A quantity habit shows a progress counter (done/target), not a checkbox.
+- assertVisible: "0/3"
+
+# Cleanup: delete it by its own label so the account stays empty.
+- tapOn: "Open E2E Quantity details"
+- tapOn: "Edit quest"
+- runFlow: ../_helpers/delete_open_quest.yaml
+- assertNotVisible: "Open E2E Quantity details"

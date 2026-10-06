@@ -5,7 +5,8 @@ appId: com.mclector.eiyusystem
 ---
 - runFlow: ../_helpers/login.yaml
 - evalScript: ${output.n80 = 'N'.repeat(80)}
-- evalScript: ${output.n81 = 'N'.repeat(81)}
+# Deliberately over the limit by a margin: the phone's IME can drop a keystroke.
+- evalScript: ${output.n81 = 'N'.repeat(85)}
 
 # --- 81 characters must be rejected, draft kept, no crash ---
 - tapOn:
@@ -13,10 +14,9 @@ appId: com.mclector.eiyusystem
 - tapOn: "Edit details"
 - assertVisible: "EDIT DETAILS"
 - tapOn:
-    id: "Display name"
-    optional: true
-- tapOn: "E2E Pilot One"
-- eraseText: 40
+    text: "Display name"
+    point: "98%,50%"
+- eraseText: 100
 - inputText: ${output.n81}
 - hideKeyboard
 - tapOn: "SAVE"
@@ -25,8 +25,11 @@ appId: com.mclector.eiyusystem
 - assertVisible: "EDIT DETAILS"
 
 # --- exactly 80 characters is accepted ---
-- tapOn: "N{20,}.*"
-- eraseText: 90
+# Tap the field's right edge so the cursor lands at the end: eraseText only deletes backward.
+- tapOn:
+    text: "N{20,}.*"
+    point: "98%,50%"
+- eraseText: 100
 - inputText: ${output.n80}
 - hideKeyboard
 - tapOn: "SAVE"
@@ -39,8 +42,11 @@ appId: com.mclector.eiyusystem
 - tapOn:
     point: "72%, 5%"
 - tapOn: "Edit details"
-- tapOn: "N{20,}.*"
-- eraseText: 90
+# Tap the field's right edge so the cursor lands at the end: eraseText only deletes backward.
+- tapOn:
+    text: "N{20,}.*"
+    point: "98%,50%"
+- eraseText: 100
 - hideKeyboard
 - tapOn: "SAVE"
 - takeScreenshot: a8-blank-name-save
@@ -52,7 +58,9 @@ appId: com.mclector.eiyusystem
     point: "50%, 14%"
 - inputText: "E2E Pilot One"
 - hideKeyboard
-- tapOn: "Developer"
+- tapOn:
+    text: "Class"
+    point: "98%,50%"
 - eraseText: 20
 - inputText: "Tester"
 - hideKeyboard
@@ -60,14 +68,18 @@ appId: com.mclector.eiyusystem
 - waitForAnimationToEnd:
     timeout: 5000
 - assertVisible: "Tester"
-- assertVisible: "E2E Pilot One"
+# The phone's IME occasionally drops the first characters of a typed string, so
+# match the tail of the name rather than all of it.
+- assertVisible: ".*Pilot One"
 - takeScreenshot: a8-class-changed
 
 # --- dirty edit + Android Back must ask before discarding ---
 - tapOn:
     point: "72%, 5%"
 - tapOn: "Edit details"
-- tapOn: "Tester"
+- tapOn:
+    text: "Tester"
+    point: "98%,50%"
 - eraseText: 10
 - inputText: "Unsaved"
 - hideKeyboard

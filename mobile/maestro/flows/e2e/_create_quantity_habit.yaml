@@ -1,25 +1,28 @@
 appId: com.mclector.eiyusystem
 ---
 # Create a quantity habit from the Board. Env: HABIT_NAME, HABIT_TARGET.
-# A target count replaces the required Penalty.
+# A target count of at least 2 replaces the required Penalty.
 - tapOn: "ADD A QUEST"
 - tapOn: "HABIT QUEST"
-- tapOn: "e.g. Code for 2 hours"
+- assertVisible: "NEW QUEST"
+- tapOn: "Quest name"
 - inputText: ${HABIT_NAME}
 - hideKeyboard
 - scrollUntilVisible:
-    element: "Leave blank for a normal habit"
+    element: "Target count"
     direction: DOWN
     timeout: 8000
-    centerElement: true
-- tapOn: "Leave blank for a normal habit"
+- tapOn: "Target count"
 - inputText: ${HABIT_TARGET}
 - hideKeyboard
 - scrollUntilVisible:
-    element: "CREATE QUEST"
+    element:
+      id: "quest-save"
     direction: DOWN
     timeout: 8000
-- tapOn: "CREATE QUEST"
-- waitForAnimationToEnd:
-    timeout: 4000
+- tapOn:
+    id: "quest-save"
+- extendedWaitUntil:
+    notVisible: "NEW QUEST"
+    timeout: 15000
 - assertVisible: ${HABIT_NAME}

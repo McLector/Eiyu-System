@@ -18,8 +18,7 @@ appId: com.mclector.eiyusystem
 - tapOn: "Close"
 - tapOn:
     id: "board-lane-tab-daily"
-- tapOn:
-    id: "quest-edit-trigger"
+- tapOn: "Open ${HABIT_NAME} details"
 - tapOn: "Edit quest"
 - runFlow: ../_helpers/delete_open_quest.yaml
 - assertNotVisible: ${HABIT_NAME}
