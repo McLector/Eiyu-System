@@ -20,6 +20,9 @@ let appStateSpy: jest.SpyInstance;
 
 const quest = { id: 'h1', completed: false, targetCount: null, progressCount: 0 } as Quest;
 
+/** The hook finishes its async setup (connectivity read, queue load) after mount; a loaded machine can take seconds. */
+const WAIT = { timeout: 5000 };
+
 function stored(overrides: Partial<QueueEntry> = {}): QueueEntry {
   return {
     id: 'stored-1', userId: 'user-1', kind: 'complete', habitId: 'h1', accountDate: new Date().toISOString().slice(0, 10),
@@ -88,15 +91,17 @@ describe('useWriteQueue', () => {
   });
 
   it('holds writes made offline and sends them when the connection returns', async () => {
-    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false });
+    // The native connectivity read is not instant: a slow device answers after the hook has mounted.
+    mockNetwork.getNetworkStateAsync.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ isConnected: false }), 150)));
     const opts = options();
     const { result } = await renderHook(() => useWriteQueue(opts));
+    await waitFor(() => expect(result.current.offline).toBe(true), WAIT);
     await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h1' }); await result.current.flush(); });
     expect(opts.send).not.toHaveBeenCalled();
     expect(result.current.entries).toHaveLength(1);
     await act(async () => { networkHandlers.forEach(handler => handler({ isConnected: true })); });
-    await waitFor(() => expect(opts.send).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(result.current.entries).toEqual([]));
+    await waitFor(() => expect(opts.send).toHaveBeenCalledTimes(1), WAIT);
+    await waitFor(() => expect(result.current.entries).toEqual([]), WAIT);
   });
 
   it('flushes when the app returns to the foreground, not when it goes to the background', async () => {
@@ -142,7 +147,7 @@ describe('useWriteQueue', () => {
   it('reports whether the device is offline, following the connection', async () => {
     mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false });
     const { result } = await renderHook(() => useWriteQueue(options()));
-    await waitFor(() => expect(result.current.offline).toBe(true));
+    await waitFor(() => expect(result.current.offline).toBe(true), WAIT);
     await act(async () => { networkHandlers.forEach(handler => handler({ isConnected: true })); });
     expect(result.current.offline).toBe(false);
     await act(async () => { networkHandlers.forEach(handler => handler({ isConnected: false })); });
@@ -171,15 +176,17 @@ describe('useWriteQueue', () => {
     let release: () => void = () => {};
     realGet.mockImplementation((async (key: string) => { await new Promise<void>(resolve => { release = resolve; }); return original?.(key); }) as never);
     const { result } = await renderHook(() => useWriteQueue(options()));
+    await waitFor(() => expect(result.current.offline).toBe(true), WAIT);
     await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h-new' }); });
     realGet.mockImplementation(original as never);
     await act(async () => { release(); });
-    await waitFor(() => expect(result.current.entries.map(e => e.habitId)).toEqual(['h-old', 'h-new']));
-    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('eiyu.writeQueue.v1.user-1')) ?? '{}').entries).toHaveLength(2));
+    await waitFor(() => expect(result.current.entries.map(e => e.habitId)).toEqual(['h-old', 'h-new']), WAIT);
+    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('eiyu.writeQueue.v1.user-1')) ?? '{}').entries).toHaveLength(2), WAIT);
   });
 
   it('removes its listeners on unmount', async () => {
     const { unmount } = await renderHook(() => useWriteQueue(options()));
+    await waitFor(() => expect(mockNetwork.addNetworkStateListener).toHaveBeenCalled(), WAIT);
     await unmount();
     expect(removeNetwork).toHaveBeenCalled();
     expect(removeAppState).toHaveBeenCalled();

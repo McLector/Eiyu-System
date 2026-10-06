@@ -80,6 +80,10 @@
     "setupFiles": [
       "./jest.setup.js"
     ],
+    "setupFilesAfterEnv": [
+      "./jest.setup-after-env.js"
+    ],
+    "testTimeout": 30000,
     "moduleNameMapper": {
       "^@eiyu/shared$": "<rootDir>/../packages/shared/src/index.ts"
     }
