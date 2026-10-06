@@ -192,10 +192,14 @@ describe('resolveUncertain', () => {
     expect(resolveUncertain(entry({ kind: 'recovery' }), quest({ frozen: true }))).toEqual({ action: 'send' });
   });
 
-  it('fails every kind when the quest is no longer on the board', () => {
-    for (const kind of ['complete', 'undo', 'progress', 'recovery'] as const) {
+  it('fails complete, undo and progress when the quest is no longer on the board', () => {
+    for (const kind of ['complete', 'undo', 'progress'] as const) {
       expect(resolveUncertain(entry({ kind, delta: 1, base: 0 }), undefined)).toEqual({ action: 'fail', reason: 'not-on-board' });
     }
+  });
+
+  it('still sends a recovery when the re-read no longer lists the quest, because the recovery may have landed and its replay is safe', () => {
+    expect(resolveUncertain(entry({ kind: 'recovery' }), undefined)).toEqual({ action: 'send' });
   });
 
   describe('progress', () => {

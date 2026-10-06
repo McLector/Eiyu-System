@@ -153,14 +153,15 @@ export type UncertainResolution = { action: 'send' } | { action: 'drop' } | { ac
 
 /** What to do with an entry whose last attempt may or may not have reached the server, given fresh server state. */
 export function resolveUncertain(entry: QueueEntry, quest: Quest | undefined): UncertainResolution {
+  // A recovery's quest may be on the board only while its window is open, so a missing quest says nothing about whether
+  // it landed. Replaying one is safe (the server answers already_recovered), and a refusal is classified when it is sent.
+  if (entry.kind === 'recovery') return { action: 'send' };
   if (!quest) return { action: 'fail', reason: 'not-on-board' };
   switch (entry.kind) {
     case 'complete':
       return { action: quest.completed ? 'drop' : 'send' };
     case 'undo':
       return { action: quest.completed ? 'send' : 'drop' };
-    case 'recovery':
-      return { action: 'send' };
     case 'progress': {
       if (quest.targetCount == null) return { action: 'fail', reason: 'not-on-board' };
       const base = entry.base ?? 0;
