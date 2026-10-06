@@ -19,7 +19,10 @@ appId: com.mclector.eiyusystem
 
 # Open the chain, complete the first stage: it becomes Done and the second becomes Current.
 - tapOn: "Long Quest To Delete.*"
-- assertVisible: "Current"
+# Navigation to the detail screen is slow on the phone.
+- extendedWaitUntil:
+    visible: "Current"
+    timeout: 15000
 - assertVisible: "Locked"
 - tapOn:
     id: "stage-complete"

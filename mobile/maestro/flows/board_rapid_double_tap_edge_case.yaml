@@ -4,30 +4,20 @@ appId: com.mclector.eiyusystem
 # round-trip for the first toggle resolves. Should not double-count XP,
 # desync from the server, or throw an unhandled error.
 - runFlow: _helpers/login.yaml
-- tapOn: "ADD A QUEST"
-# Phase 4: the "+" button now opens a quest-type chooser first.
-- tapOn: "HABIT QUEST"
-- tapOn: "e.g. Code for 2 hours"
-- inputText: "Rapid Tap Habit"
-- tapOn: "e.g. Code for 20 minutes"
-- inputText: "rapid tap easy version"
-- hideKeyboard
-- scrollUntilVisible:
-    element: "CREATE QUEST"
-    direction: DOWN
-    timeout: 8000
-- tapOn: "CREATE QUEST"
-- assertVisible: "Rapid Tap Habit"
+- runFlow:
+    file: _helpers/create_habit.yaml
+    env:
+      HABIT_NAME: "Rapid Tap Habit"
 
 - tapOn:
     id: "quest-checkbox"
-    index: 0
+    text: "Rapid Tap Habit.*"
 - tapOn:
     id: "quest-checkbox"
-    index: 0
+    text: "Rapid Tap Habit.*"
 - tapOn:
     id: "quest-checkbox"
-    index: 0
+    text: "Rapid Tap Habit.*"
 - extendedWaitUntil:
     visible: "Rapid Tap Habit"
     timeout: 5000
@@ -37,8 +27,7 @@ appId: com.mclector.eiyusystem
 # Cleanup: keep the shared test account's board empty between flow runs
 # so index-0 checkbox targeting stays valid for other flows. testID
 # sidesteps the checkbox/edit-trigger label collision (see maestro/README.md).
-- tapOn:
-    id: "quest-edit-trigger"
+- tapOn: "Open Rapid Tap Habit details"
 - tapOn: "Edit quest"
 - runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Rapid Tap Habit"

@@ -33,8 +33,7 @@ appId: com.mclector.eiyusystem
 # which collides with the same text on the row's separate edit-trigger
 # Pressable - tapping by name text is unreliable (empirically lands on the
 # checkbox, toggling completion, even with an index). testID sidesteps it.
-- tapOn:
-    id: "quest-edit-trigger"
+- tapOn: "Open Maestro Habit Happy Path details"
 - tapOn: "Edit quest"
 - runFlow: _helpers/delete_open_quest.yaml
 - assertNotVisible: "Maestro Habit Happy Path"

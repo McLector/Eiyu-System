@@ -3,6 +3,15 @@ appId: com.mclector.eiyusystem
 # Mobile parity slice 4: a routine needs a name; an exercise needs a name and valid reps. Not yet run on a device.
 - runFlow: _helpers/login.yaml
 - tapOn: "GYM"
+# A tap right after sign-in can be lost while the Board loads: tap again if needed.
+- runFlow:
+    when:
+      notVisible: "GYM PROGRESS"
+    commands:
+      - tapOn: "GYM"
+- extendedWaitUntil:
+    visible: "GYM PROGRESS"
+    timeout: 15000
 - tapOn: "NEW ROUTINE"
 - tapOn:
     id: "gym-routine-save"
@@ -36,5 +45,11 @@ appId: com.mclector.eiyusystem
 - tapOn:
     id: "gym-routine-menu"
 - tapOn: "Delete routine"
-- tapOn: "Delete Routine"
-- assertNotVisible: "Maestro Validation Routine"
+# The dialog title ("Delete routine") and its button ("Delete Routine") differ only
+# by case and Maestro matches text case-insensitively: index 1 is the button.
+- tapOn:
+    text: "Delete Routine"
+    index: 1
+- extendedWaitUntil:
+    visible: "No routine yet.*"
+    timeout: 10000

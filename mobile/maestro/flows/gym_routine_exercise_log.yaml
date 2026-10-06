@@ -4,6 +4,15 @@ appId: com.mclector.eiyusystem
 # Media (GIF/MP4) is not covered: the system picker cannot be driven from Maestro.
 - runFlow: _helpers/login.yaml
 - tapOn: "GYM"
+# A tap right after sign-in can be lost while the Board loads: tap again if needed.
+- runFlow:
+    when:
+      notVisible: "GYM PROGRESS"
+    commands:
+      - tapOn: "GYM"
+- extendedWaitUntil:
+    visible: "GYM PROGRESS"
+    timeout: 15000
 - tapOn: "NEW ROUTINE"
 - assertVisible: "NEW ROUTINE"
 - tapOn: "e.g. Chest, Triceps, Shoulders"
@@ -43,5 +52,11 @@ appId: com.mclector.eiyusystem
     id: "gym-routine-menu"
 - tapOn: "Delete routine"
 - assertVisible: ".*Logged weights remain in your history.*"
-- tapOn: "Delete Routine"
-- assertNotVisible: "Maestro Routine"
+# The dialog title ("Delete routine") and its button ("Delete Routine") differ only
+# by case and Maestro matches text case-insensitively: index 1 is the button.
+- tapOn:
+    text: "Delete Routine"
+    index: 1
+- extendedWaitUntil:
+    visible: "No routine yet.*"
+    timeout: 10000

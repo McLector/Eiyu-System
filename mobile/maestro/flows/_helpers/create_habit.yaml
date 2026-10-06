@@ -1,0 +1,25 @@
+appId: com.mclector.eiyusystem
+---
+# Create a habit from the Board. Env: HABIT_NAME (required).
+# A habit needs a penalty or a target count of at least 2 before it can be
+# saved, so a penalty is always filled in.
+- tapOn: "ADD A QUEST"
+- tapOn: "HABIT QUEST"
+- assertVisible: "NEW QUEST"
+- tapOn: "Quest name"
+- inputText: ${HABIT_NAME}
+- hideKeyboard
+- tapOn: "Penalty"
+- inputText: "Shorter version of it"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "quest-save"
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: "quest-save"
+- extendedWaitUntil:
+    notVisible: "NEW QUEST"
+    timeout: 15000
+- assertVisible: ${HABIT_NAME}

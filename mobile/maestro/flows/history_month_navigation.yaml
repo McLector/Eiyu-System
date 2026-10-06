@@ -20,6 +20,10 @@ appId: com.mclector.eiyusystem
     visible: "Settings"
     timeout: 8000
 - tapOn: "Settings"
+# Quest History is below the fold of the Settings sheet.
+- scrollUntilVisible:
+    element: "Quest History"
+    direction: DOWN
 - tapOn: "Quest History"
 - assertVisible: "HISTORY"
 - assertVisible: "TODAY"
@@ -37,8 +41,13 @@ appId: com.mclector.eiyusystem
       - tapOn:
           id: "history-prev-month"
 - assertVisible: ${output.back9}
+# Step forward until today's month shows (capped). A fixed nine taps ended one
+# month short twice on the phone, while the shift logic itself is unit-tested:
+# a tap during the month fetch is occasionally swallowed there.
 - repeat:
-    times: 9
+    while:
+      notVisible: ${output.cur}
+    times: 12
     commands:
       - tapOn:
           id: "history-next-month"

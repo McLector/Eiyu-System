@@ -8,7 +8,14 @@ appId: com.mclector.eiyusystem
     visible: "Settings"
     timeout: 8000
 - tapOn: "Settings"
-- assertVisible: "Quest History"
+# Quest History is below the fold of the Settings sheet; the theme switch is at the top.
+- scrollUntilVisible:
+    element: "Quest History"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      id: "settings-dark-theme"
+    direction: UP
 
 # The theme switch keeps one stable name ("Dark Theme") and flips its checked
 # state; the screen re-themes without crashing.

@@ -5,6 +5,9 @@ appId: com.mclector.eiyusystem
 - assertVisible: "Begin your journey"
 
 # Submitting completely empty must not proceed and must explain why.
+- scrollUntilVisible:
+    element: "BEGIN JOURNEY"
+    direction: DOWN
 - tapOn: "BEGIN JOURNEY"
 - assertVisible: "Enter a display name."
 - assertNotVisible: "BOARD"
@@ -12,16 +15,20 @@ appId: com.mclector.eiyusystem
 - tapOn: "Kaito Mizuru"
 - inputText: "Edge Case Tester"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "BEGIN JOURNEY"
+    direction: DOWN
 - tapOn: "BEGIN JOURNEY"
 - assertVisible: "Enter your email."
 
 - tapOn: "you@example.com"
 - inputText: "not-an-email"
-- tapOn:
-    text: "••••••••"
-    index: 0
+- tapOn: "Password"
 - inputText: "123"
 - hideKeyboard
+- scrollUntilVisible:
+    element: "BEGIN JOURNEY"
+    direction: DOWN
 - tapOn: "BEGIN JOURNEY"
 # Client-side only checks password length, not email format — this is
 # expected to fail on the length message; if it instead lets a malformed
@@ -44,13 +51,14 @@ appId: com.mclector.eiyusystem
 - inputText: "Edge Case Tester"
 - tapOn: "you@example.com"
 - inputText: "edgecase@example.com"
-- tapOn:
-    text: "••••••••"
-    index: 0
+- tapOn: "Password"
 - inputText: "ValidPass123"
 - hideKeyboard
 - tapOn:
     id: "terms-checkbox"
+- scrollUntilVisible:
+    element: "BEGIN JOURNEY"
+    direction: DOWN
 - tapOn: "BEGIN JOURNEY"
 - assertVisible: "Confirm your password."
 - assertNotVisible: "BOARD"
@@ -62,18 +70,20 @@ appId: com.mclector.eiyusystem
 - inputText: "Edge Case Tester"
 - tapOn: "you@example.com"
 - inputText: "edgecase2@example.com"
-- tapOn:
-    text: "••••••••"
-    index: 0
+- tapOn: "Password"
 - inputText: "ValidPass123"
 - hideKeyboard
-- tapOn:
-    text: "••••••••"
-    index: 1
+- scrollUntilVisible:
+    element: "Confirm password"
+    direction: DOWN
+- tapOn: "Confirm password"
 - inputText: "DifferentPass456"
 - hideKeyboard
 - tapOn:
     id: "terms-checkbox"
+- scrollUntilVisible:
+    element: "BEGIN JOURNEY"
+    direction: DOWN
 - tapOn: "BEGIN JOURNEY"
 - assertVisible: "Passwords do not match."
 - assertNotVisible: "BOARD"
@@ -85,18 +95,20 @@ appId: com.mclector.eiyusystem
 - inputText: "Edge Case Tester"
 - tapOn: "you@example.com"
 - inputText: "edgecase3@example.com"
-- tapOn:
-    text: "••••••••"
-    index: 0
+- tapOn: "Password"
 - inputText: "ValidPass123"
 - hideKeyboard
-- tapOn:
-    text: "••••••••"
-    index: 1
+- scrollUntilVisible:
+    element: "Confirm password"
+    direction: DOWN
+- tapOn: "Confirm password"
 - inputText: "ValidPass123"
 - hideKeyboard
 # Terms deliberately left unchecked - the inline consent error (web wording)
 # shows under the checkbox once a submit has been attempted.
+- scrollUntilVisible:
+    element: "BEGIN JOURNEY"
+    direction: DOWN
 - tapOn: "BEGIN JOURNEY"
 - assertVisible: "Accept the Privacy Policy and Terms to continue."
 - assertNotVisible: "BOARD"
