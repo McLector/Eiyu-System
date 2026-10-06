@@ -315,6 +315,12 @@ with checks(marker, ok) as (
     has_function_privilege('authenticated',to_regprocedure('public.set_profile_theme(text)'),'EXECUTE')
     and not has_function_privilege('anon',to_regprocedure('public.set_profile_theme(text)'),'EXECUTE')
     and has_column_privilege('authenticated','public.profiles','theme','UPDATE'), false)
+  union all select '042 quests: optional one-time date and upcoming quests', coalesce(
+    exists (select 1 from pg_constraint where conrelid = 'public.habits'::regclass and conname = 'habits_one_time_time_needs_date')
+    and exists (select 1 from pg_trigger where tgrelid = 'public.habits'::regclass and tgname = 'habits_one_time_date_guard' and not tgisinternal)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%is already completed%' from pg_proc p where p.oid = to_regprocedure('public.complete_habit(uuid,date,public.completion_kind)')), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%scheduled_date > v_today%' from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false)
+    and not has_function_privilege('authenticated',to_regprocedure('public.guard_one_time_date_change()'),'EXECUTE'), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -326,7 +332,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–041
+re-run an old file over a newer definition. This query covers migrations 001–042
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -380,6 +386,10 @@ Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional 
 ## Theme rollout (041)
 
 Apply **041** (`041_profile_theme.sql`) and verify its marker. Both clients treat it as optional: a failed save keeps the theme on the device and re-sends it on the next launch, so deploying either side first breaks nothing. Until 041 is applied the theme simply stays per device. Test with `supabase/tests/022_profile_theme.test.sql`.
+
+## One-time optional date rollout (042)
+
+Apply **042** (`042_one_time_optional_date.sql`) after 041 and verify its marker. It re-issues `ensure_habit_occurrences`, `complete_habit`, `undo_habit_completion` and `get_habits_for_date`, so compare the deployed bodies with 025, 022 and 038 first. It first clears the set time on any one-time row that has no date (old rows can carry one), then adds a check that a time needs a date; those rows then show on the board as undated quests. Deploy order: apply 042 before the clients that offer "No date". Until the clients ship, the older web board shows a future-dated quest as "Today" because it does not know about upcoming quests. Test with `supabase/tests/023_one_time_optional_date.test.sql`.
 
 ## Gym quick-log rollout (039)
 

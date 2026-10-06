@@ -175,5 +175,16 @@ select ok(coalesce(
     and has_column_privilege('authenticated', 'public.profiles', 'palette', 'UPDATE'), false),
   '040 The account colour palette is in place');
 
+-- Migration 042: optional one-time date and upcoming quests.
+select ok(coalesce(
+    exists (select 1 from pg_constraint where conrelid = 'public.habits'::regclass and conname = 'habits_one_time_time_needs_date')
+    and exists (select 1 from pg_trigger where tgrelid = 'public.habits'::regclass and tgname = 'habits_one_time_date_guard' and not tgisinternal)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%is already completed%'
+      from pg_proc p where p.oid = to_regprocedure('public.complete_habit(uuid,date,public.completion_kind)')), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%scheduled_date > v_today%'
+      from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false)
+    and not has_function_privilege('authenticated', to_regprocedure('public.guard_one_time_date_change()'), 'EXECUTE'), false),
+  '042 Optional one-time date and upcoming quests are in place');
+
 select * from finish();
 rollback;
