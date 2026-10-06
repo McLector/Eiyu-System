@@ -20,6 +20,7 @@ import {
 } from '@eiyu/shared';
 
 import { CheckIcon, MailIcon } from '../Icons';
+import { PasswordInput } from '../components/PasswordInput';
 import SignaturePanel from '../SignaturePanel';
 
 interface Props { onLogin: () => void; logoutWarning?: string | null; onDismissLogoutWarning?: () => void; }
@@ -203,7 +204,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
               {mode !== 'forgot' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>PASSWORD</label>
-                  <input aria-label="Password" aria-invalid={attempted && !!passwordError} aria-describedby={attempted && passwordError ? 'auth-password-error' : undefined} className="field" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
+                  <PasswordInput key={mode} aria-label="Password" aria-invalid={attempted && !!passwordError} aria-describedby={attempted && passwordError ? 'auth-password-error' : undefined} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
                   {attempted && passwordError && <p id="auth-password-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{passwordError}</p>}
                   {mode === 'signup' && <PasswordStrength password={password} />}
                 </div>
@@ -211,7 +212,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
               {mode === 'signup' && (
                 <div>
                   <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>CONFIRM PASSWORD</label>
-                  <input aria-label="Confirm password" className="field" type="password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
+                  <PasswordInput toggleLabel="confirm password" aria-label="Confirm password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
                   {attempted && confirmError && <p id="signup-confirm-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', marginTop: 6 }}>{confirmError}</p>}
                 </div>
               )}

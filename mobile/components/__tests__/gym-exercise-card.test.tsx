@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, userEvent, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import type { GymExercise, GymRoutine } from '@eiyu/shared';
 
 import ExerciseCardScreen from '../../app/(tabs)/gym/[id]';
@@ -108,6 +109,18 @@ describe('Gym exercise card', () => {
   });
 
   describe('logging a weight', () => {
+    it('puts the weight field and LOG WEIGHT side by side, with a field sized like the other controls', async () => {
+      setup();
+      await renderWithTheme(<ExerciseCardScreen />);
+      const row = screen.getByTestId('gym-weight-row-e1');
+      expect(within(row).getByLabelText('Current weight for Lift e1 in kg')).toBeOnTheScreen();
+      expect(within(row).getByRole('button', { name: 'LOG WEIGHT' })).toBeOnTheScreen();
+      const field = StyleSheet.flatten(screen.getByLabelText('Current weight for Lift e1 in kg').props.style);
+      expect(field.fontSize).toBeLessThanOrEqual(24);
+      expect(field.minHeight).toBeLessThanOrEqual(52);
+      expect(field.minHeight).toBeGreaterThanOrEqual(48);
+    });
+
     it('stores what is typed for that exercise', async () => {
       setup();
       await renderWithTheme(<ExerciseCardScreen />);

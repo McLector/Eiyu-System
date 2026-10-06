@@ -3,7 +3,7 @@ import { act, screen, userEvent } from '@testing-library/react-native';
 import type { GymExercise } from '@eiyu/shared';
 
 import { ExerciseMedia } from '../gym/exercise-media';
-import { renderWithTheme } from '../ui/test-theme';
+import { renderWithTheme, TestThemeProvider } from '../ui/test-theme';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -51,6 +51,52 @@ describe('ExerciseMedia', () => {
     const player = { loop: false, muted: false, play: jest.fn() };
     setup(player);
     expect(player).toMatchObject({ loop: true, muted: true });
+  });
+
+  describe('sound', () => {
+    const mp4 = () => exercise({ media_path: 'u/r1/a.mp4', media_mime: 'video/mp4' });
+    const latest = () => video.useVideoPlayer.mock.results.at(-1)!.value as { muted: boolean; audioMixingMode?: string };
+
+    it('starts muted and offers a button to turn the sound on', async () => {
+      await renderWithTheme(<ExerciseMedia exercise={mp4()} canEdit onEdit={jest.fn()} active />);
+      const toggle = await screen.findByRole('button', { name: 'Turn sound on' });
+      expect(toggle).toHaveProp('accessibilityState', expect.objectContaining({ checked: false }));
+      expect(latest().muted).toBe(true);
+    });
+
+    it('turns the sound on and off again', async () => {
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseMedia exercise={mp4()} canEdit onEdit={jest.fn()} active />);
+      await user.press(await screen.findByRole('button', { name: 'Turn sound on' }));
+      expect(latest().muted).toBe(false);
+      await user.press(screen.getByRole('button', { name: 'Turn sound off' }));
+      expect(latest().muted).toBe(true);
+    });
+
+    it('lowers other apps audio instead of pausing it while the sound is on', async () => {
+      await renderWithTheme(<ExerciseMedia exercise={mp4()} canEdit onEdit={jest.fn()} active />);
+      await screen.findByRole('button', { name: 'Turn sound on' });
+      const [, setup] = video.useVideoPlayer.mock.calls.at(-1)!;
+      const player = { loop: false, muted: false, play: jest.fn(), audioMixingMode: 'auto' };
+      setup(player);
+      expect(player.audioMixingMode).toBe('duckOthers');
+    });
+
+    it('has no sound button on a GIF, which has no audio', async () => {
+      await renderWithTheme(<ExerciseMedia exercise={exercise()} canEdit onEdit={jest.fn()} active />);
+      await screen.findByLabelText('Bench video guide');
+      expect(screen.queryByRole('button', { name: /Turn sound/ })).toBeNull();
+    });
+
+    it('drops back to muted when the card is left and returned to', async () => {
+      const user = userEvent.setup();
+      const { rerender } = await renderWithTheme(<ExerciseMedia exercise={mp4()} canEdit onEdit={jest.fn()} active />);
+      await user.press(await screen.findByRole('button', { name: 'Turn sound on' }));
+      await rerender(<TestThemeProvider><ExerciseMedia exercise={mp4()} canEdit onEdit={jest.fn()} active={false} /></TestThemeProvider>);
+      await rerender(<TestThemeProvider><ExerciseMedia exercise={mp4()} canEdit onEdit={jest.fn()} active /></TestThemeProvider>);
+      await screen.findByRole('button', { name: 'Turn sound on' });
+      expect(latest().muted).toBe(true);
+    });
   });
 
   it('pauses an MP4 when the phone asks for reduced motion', async () => {

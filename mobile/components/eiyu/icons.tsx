@@ -368,3 +368,50 @@ export function AlertIcon({ size = 14, color }: GlyphProps) {
     </Glyph>
   );
 }
+
+export function EyeIcon({ size = 20, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" {...outline(color)} />
+      <Circle cx="12" cy="12" r="3" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function EyeOffIcon({ size = 20, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M3 3l18 18" {...outline(color)} />
+      <Path d="M10.6 5.2A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7c1.5 0 2.9-.4 4.1-1" {...outline(color)} />
+      <Path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function UploadIcon({ size = 20, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M12 16V4" {...outline(color)} />
+      <Path d="M7 9l5-5 5 5" {...outline(color)} />
+      <Path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function VolumeIcon({ size = 20, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M4 9h4l5-4v14l-5-4H4z" {...outline(color)} />
+      <Path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function VolumeOffIcon({ size = 20, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M4 9h4l5-4v14l-5-4H4z" {...outline(color)} />
+      <Path d="M17 9.5l4 5M21 9.5l-4 5" {...outline(color)} />
+    </Glyph>
+  );
+}

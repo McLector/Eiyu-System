@@ -20,6 +20,7 @@ import { CheckIcon, MailIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
+import { PasswordField } from '@/components/ui/password-field';
 import { Sheet } from '@/components/ui/sheet';
 import { SignaturePanel } from '@/components/ui/signature-panel';
 import { fonts } from '@/constants/eiyu-theme';
@@ -164,10 +165,10 @@ export default function AuthScreen() {
               />
               {mode !== 'forgot' ? (
                 <View>
-                  <Field
+                  <PasswordField
+                    key={mode}
                     label="Password"
                     placeholder="••••••••"
-                    secureTextEntry
                     autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                     value={password}
                     onChangeText={setPassword}
@@ -188,10 +189,9 @@ export default function AuthScreen() {
                 </View>
               ) : null}
               {mode === 'signup' ? (
-                <Field
+                <PasswordField
                   label="Confirm password"
                   placeholder="••••••••"
-                  secureTextEntry
                   autoComplete="new-password"
                   value={confirm}
                   onChangeText={setConfirm}

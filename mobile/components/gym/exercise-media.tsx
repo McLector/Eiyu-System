@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { formatError, signGymMedia, type GymExercise } from '@eiyu/shared';
 
-import { PlayIcon } from '@/components/eiyu/icons';
+import { PlayIcon, VolumeIcon, VolumeOffIcon } from '@/components/eiyu/icons';
 import { Button } from '@/components/ui/button';
 import { useReducedMotion } from '@/components/ui/use-reduced-motion';
 import { fonts } from '@/constants/eiyu-theme';
@@ -20,16 +20,36 @@ interface Props {
   active: boolean;
 }
 
+/** Plays muted so a card never blares when it appears; the speaker button turns the sound on for this card only. */
 function Mp4({ url, label }: { url: string; label: string }) {
+  const t = useTokens();
   const reduced = useReducedMotion();
+  const [muted, setMuted] = useState(true);
   const player = useVideoPlayer(url, p => {
     p.loop = true;
     p.muted = true;
+    // Other apps' audio (the user's music) is lowered while the sound is on, never paused.
+    p.audioMixingMode = 'duckOthers';
     if (!reduced) p.play();
   });
   // The setting arrives after the first render; if it says reduce motion, stop what already started.
   useEffect(() => { if (reduced) player.pause(); }, [reduced, player]);
-  return <VideoView player={player} nativeControls contentFit="contain" accessibilityLabel={label} style={styles.media} />;
+  useEffect(() => { player.muted = muted; }, [muted, player]);
+  const Icon = muted ? VolumeOffIcon : VolumeIcon;
+  return (
+    <>
+      <VideoView player={player} nativeControls contentFit="contain" accessibilityLabel={label} style={styles.media} />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={muted ? 'Turn sound on' : 'Turn sound off'}
+        accessibilityState={{ checked: !muted }}
+        hitSlop={4}
+        onPress={() => setMuted(value => !value)}
+        style={[styles.sound, { backgroundColor: t['page-flat'], borderColor: t['accent-border'] }]}>
+        <Icon size={20} color={t['accent-text']} />
+      </Pressable>
+    </>
+  );
 }
 
 /** A GIF or an MP4 from a (signed or local) link, filling a 16:9 box. */
@@ -101,5 +121,6 @@ const styles = StyleSheet.create({
   box: { width: '100%', aspectRatio: 16 / 9, borderWidth: 1, borderRadius: 4, overflow: 'hidden' },
   empty: { alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12 },
   media: { width: '100%', height: '100%' },
+  sound: { position: 'absolute', top: 8, right: 8, width: 44, height: 44, borderWidth: 1, borderRadius: 4, alignItems: 'center', justifyContent: 'center', opacity: 0.92 },
   text: { fontSize: 13, textAlign: 'center' },
 });

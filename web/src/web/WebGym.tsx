@@ -12,7 +12,7 @@ import { GYM_COPY, gymCleanupPending, gymSavedRefreshFailed, isGymCleanupNotice 
 import { useSession } from '../store/session-context';
 import Dialog from '../components/Dialog';
 import ActionMenu from '../components/ActionMenu';
-import { ArchiveIcon, ChevronIcon, EditIcon, MoveIcon, PlayIcon, RestoreIcon, TrashIcon } from '../Icons';
+import { ArchiveIcon, ChevronIcon, EditIcon, MoveIcon, PlayIcon, RestoreIcon, TrashIcon, UploadIcon } from '../Icons';
 import FlowList from '../components/FlowList';
 import StateBlock from '../components/StateBlock';
 import { announceFeedback } from '../components/ArchiveNotice';
@@ -67,6 +67,13 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
   const closeEditor = useEditorGuard(JSON.stringify(form) !== JSON.stringify(initial) || !!file || removeMedia, pending || uncertain);
   useEffect(() => { if (!file) { setPreview(null); return; } const url = URL.createObjectURL(file); setPreview(url); return () => URL.revokeObjectURL(url); }, [file]);
   const field = (key: keyof typeof initial, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+  const [dragging, setDragging] = useState(false);
+  const locked = pending || uncertain;
+  const chooseFile = (next: File | null) => {
+    if (!next) return;
+    if (next.type !== 'image/gif' && next.type !== 'video/mp4') { setError('Choose a GIF or MP4 file.'); return; }
+    setError(null); setFile(next); uploadedMedia.current = null; setRemoveMedia(false);
+  };
   return <Dialog title={exercise ? 'Edit exercise' : 'Add exercise'} onClose={() => closeEditor(onClose)} pending={pending}>
     <form className="gym-form" onSubmit={async event => {
       event.preventDefault(); if (inFlight.current) return;
@@ -94,7 +101,15 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
         setError(message);
       } finally { inFlight.current = false; setPending(false); }
     }}>
-      <label>Demonstration (optional GIF or MP4, up to 20 MiB)<input type="file" accept="image/gif,video/mp4" disabled={pending || uncertain} onChange={event => { setFile(event.target.files?.[0] ?? null); uploadedMedia.current = null; setRemoveMedia(false); }} /></label>
+      <label className={`gym-dropzone${dragging ? ' is-dragging' : ''}${locked ? ' is-disabled' : ''}`} data-testid="gym-dropzone"
+        onDragOver={event => { if (locked) return; event.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={event => { event.preventDefault(); setDragging(false); if (!locked) chooseFile(event.dataTransfer.files?.[0] ?? null); }}>
+        <UploadIcon size={22} />
+        <strong>{file ? 'Choose another file' : 'Add a demo video or GIF'}</strong>
+        <span>Optional · GIF or MP4, up to 20 MiB. You can replay it from the exercise card any time.</span>
+        <input className="sr-only" aria-label="Demonstration (optional GIF or MP4, up to 20 MiB)" type="file" accept="image/gif,video/mp4" disabled={locked} onChange={event => { chooseFile(event.target.files?.[0] ?? null); event.target.value = ''; }} />
+      </label>
       {file && <div className="gym-upload-preview"><span>{file.name}</span>{preview && (file.type === 'image/gif' ? <img src={preview} alt="Selected demonstration" /> : <video src={preview} controls muted playsInline />)}<button type="button" className="btn-secondary btn-compact" disabled={pending || uncertain} onClick={() => { setFile(null); uploadedMedia.current = null; }}>Remove selected file</button></div>}
       {exercise?.media_path && <label className="gym-checkbox"><input type="checkbox" checked={removeMedia} disabled={pending || uncertain} onChange={e => { setRemoveMedia(e.target.checked); setFile(null); }} />Remove current demonstration</label>}
       <label>Exercise name<input className="field" required value={form.name} disabled={pending || uncertain} onChange={e => field('name', e.target.value)} /></label>

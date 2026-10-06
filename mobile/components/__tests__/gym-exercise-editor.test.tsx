@@ -141,6 +141,35 @@ describe('Gym exercise editor', () => {
   });
 
   describe('demonstration media', () => {
+    it('shows a first-time user what the upload is for before anything is picked', async () => {
+      setup();
+      await renderWithTheme(<ExerciseEditorScreen />);
+      expect(screen.getByText('Add a demo video or GIF')).toBeOnTheScreen();
+      expect(screen.getByText(/replay it from the exercise card/i)).toBeOnTheScreen();
+      expect(screen.getByText(/GIF or MP4, up to 20 MiB/)).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Choose GIF or MP4' })).toBeOnTheScreen();
+    });
+
+    it('switches the card to "Choose another file" once a file is picked', async () => {
+      setup();
+      mockMedia.pickGymMedia.mockResolvedValueOnce({ uri: 'file:///c/a.gif', mime: 'image/gif', name: 'a.gif' });
+      await renderWithTheme(<ExerciseEditorScreen />);
+      await userEvent.setup().press(screen.getByRole('button', { name: 'Choose GIF or MP4' }));
+      expect(screen.getByText('Choose another file')).toBeOnTheScreen();
+      expect(screen.queryByText('Add a demo video or GIF')).toBeNull();
+    });
+
+    it('does not open the picker while the exercise is saving', async () => {
+      setup();
+      mockShared.saveGymExercise.mockReturnValue(new Promise(() => {}));
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseEditorScreen />);
+      await fill();
+      await save(user);
+      await user.press(screen.getByRole('button', { name: 'Choose GIF or MP4' }));
+      expect(mockMedia.pickGymMedia).not.toHaveBeenCalled();
+    });
+
     it('picks a GIF, shows it, uploads it on save and attaches it', async () => {
       setup();
       mockMedia.pickGymMedia.mockResolvedValueOnce({ uri: 'file:///c/a.gif', mime: 'image/gif', name: 'a.gif' });

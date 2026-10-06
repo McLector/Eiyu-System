@@ -126,10 +126,10 @@ export default function GymExerciseCardScreen() {
                 </View>
                 <View style={styles.current}>
                   <Text style={[styles.currentLabel, { color: t['muted-flat'], fontFamily: fonts.display }]}>CURRENT WEIGHT</Text>
-                  <View style={styles.weightRow}>
+                  <View testID={`gym-weight-row-${exercise.id}`} style={styles.weightRow}>
                     <WeightInput exercise={exercise} unit={unit} value={draft} locked={locked} readOnly={gym.pending} onChange={value => gym.setDraft(exercise.id, value)} />
+                    <Button testID={`gym-log-${exercise.id}`} variant="primary" label="LOG WEIGHT" accessibilityLabel="LOG WEIGHT" disabled={!canLog} busy={gym.pending} onPress={() => void gym.logWeight(exercise)} style={styles.logButton} />
                   </View>
-                  <Button testID={`gym-log-${exercise.id}`} variant="primary" label="LOG WEIGHT" accessibilityLabel="LOG WEIGHT" disabled={!canLog} busy={gym.pending} onPress={() => void gym.logWeight(exercise)} />
                 </View>
               </KeyboardAwareScrollView>
             </View>
@@ -224,8 +224,9 @@ const styles = StyleSheet.create({
   current: { gap: 8 },
   currentLabel: { fontSize: 11, letterSpacing: 1.2 },
   weightRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  weight: { flex: 1, minHeight: 64, borderWidth: 1, borderRadius: 4, paddingHorizontal: 16, fontSize: 32 },
-  unit: { fontSize: 18, minWidth: 28 },
+  weight: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, paddingVertical: 8, fontSize: 22 },
+  unit: { fontSize: 16, minWidth: 24 },
+  logButton: { flexShrink: 0 },
   footer: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingTop: 8, gap: 8 },
   note: { fontSize: 13, lineHeight: 19 },
   nav: { flexDirection: 'row', gap: 8 },

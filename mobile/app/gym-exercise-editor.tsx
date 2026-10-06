@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   deleteGymMedia,
   formatError,
@@ -13,6 +13,7 @@ import {
   type GymMediaMime,
 } from '@eiyu/shared';
 
+import { UploadIcon } from '@/components/eiyu/icons';
 import { EditorFrame } from '@/components/gym/editor-frame';
 import { MediaView } from '@/components/gym/exercise-media';
 import { Button } from '@/components/ui/button';
@@ -130,7 +131,7 @@ export default function GymExerciseEditorScreen() {
       error={error}
       footer={<Button testID="gym-exercise-save" variant="primary" label={label} accessibilityLabel={saving ? 'Saving' : label} disabled={!hasName} busy={saving} onPress={() => void save()} />}>
       <View style={styles.media}>
-        <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>DEMONSTRATION (OPTIONAL GIF OR MP4, UP TO 20 MIB)</Text>
+        <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>DEMONSTRATION (OPTIONAL)</Text>
         {picked ? (
           <>
             <Text style={[styles.fileName, { color: t.text, fontFamily: fonts.mono }]}>{picked.name}</Text>
@@ -138,7 +139,17 @@ export default function GymExerciseEditorScreen() {
             <Button variant="quiet" label="Remove selected file" disabled={busy} onPress={() => { setPicked(null); uploaded.current = null; }} />
           </>
         ) : null}
-        <Button variant="secondary" label={picked ? 'Choose another file' : 'Choose GIF or MP4'} accessibilityLabel="Choose GIF or MP4" disabled={busy} onPress={() => void choose()} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Choose GIF or MP4"
+          accessibilityState={{ disabled: busy }}
+          disabled={busy}
+          onPress={() => void choose()}
+          style={[styles.drop, { borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }, busy && styles.dim]}>
+          <UploadIcon size={24} color={t['accent-text']} />
+          <Text style={[styles.dropTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{picked ? 'Choose another file' : 'Add a demo video or GIF'}</Text>
+          <Text style={[styles.dropHint, { color: t['muted-flat'], fontFamily: fonts.body }]}>Optional · GIF or MP4, up to 20 MiB. You can replay it from the exercise card any time.</Text>
+        </Pressable>
         {exercise?.media_path ? (
           <View style={styles.row}>
             <Chip kind="checkbox" label="Remove current demonstration" selected={removeMedia} disabled={busy} onPress={() => { setRemoveMedia(v => !v); setPicked(null); uploaded.current = null; }} />
@@ -164,6 +175,10 @@ const styles = StyleSheet.create({
   media: { gap: 8 },
   label: { fontSize: 11, letterSpacing: 1.2 },
   fileName: { fontSize: 12 },
+  drop: { minHeight: 96, borderWidth: 1.5, borderStyle: 'dashed', borderRadius: 8, paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  dropTitle: { fontSize: 16, letterSpacing: 0.8, textTransform: 'uppercase' },
+  dropHint: { fontSize: 12, lineHeight: 17, textAlign: 'center' },
+  dim: { opacity: 0.5 },
   row: { flexDirection: 'row' },
   pair: { flexDirection: 'row', gap: 12 },
   half: { flex: 1 },

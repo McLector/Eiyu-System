@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -157,4 +157,46 @@ it('reports a failed video guide and reloads it on request', async () => {
   await user.click(within(detail).getByRole('button', { name: 'Reload video guide' }));
   await waitFor(() => expect(detail.querySelector('video.gym-media')).not.toBeNull());
   expect(mocks.sign).toHaveBeenCalledTimes(2);
+});
+
+it('makes the demonstration upload obvious: a labelled drop area that says what it is for', async () => {
+  const user = userEvent.setup(); setup();
+  await user.click(await screen.findByRole('button', { name: 'Add exercise' }));
+  expect(screen.getByText('Add a demo video or GIF')).toBeInTheDocument();
+  expect(screen.getByText(/replay it from the exercise card/i)).toBeInTheDocument();
+  expect(screen.getByText(/GIF or MP4, up to 20 MiB/)).toBeInTheDocument();
+  // The real file input stays reachable by its original accessible name.
+  expect(screen.getByLabelText(/Demonstration \(optional/)).toHaveAttribute('type', 'file');
+});
+
+it('accepts a GIF dropped on the drop area and offers to change it afterwards', async () => {
+  const user = userEvent.setup(); setup();
+  await user.click(await screen.findByRole('button', { name: 'Add exercise' }));
+  const zone = screen.getByTestId('gym-dropzone');
+  const file = new File(['GIF89a'], 'dropped.gif', { type: 'image/gif' });
+  fireEvent.drop(zone, { dataTransfer: { files: [file], types: ['Files'] } });
+  expect(await screen.findByText('dropped.gif')).toBeInTheDocument();
+  expect(screen.getByText('Choose another file')).toBeInTheDocument();
+});
+
+it('rejects a dropped file that is not a GIF or MP4 without selecting it', async () => {
+  const user = userEvent.setup(); setup();
+  await user.click(await screen.findByRole('button', { name: 'Add exercise' }));
+  const zone = screen.getByTestId('gym-dropzone');
+  fireEvent.drop(zone, { dataTransfer: { files: [new File(['x'], 'notes.txt', { type: 'text/plain' })], types: ['Files'] } });
+  expect(await screen.findByRole('alert')).toHaveTextContent('Choose a GIF or MP4 file.');
+  expect(screen.queryByText('notes.txt')).not.toBeInTheDocument();
+  expect(screen.getByText('Add a demo video or GIF')).toBeInTheDocument();
+});
+
+it('ignores a drop while the exercise is saving or awaiting confirmation', async () => {
+  const user = userEvent.setup(); setup();
+  await user.click(await screen.findByRole('button', { name: 'Add exercise' }));
+  await user.type(screen.getByRole('textbox', { name: 'Exercise name' }), 'Rows');
+  await user.upload(screen.getByLabelText(/Demonstration \(optional/), new File(['GIF89a'], 'first.gif', { type: 'image/gif' }));
+  mocks.saveExercise.mockRejectedValueOnce(new UncertainSaveError());
+  await user.click(screen.getByRole('button', { name: 'Save exercise' }));
+  await screen.findByText(/held until the save is confirmed/);
+  fireEvent.drop(screen.getByTestId('gym-dropzone'), { dataTransfer: { files: [new File(['GIF89a'], 'late.gif', { type: 'image/gif' })], types: ['Files'] } });
+  expect(screen.queryByText('late.gif')).not.toBeInTheDocument();
 });
