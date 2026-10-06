@@ -31,6 +31,7 @@ import {
 
 import { initialUser } from '@eiyu/shared';
 import { useAuth } from '@/contexts/auth-store';
+import { ThemeContext } from '@/contexts/theme-store';
 import { completeHabit, completeHabitRecovery, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
 import { rankFromStats } from '@eiyu/shared';
 import { formatError } from '@eiyu/shared';
@@ -75,6 +76,7 @@ import {
 } from '@eiyu/shared';
 import { newRequestId } from '@/lib/request-id';
 import { useWriteQueue } from '@/lib/use-write-queue';
+import { useWidgetSnapshot } from '@/lib/use-widget-snapshot';
 import {
   applyOverlay,
   isOfflineNetworkFailure,
@@ -204,9 +206,11 @@ interface EiyuStore {
 const EiyuContext = createContext<EiyuStore | null>(null);
 
 export function EiyuProvider({ children }: { children: ReactNode }) {
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
   const userId = session?.user.id;
   const qc = useQueryClient();
+  // Null in the tests that render the store alone; the app always mounts the theme provider above it.
+  const theme = useContext(ThemeContext);
 
   const [questActionError, setQuestActionError] = useState<string | null>(null);
   const [retryingQuests, setRetryingQuests] = useState(false);
@@ -651,6 +655,19 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const syncStates = useMemo(() => syncStateByHabit(syncEntries, syncOffline), [syncEntries, syncOffline]);
   const syncWaiting = useMemo(() => waitingCount(syncEntries, syncOffline), [syncEntries, syncOffline]);
   const failedSyncs = useMemo(() => syncEntries.filter(entry => entry.status === 'failed'), [syncEntries]);
+
+  // The home-screen widget reads a snapshot of this board. It is built from the cache plus unsent writes, dated by when the
+  // cache was fetched, and only written once auth, the account zone and the board are all known.
+  useWidgetSnapshot({
+    authLoading,
+    userId,
+    accountTimeZone: profile?.timeZone ?? null,
+    cachedQuests: habitsQuery.data,
+    dataUpdatedAt: habitsQuery.dataUpdatedAt,
+    entries: syncEntries,
+    palette: theme?.palette ?? 'cyan',
+    mode: theme?.mode ?? 'dark',
+  });
 
   // The account day ended, or the account zone just became known: judge which writes can still land, then send them.
   const accountZoneKnown = !!profile?.timeZone;

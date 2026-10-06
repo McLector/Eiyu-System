@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { ReactElement } from 'react';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
 import { decodeSnapshot, widgetView, WIDGET_KEY } from '@/lib/widget-snapshot';
@@ -18,8 +19,13 @@ async function readSnapshot(): Promise<string | null> {
   }
 }
 
+/** The widget as it should look right now at this size. Shared with the app's own redraw request. */
+export async function drawTodayWidget(size: { height: number; width: number }): Promise<ReactElement> {
+  const view = widgetView(decodeSnapshot(await readSnapshot()), new Date(), size.height);
+  return renderTodayWidget(view, size.width);
+}
+
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
   if (props.widgetAction === 'WIDGET_DELETED' || props.widgetAction === 'WIDGET_CLICK') return;
-  const view = widgetView(decodeSnapshot(await readSnapshot()), new Date(), props.widgetInfo.height);
-  props.renderWidget(renderTodayWidget(view, props.widgetInfo.width));
+  props.renderWidget(await drawTodayWidget(props.widgetInfo));
 }
