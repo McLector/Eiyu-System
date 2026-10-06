@@ -94,6 +94,11 @@ flow at normal or increased Android font scale.
 - `board_offline_queue` — offline write queue: airplane mode on, a tap shows Waiting to sync and a count, two taps
   cancel, the queue survives killing the app, and reconnecting sends it and flashes Synced. Android only (airplane
   mode); written in mobile parity slice 6, not yet run on a device.
+- The home-screen widget is not covered: it lives on the launcher, outside the app, and Maestro drives the app.
+  Check it by hand on a release build (see the by-screen checklist in the slice 7 handoff): add "Eiyu: Today",
+  force-stop the app with Metro off and confirm it still draws, tap it and confirm it opens the Board on Daily,
+  complete a quest in airplane mode and confirm the row shows done with Waiting to sync, sign out and confirm
+  Sign in to Eiyu, and look at it the morning after midnight for Open Eiyu to load today.
 - `phase6_whole_product_acceptance.yaml` — disposable cross-platform lifecycle,
   account-isolation, retained-history, and Android navigation journey
 - `phase6_reload_smoke.yaml` — same-account relaunch, persisted board state,

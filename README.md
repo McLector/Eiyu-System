@@ -20,6 +20,7 @@ Your real-life habits translate directly into XP for your character's stats (STR
 * **One-time quests and Backlog**: Schedule a one-off quest for a day, with or without a set time, or park an idea in the Backlog with an optional genre (tool, concept, docs / article, software idea, to-do). Move it between Backlog and today's One-time lane from its menu (or by dragging, on web); a One-time quest left unfinished returns to the Backlog at midnight.
 * **Long Quests**: Multi-stage goals that track progress across weeks, separate from daily habits. On the web they live on the Chain Progression page: the selected chain fills the page and a Your chains list beside it switches between chains. Each stage reads Done, Current or Locked, the current stage has a COMPLETE STAGE button, and the last finished stage can be undone from its menu. On Android the Chain tab lists your chains and opens each on its own screen with the same stages, COMPLETE STAGE button and undo; AI stage suggestions are not offered on the phone.
 * **Offline completions (Android)**: Completing or undoing a quest, changing a quantity quest's progress, and finishing a recovery keep working without a connection. The change shows at once with a Waiting to sync tag, is kept across the app being closed, and is sent when the phone is back online. The server only accepts a completion for the current day, so a change still waiting when the day ends is not applied: the Board lists it under Not saved, where you can dismiss it. Everything else (editing, archiving, Chain, Gym) still needs a connection.
+* **Home-screen widget (Android)**: An "Eiyu: Today" widget shows your TODAY count and today's quests, with a tick for done and a ring for open. It reads a copy the app saves whenever the board changes, so it never needs a connection or a sign-in of its own. A change still waiting to sync shows Waiting to sync next to it, and a failed one shows Not saved. If the board it holds is from an earlier day it says Open Eiyu to load today instead of showing old ticks, and after you sign out it asks you to sign in. Android refreshes it at least every 30 minutes, but it is only as fresh as the last time the app ran. Tapping it opens the Board on the Daily lane. It is read-only: you cannot complete a quest from it. It needs the 1.2.0 build, which is a native change and cannot arrive as an over-the-air update.
 * **Gym Progress**: Routines of exercises with sets, reps, rest, RIR and an optional GIF or MP4 video guide. Pick an exercise from the list to see its guide with its notes beside it and its numbers below. Type a weight into Current and press Enter (or the arrow) to log it; the weight before it becomes Previous. There is no workout to start or finish. On Android the Gym tab has a routine chip (with Include archived and a new-routine button), the exercise list, and a swipeable full-screen card per exercise with the guide, the numbers and a large weight field with LOG WEIGHT; routines and exercises have full-screen editors that can attach a GIF or MP4, and Workout history is under the routine's menu.
 * **AI Weekly Summary**: A Gemini-powered natural-language recap of the week's progress, generated server-side (the API key never reaches the client) — always a suggestion you can edit or discard, never auto-saved.
 * **Supabase Backend**: Full cloud sync — habits, stats, completions, streaks, and long quests are all persisted and synced across devices, shared between the mobile and web clients.
@@ -38,6 +39,7 @@ eiyu-system/
 │   ├── app/                    # Screens (expo-router, file-based routing)
 │   ├── components/eiyu/        # Custom UI (flat, palette-driven System look)
 │   ├── lib/                    # Mobile-specific Supabase client, notifications, etc.
+│   ├── widgets/                # Android home-screen widget (headless task handler + drawing)
 │   ├── eas.json                # EAS Build/Update profiles (development/preview/production)
 │   └── maestro/                # Maestro E2E test flows
 ├── web/                        # Vite + React web client — deployed to Vercel
@@ -104,6 +106,7 @@ eiyu-system/
 The mobile app isn't on the Play Store — it ships as a downloadable APK, self-hosted for beta use:
 
 - **Full rebuild** (native deps or `app.json` changes): `eas build --profile preview --platform android` from `mobile/`, then install the resulting APK from the link EAS prints.
+  The home-screen widget draws without the app's screens, so a build meant to show it should bundle its JavaScript (a release build); a development build only draws it while Metro is reachable.
 - **JS/asset-only update** (no rebuild needed): `eas update --branch preview` pushes an OTA update that the installed app picks up on next launch.
 
 ### Running Tests
