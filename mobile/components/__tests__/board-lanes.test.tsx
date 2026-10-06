@@ -189,6 +189,16 @@ describe('mobile BoardScreen completing quests', () => {
     expect(screen.getByText(/^\+\d+ XP$/)).toBeOnTheScreen();
   });
 
+  it('completes a quest while offline with a light cue and no XP flash, since the server has not confirmed it', async () => {
+    mockStoreValue.syncOffline = true;
+    await board();
+    await userEvent.setup().press(screen.getByTestId('quest-checkbox'));
+    expect(mockStoreValue.toggleQuest).toHaveBeenCalledWith('daily');
+    expect(hapticSuccess).not.toHaveBeenCalled();
+    expect(hapticLight).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/XP$/)).toBeNull();
+  });
+
   it('undoes a completed quest with a light cue and no XP flash', async () => {
     mockStoreValue.user = { ...mockStoreValue.user, quests: [{ ...habit, completed: true }] };
     await board();
@@ -384,6 +394,17 @@ describe('mobile BoardScreen recovery', () => {
     await user.press(screen.getByRole('button', { name: 'Mark recovery complete for Frozen habit' }));
     expect(mockStoreValue.completeRecovery).toHaveBeenCalledWith('ice');
     expect(screen.getByText(/^\+\d+ XP$/)).toBeOnTheScreen();
+  });
+
+  it('completes a recovery while offline without an XP flash', async () => {
+    const user = userEvent.setup();
+    mockStoreValue.syncOffline = true;
+    mockStoreValue.user = { ...mockStoreValue.user, quests: [{ ...habit, id: 'ice', name: 'Frozen habit', frozen: true, frozenHoursLeft: 5 }] };
+    await board();
+    await user.press(screen.getByRole('button', { name: /Recovery required/ }));
+    await user.press(screen.getByRole('button', { name: 'Mark recovery complete for Frozen habit' }));
+    expect(mockStoreValue.completeRecovery).toHaveBeenCalledWith('ice');
+    expect(screen.queryByText(/XP$/)).toBeNull();
   });
 
   it('shows no banner when nothing is frozen', async () => {

@@ -175,8 +175,9 @@ export default function BoardScreen() {
   };
 
   const handleToggle = (quest: Quest) => {
-    if (!quest.completed) {
-      // Milestone: completing gets the success cue; undo is a plain tap.
+    if (!quest.completed && !syncOffline) {
+      // Milestone: completing gets the success cue; undo is a plain tap. Offline, the server has not confirmed the
+      // reward yet, so the change is shown quietly and the cue is left to the confirmed write.
       hapticSuccess();
       flashXp(quest.id, FULL_XP);
     } else {
@@ -345,7 +346,7 @@ export default function BoardScreen() {
       <RecoverySheet
         visible={recoveryOpen && recoveryRequired.length > 0}
         quests={recoveryRequired}
-        onComplete={id => { flashXp(id, EASY_XP); completeRecovery(id); }}
+        onComplete={id => { if (!syncOffline) flashXp(id, EASY_XP); completeRecovery(id); }}
         onClose={() => setRecoveryOpen(false)}
       />
       <SyncReviewSheet

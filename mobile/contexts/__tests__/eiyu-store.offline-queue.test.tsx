@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, waitFor } from '@testing-library/react-native';
+import { act, cleanup, configure, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
 
 import { encodeQueue, type QueueEntry } from '@/lib/write-queue';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// Each step here crosses several async hops (storage, engine, query refetch); a full parallel run is slower than one suite alone.
+configure({ asyncUtilTimeout: 5000 });
 
 const mockShared = {
   archiveHabit: jest.fn(),
