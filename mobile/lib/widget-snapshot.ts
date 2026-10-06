@@ -1,6 +1,7 @@
 // Deep imports on purpose: the @eiyu/shared barrel re-exports the data layer, which loads the Supabase library, and this
 // module runs in the headless widget task (see widgets/__tests__/widget-purity.test.ts).
 import { accountDateKey } from '@eiyu/shared/src/logic/date-utils';
+import { oneTimeTiming } from '@eiyu/shared/src/logic/quest-labels';
 import { boardTodayProgress, partitionBoardQuests } from '@eiyu/shared/src/logic/quest-recurrence';
 import { parsePalette, type Palette } from '@eiyu/shared/src/theme/palettes';
 import { parseThemeMode } from '@eiyu/shared/src/theme/theme-mode';
@@ -111,9 +112,11 @@ function readSync(entries: readonly QueueEntry[], dataDate: string): { tags: Map
 
 export function buildWidgetSnapshot(input: BuildInput): ReadySnapshot {
   const board = applyOverlay(input.cachedQuests, input.entries, input.dataDate);
-  const sections = partitionBoardQuests(board);
-  const { completed, total } = boardTodayProgress(sections);
-  const unique = [...new Map([...sections.dailyQuests, ...sections.oneTimeQuests].map(quest => [quest.id, quest])).values()];
+  const sections = partitionBoardQuests(board, input.dataDate);
+  const { completed, total } = boardTodayProgress(sections, input.dataDate);
+  // Today plus undated only (D4): an open upcoming one-time quest stays off the widget, a finished one stays on it.
+  const onWidget = (quest: Quest) => quest.completed || oneTimeTiming(quest, input.dataDate) !== 'upcoming';
+  const unique = [...new Map([...sections.dailyQuests, ...sections.oneTimeQuests].filter(onWidget).map(quest => [quest.id, quest])).values()];
   const ordered = [...unique.filter(quest => !quest.completed), ...unique.filter(quest => quest.completed)];
   const { tags, waiting } = readSync(input.entries, input.dataDate);
 

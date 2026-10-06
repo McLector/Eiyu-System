@@ -56,19 +56,106 @@ describe('quest editor types', () => {
     expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', time: '09:30', timeSet: true, genre: 'article' }), 'o1');
   });
 
-  it('keeps the stored date of an edited One-time quest and locks the date input', async () => {
+  it('keeps the stored date of an edited One-time quest, and lets it change while the quest is unfinished', async () => {
     const dated = { ...oneTimeQuest, scheduledDate: '2026-10-10' };
     setup(dated);
     const user = userEvent.setup();
     render(<WebQuestEditor editingQuest={dated} onClose={vi.fn()} />);
     const date = screen.getByLabelText('DATE');
-    expect(date).toBeDisabled();
+    expect(date).toBeEnabled();
     expect(date).toHaveValue('2026-10-10');
-    expect(screen.getByText(/date can.t be changed after creation/i)).toBeInTheDocument();
+    expect(screen.queryByText(/date is fixed/i)).toBeNull();
     await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
     expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', scheduledDate: '2026-10-10' }), 'o1');
+  });
+
+  it('saves a new date for an unfinished quest', async () => {
+    const dated = { ...oneTimeQuest, scheduledDate: '2026-10-10' };
+    setup(dated);
+    const user = userEvent.setup();
+    render(<WebQuestEditor editingQuest={dated} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('DATE'), { target: { value: '2099-02-03' } });
+    await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
+    await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2099-02-03' }), 'o1');
+  });
+
+  it('locks the date of a finished quest, explains why, and still saves its other edits', async () => {
+    const done = { ...oneTimeQuest, scheduledDate: '2026-10-10', completed: true };
+    setup(done);
+    const user = userEvent.setup();
+    render(<WebQuestEditor editingQuest={done} onClose={vi.fn()} />);
+    expect(screen.getByLabelText('DATE')).toBeDisabled();
+    expect(screen.getByLabelText('DATE')).toHaveValue('2026-10-10');
+    expect(screen.getByText(/date is fixed once the quest is finished/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'No date' })).toBeDisabled();
+    await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
+    await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
+    await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2026-10-10' }), 'o1');
+  });
+
+  it('opens an undated quest with No date checked and saves it undated, never inventing today', async () => {
+    const undated = { ...oneTimeQuest, scheduledDate: null, timeSet: false, time: '08:00' };
+    setup(undated);
+    const user = userEvent.setup();
+    render(<WebQuestEditor editingQuest={undated} onClose={vi.fn()} />);
+    expect(screen.getByRole('checkbox', { name: 'No date' })).toBeChecked();
+    expect(screen.getByLabelText('DATE')).toBeDisabled();
+    await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
+    await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
+    await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
+    expect(store.saveHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }), 'o1');
+  });
+
+  it('gives an undated quest a date once No date is unchecked', async () => {
+    const undated = { ...oneTimeQuest, scheduledDate: null, timeSet: false };
+    setup(undated);
+    const user = userEvent.setup();
+    render(<WebQuestEditor editingQuest={undated} onClose={vi.fn()} />);
+    await user.click(screen.getByRole('checkbox', { name: 'No date' }));
+    expect(screen.getByLabelText('DATE')).toBeEnabled();
+    fireEvent.change(screen.getByLabelText('DATE'), { target: { value: '2099-05-06' } });
+    await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
+    await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2099-05-06' }), 'o1');
+  });
+
+  it('creates an undated One-time quest: no date, no set time, and the time is locked', async () => {
+    const user = userEvent.setup();
+    render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);
+    fireEvent.change(nameField(), { target: { value: 'Someday task' } });
+    await user.click(screen.getByRole('checkbox', { name: 'No set time' }));
+    fireEvent.change(screen.getByLabelText('TIME'), { target: { value: '10:15' } });
+    await user.click(screen.getByRole('checkbox', { name: 'No date' }));
+    expect(screen.getByLabelText('DATE')).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'No set time' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'No set time' })).toBeDisabled();
+    expect(screen.getByLabelText('TIME')).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
+    await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
+    expect(store.saveHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }), undefined);
+  });
+
+  it('lets the time be chosen again when a date comes back', async () => {
+    const user = userEvent.setup();
+    render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);
+    await user.click(screen.getByRole('checkbox', { name: 'No date' }));
+    await user.click(screen.getByRole('checkbox', { name: 'No date' }));
+    expect(screen.getByLabelText('DATE')).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: 'No set time' })).toBeEnabled();
+  });
+
+  it('offers No date only for a One-time quest', async () => {
+    const user = userEvent.setup();
+    render(<WebQuestEditor initialType="habit" onClose={vi.fn()} />);
+    expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();
+    await user.click(within(screen.getByRole('group', { name: 'Quest type' })).getByRole('button', { name: 'One-time' }));
+    expect(screen.getByRole('checkbox', { name: 'No date' })).not.toBeChecked();
   });
 
   it('still lets the user pick the date while creating a One-time quest', async () => {
@@ -77,7 +164,7 @@ describe('quest editor types', () => {
     expect(date).toBeEnabled();
     fireEvent.change(date, { target: { value: '2099-01-02' } });
     expect(date).toHaveValue('2099-01-02');
-    expect(screen.queryByText(/date can.t be changed/i)).toBeNull();
+    expect(screen.queryByText(/date is fixed/i)).toBeNull();
   });
 
   it('offers no type switch when editing, and no Penalty, Days or Time for Backlog', () => {

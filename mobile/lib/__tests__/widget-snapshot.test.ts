@@ -84,6 +84,33 @@ describe('buildWidgetSnapshot counts and rows', () => {
     expect(snapshot.rows.map(row => row.name)).toEqual(['Daily open', 'Daily done', 'One-time done']);
   });
 
+  it('shows the one-time quests due today and the undated ones, and leaves out an open upcoming one', () => {
+    const quests = [
+      quest({ id: 'o1', name: 'Dated today', questType: 'one_time', scheduledDate: TODAY }),
+      quest({ id: 'o2', name: 'Undated', questType: 'one_time', scheduledDate: null }),
+      quest({ id: 'o3', name: 'Next week', questType: 'one_time', scheduledDate: '2026-10-12' }),
+    ];
+    const snapshot = build(quests);
+    expect(snapshot.rows.map(row => row.name)).toEqual(['Dated today', 'Undated']);
+    expect(snapshot.total).toBe(2);
+  });
+
+  it('keeps an upcoming quest that was finished early, and counts it', () => {
+    const snapshot = build([
+      quest({ id: 'o3', name: 'Next week', questType: 'one_time', scheduledDate: '2026-10-12', completed: true }),
+      quest({ id: 'o1', name: 'Dated today', questType: 'one_time', scheduledDate: TODAY }),
+    ]);
+    expect(snapshot.rows.map(row => row.name)).toEqual(['Dated today', 'Next week']);
+    expect(snapshot.completed).toBe(1);
+    expect(snapshot.total).toBe(2);
+  });
+
+  it('judges upcoming against the data date, not the clock', () => {
+    const quests = [quest({ id: 'o3', name: 'Oct 12', questType: 'one_time', scheduledDate: '2026-10-12' })];
+    expect(build(quests, [], { dataDate: '2026-10-12' }).rows.map(row => row.name)).toEqual(['Oct 12']);
+    expect(build(quests, [], { dataDate: '2026-10-11' }).rows).toEqual([]);
+  });
+
   it('lists open quests before done ones, daily before one-time within each', () => {
     const snapshot = build([
       quest({ id: 'd1', name: 'D done', completed: true }),

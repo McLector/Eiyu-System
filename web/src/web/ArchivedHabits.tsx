@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { formatError, partitionBoardQuests, type Quest } from '@eiyu/shared';
+import { accountDateKey, formatError, partitionBoardQuests, type Quest } from '@eiyu/shared';
 import { useEiyu } from '../store/eiyu-store';
 import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
@@ -31,6 +31,7 @@ export default function ArchivedHabits({ onClose }: { onClose: () => void }) {
     </Dialog>
     {details && <QuestDetailsDialog
       quest={details}
+      today={accountDateKey(new Date(), user.timeZone)}
       onClose={() => setDetails(null)}
       archived={{ pending: pending !== null, onRestore: () => { const id = details.id; void restore(id).then(() => setDetails(null)); }, onDelete: () => { setTarget(details); setDetails(null); } }}
     />}

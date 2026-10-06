@@ -121,6 +121,30 @@ describe('QuestCard', () => {
     expect(arrow('Move Walk to One-time').style.transform).toBe('scaleX(-1)');
   });
 
+  it('says No date for an undated One-time quest and Upcoming with the date for a later one', () => {
+    renderCard(quest({ questType: 'one_time', days: [], timeSet: false, scheduledDate: null }), { today: '2026-10-05' });
+    expect(within(card()).getByText('No date')).toBeInTheDocument();
+    cleanup();
+    renderCard(quest({ questType: 'one_time', days: [], timeSet: true, time: '09:30', scheduledDate: '2026-10-12' }), { today: '2026-10-05' });
+    const when = within(card()).getByText('Upcoming Oct 12 09:30');
+    expect(when).toHaveClass('is-upcoming');
+  });
+
+  it('keeps Today, without the upcoming style, for a quest dated today or when no date is passed', () => {
+    renderCard(quest({ questType: 'one_time', days: [], timeSet: false, scheduledDate: '2026-10-05' }), { today: '2026-10-05' });
+    expect(within(card()).getByText('Today')).not.toHaveClass('is-upcoming');
+    cleanup();
+    renderCard(quest({ questType: 'one_time', days: [], timeSet: false, scheduledDate: '2026-10-12' }));
+    expect(within(card()).getByText('Today')).toBeInTheDocument();
+  });
+
+  it('can complete an upcoming or undated quest from the card', async () => {
+    const user = userEvent.setup();
+    const h = renderCard(quest({ questType: 'one_time', days: [], timeSet: false, scheduledDate: '2026-10-12' }), { today: '2026-10-05' });
+    await user.click(within(card()).getByRole('button', { name: 'Complete Walk' }));
+    expect(h.onToggle).toHaveBeenCalledOnce();
+  });
+
   it('shows no genre chip on a habit', () => {
     renderCard(quest({ genre: 'tool' }));
     expect(within(card()).queryByText('Tool')).toBeNull();

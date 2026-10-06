@@ -1,4 +1,4 @@
-import { partitionBoardQuests, splitQuestsByType, todayQuestsFilter } from '../quest-recurrence';
+import { boardTodayProgress, partitionBoardQuests, splitQuestsByType, todayQuestsFilter } from '../quest-recurrence';
 import { Quest } from '../../types/eiyu';
 
 describe('todayQuestsFilter', () => {
@@ -94,6 +94,62 @@ describe('partitionBoardQuests', () => {
     const backlog = { ...base, id: 'b', questType: 'backlog' as const, days: [], dailyEligible: false };
     const sections = partitionBoardQuests([backlog]);
     expect([...sections.dailyQuests, ...sections.oneTimeQuests, ...sections.allHabits, ...sections.recoveryRequired, ...sections.archivedQuests]).toEqual([]);
+  });
+});
+
+describe('one-time lane with undated and upcoming quests', () => {
+  const today = '2026-10-05';
+  const make = (id: string, over: Partial<Quest> = {}): Quest => ({
+    id, name: id, stat: 'STR', difficulty: 'Medium', easyVersion: null, description: null,
+    questType: 'one_time', time: '08:00', days: [], streak: 0, frozen: false, completed: false,
+    targetCount: null, progressCount: 0, timeSet: false, ...over,
+  });
+
+  it('orders unfinished quests today, then undated, then upcoming by date, finished last', () => {
+    const quests = [
+      make('far', { scheduledDate: '2026-10-20' }),
+      make('done', { scheduledDate: today, completed: true }),
+      make('undated', { scheduledDate: null }),
+      make('near', { scheduledDate: '2026-10-07' }),
+      make('now', { scheduledDate: today }),
+    ];
+    expect(partitionBoardQuests(quests, today).oneTimeQuests.map(q => q.id))
+      .toEqual(['now', 'undated', 'near', 'far', 'done']);
+  });
+
+  it('keeps the time then name order inside a group', () => {
+    const quests = [
+      make('b-late', { scheduledDate: today, timeSet: true, time: '20:00' }),
+      make('a-early', { scheduledDate: today, timeSet: true, time: '07:00' }),
+      make('untimed', { scheduledDate: today }),
+    ];
+    expect(partitionBoardQuests(quests, today).oneTimeQuests.map(q => q.id))
+      .toEqual(['a-early', 'b-late', 'untimed']);
+  });
+
+  it('behaves as before when no account date is given', () => {
+    const quests = [make('b', { scheduledDate: '2026-10-20' }), make('a', { scheduledDate: null })];
+    expect(partitionBoardQuests(quests).oneTimeQuests.map(q => q.id)).toEqual(['a', 'b']);
+  });
+
+  it('does not count an open upcoming quest toward today, but counts it once finished', () => {
+    const sections = (completed: boolean) => partitionBoardQuests([
+      make('today', { scheduledDate: today }),
+      make('undated', { scheduledDate: null }),
+      make('later', { scheduledDate: '2026-10-09', completed }),
+    ], today);
+    expect(boardTodayProgress(sections(false), today)).toEqual({ completed: 0, total: 2 });
+    expect(boardTodayProgress(sections(true), today)).toEqual({ completed: 1, total: 3 });
+  });
+
+  it('counts every one-time quest when no account date is given (legacy callers)', () => {
+    const s = partitionBoardQuests([make('x', { scheduledDate: '2026-10-09' })]);
+    expect(boardTodayProgress(s)).toEqual({ completed: 0, total: 1 });
+  });
+
+  it('counts a quest that is in both lists once', () => {
+    const q = make('dup', { scheduledDate: today, completed: true });
+    expect(boardTodayProgress({ dailyQuests: [q], oneTimeQuests: [q] }, today)).toEqual({ completed: 1, total: 1 });
   });
 });
 

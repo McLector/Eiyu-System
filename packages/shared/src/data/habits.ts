@@ -78,8 +78,9 @@ function toQuest(
 }
 
 /**
- * Board data: every recurring habit definition plus today's eligible one-time
- * quests, with current completion, streak, recovery, and schedule eligibility.
+ * Board data: every recurring habit definition plus the one-time quests that
+ * are on today's board (dated today, undated, or upcoming; 042), with current
+ * completion, streak, recovery, and schedule eligibility.
  * The authoritative RPC still determines which definitions have a dated
  * occurrence for the account-local day; catalog rows never create eligibility.
  */
@@ -208,7 +209,7 @@ export interface HabitInput {
   questType?: QuestType;
   /** Optional note attached to the quest. */
   description?: string | null;
-  /** One-time quests only; "YYYY-MM-DD" local calendar date. Ignored/null for recurring habits (Slice 4). */
+  /** One-time quests only; "YYYY-MM-DD" local calendar date, or null/absent for "No date". Ignored/null for recurring habits (Slice 4). */
   scheduledDate?: string | null;
   /** Quantity-habit target (>1); habit-type only, ignored/null for one-time (Slice 5). */
   targetCount?: number | null;
@@ -221,6 +222,8 @@ export interface HabitInput {
 /** Shared insert/update column mapping so both write paths stay in lockstep. */
 function habitColumns(input: HabitInput) {
   const type: QuestType = input.questType ?? 'habit';
+  // A time needs a date (042): an undated one-time quest is always stored untimed at the 08:00 placeholder.
+  const undated = type === 'one_time' && !input.scheduledDate;
   return {
     name: input.name,
     // Only recurring habits have a penalty (easy version).
@@ -229,13 +232,13 @@ function habitColumns(input: HabitInput) {
     quest_type: type,
     stat: input.stat,
     difficulty: input.difficulty,
-    reminder_time: input.time,
+    reminder_time: undated ? '08:00' : input.time,
     days: type === 'backlog' ? [] : input.days,
     scheduled_date: type === 'one_time' ? (input.scheduledDate ?? null) : null,
     target_count: type === 'habit' ? (input.targetCount ?? null) : null,
     // Sent only when the caller supplied them, so an edit that never read them cannot reset them.
     ...(type === 'habit' ? { genre: null } : input.genre !== undefined ? { genre: input.genre } : {}),
-    ...(type === 'backlog' ? { time_set: false } : type === 'habit' ? { time_set: true } : input.timeSet !== undefined ? { time_set: input.timeSet } : {}),
+    ...(type === 'backlog' || undated ? { time_set: false } : type === 'habit' ? { time_set: true } : input.timeSet !== undefined ? { time_set: input.timeSet } : {}),
   };
 }
 

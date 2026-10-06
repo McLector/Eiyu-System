@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { STAT_COLORS, questGenreLabel, questWhenLabel, type Quest } from '@eiyu/shared';
+import { STAT_COLORS, oneTimeTiming, questGenreLabel, questWhenLabel, type Quest } from '@eiyu/shared';
 import { ArchiveIcon, CheckIcon, EditIcon, GripIcon, MoveIcon, SnowflakeIcon, TrashIcon, StatIcon } from '../Icons';
 import ActionMenu, { type ActionMenuItem } from '../components/ActionMenu';
 import FireStreak from '../FireStreak';
@@ -7,6 +7,8 @@ import { writeQuestDrag } from './lane-drag';
 
 export interface QuestCardProps {
   quest: Quest;
+  /** The account's current date key; lets a One-time card say No date or Upcoming. */
+  today?: string;
   pending: boolean;
   onToggle: () => void;
   onOpen: () => void;
@@ -20,7 +22,7 @@ export interface QuestCardProps {
   onDragEnd?: () => void;
 }
 
-export default function QuestCard({ quest, pending, onToggle, onOpen, onEdit, onAdjustProgress, onArchive, onDelete, onMove, onDragStart, onDragEnd }: QuestCardProps) {
+export default function QuestCard({ quest, today, pending, onToggle, onOpen, onEdit, onAdjustProgress, onArchive, onDelete, onMove, onDragStart, onDragEnd }: QuestCardProps) {
   const [popping, setPopping] = useState(false);
   const isBacklog = quest.questType === 'backlog';
   const isOneTime = quest.questType === 'one_time';
@@ -84,7 +86,7 @@ export default function QuestCard({ quest, pending, onToggle, onOpen, onEdit, on
         <span className="quest-card-title">{quest.name}</span>
         <span className="quest-card-meta">
           <span className="quest-chip is-stat"><StatIcon stat={quest.stat} size={11} /> {quest.stat}</span>
-          <span className="quest-card-when">{questWhenLabel(quest)}</span>
+          <span className={`quest-card-when${isOneTime && oneTimeTiming(quest, today) === 'upcoming' ? ' is-upcoming' : ''}`}>{questWhenLabel(quest, today)}</span>
           {quest.streak > 0 && <span className="board-card-streak"><FireStreak size={11} /> {quest.streak}</span>}
           {quest.frozen && <SnowflakeIcon size={12} />}
           {genre && <span className="quest-chip">{genre}</span>}

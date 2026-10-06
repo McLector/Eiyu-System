@@ -25,13 +25,15 @@ interface Props {
   xpToast?: number | null;
   /** A change to this quest that has not reached the server, or could not. Quiet when absent. */
   syncState?: SyncState;
+  /** The account's current date key; lets a one-time row say No date or Upcoming. */
+  today?: string;
 }
 
 /**
  * One quest in a lane: a check (or a stepper for a quest with a target), the title and its details, and a more button.
  * The title is its own accessibility element so the check and the more button stay reachable for a screen reader.
  */
-export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, onActions, xpToast = null, syncState }: Props) {
+export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, onActions, xpToast = null, syncState, today }: Props) {
   const t = useTokens();
   const completed = quest.completed;
   const frozen = quest.frozen && !completed;
@@ -109,7 +111,7 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
             <StatIcon stat={quest.stat} size={12} />
             <Text style={[styles.chipText, { color: statColor, fontFamily: fonts.display }]}>{quest.stat}</Text>
           </View>
-          <Text style={[styles.when, { color: t['dim-flat'], fontFamily: fonts.body }]}>{questWhenLabel(quest)}</Text>
+          <Text style={[styles.when, { color: t['dim-flat'], fontFamily: fonts.body }]}>{questWhenLabel(quest, today)}</Text>
           {quest.streak > 0 ? (
             <View style={styles.chip}>
               <FireStreak size={12} />

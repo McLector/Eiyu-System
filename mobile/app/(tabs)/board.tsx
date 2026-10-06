@@ -112,8 +112,9 @@ export default function BoardScreen() {
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
-  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
-  const { completed, total } = boardTodayProgress({ dailyQuests, oneTimeQuests });
+  const accountToday = accountDateKey(new Date(), user.timeZone);
+  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests, accountToday);
+  const { completed, total } = boardTodayProgress({ dailyQuests, oneTimeQuests }, accountToday);
   const counts: Record<LaneId, number> = { daily: dailyQuests.length, 'one-time': oneTimeQuests.length, backlog: backlog.length };
 
   const flashXp = (id: string, xp: number) => {
@@ -194,6 +195,7 @@ export default function BoardScreen() {
     <QuestRow
       key={quest.id}
       quest={quest}
+      today={accountToday}
       pending={pendingIds.has(quest.id)}
       xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
       syncState={syncStates.get(quest.id)}

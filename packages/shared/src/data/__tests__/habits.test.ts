@@ -74,6 +74,57 @@ describe('createHabit / updateHabit — scheduled_date column mapping', () => {
     expect(inserted).toHaveBeenCalledWith(expect.objectContaining({ scheduled_date: null }));
   });
 
+  it('stores an undated one-time quest as untimed so the database check holds', async () => {
+    const inserted = jest.fn(() => chainable({ data: { id: 'h3' }, error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return { insert: inserted };
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await createHabit('user-1', {
+      name: 'Someday', stat: 'INT', difficulty: 'Easy', time: '21:15', days: [],
+      questType: 'one_time', scheduledDate: null, timeSet: true,
+    });
+
+    expect(inserted).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduled_date: null, time_set: false, reminder_time: '08:00' })
+    );
+  });
+
+  it('also clears the time when an update removes the date', async () => {
+    const updated = jest.fn(() => chainable({ data: { id: 'h1' }, error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return { update: updated };
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await updateHabit('h1', {
+      name: 'Someday', stat: 'INT', difficulty: 'Easy', time: '21:15', days: [],
+      questType: 'one_time', scheduledDate: null,
+    });
+
+    expect(updated).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduled_date: null, time_set: false, reminder_time: '08:00' })
+    );
+  });
+
+  it("keeps a dated one-time quest's time as supplied", async () => {
+    const inserted = jest.fn(() => chainable({ data: { id: 'h4' }, error: null }));
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      if (table === 'habits') return { insert: inserted };
+      throw new Error(`unexpected table ${table}`);
+    });
+
+    await createHabit('user-1', {
+      name: 'Dated', stat: 'INT', difficulty: 'Easy', time: '21:15', days: [],
+      questType: 'one_time', scheduledDate: '2026-10-12', timeSet: true,
+    });
+
+    expect(inserted).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduled_date: '2026-10-12', time_set: true, reminder_time: '21:15' })
+    );
+  });
+
   it('updateHabit writes scheduled_date the same way as createHabit', async () => {
     const updated = jest.fn(() => chainable({ data: { id: 'h1' }, error: null }));
     (supabase.from as jest.Mock).mockImplementation((table: string) => {

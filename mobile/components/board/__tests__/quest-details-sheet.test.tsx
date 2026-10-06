@@ -48,6 +48,16 @@ describe('QuestDetailsSheet', () => {
     expect(screen.getByText('Today at 09:30')).toBeOnTheScreen();
   });
 
+  it('says No date for an undated quest, and Upcoming with the date for a later one', async () => {
+    await open(quest({ questType: 'one_time', scheduledDate: null, timeSet: false, days: [] }));
+    expect(screen.getByText('No date')).toBeOnTheScreen();
+  });
+
+  it('formats the date of an upcoming quest', async () => {
+    await open(quest({ questType: 'one_time', scheduledDate: '2026-10-12', time: '09:30', timeSet: true, days: [] }));
+    expect(screen.getByText('Upcoming Oct 12 at 09:30')).toBeOnTheScreen();
+  });
+
   it('shows the note and, for a habit, the penalty', async () => {
     await open(quest());
     expect(screen.getByText('NOTE')).toBeOnTheScreen();

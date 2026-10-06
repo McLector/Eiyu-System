@@ -118,6 +118,9 @@ export default function QuestEditorScreen() {
   const [time, setTime] = useState(quest?.time ?? PLACEHOLDER_TIME);
   const [noTime, setNoTime] = useState(quest ? quest.timeSet === false : true);
   const [scheduledDate, setScheduledDate] = useState(() => quest?.scheduledDate ?? accountDateKey(new Date(), user.timeZone));
+  // A stored null is "No date": it stays null on save instead of falling back to today. A time needs a date.
+  const [noDate, setNoDate] = useState(quest?.questType === 'one_time' && quest.scheduledDate === null);
+  const dateLocked = Boolean(quest?.completed);
   const [targetCount, setTargetCount] = useState(quest?.targetCount != null ? String(quest.targetCount) : '');
   const [days, setDays] = useState<number[]>(quest?.days ?? [...DEFAULT_HABIT_DAYS]);
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
@@ -140,8 +143,9 @@ export default function QuestEditorScreen() {
 
   const isHabit = type === 'habit';
   const isOneTime = type === 'one_time';
+  const noTimeShown = noTime || noDate;
 
-  const snapshot = () => JSON.stringify({ name, note, easyVersion, time, noTime, scheduledDate, targetCount, days, stat, difficulty, type, genre });
+  const snapshot = () => JSON.stringify({ name, note, easyVersion, time, noTime, noDate, scheduledDate, targetCount, days, stat, difficulty, type, genre });
   const [initialSnapshot] = useState(snapshot);
   const dirty = snapshot() !== initialSnapshot;
 
@@ -195,14 +199,14 @@ export default function QuestEditorScreen() {
       easyVersion: isHabit ? easyVersion.trim() || null : null,
       description: note.trim() || null,
       questType: type,
-      time: isHabit || (isOneTime && !noTime) ? time : PLACEHOLDER_TIME,
+      time: isHabit || (isOneTime && !noTimeShown) ? time : PLACEHOLDER_TIME,
       days: isHabit ? days : [],
       stat,
       difficulty,
-      scheduledDate: isOneTime ? scheduledDate : null,
+      scheduledDate: isOneTime && !noDate ? scheduledDate : null,
       targetCount: isHabit && targetCount ? Number(targetCount) : null,
       genre: isHabit ? null : genre,
-      timeSet: isHabit ? true : isOneTime ? !noTime : false,
+      timeSet: isHabit ? true : isOneTime ? !noTimeShown : false,
     };
     setSubmitting(true);
     setSaving(true);
@@ -339,29 +343,33 @@ export default function QuestEditorScreen() {
             />
           ) : null}
 
-          {isOneTime && !isEditing ? (
+          {isOneTime ? (
             <View>
-              <FieldLabel>DATE</FieldLabel>
-              <PickerTrigger label="Choose quest date" value={formatDateShort(scheduledDate)} onPress={() => setDatePickerVisible(true)} />
-              {datePickerVisible ? (
-                <DateTimePicker
-                  value={dateKeyToDate(scheduledDate)}
-                  mode="date"
-                  minimumDate={new Date()}
-                  onChange={(event, date) => {
-                    setDatePickerVisible(false);
-                    if (event.type === 'set' && date) setScheduledDate(dateToDateKey(date));
-                  }}
-                />
-              ) : null}
-            </View>
-          ) : null}
-
-          {isOneTime && isEditing ? (
-            <View>
-              <FieldLabel>DATE</FieldLabel>
-              <Text style={[styles.lockedDate, { color: t.text, fontFamily: fonts.body }]}>{formatDateShort(scheduledDate)}</Text>
-              <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>The date is fixed once a quest is created.</Text>
+              <View style={styles.labelRow}>
+                <FieldLabel>DATE</FieldLabel>
+                {dateLocked ? null : <Chip kind="checkbox" compact label="No date" selected={noDate} onPress={() => setNoDate(v => !v)} />}
+              </View>
+              {dateLocked ? (
+                <>
+                  <Text style={[styles.lockedDate, { color: t.text, fontFamily: fonts.body }]}>{formatDateShort(scheduledDate)}</Text>
+                  <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>The date is fixed once the quest is finished.</Text>
+                </>
+              ) : (
+                <>
+                  <PickerTrigger label="Choose quest date" value={noDate ? 'No date' : formatDateShort(scheduledDate)} disabled={noDate} onPress={() => setDatePickerVisible(true)} />
+                  {datePickerVisible && !noDate ? (
+                    <DateTimePicker
+                      value={dateKeyToDate(scheduledDate)}
+                      mode="date"
+                      minimumDate={dateKeyToDate(accountDateKey(new Date(), user.timeZone))}
+                      onChange={(event, date) => {
+                        setDatePickerVisible(false);
+                        if (event.type === 'set' && date) setScheduledDate(dateToDateKey(date));
+                      }}
+                    />
+                  ) : null}
+                </>
+              )}
             </View>
           ) : null}
 
@@ -369,12 +377,12 @@ export default function QuestEditorScreen() {
             <View>
               <View style={styles.labelRow}>
                 <FieldLabel>{isHabit ? 'REMINDER TIME' : 'TIME'}</FieldLabel>
-                {isOneTime ? <Chip kind="checkbox" compact label="No set time" selected={noTime} onPress={() => setNoTime(v => !v)} /> : null}
+                {isOneTime ? <Chip kind="checkbox" compact label="No set time" selected={noTimeShown} disabled={noDate} onPress={() => setNoTime(v => !v)} /> : null}
               </View>
               <PickerTrigger
                 label="Choose reminder time"
                 value={formatTime12(time)}
-                disabled={isOneTime && noTime}
+                disabled={isOneTime && noTimeShown}
                 onPress={() => setTimePickerVisible(true)}
               />
               {timePickerVisible ? (

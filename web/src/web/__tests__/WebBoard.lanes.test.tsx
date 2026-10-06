@@ -95,6 +95,41 @@ describe('board lanes', () => {
   });
 });
 
+describe('One Time lane with undated and upcoming quests', () => {
+  beforeEach(() => store.useEiyu.mockReset());
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+  // The lane pages its cards (one or two per page under jsdom), so order is checked on the first card.
+  const firstCard = () => within(lane('One Time Quest')).getAllByTestId(/^quest-card-/)[0].getAttribute('data-testid');
+
+  it('puts an undated quest before an upcoming one, and today before an undated one', () => {
+    renderBoard([oneTime({ id: 'far', scheduledDate: day(9) }), oneTime({ id: 'und', scheduledDate: null })], []);
+    expect(firstCard()).toBe('quest-card-und');
+    cleanup();
+    store.useEiyu.mockReset();
+    renderBoard([oneTime({ id: 'und', scheduledDate: null }), oneTime({ id: 'now', scheduledDate: day(0) })], []);
+    expect(firstCard()).toBe('quest-card-now');
+  });
+
+  it('labels an undated quest No date and an upcoming one Upcoming', () => {
+    renderBoard([oneTime({ id: 'und', scheduledDate: null })], []);
+    expect(within(lane('One Time Quest')).getByText('No date')).toBeInTheDocument();
+    cleanup();
+    store.useEiyu.mockReset();
+    renderBoard([oneTime({ id: 'far', scheduledDate: day(9) })], []);
+    expect(within(lane('One Time Quest')).getByText(/^Upcoming /)).toBeInTheDocument();
+  });
+
+  it('does not count an open upcoming quest toward today, and counts it once done', () => {
+    renderBoard([oneTime({ id: 'a', scheduledDate: day(0) }), oneTime({ id: 'b', scheduledDate: day(5) })], []);
+    expect(screen.getByText(/\/ 1 quests/)).toBeInTheDocument();
+    cleanup();
+    store.useEiyu.mockReset();
+    renderBoard([oneTime({ id: 'a', scheduledDate: day(0) }), oneTime({ id: 'b', scheduledDate: day(5), completed: true })], []);
+    expect(screen.getByText(/\/ 2 quests/)).toBeInTheDocument();
+  });
+});
+
 describe('moving quests between lanes', () => {
   beforeEach(() => store.useEiyu.mockReset());
 

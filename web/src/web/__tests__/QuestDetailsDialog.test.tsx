@@ -32,11 +32,22 @@ describe('QuestDetailsDialog', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent('Today at 09:30');
     unmount();
     const past = render(<QuestDetailsDialog quest={one({ scheduledDate: '2026-01-02', archived: true })} onClose={vi.fn()} />);
-    expect(screen.getByRole('dialog')).toHaveTextContent('2026-01-02 at 09:30');
+    expect(screen.getByRole('dialog')).toHaveTextContent(/Jan 2.* at 09:30/);
     expect(screen.getByRole('dialog')).not.toHaveTextContent('Today');
     past.unmount();
     render(<QuestDetailsDialog quest={one({ scheduledDate: today, archived: true, timeSet: false })} onClose={vi.fn()} />);
-    expect(screen.getByRole('dialog')).toHaveTextContent(`${today}, any time`);
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('Today');
+    expect(screen.getByRole('dialog')).toHaveTextContent(/, any time/);
+  });
+
+  it('says No date, or Upcoming with the date, against the account date it is given', () => {
+    const one = (over: Partial<Quest>) => quest({ questType: 'one_time', days: [], easyVersion: null, timeSet: false, streak: 0, ...over });
+    const { unmount } = render(<QuestDetailsDialog quest={one({ scheduledDate: null })} today="2026-10-05" onClose={vi.fn()} />);
+    expect(screen.getByRole('dialog')).toHaveTextContent('No date');
+    expect(screen.getByRole('dialog')).not.toHaveTextContent('Today');
+    unmount();
+    render(<QuestDetailsDialog quest={one({ scheduledDate: '2026-10-12' })} today="2026-10-05" onClose={vi.fn()} />);
+    expect(screen.getByRole('dialog')).toHaveTextContent('Upcoming Oct 12, any time');
   });
 
   it('opens the editor from Edit Quest', async () => {

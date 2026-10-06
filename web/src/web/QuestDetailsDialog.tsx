@@ -4,8 +4,10 @@ import Dialog from '../components/Dialog';
 import { EditIcon, RestoreIcon, StatIcon } from '../Icons';
 
 /** Read-only details. Opens from the card; editing is a separate, explicit step. */
-export default function QuestDetailsDialog({ quest, onClose, onEdit, archived }: {
+export default function QuestDetailsDialog({ quest, today, onClose, onEdit, archived }: {
   quest: Quest;
+  /** The account's current date key. Falls back to the device's zone only where the caller has none. */
+  today?: string;
   onClose: () => void;
   onEdit?: () => void;
   archived?: { pending: boolean; onRestore: () => void; onDelete: () => void };
@@ -21,7 +23,7 @@ export default function QuestDetailsDialog({ quest, onClose, onEdit, archived }:
           <span className="quest-chip">{QUEST_TYPE_LABEL[quest.questType]}</span>
         </div>
         <h3 className="details-title">{quest.name}</h3>
-        <p className="details-schedule">{questScheduleLabel(quest, accountDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone))}{quest.streak > 0 ? ` · ${quest.streak}-day streak` : ''}</p>
+        <p className="details-schedule">{questScheduleLabel(quest, today ?? accountDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone))}{quest.streak > 0 ? ` · ${quest.streak}-day streak` : ''}</p>
         {quest.description && <section><span className="field-label">NOTE</span><p className="details-note">{quest.description}</p></section>}
         {quest.questType === 'habit' && quest.easyVersion && <section><span className="field-label">PENALTY</span><p className="details-note">{quest.easyVersion}</p></section>}
         <div className="action-footer">

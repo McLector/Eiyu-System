@@ -98,6 +98,33 @@ describe('mobile BoardScreen lanes', () => {
     expect(screen.getByRole('button', { name: 'Open Today only details' })).toBeOnTheScreen();
   });
 
+  it('lists undated and upcoming one-time quests in the lane, labelled, and does not count an open upcoming one', async () => {
+    mockStoreValue.user = {
+      ...mockStoreValue.user,
+      quests: [
+        oneTimeQuest({ id: 'und', name: 'Someday', scheduledDate: null, timeSet: false }),
+        oneTimeQuest({ id: 'far', name: 'Far away', scheduledDate: '2099-01-01', timeSet: false }),
+      ],
+    };
+    const user = userEvent.setup();
+    await board();
+    expect(screen.getByText('0/1')).toBeOnTheScreen();
+    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    expect(screen.getByRole('button', { name: 'Open Someday details' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Open Far away details' })).toBeOnTheScreen();
+    expect(screen.getByText('No date')).toBeOnTheScreen();
+    expect(screen.getByText('Upcoming Jan 1, 2099')).toBeOnTheScreen();
+  });
+
+  it('counts an upcoming quest once it is finished', async () => {
+    mockStoreValue.user = {
+      ...mockStoreValue.user,
+      quests: [oneTimeQuest({ id: 'far', scheduledDate: '2099-01-01', completed: true })],
+    };
+    await board();
+    expect(screen.getByText('1/1')).toBeOnTheScreen();
+  });
+
   it('counts a one-time-only board', async () => {
     mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTimeQuest({ completed: true })] };
     await board();

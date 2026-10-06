@@ -1118,6 +1118,7 @@ select.field option {
 .quest-card-title { overflow: hidden; color: var(--c-text); font: 700 15px/1.2 Rajdhani, sans-serif; letter-spacing: .04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .quest-card-meta { display: flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; color: var(--c-muted-flat); font: 11px Inter, sans-serif; white-space: nowrap; }
 .quest-card-when { overflow: hidden; text-overflow: ellipsis; }
+.quest-card-when.is-upcoming { color: var(--c-dim-flat); }
 .quest-card-controls { position: relative; z-index: 1; display: flex; align-items: center; gap: 4px; }
 .quest-card-grip { position: relative; z-index: 1; display: grid; place-items: center; width: 22px; height: 40px; color: var(--c-dim-flat); cursor: grab; }
 .quest-card-grip:active { cursor: grabbing; }

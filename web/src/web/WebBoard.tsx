@@ -8,6 +8,7 @@ import {
   partitionBoardQuests,
   profileInitials,
   boardTodayProgress,
+  accountDateKey,
   formatDisplayDate,
   tintSecondaryText,
   boardSummaryLine,
@@ -155,8 +156,9 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     moveToBacklog,
   } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
-  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests);
-  const { completed: completedToday, total: totalToday } = boardTodayProgress({ dailyQuests, oneTimeQuests });
+  const today = accountDateKey(new Date(), user.timeZone);
+  const { dailyQuests, recoveryRequired, oneTimeQuests, allHabits } = partitionBoardQuests(user.quests, today);
+  const { completed: completedToday, total: totalToday } = boardTodayProgress({ dailyQuests, oneTimeQuests }, today);
   const [xpToast, setXpToast] = useState<string | null>(null);
   const xpToastTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(xpToastTimer.current), []);
@@ -233,6 +235,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     <QuestCard
       key={quest.id}
       quest={quest}
+      today={today}
       pending={pendingLifecycleIds.has(quest.id)}
       onToggle={() => toggleQuest(quest.id)}
       onOpen={() => setDetailsTarget(quest)}
@@ -343,7 +346,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
         onArchive={archive}
         onDelete={confirmDelete}
       />}
-      {detailsTarget && <QuestDetailsDialog quest={detailsTarget} onClose={() => setDetailsTarget(null)} onEdit={() => { const id = detailsTarget.id; setDetailsTarget(null); onEditQuest(id); }} />}
+      {detailsTarget && <QuestDetailsDialog quest={detailsTarget} today={today} onClose={() => setDetailsTarget(null)} onEdit={() => { const id = detailsTarget.id; setDetailsTarget(null); onEditQuest(id); }} />}
       {deleteTarget && <BoardDeleteDialog quest={deleteTarget} onCancel={() => setDeleteTarget(null)} onDelete={deleteQuest} />}
     </div>
   );

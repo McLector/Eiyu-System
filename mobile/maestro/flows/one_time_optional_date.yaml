@@ -1,0 +1,38 @@
+appId: com.mclector.eiyusystem
+---
+# Slice 3 (migration 042 must be applied): a one-time quest can have no date.
+# It shows on the One-time lane labelled "No date", can be completed today, and
+# the editor keeps it undated. UNRUN. An upcoming (future-dated) quest is not
+# covered here: it needs the Android date dialog, so check it by hand.
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- assertVisible: "NEW QUEST"
+- tapOn: "ONE-TIME QUEST"
+- assertVisible: "NEW ONE-TIME QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Maestro Undated Quest"
+- hideKeyboard
+- tapOn: "No date"
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
+- tapOn: "CREATE QUEST"
+- tapOn:
+    id: "board-lane-tab-one-time"
+- assertVisible: "Maestro Undated Quest"
+- assertVisible: "No date"
+
+# Complete it today even though it has no date, then open the editor again: it
+# is still undated and its date is locked because it is finished.
+- tapOn:
+    id: "quest-checkbox"
+- tapOn:
+    id: "quest-edit-trigger"
+- tapOn: "Edit quest"
+- assertVisible: "EDIT QUEST"
+- assertVisible: "The date is fixed once the quest is finished."
+
+# Cleanup, as in one_time_quest_create_complete.
+- runFlow: _helpers/delete_open_quest.yaml
+- assertNotVisible: "Maestro Undated Quest"

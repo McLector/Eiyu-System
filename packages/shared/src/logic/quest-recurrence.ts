@@ -1,4 +1,5 @@
 import { accountDateKey, weekdayForDateKey } from './date-utils';
+import { oneTimeTiming } from './quest-labels';
 import { Quest } from '../types/eiyu';
 
 /**
@@ -71,20 +72,47 @@ function compareCatalog(a: Quest, b: Quest): number {
   return compareTimeSet(a, b) || compareCodePoints(a.time, b.time) || compareNameAndId(a, b);
 }
 
-export function boardTodayProgress(sections: Pick<BoardQuestSections, 'dailyQuests' | 'oneTimeQuests'>): { completed: number; total: number } {
-  const actionable = new Map([...sections.dailyQuests, ...sections.oneTimeQuests].map(quest => [quest.id, quest]));
+/**
+ * Today's progress. Given the account's today, an upcoming one-time quest only counts once it is finished, so a
+ * quest due next week does not inflate the total. Without it every board quest counts.
+ */
+export function boardTodayProgress(
+  sections: Pick<BoardQuestSections, 'dailyQuests' | 'oneTimeQuests'>,
+  today?: string
+): { completed: number; total: number } {
+  const countsToday = (quest: Quest) => !today || quest.completed || oneTimeTiming(quest, today) !== 'upcoming';
+  const actionable = new Map(
+    [...sections.dailyQuests, ...sections.oneTimeQuests].filter(countsToday).map(quest => [quest.id, quest])
+  );
   return { completed: [...actionable.values()].filter(quest => quest.completed).length, total: actionable.size };
 }
 
-/** One shared routing contract for mobile and web board sections. */
-export function partitionBoardQuests(quests: Quest[]): BoardQuestSections {
+/** Today first, then undated, then upcoming by date. */
+function oneTimeRank(quest: Quest, today: string): number {
+  const timing = oneTimeTiming(quest, today);
+  return timing === 'undated' ? 1 : timing === 'upcoming' ? 2 : 0;
+}
+
+function compareOneTimeLane(today?: string) {
+  if (!today) return compareActionable;
+  return (a: Quest, b: Quest): number => {
+    const rank = oneTimeRank(a, today) - oneTimeRank(b, today);
+    return Number(a.completed) - Number(b.completed)
+      || rank
+      || (oneTimeRank(a, today) === 2 ? compareCodePoints(a.scheduledDate ?? '', b.scheduledDate ?? '') : 0)
+      || compareActionable(a, b);
+  };
+}
+
+/** One shared routing contract for mobile and web board sections. Pass the account's today to order the One-time lane. */
+export function partitionBoardQuests(quests: Quest[], today?: string): BoardQuestSections {
   const active = quests.filter(quest => !quest.archived);
   const dailyQuests = active
     .filter(quest => quest.questType === 'habit' && quest.dailyEligible === true)
     .sort(compareActionable);
   const oneTimeQuests = active
     .filter(quest => quest.questType === 'one_time')
-    .sort(compareActionable);
+    .sort(compareOneTimeLane(today));
   const allHabits = active
     .filter(quest => quest.questType === 'habit')
     .sort(compareCatalog);

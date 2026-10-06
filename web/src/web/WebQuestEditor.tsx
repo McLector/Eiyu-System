@@ -40,6 +40,10 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const [type, setType] = useState<QuestType>(editingQuest?.questType ?? initialType);
   const [genre, setGenre] = useState<QuestGenre | null>(editingQuest?.genre ?? null);
   const [noTime, setNoTime] = useState(editingQuest ? editingQuest.timeSet === false : true);
+  // A stored null is "No date": it must stay null on save rather than fall back to today. A time needs a date.
+  const [noDate, setNoDate] = useState(editingQuest?.questType === 'one_time' && editingQuest.scheduledDate === null);
+  const dateLocked = !!editingQuest?.completed;
+  const noTimeShown = noTime || noDate;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -48,7 +52,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const lifecycleInFlight = useRef(false);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
-  const snapshot = () => JSON.stringify({ name, note, easyVer, time, scheduledDate, targetCount, days, stat, difficulty, type, genre, noTime });
+  const snapshot = () => JSON.stringify({ name, note, easyVer, time, scheduledDate, targetCount, days, stat, difficulty, type, genre, noTime, noDate });
   const initial = useRef(snapshot());
   const closeEditor = useEditorGuard(snapshot() !== initial.current, saving);
 
@@ -75,14 +79,14 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
         stat,
         difficulty,
         // reminder_time is required by the database; untimed quests keep a placeholder and timeSet false.
-        time: type === 'habit' || (type === 'one_time' && !noTime) ? time : '08:00',
+        time: type === 'habit' || (type === 'one_time' && !noTimeShown) ? time : '08:00',
         days: type === 'habit' ? days : [],
         questType: type,
         description: note.trim() || null,
-        scheduledDate: type === 'one_time' ? scheduledDate : null,
+        scheduledDate: type === 'one_time' && !noDate ? scheduledDate : null,
         targetCount: type === 'habit' && targetCount ? Number(targetCount) : null,
         genre: type === 'habit' ? null : genre,
-        timeSet: type === 'habit' ? true : type === 'one_time' ? !noTime : false,
+        timeSet: type === 'habit' ? true : type === 'one_time' ? !noTimeShown : false,
       };
       await saveHabit(input, editingQuest?.id);
       closeEditor.committed(onClose);
@@ -130,10 +134,10 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
       <div className="field-label-row">
         <label className="field-label" htmlFor="quest-time">TIME</label>
         {type === 'one_time' && (
-          <label className="gym-checkbox"><input type="checkbox" checked={noTime} onChange={e => setNoTime(e.target.checked)} />No set time</label>
+          <label className="gym-checkbox"><input type="checkbox" checked={noTimeShown} disabled={noDate} onChange={e => setNoTime(e.target.checked)} />No set time</label>
         )}
       </div>
-      <input id="quest-time" className="field" type="time" value={time} disabled={type === 'one_time' && noTime} onChange={e => setTime(e.target.value)} />
+      <input id="quest-time" className="field" type="time" value={time} disabled={type === 'one_time' && noTimeShown} onChange={e => setTime(e.target.value)} />
     </div>
   );
 
@@ -218,18 +222,21 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
         {type === 'one_time' && (
           <div className="form-row">
             <div>
-              <label className="field-label" htmlFor="quest-date">DATE</label>
+              <div className="field-label-row">
+                <label className="field-label" htmlFor="quest-date">DATE</label>
+                <label className="gym-checkbox"><input type="checkbox" checked={noDate} disabled={dateLocked} onChange={e => setNoDate(e.target.checked)} />No date</label>
+              </div>
               <input
                 id="quest-date"
                 className="field"
                 type="date"
                 value={scheduledDate}
-                min={editingQuest ? undefined : accountDateKey(new Date(), user.timeZone)}
-                disabled={!!editingQuest}
-                aria-describedby={editingQuest ? 'quest-date-hint' : undefined}
+                min={accountDateKey(new Date(), user.timeZone)}
+                disabled={dateLocked || noDate}
+                aria-describedby={dateLocked ? 'quest-date-hint' : undefined}
                 onChange={e => setScheduledDate(e.target.value)}
               />
-              {editingQuest && <p id="quest-date-hint" className="field-hint">The date can&apos;t be changed after creation.</p>}
+              {dateLocked && <p id="quest-date-hint" className="field-hint">The date is fixed once the quest is finished.</p>}
             </div>
             {timeField}
           </div>

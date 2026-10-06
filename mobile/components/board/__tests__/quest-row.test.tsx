@@ -108,6 +108,27 @@ describe('QuestRow details', () => {
     expect(screen.getByText('Today 09:30')).toBeOnTheScreen();
   });
 
+  it('says No date for an undated one-time quest and Upcoming with the date for a later one', async () => {
+    await render(quest({ questType: 'one_time', days: [], timeSet: false, scheduledDate: null }), { today: '2026-10-05' });
+    expect(screen.getByText('No date')).toBeOnTheScreen();
+  });
+
+  it('says Upcoming and the date, with the time when one is set', async () => {
+    await render(quest({ questType: 'one_time', days: [], timeSet: true, time: '09:30', scheduledDate: '2026-10-12' }), { today: '2026-10-05' });
+    expect(screen.getByText('Upcoming Oct 12 09:30')).toBeOnTheScreen();
+  });
+
+  it('keeps Today when no account date is passed', async () => {
+    await render(quest({ questType: 'one_time', days: [], timeSet: false, scheduledDate: '2026-10-12' }));
+    expect(screen.getByText('Today')).toBeOnTheScreen();
+  });
+
+  it('can complete an upcoming quest from its check', async () => {
+    const p = await render(quest({ questType: 'one_time', days: [], timeSet: false, scheduledDate: '2026-10-12' }), { today: '2026-10-05' });
+    await userEvent.setup().press(screen.getByTestId('quest-checkbox'));
+    expect(p.onToggle).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the genre of a one-time or Backlog quest, and none for a habit', async () => {
     await render(quest({ questType: 'backlog', genre: 'tool', days: [] }));
     expect(screen.getByText('Tool')).toBeOnTheScreen();

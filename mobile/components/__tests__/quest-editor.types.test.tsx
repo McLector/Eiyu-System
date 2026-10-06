@@ -161,8 +161,9 @@ describe('QuestEditor quest types', () => {
     const user = userEvent.setup();
     const value = setup(oneTime);
     await renderWithTheme(<QuestEditorScreen />);
-    expect(screen.queryByRole('button', { name: 'Choose quest date' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Choose quest date' })).toBeEnabled();
     expect(screen.getByText('Dec 25, 2026')).toBeOnTheScreen();
+    expect(screen.queryByText(/date is fixed/i)).toBeNull();
     await user.type(screen.getByLabelText('Quest name'), '!');
     await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
 
@@ -170,6 +171,74 @@ describe('QuestEditor quest types', () => {
       expect.objectContaining({ scheduledDate: '2026-12-25', timeSet: true, time: '14:30', questType: 'one_time' }),
       'ot',
     );
+  });
+
+  it('locks the date of a finished one-time quest and says why', async () => {
+    const user = userEvent.setup();
+    const value = setup({ ...oneTime, completed: true });
+    await renderWithTheme(<QuestEditorScreen />);
+    expect(screen.queryByRole('button', { name: 'Choose quest date' })).toBeNull();
+    expect(screen.getByText('Dec 25, 2026')).toBeOnTheScreen();
+    expect(screen.getByText(/date is fixed once the quest is finished/i)).toBeOnTheScreen();
+    expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();
+    await user.type(screen.getByLabelText('Quest name'), '!');
+    await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2026-12-25' }), 'ot');
+  });
+
+  it('opens an undated quest with No date checked and saves it undated, never inventing today', async () => {
+    const user = userEvent.setup();
+    const value = setup({ ...oneTime, scheduledDate: null, timeSet: false, time: '08:00' });
+    await renderWithTheme(<QuestEditorScreen />);
+    expect(screen.getByRole('checkbox', { name: 'No date' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Choose quest date' })).toBeDisabled();
+    await user.type(screen.getByLabelText('Quest name'), '!');
+    await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
+    expect(value.saveHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ scheduledDate: null, timeSet: false, time: '08:00', questType: 'one_time' }),
+      'ot',
+    );
+  });
+
+  it('creates an undated one-time quest: No date turns the time off and locks it', async () => {
+    const user = userEvent.setup();
+    const value = setup(undefined, 'one_time');
+    await renderWithTheme(<QuestEditorScreen />);
+    await user.type(screen.getByLabelText('Quest name'), 'Someday task');
+    await user.press(screen.getByRole('checkbox', { name: 'No set time' }));
+    expect(screen.getByRole('checkbox', { name: 'No set time' })).not.toBeChecked();
+    await user.press(screen.getByRole('checkbox', { name: 'No date' }));
+    expect(screen.getByRole('checkbox', { name: 'No date' })).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Choose quest date' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'No set time' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'No set time' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Choose reminder time' })).toBeDisabled();
+    await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
+    expect(value.saveHabit).toHaveBeenCalledWith(
+      expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }),
+      undefined,
+    );
+  });
+
+  it('gives the date and time back when No date is unchecked', async () => {
+    const user = userEvent.setup();
+    setup(undefined, 'one_time');
+    await renderWithTheme(<QuestEditorScreen />);
+    await user.press(screen.getByRole('checkbox', { name: 'No date' }));
+    await user.press(screen.getByRole('checkbox', { name: 'No date' }));
+    expect(screen.getByRole('button', { name: 'Choose quest date' })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: 'No set time' })).toBeEnabled();
+  });
+
+  it('offers No date only on a one-time quest', async () => {
+    const user = userEvent.setup();
+    setup(undefined, 'habit');
+    await renderWithTheme(<QuestEditorScreen />);
+    expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();
+    await user.press(screen.getByRole('radio', { name: 'One-time' }));
+    expect(screen.getByRole('checkbox', { name: 'No date' })).not.toBeChecked();
+    await user.press(screen.getByRole('radio', { name: 'Backlog' }));
+    expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();
   });
 
   it('keeps a Backlog quest’s genre when it is edited without touching it', async () => {
