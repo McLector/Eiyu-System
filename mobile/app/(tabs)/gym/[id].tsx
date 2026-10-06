@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import PagerView from 'react-native-pager-view';
 import { GYM_COPY, type GymExercise } from '@eiyu/shared';
@@ -16,7 +16,6 @@ import { useGym } from '@/contexts/gym-store';
 import { useTokens } from '@/contexts/theme-store';
 
 /** The tab bar floats over the content; the card's last row stays clear of it. */
-const TAB_BAR_OVERLAY = 73;
 
 function Tile({ label, value }: { label: string; value: string }) {
   const t = useTokens();
@@ -30,7 +29,6 @@ function Tile({ label, value }: { label: string; value: string }) {
 
 export default function GymExerciseCardScreen() {
   const t = useTokens();
-  const { fontScale } = useWindowDimensions();
   const gym = useGym();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const { exercises, routine, unit } = gym;
@@ -137,7 +135,7 @@ export default function GymExerciseCardScreen() {
         })}
       </PagerView>
 
-      <View style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: 8 + (fontScale > 1.15 ? 0 : TAB_BAR_OVERLAY) }]}>
+      <View style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: 8 }]}>
         {gym.error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{gym.error}</Text> : null}
         {gym.notice ? <Text accessibilityLiveRegion="polite" style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{gym.notice}</Text> : null}
         {gym.uncertain ? <Button variant="secondary" label={GYM_COPY.confirmSave} busy={gym.pending} onPress={() => void gym.retryUncertain()} /> : null}

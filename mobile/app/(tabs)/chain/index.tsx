@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LONG_QUEST_COPY, STAT_COLORS } from '@eiyu/shared';
 
 import { PlusIcon, StatIcon } from '@/components/eiyu/icons';
@@ -11,11 +11,9 @@ import { useEiyu } from '@/contexts/eiyu-store';
 import { useTokens } from '@/contexts/theme-store';
 
 /** The tab bar floats over the content at normal font size; this keeps the footer clear of it. */
-const TAB_BAR_OVERLAY = 73;
 
 export default function ChainListScreen() {
   const t = useTokens();
-  const { fontScale } = useWindowDimensions();
   const { user, longQuestsLoading, longQuestsError, retryLongQuests } = useEiyu();
   const chains = user.longQuests;
   const noData = chains.length === 0;
@@ -64,7 +62,7 @@ export default function ChainListScreen() {
         )}
       </ScrollView>
 
-      <View style={[styles.footer, { marginBottom: fontScale > 1.15 ? 0 : TAB_BAR_OVERLAY }]}>
+      <View testID="chain-footer" style={styles.footer}>
         <Button
           testID="chain-new"
           variant="secondary"

@@ -1,4 +1,5 @@
 import { screen, userEvent, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import type { GymExercise, GymRoutine } from '@eiyu/shared';
 
 import GymScreen from '../../app/(tabs)/gym/index';
@@ -46,6 +47,13 @@ describe('Gym list', () => {
     expect(rows).toHaveLength(2);
     expect(within(rows[0]).getByText('Lift e1')).toBeOnTheScreen();
     expect(within(rows[0]).getByText('3 × 8-12')).toBeOnTheScreen();
+  });
+
+  it.each([1, 1.3])('sits its footer flush on the tab bar at font scale %s', async scale => {
+    mockFontScale = scale;
+    setup();
+    await renderWithTheme(<GymScreen />);
+    expect(StyleSheet.flatten(screen.getByTestId('gym-footer').props.style).marginBottom ?? 0).toBe(0);
   });
 
   it('opens an exercise card on the tapped exercise', async () => {

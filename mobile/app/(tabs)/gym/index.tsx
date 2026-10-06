@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { GYM_COPY } from '@eiyu/shared';
 
 import { ArchiveIcon, ChevronIcon, EditIcon, ListIcon, MoreIcon, PlusIcon, RestoreIcon, TrashIcon } from '@/components/eiyu/icons';
@@ -16,11 +16,9 @@ import { useGym } from '@/contexts/gym-store';
 import { useTokens } from '@/contexts/theme-store';
 
 /** The tab bar floats over the content at normal font size; this keeps the footer clear of it. */
-const TAB_BAR_OVERLAY = 73;
 
 export default function GymScreen() {
   const t = useTokens();
-  const { fontScale } = useWindowDimensions();
   const gym = useGym();
   const { routine, routines, exercises, unit } = gym;
   const [picker, setPicker] = useState(false);
@@ -127,7 +125,7 @@ export default function GymScreen() {
       </ScrollView>
 
       {routine ? (
-        <View style={[styles.footer, { marginBottom: fontScale > 1.15 ? 0 : TAB_BAR_OVERLAY }]}>
+        <View testID="gym-footer" style={styles.footer}>
           <Button
             testID="gym-add-exercise"
             variant="secondary"

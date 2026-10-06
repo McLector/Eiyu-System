@@ -1,0 +1,17 @@
+appId: com.mclector.eiyusystem
+---
+# Slice 2 (unrun): on every tab the bottom action is fully visible and not under the tab bar.
+# Run it three times: gesture navigation, 3-button navigation, and with the system font
+# scale set to 1.3 (Settings > Display > Font size), e.g.
+#   maestro test -e E2E_EMAIL=... -e E2E_PASSWORD=... layout_footer_visibility.yaml
+# Maestro cannot change the system font scale, so set it on the device first.
+- runFlow: _helpers/login.yaml
+- assertVisible: "ADD A QUEST"
+- tapOn: "CHAIN"
+- assertVisible: "NEW CHAIN"
+- tapOn: "GYM"
+- assertVisible: "BOARD"
+- tapOn: "STATUS"
+- assertVisible: "STATUS"
+- tapOn: "BOARD"
+- assertVisible: "ADD A QUEST"

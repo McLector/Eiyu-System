@@ -103,17 +103,17 @@ describe('Chain detail', () => {
 
   const scrollPadding = () => StyleSheet.flatten(screen.getByTestId('chain-scroll').props.contentContainerStyle).paddingBottom;
 
-  it('keeps the last stage clear of the floating tab bar', async () => {
+  it('leaves only its own breathing room under the last stage: the tab bar is in the layout, not over it', async () => {
     setup();
     await renderWithTheme(<ChainDetailScreen />);
-    expect(scrollPadding()).toBeGreaterThanOrEqual(73);
+    expect(scrollPadding()).toBe(32);
   });
 
-  it('does not over-pad at large font sizes, where the tab bar is part of the layout', async () => {
+  it('pads the same at large font sizes', async () => {
     setup();
     mockFontScale = 1.3;
     await renderWithTheme(<ChainDetailScreen />);
-    expect(scrollPadding()).toBeLessThan(73);
+    expect(scrollPadding()).toBe(32);
   });
 
   it('shows a stage description in full, with no line limit', async () => {

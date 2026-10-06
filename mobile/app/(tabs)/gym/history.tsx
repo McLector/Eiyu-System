@@ -12,7 +12,6 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useGym } from '@/contexts/gym-store';
 import { useTokens } from '@/contexts/theme-store';
 
-const TAB_BAR_OVERLAY = 73;
 
 /** Completed workouts, newest first, ten to a page, optionally for one routine. */
 export default function GymHistoryScreen() {
@@ -87,7 +86,7 @@ export default function GymHistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: TAB_BAR_OVERLAY + 16, gap: 12 },
+  content: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, gap: 12 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   back: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, fontSize: 20, letterSpacing: 1 },

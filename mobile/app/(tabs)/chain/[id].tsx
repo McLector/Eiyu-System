@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatDisplayDate, formatError, STAT_COLORS, stageSequenceState, type LongQuest } from '@eiyu/shared';
 
 import { chainPercent, ChainProgressBar } from '@/components/chain/progress-bar';
@@ -17,7 +17,6 @@ type StageStatus = 'done' | 'current' | 'locked';
 const STATUS_LABEL: Record<StageStatus, string> = { done: 'Done', current: 'Current', locked: 'Locked' };
 const DESCRIPTION_CLAMP_AT = 140;
 /** The tab bar floats over the content at normal font size; this keeps the last stage clear of it. */
-const TAB_BAR_OVERLAY = 73;
 
 function Stats({ chain, done, timeZone }: { chain: LongQuest; done: number; timeZone: string }) {
   const t = useTokens();
@@ -60,7 +59,6 @@ function DeleteChainModal({ chain, pending, error, onCancel, onConfirm }: { chai
 
 export default function ChainDetailScreen() {
   const t = useTokens();
-  const { fontScale } = useWindowDimensions();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const {
     user, longQuestsLoading, longQuestsError, retryLongQuests, toggleStage, removeLongQuest,
@@ -160,7 +158,7 @@ export default function ChainDetailScreen() {
         </Pressable>
       </View>
 
-      <ScrollView testID="chain-scroll" contentContainerStyle={[styles.content, { paddingBottom: 32 + (fontScale > 1.15 ? 0 : TAB_BAR_OVERLAY) }]}>
+      <ScrollView testID="chain-scroll" contentContainerStyle={styles.content}>
         {stageRewardNotice ? (
           // The XP card is itself a live region; announce the notice only when no card carries it.
           <Text
@@ -288,7 +286,7 @@ const styles = StyleSheet.create({
   back: { minHeight: 48, minWidth: 48, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8 },
   backText: { fontSize: 13, letterSpacing: 1 },
   more: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: 16, gap: 16 },
+  content: { paddingHorizontal: 16, paddingBottom: 32, gap: 16 },
   notice: { fontSize: 13 },
   titleBlock: { gap: 6 },
   statLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },

@@ -35,7 +35,7 @@ export function Sheet({ visible, title, onClose, children, footer, dismissible =
   const Scroller = keyboardAware ? KeyboardAwareScrollView : ScrollView;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent onRequestClose={close} testID={testID}>
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={close} testID={testID}>
       <View style={styles.root}>
         <Pressable
           testID={`${testID}-backdrop`}

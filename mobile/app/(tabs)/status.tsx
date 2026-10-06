@@ -87,6 +87,6 @@ const styles = StyleSheet.create({
   top: { paddingHorizontal: 16, paddingTop: 12 },
   pager: { flex: 1, marginTop: 8 },
   page: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingBottom: 100, gap: 20 },
+  content: { paddingHorizontal: 16, paddingBottom: 16, gap: 20 },
   eyebrow: { fontSize: 11, letterSpacing: 1.4, marginBottom: 4 },
 });

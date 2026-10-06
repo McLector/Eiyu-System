@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import {
   accountDateKey,
@@ -42,13 +42,11 @@ const LANES: { id: LaneId; label: string }[] = [
 /** The kinds the add sheet offers. */
 const OFFERED_TYPES: QuestTypeChoice[] = ['habit', 'one_time', 'backlog'];
 /** The tab bar floats over the content at normal font size; this keeps the footer clear of it. */
-const TAB_BAR_OVERLAY = 73;
 
 interface ArchiveNotice { id: number; questId: string; kind: 'Habit' | 'Quest' }
 
 export default function BoardScreen() {
   const t = useTokens();
-  const { fontScale } = useWindowDimensions();
   const {
     user,
     backlog,
@@ -315,7 +313,7 @@ export default function BoardScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.footer, { marginBottom: fontScale > 1.15 ? 0 : TAB_BAR_OVERLAY }]}>
+      <View testID="board-footer" style={styles.footer}>
         {activeLane === 'daily' ? (
           <Button variant="secondary" label="ALL HABITS" icon={<ListIcon size={16} color={t['accent-text']} />} onPress={() => setAllHabitsOpen(true)} />
         ) : null}

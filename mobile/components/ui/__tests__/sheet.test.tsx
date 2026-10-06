@@ -33,6 +33,12 @@ describe('Sheet', () => {
     expect(screen.getByText('Footer')).toBeOnTheScreen();
   });
 
+  it('draws behind the navigation bar, so the bottom inset it adds is not counted twice', async () => {
+    await renderWithTheme(<Sheet visible onClose={() => {}} title="T"><Text>x</Text></Sheet>);
+    expect(screen.getByTestId('sheet')).toHaveProp('navigationBarTranslucent', true);
+    expect(screen.getByTestId('sheet')).toHaveProp('statusBarTranslucent', true);
+  });
+
   it('shows nothing while hidden', async () => {
     await renderWithTheme(<Sheet visible={false} title="Quest details" onClose={() => {}}><Text>Body</Text></Sheet>);
     expect(screen.queryByText('Quest details')).toBeNull();

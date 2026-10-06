@@ -1,4 +1,5 @@
 import { screen, userEvent } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { initialUser, LONG_QUEST_COPY, type LongQuest } from '@eiyu/shared';
 
 import ChainListScreen from '../../app/(tabs)/chain/index';
@@ -42,6 +43,12 @@ describe('Chain list', () => {
     expect(screen.getByText('0/1')).toBeOnTheScreen();
     expect(screen.getByRole('progressbar', { name: 'Launch the site progress' })).toHaveProp('accessibilityValue', { min: 0, max: 100, now: 33 });
     expect(screen.getByText('INT')).toBeOnTheScreen();
+  });
+
+  it('sits its footer flush on the tab bar, which is in the layout, with no overlay margin', async () => {
+    setup();
+    await renderWithTheme(<ChainListScreen />);
+    expect(StyleSheet.flatten(screen.getByTestId('chain-footer').props.style).marginBottom ?? 0).toBe(0);
   });
 
   it('opens the chain on its own screen when a card is pressed', async () => {

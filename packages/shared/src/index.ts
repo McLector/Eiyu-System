@@ -42,4 +42,5 @@ export * from './theme/palette-tokens';
 export * from './theme/theme-mode';
 export * from './theme/motion';
 export * from './theme/type';
+export * from './theme/spacing';
 export * from './logic/quest-labels';

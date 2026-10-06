@@ -1,5 +1,7 @@
 import { Tabs } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { tabBarHeight } from '@eiyu/shared';
 
 import AccountHeader from '@/components/eiyu/account-header';
 import { BoardIcon, DumbbellIcon, ScrollIcon, StatusIcon } from '@/components/eiyu/icons';
@@ -9,8 +11,7 @@ import { useTokens } from '@/contexts/theme-store';
 export default function TabLayout() {
   const t = useTokens();
   const { fontScale } = useWindowDimensions();
-  const scaledTabBarPadding = 24;
-  const scaledTabBarHeight = 73 + Math.max(0, Math.ceil((fontScale - 1) * 40));
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -20,18 +21,15 @@ export default function TabLayout() {
         tabBarActiveTintColor: t.accent,
         tabBarInactiveTintColor: t['nav-dim'],
         tabBarStyle: {
-          position: fontScale > 1.15 ? 'relative' : 'absolute',
+          position: 'relative',
           borderTopWidth: 1,
           borderTopColor: t['nav-border'],
           backgroundColor: t.nav,
           elevation: 0,
-          ...(fontScale > 1.15
-            ? {
-                height: scaledTabBarHeight,
-                paddingBottom: scaledTabBarPadding,
-              }
-            : {}),
+          height: tabBarHeight(fontScale, insets.bottom),
+          paddingBottom: Math.max(insets.bottom, 0),
         },
+        tabBarAllowFontScaling: false,
         tabBarLabelStyle: {
           fontFamily: fonts.displaySemi,
           fontSize: 10,

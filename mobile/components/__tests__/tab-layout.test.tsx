@@ -8,6 +8,7 @@ import { renderWithTheme } from '../ui/test-theme';
 interface Captured { screenOptions?: Record<string, unknown>; screens: { name: string; options: Record<string, unknown> }[] }
 const mockCaptured: Captured = { screens: [] };
 let mockFontScale = 1;
+let mockInsetBottom = 24;
 
 jest.mock('expo-router', () => {
   function Tabs({ children, screenOptions }: { children: unknown; screenOptions: Record<string, unknown> }) {
@@ -21,6 +22,9 @@ jest.mock('expo-router', () => {
   };
   return { Tabs };
 });
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: mockInsetBottom, left: 0, right: 0 }),
+}));
 jest.mock('@/components/eiyu/account-header', () => ({ __esModule: true, default: () => null }));
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
@@ -33,6 +37,7 @@ beforeEach(() => {
   mockCaptured.screens = [];
   mockCaptured.screenOptions = undefined;
   mockFontScale = 1;
+  mockInsetBottom = 24;
 });
 
 describe('tab layout', () => {
@@ -58,17 +63,49 @@ describe('tab layout', () => {
     expect(options.tabBarActiveTintColor).toBe(PALETTE_TOKENS.jade.light.accent);
   });
 
-  it('floats over the content at normal font size', async () => {
-    await renderWithTheme(<TabLayout />);
-    expect((mockCaptured.screenOptions as { tabBarStyle: Record<string, unknown> }).tabBarStyle.position).toBe('absolute');
+  const barStyle = () => (mockCaptured.screenOptions as { tabBarStyle: Record<string, number | string> }).tabBarStyle;
+
+  it('is part of the layout at every font size, so no screen has to guess how much it covers', async () => {
+    for (const scale of [1, 1.15, 1.3, 2]) {
+      mockFontScale = scale;
+      await renderWithTheme(<TabLayout />);
+      expect(barStyle().position).not.toBe('absolute');
+    }
   });
 
-  it('takes its own room and grows when the system font is scaled up, so labels are not clipped', async () => {
+  it('adds the system navigation bar inset to its height: 3-button navigation gets more room than gestures', async () => {
+    mockInsetBottom = 24;
+    await renderWithTheme(<TabLayout />);
+    const gesture = barStyle().height as number;
+    mockInsetBottom = 48;
+    await renderWithTheme(<TabLayout />);
+    const threeButton = barStyle().height as number;
+    expect(threeButton - gesture).toBe(24);
+    expect(barStyle().paddingBottom as number).toBeGreaterThanOrEqual(48);
+  });
+
+  it('has no inset to add when the device reports none', async () => {
+    mockInsetBottom = 0;
+    await renderWithTheme(<TabLayout />);
+    expect(barStyle().height as number).toBeGreaterThan(0);
+    expect(barStyle().paddingBottom as number).toBeGreaterThanOrEqual(0);
+  });
+
+  it('grows with the system font scale and still includes the inset', async () => {
+    mockInsetBottom = 48;
+    mockFontScale = 1;
+    await renderWithTheme(<TabLayout />);
+    const normal = barStyle().height as number;
     mockFontScale = 2;
     await renderWithTheme(<TabLayout />);
-    const style = (mockCaptured.screenOptions as { tabBarStyle: Record<string, unknown> }).tabBarStyle;
-    expect(style.position).toBe('relative');
-    expect(style.height as number).toBeGreaterThan(73);
+    expect(barStyle().height as number).toBeGreaterThan(normal);
+    expect(barStyle().paddingBottom as number).toBeGreaterThanOrEqual(48);
+  });
+
+  it('caps label scaling so a huge font cannot push the labels out of the bar', async () => {
+    mockFontScale = 2;
+    await renderWithTheme(<TabLayout />);
+    expect((mockCaptured.screenOptions as { tabBarAllowFontScaling?: boolean }).tabBarAllowFontScaling).toBe(false);
   });
 
   it('keeps the account header as the header of every tab', async () => {
