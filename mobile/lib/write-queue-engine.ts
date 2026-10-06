@@ -33,7 +33,8 @@ export interface WriteQueueDeps {
   userId: string;
   storage: WriteQueueStorage;
   now: () => Date;
-  timeZone: () => string;
+  /** The account's IANA zone, or null until it is known (the profile may still be loading). */
+  timeZone: () => string | null;
   /** null = unknown, which is treated as "try". */
   isOnline: () => boolean | null;
   newId: () => string;
@@ -53,6 +54,7 @@ export interface EnqueueRequest {
   delta?: number;
   /** Progress only: the count shown when the user tapped. */
   base?: number;
+  label?: string;
 }
 
 export interface WriteQueueEngine {
@@ -191,7 +193,8 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     for (;;) {
       if (disposed) return;
       sweep();
-      if (deps.isOnline() === false) return;
+      // Sending needs a known account day; waiting is safe, guessing the day is not.
+      if (deps.timeZone() === null || deps.isOnline() === false) return;
       const entry = nextEligible();
       if (!entry) return;
       if (!(await process(entry))) return;
@@ -229,14 +232,17 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
       return () => { listeners.delete(listener); };
     },
     enqueue(request) {
+      const timeZone = deps.timeZone();
+      if (timeZone === null) return;
       commit(enqueueEntry(entries, {
         id: deps.newId(),
         userId: deps.userId,
         kind: request.kind,
         habitId: request.habitId,
-        accountDate: accountDateKey(deps.now(), deps.timeZone()),
+        accountDate: accountDateKey(deps.now(), timeZone),
         delta: request.delta,
         base: request.base,
+        label: request.label,
         now: deps.now().getTime(),
       }));
     },
@@ -245,7 +251,8 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     retry(id) {
       const entry = entries.find(candidate => candidate.id === id);
       if (!entry || entry.status !== 'failed' || entry.failure?.reason === 'day-passed') return false;
-      if (isExpired(entry, deps.now(), deps.timeZone())) return false;
+      const timeZone = deps.timeZone();
+      if (timeZone !== null && isExpired(entry, deps.now(), timeZone)) return false;
       patch(id, { status: 'pending', attempts: 0, failure: undefined });
       return true;
     },

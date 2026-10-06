@@ -30,6 +30,8 @@ export interface QueueEntry {
   delta?: number;
   /** Progress only: the count the write started from, used to recognise an applied write. */
   base?: number;
+  /** The quest's name when the write was made, so a failure can name it even if the quest has left the board. */
+  label?: string;
   createdAt: number;
   attempts: number;
   status: QueueStatus;
@@ -44,6 +46,7 @@ export interface EnqueueInput {
   accountDate: string;
   delta?: number;
   base?: number;
+  label?: string;
   now: number;
 }
 
@@ -91,6 +94,7 @@ export function enqueue(entries: readonly QueueEntry[], input: EnqueueInput): Qu
     habitId: input.habitId,
     accountDate: input.accountDate,
     ...(input.kind === 'progress' ? { delta: input.delta, base: input.base } : {}),
+    ...(input.label !== undefined ? { label: input.label } : {}),
     createdAt: input.now,
     attempts: 0,
     status: 'pending',
@@ -264,7 +268,9 @@ export function decodeQueue(raw: string | null | undefined, userId: string): Que
 }
 
 /** Fails every pending or uncertain entry from an earlier account day. A sending one is left for its in-flight request. */
-export function expireEntries(entries: readonly QueueEntry[], now: Date, timeZone: string): QueueEntry[] {
+export function expireEntries(entries: readonly QueueEntry[], now: Date, timeZone: string | null): QueueEntry[] {
+  // Without the account zone the day cannot be judged; the device zone would be a guess that could expire a current write.
+  if (timeZone === null) return entries as QueueEntry[];
   let changed = false;
   const next = entries.map(entry => {
     if ((entry.status !== 'pending' && entry.status !== 'uncertain') || !isExpired(entry, now, timeZone)) return entry;
@@ -275,7 +281,7 @@ export function expireEntries(entries: readonly QueueEntry[], now: Date, timeZon
 }
 
 /** After a launch: a write caught mid-send becomes uncertain, and one from an earlier account day is failed. */
-export function reviveEntries(entries: readonly QueueEntry[], now: Date, timeZone: string): QueueEntry[] {
+export function reviveEntries(entries: readonly QueueEntry[], now: Date, timeZone: string | null): QueueEntry[] {
   const revived = entries.map(entry => (entry.status === 'sending' ? { ...entry, status: 'uncertain' as const } : entry));
   return expireEntries(revived, now, timeZone);
 }

@@ -10,8 +10,8 @@ import type { QueueEntry } from '@/lib/write-queue';
 
 export interface UseWriteQueueOptions {
   userId: string | undefined;
-  /** The account's IANA zone, read fresh each time (it can change while entries wait). */
-  timeZone: () => string;
+  /** The account's IANA zone, read fresh each time (it can change while entries wait). Null until the profile has loaded. */
+  timeZone: () => string | null;
   send: (entry: QueueEntry) => Promise<unknown>;
   readQuest: (habitId: string) => Promise<Quest | undefined>;
   onApplied: (entry: QueueEntry, result?: unknown) => Promise<void> | void;

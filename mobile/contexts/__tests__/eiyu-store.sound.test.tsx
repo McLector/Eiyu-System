@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
@@ -73,7 +74,8 @@ async function mountStore() {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await AsyncStorage.clear();
   jest.clearAllMocks();
   currentStore = null;
   mockShared.archiveHabit.mockResolvedValue(undefined);
@@ -149,9 +151,9 @@ describe('completion sound effects', () => {
     expect(currentStore).not.toHaveProperty('completeEasy');
   });
 
-  it('does not play on failed completion, undo, or partial quantity progress', async () => {
+  it('does not play on a refused completion, an undo, or partial quantity progress', async () => {
     mockSoundPreference.getSoundEffectsEnabled.mockResolvedValue(true);
-    mockCompleteHabit.mockRejectedValueOnce(new TypeError('Network request failed'));
+    mockCompleteHabit.mockRejectedValueOnce({ message: 'habit habit-1 is not eligible on today' });
     mockShared.fetchTodayHabits.mockResolvedValue([
       quest,
       { ...quest, id: 'quantity', name: 'Drink water', targetCount: 2, progressCount: 0 },
@@ -159,11 +161,17 @@ describe('completion sound effects', () => {
     mockShared.incrementHabitProgress.mockResolvedValue(1);
     await mountStore();
     await waitFor(() => expect(currentStore?.soundEffectsLoaded).toBe(true));
+    await waitFor(() => expect(currentStore?.user.timeZone).toBe('UTC'));
 
     await act(async () => { currentStore!.toggleQuest('habit-1'); });
-    await waitFor(() => expect(currentStore?.questsError).toMatch(/offline/));
+    await waitFor(() => expect(currentStore?.questsError).toMatch(/no longer on today/));
     expect(mockAudioPlayer.play).not.toHaveBeenCalled();
 
+    // Once the write lands, the server reports the new count.
+    mockShared.fetchTodayHabits.mockResolvedValue([
+      quest,
+      { ...quest, id: 'quantity', name: 'Drink water', targetCount: 2, progressCount: 1 },
+    ]);
     await act(async () => { currentStore!.adjustProgress('quantity', 1); });
     await waitFor(() => expect(currentStore?.user.quests.find(item => item.id === 'quantity')?.progressCount).toBe(1));
     expect(mockAudioPlayer.play).not.toHaveBeenCalled();
@@ -190,6 +198,7 @@ describe('completion sound effects', () => {
     mockShared.incrementHabitProgress.mockResolvedValue(2);
     await mountStore();
     await waitFor(() => expect(currentStore?.soundEffectsLoaded).toBe(true));
+    await waitFor(() => expect(currentStore?.user.timeZone).toBe('UTC'));
 
     await act(async () => { currentStore!.adjustProgress('quantity', 1); });
     await waitFor(() => expect(mockAudioPlayer.play).toHaveBeenCalledTimes(1));
@@ -197,25 +206,23 @@ describe('completion sound effects', () => {
     await waitFor(() => expect(mockAudioPlayer.play).toHaveBeenCalledTimes(2));
   });
 
-  it('plays only once for concurrent quantity responses confirming the same crossing', async () => {
+  it('plays once for a crossing: a second tap at the target changes nothing and is not sent', async () => {
     mockSoundPreference.getSoundEffectsEnabled.mockResolvedValue(true);
     mockShared.fetchTodayHabits.mockResolvedValue([
       { ...quest, id: 'quantity', name: 'Drink water', targetCount: 2, progressCount: 1 },
     ]);
-    const resolveProgress: Array<(value: number) => void> = [];
-    mockShared.incrementHabitProgress.mockImplementation(() => new Promise(resolve => resolveProgress.push(resolve)));
+    mockShared.incrementHabitProgress.mockResolvedValue(2);
     await mountStore();
     await waitFor(() => expect(currentStore?.soundEffectsLoaded).toBe(true));
     await waitFor(() => expect(currentStore?.user.quests).toHaveLength(1));
+    await waitFor(() => expect(currentStore?.user.timeZone).toBe('UTC'));
 
     await act(async () => {
       currentStore!.adjustProgress('quantity', 1);
       currentStore!.adjustProgress('quantity', 1);
     });
-    await waitFor(() => expect(mockShared.incrementHabitProgress).toHaveBeenCalledTimes(2));
-    await act(async () => { resolveProgress.forEach(resolve => resolve(2)); });
-    await waitFor(() => expect(mockAudioPlayer.play).toHaveBeenCalled());
-    expect(mockAudioPlayer.play).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockAudioPlayer.play).toHaveBeenCalledTimes(1));
+    expect(mockShared.incrementHabitProgress).toHaveBeenCalledTimes(1);
   });
 
   it('keeps quest completion successful if the audio player cannot play', async () => {
@@ -223,6 +230,7 @@ describe('completion sound effects', () => {
     mockAudioPlayer.seekTo.mockRejectedValueOnce(new Error('audio unavailable'));
     await mountStore();
     await waitFor(() => expect(currentStore?.soundEffectsLoaded).toBe(true));
+    await waitFor(() => expect(currentStore?.user.timeZone).toBe('UTC'));
 
     await act(async () => { currentStore!.toggleQuest('habit-1'); });
     await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledTimes(1));

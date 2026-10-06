@@ -74,6 +74,15 @@ import {
   type RewardReceipt,
 } from '@eiyu/shared';
 import { newRequestId } from '@/lib/request-id';
+import { useWriteQueue } from '@/lib/use-write-queue';
+import {
+  applyOverlay,
+  isOfflineNetworkFailure,
+  syncStateByHabit,
+  waitingCount,
+  type QueueEntry,
+  type SyncState,
+} from '@/lib/write-queue';
 import { fetchProfile, updateProfile } from '@eiyu/shared';
 import { fetchStats } from '@eiyu/shared';
 import { LongQuest, Quest, UserProfile } from '@eiyu/shared';
@@ -107,15 +116,6 @@ export async function invalidateForNewDay(qc: QueryClient, userId: string): Prom
   await qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }).then(() => qc.invalidateQueries({ queryKey: backlogKey(userId) }));
 }
 
-function isOfflineNetworkFailure(error: unknown): boolean {
-  const message = error instanceof Error
-    ? error.message
-    : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
-      ? error.message
-      : String(error);
-  return /network request failed|failed to fetch|networkerror|load failed/i.test(message);
-}
-
 function formatQuestActionError(error: unknown): string {
   return isOfflineNetworkFailure(error)
     ? "You're offline. Your update wasn't saved. Your saved quests are still shown."
@@ -139,6 +139,20 @@ interface EiyuStore {
   questsHaveCachedData: boolean;
   /** Re-fetch today's quests after a load failure (e.g. a transient network/auth error). */
   retryQuests: () => Promise<void>;
+  /** Writes made but not yet confirmed by the server, oldest first (the offline queue). */
+  syncEntries: QueueEntry[];
+  /** True only when the device is known to be offline. */
+  syncOffline: boolean;
+  /** The tag each quest earns: waiting to sync, being checked, or not saved. Quiet writes have none. */
+  syncStates: Map<string, SyncState>;
+  /** Changes the Board reports as waiting to sync. */
+  syncWaiting: number;
+  /** Writes the server refused or that could not land, until dismissed. */
+  failedSyncs: QueueEntry[];
+  /** Puts a failed write back in line (not one whose day passed). */
+  retrySync: (id: string) => void;
+  /** Drops a failed write and refreshes the board to server truth. */
+  dismissSync: (id: string) => void;
   /** Full completion if not yet done, undo if already done (R-05, R-07). */
   toggleQuest: (id: string) => void;
   /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
@@ -218,7 +232,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [accountDayRevision, setAccountDayRevision] = useState(0);
   const lifecycleRequests = useRef(new Map<string, Promise<void>>());
   const deletedHabitIds = useRef(new Set<string>());
-  const quantitySoundTransitions = useRef(new Set<string>());
   const explicitPermissionRequest = useRef(false);
   const activeUserId = useRef(userId);
   const offlineFailurePending = useRef(false);
@@ -279,7 +292,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     enabled: !!userId,
   });
 
-  const quests = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
+  const cachedQuests = useMemo(() => habitsQuery.data ?? [], [habitsQuery.data]);
   const backlog = useMemo(() => backlogQuery.data ?? [], [backlogQuery.data]);
   const questsHaveCachedData = habitsQuery.data !== undefined;
   const longQuests = useMemo(() => longQuestsQuery.data ?? [], [longQuestsQuery.data]);
@@ -537,125 +550,156 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     if (soundEffectsEnabled) playCompletionSound();
   }, [soundEffectsEnabled, playCompletionSound]);
 
-  /** Optimistic completion with rollback (same semantics as the pre-Phase-3 store). */
-  const runCompletion = useCallback(
-    async (id: string, action: () => Promise<void>, optimisticCompleted: boolean) => {
-      if (!userId) return;
-      const key = habitsTodayKey(userId);
-      qc.setQueryData<Quest[]>(key, qs =>
-        qs?.map(q => (q.id === id ? { ...q, completed: optimisticCompleted } : q))
-      );
-      try {
-        await action();
-        if (optimisticCompleted) playSuccessfulCompletionSound();
-        // Recompute streaks/XP/weekly progress from fresh server state.
-        await Promise.all([
-          qc.invalidateQueries({ queryKey: ['stats', userId] }),
-          qc.invalidateQueries({ queryKey: key }),
-        ]);
-        setQuestActionError(null);
-      } catch (err) {
-        qc.setQueryData<Quest[]>(key, qs =>
-          qs?.map(q => (q.id === id ? { ...q, completed: !optimisticCompleted } : q))
-        );
-        setQuestActionError(formatTrackedQuestActionError(err));
+  const accountTimeZone = profile?.timeZone ?? deviceTimeZone();
+
+  /** Performs one queued write. Everything is dated with the day it was made on, never today's date at send time. */
+  const sendQueuedWrite = useCallback(
+    async (entry: QueueEntry): Promise<unknown> => {
+      if (!userId) return undefined;
+      const stat = qc.getQueryData<Quest[]>(habitsTodayKey(userId))?.find(q => q.id === entry.habitId)?.stat ?? 'STR';
+      switch (entry.kind) {
+        case 'complete':
+          await completeHabit(userId, entry.habitId, stat, 'full', entry.accountDate, accountTimeZone);
+          return undefined;
+        case 'undo':
+          await undoCompletion(userId, entry.habitId, stat, accountTimeZone, entry.accountDate);
+          return undefined;
+        case 'progress':
+          return incrementHabitProgress(entry.habitId, entry.accountDate, entry.delta ?? 0);
+        case 'recovery':
+          return completeHabitRecovery(entry.habitId);
       }
     },
-    [userId, qc, formatTrackedQuestActionError, playSuccessfulCompletionSound]
+    [userId, qc, accountTimeZone]
   );
+
+  /** A fresh read of today's board, used to settle a write that may already have landed. */
+  const readQuestFromServer = useCallback(
+    async (habitId: string): Promise<Quest | undefined> => {
+      if (!userId) return undefined;
+      const fresh = await fetchTodayHabits(userId);
+      qc.setQueryData(habitsTodayKey(userId), fresh);
+      return fresh.find(q => q.id === habitId);
+    },
+    [userId, qc]
+  );
+
+  /** The server confirmed a write: record it in the cache first so the row cannot flicker back, then refresh. */
+  const confirmQueuedWrite = useCallback(
+    async (entry: QueueEntry, result?: unknown) => {
+      if (!userId) return;
+      const key = habitsTodayKey(userId);
+      const before = qc.getQueryData<Quest[]>(key)?.find(q => q.id === entry.habitId);
+      const count = typeof result === 'number' ? result : undefined;
+      qc.setQueryData<Quest[]>(key, qs =>
+        qs?.map(q => {
+          if (q.id !== entry.habitId) return q;
+          if (entry.kind === 'complete') return { ...q, completed: true };
+          if (entry.kind === 'undo') return { ...q, completed: false };
+          if (entry.kind === 'progress' && count !== undefined && q.targetCount != null) {
+            return { ...q, progressCount: count, completed: count >= q.targetCount };
+          }
+          return q;
+        })
+      );
+      const crossedTarget =
+        entry.kind === 'progress' &&
+        count !== undefined &&
+        before?.targetCount != null &&
+        (entry.base ?? 0) < before.targetCount &&
+        count >= before.targetCount;
+      if (entry.kind === 'complete' || entry.kind === 'recovery' || crossedTarget) playSuccessfulCompletionSound();
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['stats', userId] }),
+        qc.invalidateQueries({ queryKey: key }),
+      ]);
+      setQuestActionError(null);
+    },
+    [userId, qc, playSuccessfulCompletionSound]
+  );
+
+  const reportFailedWrite = useCallback(
+    (entry: QueueEntry) => {
+      setQuestActionError(entry.failure?.message ?? 'Not saved.');
+      if (userId) void qc.invalidateQueries({ queryKey: habitsTodayKey(userId) });
+    },
+    [userId, qc]
+  );
+
+  const writeQueue = useWriteQueue({
+    userId,
+    timeZone: () => profile?.timeZone ?? null,
+    send: sendQueuedWrite,
+    readQuest: readQuestFromServer,
+    onApplied: confirmQueuedWrite,
+    onFailed: reportFailedWrite,
+  });
+  const {
+    entries: syncEntries,
+    offline: syncOffline,
+    enqueue: enqueueWrite,
+    flush: flushWrites,
+    sweep: sweepWrites,
+    retry: retryWrite,
+    dismiss: dismissWrite,
+  } = writeQueue;
+
+  // The board as the user sees it: server truth plus their unsent writes. The cache itself is never written ahead of
+  // the server, so a refetch or the persisted copy cannot hold a change that never landed.
+  const today = useMemo(() => accountDateKey(new Date(), accountTimeZone), [accountTimeZone, accountDayRevision]);
+  const quests = useMemo(() => applyOverlay(cachedQuests, syncEntries, today), [cachedQuests, syncEntries, today]);
+  const syncStates = useMemo(() => syncStateByHabit(syncEntries, syncOffline), [syncEntries, syncOffline]);
+  const syncWaiting = useMemo(() => waitingCount(syncEntries, syncOffline), [syncEntries, syncOffline]);
+  const failedSyncs = useMemo(() => syncEntries.filter(entry => entry.status === 'failed'), [syncEntries]);
+
+  // The account day ended, or the account zone just became known: judge which writes can still land, then send them.
+  const accountZoneKnown = !!profile?.timeZone;
+  useEffect(() => {
+    if (!accountZoneKnown) return;
+    sweepWrites();
+    void flushWrites();
+  }, [accountDayRevision, accountZoneKnown, profile?.timeZone, sweepWrites, flushWrites]);
 
   const toggleQuest = useCallback(
     (id: string) => {
       const quest = quests.find(q => q.id === id);
-      if (!quest || !userId) return;
-      if (quest.completed) {
-        void runCompletion(
-          id,
-          () => undoCompletion(userId, id, quest.stat, profile?.timeZone),
-          false
-        );
-      } else {
-        void runCompletion(
-          id,
-          () => completeHabit(userId, id, quest.stat, 'full', undefined, profile?.timeZone),
-          true
-        );
-      }
+      if (!quest || !userId || !accountZoneKnown) return;
+      enqueueWrite({ kind: quest.completed ? 'undo' : 'complete', habitId: id, label: quest.name });
+      void flushWrites();
     },
-    [quests, userId, runCompletion, profile?.timeZone]
+    [quests, userId, accountZoneKnown, enqueueWrite, flushWrites]
   );
 
-  /**
-   * Slice 5: bump a quantity habit's today progress by `delta`, clamped
-   * server-side. Optimistic locally, then reconciled to the RPC's returned
-   * count — a rapid string of taps produces overlapping in-flight calls,
-   * and whichever response lands last should win, not whichever request
-   * was issued last.
-   */
+  /** Bump a quantity habit's progress by `delta`, clamped. Based on the count the user sees, so taps queue up cleanly. */
   const adjustProgress = useCallback(
     (id: string, delta: number) => {
       const quest = quests.find(q => q.id === id);
-      if (!quest || !userId || quest.targetCount == null) return;
-      const target = quest.targetCount;
-      const key = habitsTodayKey(userId);
-      const prevProgress = quest.progressCount;
-      const prevCompleted = quest.completed;
-      const optimisticNew = Math.max(0, Math.min(target, prevProgress + delta));
-      qc.setQueryData<Quest[]>(key, qs =>
-        qs?.map(q => (q.id === id ? { ...q, progressCount: optimisticNew, completed: optimisticNew >= target } : q))
-      );
-      incrementHabitProgress(
-        id,
-        accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone()),
-        delta
-      )
-        .then(async serverCount => {
-          qc.setQueryData<Quest[]>(key, qs =>
-            qs?.map(q => (q.id === id ? { ...q, progressCount: serverCount, completed: serverCount >= target } : q))
-          );
-          if (
-            soundEffectsEnabled &&
-            !quest.completed &&
-            prevProgress < target &&
-            serverCount >= target &&
-            !quantitySoundTransitions.current.has(id)
-          ) {
-            quantitySoundTransitions.current.add(id);
-            playSuccessfulCompletionSound();
-            setTimeout(() => quantitySoundTransitions.current.delete(id), 0);
-          }
-          await Promise.all([
-            qc.invalidateQueries({ queryKey: ['stats', userId] }),
-          ]);
-          setQuestActionError(null);
-        })
-        .catch(err => {
-          qc.setQueryData<Quest[]>(key, qs =>
-            qs?.map(q => (q.id === id ? { ...q, progressCount: prevProgress, completed: prevCompleted } : q))
-          );
-          setQuestActionError(formatTrackedQuestActionError(err));
-        });
+      if (!quest || !userId || !accountZoneKnown || quest.targetCount == null) return;
+      const base = quest.progressCount;
+      const next = Math.max(0, Math.min(quest.targetCount, base + delta));
+      if (next === base) return;
+      enqueueWrite({ kind: 'progress', habitId: id, delta: next - base, base, label: quest.name });
+      void flushWrites();
     },
-    [quests, userId, qc, profile?.timeZone, formatTrackedQuestActionError, soundEffectsEnabled, playSuccessfulCompletionSound]
+    [quests, userId, accountZoneKnown, enqueueWrite, flushWrites]
   );
 
   const completeRecovery = useCallback(
     async (id: string) => {
       const quest = quests.find(q => q.id === id);
-      if (!quest || !userId || !quest.frozen) return;
-      try {
-        await completeHabitRecovery(id);
-        playSuccessfulCompletionSound();
-        await Promise.all([
-          qc.invalidateQueries({ queryKey: ['stats', userId] }),
-          qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
-        ]);
-        setQuestActionError(null);
-      } catch (err) {
-        setQuestActionError(formatTrackedQuestActionError(err));
-      }
+      if (!quest || !userId || !accountZoneKnown || !quest.frozen) return;
+      enqueueWrite({ kind: 'recovery', habitId: id, label: quest.name });
+      await flushWrites();
     },
-    [quests, userId, qc, formatTrackedQuestActionError, playSuccessfulCompletionSound]
+    [quests, userId, accountZoneKnown, enqueueWrite, flushWrites]
+  );
+
+  const retrySync = useCallback((id: string) => { retryWrite(id); }, [retryWrite]);
+  const dismissSync = useCallback(
+    (id: string) => {
+      if (dismissWrite(id) && userId) void qc.invalidateQueries({ queryKey: habitsTodayKey(userId) });
+    },
+    [dismissWrite, userId, qc]
   );
 
   const saveHabit = useCallback(
@@ -910,6 +954,13 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       questsError,
       questsHaveCachedData,
       retryQuests,
+      syncEntries,
+      syncOffline,
+      syncStates,
+      syncWaiting,
+      failedSyncs,
+      retrySync,
+      dismissSync,
       toggleQuest,
       adjustProgress,
       completeRecovery,
@@ -951,6 +1002,13 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       questsError,
       questsHaveCachedData,
       retryQuests,
+      syncEntries,
+      syncOffline,
+      syncStates,
+      syncWaiting,
+      failedSyncs,
+      retrySync,
+      dismissSync,
       toggleQuest,
       adjustProgress,
       completeRecovery,

@@ -360,6 +360,40 @@ describe('write queue engine', () => {
     });
   });
 
+  describe('unknown account zone', () => {
+    it('neither expires nor sends anything until the account zone is known', async () => {
+      let zone: string | null = null;
+      const t = setup({ timeZone: () => zone }, [stored({ accountDate: '2026-10-06' })]);
+      await t.engine.load();
+      await t.engine.flush();
+      expect(t.deps.send).not.toHaveBeenCalled();
+      expect(t.engine.getEntries()[0].status).toBe('pending');
+      // Account zone Auckland: today there is 2026-10-06 while UTC still says 10-05, so the entry is current.
+      zone = 'Pacific/Auckland';
+      await t.engine.flush();
+      expect(t.deps.send).toHaveBeenCalledTimes(1);
+      expect(t.engine.getEntries()).toEqual([]);
+    });
+
+    it('expires an old entry only once the zone is known', async () => {
+      let zone: string | null = null;
+      const t = setup({ timeZone: () => zone, isOnline: () => false }, [stored({ accountDate: '2026-10-04' })]);
+      await t.engine.load();
+      t.engine.sweep();
+      expect(t.engine.getEntries()[0].status).toBe('pending');
+      zone = 'UTC';
+      t.engine.sweep();
+      expect(t.engine.getEntries()[0].status).toBe('failed');
+    });
+
+    it('ignores a write made before the zone is known instead of guessing a day for it', async () => {
+      const t = setup({ timeZone: () => null });
+      await t.engine.load();
+      t.engine.enqueue({ kind: 'complete', habitId: 'h1' });
+      expect(t.engine.getEntries()).toEqual([]);
+    });
+  });
+
   describe('server rejections', () => {
     it('fails a refused entry with a reason and carries on with the rest', async () => {
       const send = jest.fn(async (entry: QueueEntry) => { if (entry.habitId === 'h1') throw { message: 'habit h1 is not eligible on 2026-10-05' }; });

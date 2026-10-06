@@ -42,6 +42,12 @@ describe('enqueue', () => {
     expect(result).toEqual([expect.objectContaining({ id: 'a', kind: 'complete', status: 'pending', attempts: 0, createdAt: 1000 })]);
   });
 
+  it('keeps the quest name given at tap time so a failure can still name a quest that left the board', () => {
+    const result = enqueue([], input({ id: 'a', label: 'Morning run' }));
+    expect(result[0].label).toBe('Morning run');
+    expect(enqueue([], input({ id: 'b' }))[0]).not.toHaveProperty('label');
+  });
+
   it('cancels a pending complete followed by an undo for the same habit and day', () => {
     const first = enqueue([], input({ id: 'a', kind: 'complete' }));
     expect(enqueue(first, input({ id: 'b', kind: 'undo' }))).toEqual([]);
@@ -317,7 +323,7 @@ describe('waitingCount', () => {
 
 describe('encodeQueue / decodeQueue', () => {
   it('round-trips entries for the same user', () => {
-    const entries = [entry({ id: 'a' }), entry({ id: 'b', kind: 'progress', delta: 2, base: 1 })];
+    const entries = [entry({ id: 'a', label: 'Run' }), entry({ id: 'b', kind: 'progress', delta: 2, base: 1 })];
     expect(decodeQueue(encodeQueue(entries), USER)).toEqual(entries);
   });
 
@@ -353,6 +359,14 @@ describe('reviveEntries', () => {
     const [revived] = reviveEntries([entry({ accountDate: '2026-10-04' })], now, 'UTC');
     expect(revived.status).toBe('failed');
     expect(revived.failure).toEqual(expect.objectContaining({ reason: 'day-passed' }));
+  });
+
+  it('does not expire anything while the account zone is unknown, but still marks a mid-send entry uncertain', () => {
+    const old = entry({ id: 'old', accountDate: '2026-10-01' });
+    const mid = entry({ id: 'mid', status: 'sending' });
+    const result = reviveEntries([old, mid], now, null);
+    expect(result[0].status).toBe('pending');
+    expect(result[1].status).toBe('uncertain');
   });
 
   it('keeps pending entries from today untouched and leaves failed entries failed', () => {
