@@ -98,13 +98,24 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
   })();
   void loading.then(() => persist());
 
-  /** Writes the newest state once the load has finished, so an early write can never replace what an earlier session left. */
+  /**
+   * Writes the newest state once the load has finished, so an early write can never replace what an earlier session
+   * left behind. A write that has not started yet reads the newest state when it does, so changes made while one is
+   * waiting share it instead of each queueing their own.
+   */
+  let waitingWrite: Promise<unknown> | null = null;
   const persist = (): Promise<unknown> => {
-    persistChain = persistChain
+    if (waitingWrite) return waitingWrite;
+    const write = persistChain
       .then(() => loading)
-      .then(() => (entries.length > 0 ? deps.storage.setItem(key, encodeQueue(entries)) : deps.storage.removeItem(key)))
+      .then(() => {
+        waitingWrite = null;
+        return entries.length > 0 ? deps.storage.setItem(key, encodeQueue(entries)) : deps.storage.removeItem(key);
+      })
       .catch(() => {});
-    return persistChain;
+    waitingWrite = write;
+    persistChain = write;
+    return write;
   };
 
   const commit = (next: QueueEntry[]) => {
@@ -146,6 +157,7 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
       } catch {
         return false;
       }
+      if (disposed) return false;
       const resolution = resolveUncertain(entry, quest);
       if (resolution.action === 'drop') {
         await applied(entry);
@@ -160,6 +172,9 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     const attempts = entry.attempts + 1;
     patch(entry.id, { status: 'sending', attempts });
     await persist();
+    // Signed out or switched account while the write was being recorded: it stays `sending` on disk, which the next
+    // launch settles as uncertain, and nothing goes out under whoever is signed in now.
+    if (disposed) return false;
     const sending: QueueEntry = { ...entry, status: 'sending', attempts };
     let result: unknown;
     try {

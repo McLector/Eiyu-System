@@ -165,6 +165,41 @@ describe('write queue engine', () => {
     });
   });
 
+  describe('storage writes', () => {
+    it('coalesces changes that arrive while a write is waiting, and the last write holds the newest state', async () => {
+      const store = new Map<string, string>();
+      const writes: number[] = [];
+      const t = setup({
+        isOnline: () => false,
+        storage: {
+          getItem: jest.fn(async () => null),
+          setItem: jest.fn(async (key: string, value: string) => {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            store.set(key, value);
+            writes.push(decodeQueue(value, 'user-1').length);
+          }),
+          removeItem: jest.fn(async (key: string) => { store.delete(key); }),
+        },
+      });
+      await t.engine.load();
+      for (const habitId of ['a', 'b', 'c', 'd', 'e']) t.engine.enqueue({ kind: 'complete', habitId });
+      await new Promise(resolve => setTimeout(resolve, 200));
+      expect(writes.length).toBeLessThanOrEqual(2);
+      expect(writes[writes.length - 1]).toBe(5);
+      expect(decodeQueue(store.get(KEY), 'user-1')).toHaveLength(5);
+    });
+
+    it('still writes again for a change made after a write has started', async () => {
+      const t = setup({ isOnline: () => false });
+      await t.engine.load();
+      t.engine.enqueue({ kind: 'complete', habitId: 'a' });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      t.engine.enqueue({ kind: 'complete', habitId: 'b' });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(t.persisted().map(e => e.habitId)).toEqual(['a', 'b']);
+    });
+  });
+
   describe('flush', () => {
     it('hands the result of the request to the applied hook', async () => {
       const t = setup({ send: jest.fn(async () => 7) });
@@ -478,6 +513,30 @@ describe('write queue engine', () => {
       await new Promise(resolve => setTimeout(resolve, 0));
       expect(t.store.has(KEY)).toBe(false);
       expect(t.engine.dismiss('stored-1')).toBeUndefined();
+    });
+
+    it('dispose stops a send that is already past the start of its run, so a signed-out user never sends under the next session', async () => {
+      let release: () => void = () => {};
+      const store = new Map<string, string>();
+      const t = setup({
+        storage: {
+          getItem: jest.fn(async () => null),
+          // The first write is the one that marks the entry as sending; hold it.
+          setItem: jest.fn((key: string, value: string) => new Promise<void>(resolve => {
+            release = () => { store.set(key, value); resolve(); };
+            if (value.includes('"status":"pending"') && !value.includes('sending')) release();
+          })),
+          removeItem: jest.fn(async () => {}),
+        },
+      });
+      await t.engine.load();
+      t.engine.enqueue({ kind: 'complete', habitId: 'h1' });
+      const flushing = t.engine.flush();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      t.engine.dispose();
+      release();
+      await flushing;
+      expect(t.deps.send).not.toHaveBeenCalled();
     });
 
     it('dispose stops later flushes', async () => {
