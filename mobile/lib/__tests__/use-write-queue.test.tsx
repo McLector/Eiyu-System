@@ -4,14 +4,14 @@ import { AppState } from 'react-native';
 import type { Quest } from '@eiyu/shared';
 
 import { encodeQueue, type QueueEntry } from '../write-queue';
+import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const mockNetwork = { getNetworkStateAsync: jest.fn(), addNetworkStateListener: jest.fn() };
-jest.doMock('expo-network', () => mockNetwork);
+installExpoNetworkMock(mockNetwork);
 
 const { useWriteQueue } = require('../use-write-queue') as typeof import('../use-write-queue');
-
 let networkHandlers: ((state: { isConnected?: boolean }) => void)[] = [];
 let appStateHandlers: ((state: string) => void)[] = [];
 const removeNetwork = jest.fn();

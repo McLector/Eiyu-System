@@ -5,6 +5,7 @@ import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
 
 import { encodeQueue, type QueueEntry } from '@/lib/write-queue';
+import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 // Each step here crosses several async hops (storage, engine, query refetch); a full parallel run is slower than one suite alone.
@@ -52,7 +53,7 @@ jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user:
 jest.doMock('@/lib/notifications', () => mockNative);
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
 jest.doMock('@/lib/sound-effects-prefs', () => mockSoundPreference);
-jest.doMock('expo-network', () => mockNetwork);
+installExpoNetworkMock(mockNetwork);
 jest.doMock('expo-audio', () => ({ useAudioPlayer: jest.fn(() => mockAudioPlayer) }));
 
 const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../eiyu-store');

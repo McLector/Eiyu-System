@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
+import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -73,7 +74,7 @@ jest.doMock('@/lib/sound-effects-prefs', () => ({
   getSoundEffectsEnabled: jest.fn().mockResolvedValue(false),
   setSoundEffectsEnabled: jest.fn().mockResolvedValue(undefined),
 }));
-jest.doMock('expo-network', () => mockNetwork, { virtual: true });
+installExpoNetworkMock(mockNetwork);
 jest.doMock('expo-audio', () => ({ useAudioPlayer: () => ({ seekTo: jest.fn(), play: jest.fn(), volume: 1 }) }));
 
 const { useEiyu, EiyuProvider, invalidateForNewDay } = require('../eiyu-store') as typeof import('../eiyu-store');

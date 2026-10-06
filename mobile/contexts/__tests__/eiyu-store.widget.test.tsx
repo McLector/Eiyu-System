@@ -7,6 +7,7 @@ import { requestWidgetUpdate } from 'react-native-android-widget';
 
 import { TestThemeProvider } from '@/components/ui/test-theme';
 import { decodeSnapshot, WIDGET_KEY, type ReadySnapshot } from '@/lib/widget-snapshot';
+import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 configure({ asyncUtilTimeout: 5000 });
@@ -54,7 +55,7 @@ jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => mockAuth }));
 jest.doMock('@/lib/notifications', () => mockNative);
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
 jest.doMock('@/lib/sound-effects-prefs', () => mockSoundPreference);
-jest.doMock('expo-network', () => mockNetwork);
+installExpoNetworkMock(mockNetwork);
 jest.doMock('expo-audio', () => ({ useAudioPlayer: jest.fn(() => mockAudioPlayer) }));
 
 const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../eiyu-store');
