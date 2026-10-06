@@ -18,12 +18,22 @@ if (extraModules) {
 
 // Router entry and application imports must share the same context objects.
 // Hierarchical resolution can otherwise select two installed router copies.
+//
+// The app entry is a file in this folder (index.ts registers the widget task handler). React Native's Gradle plugin hands
+// Metro that entry relative to this folder ("index.ts"), but Metro resolves it from the server root, which is the monorepo
+// root, so a release bundle cannot find it. Map that one request, and only from the server root, to the real file.
+const appEntry = path.join(__dirname, require('./package.json').main);
+const serverRoot = config.server && config.server.unstable_serverRoot;
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const fromServerRoot = serverRoot && path.resolve(context.originModulePath) === path.resolve(serverRoot);
   const request = moduleName === 'expo-router'
     ? routerRoot
     : moduleName.startsWith('expo-router/')
       ? path.join(routerRoot, moduleName.slice('expo-router/'.length))
-      : moduleName;
+      : fromServerRoot && moduleName === `./${path.basename(appEntry)}`
+        ? appEntry
+        : moduleName;
   return context.resolveRequest(context, request, platform);
 };
 
