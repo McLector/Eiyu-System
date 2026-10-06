@@ -2,7 +2,7 @@
   "expo": {
     "name": "eiyu-system",
     "slug": "eiyu-system",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "eiyusystem",
@@ -22,7 +22,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.mclector.eiyusystem"
     },
-    "runtimeVersion": "1.1.0",
+    "runtimeVersion": "1.2.0",
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
@@ -49,6 +49,24 @@
           "photosPermission": "Eiyu uses your photos to attach a guide clip to an exercise.",
           "cameraPermission": false,
           "microphonePermission": false
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "EiyuToday",
+              "label": "Eiyu: Today",
+              "description": "Today's quests and your TODAY count. Tap to open the Board.",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
         }
       ]
     ],
