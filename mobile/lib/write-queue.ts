@@ -205,6 +205,13 @@ export function applyOverlay(quests: Quest[], entries: readonly QueueEntry[], to
 
 export type SyncState = 'pending' | 'checking' | 'failed';
 
+/** The words for each tag, shared by the Board row and the home-screen widget so the two cannot drift. */
+export const SYNC_TAG_TEXT: Record<SyncState, string> = {
+  pending: 'Waiting to sync',
+  checking: 'Checking',
+  failed: 'Not saved',
+};
+
 /** The tag a single entry earns, or null when it is just being sent (a tap while online must not flash a notice). */
 function tagFor(entry: QueueEntry, offline: boolean): SyncState | null {
   if (entry.status === 'failed') return 'failed';

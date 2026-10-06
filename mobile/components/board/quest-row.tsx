@@ -5,12 +5,12 @@ import { AlertIcon, CheckIcon, ClockIcon, MoreIcon, SnowflakeIcon, StatIcon } fr
 import { FireStreak } from '@/components/ui/fire-streak';
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
-import type { SyncState } from '@/lib/write-queue';
+import { SYNC_TAG_TEXT, type SyncState } from '@/lib/write-queue';
 
 const SYNC_TAGS: Record<SyncState, { text: string; spoken: string }> = {
-  pending: { text: 'Waiting to sync', spoken: ', waiting to sync' },
-  checking: { text: 'Checking', spoken: ', checking' },
-  failed: { text: 'Not saved', spoken: ', not saved' },
+  pending: { text: SYNC_TAG_TEXT.pending, spoken: ', waiting to sync' },
+  checking: { text: SYNC_TAG_TEXT.checking, spoken: ', checking' },
+  failed: { text: SYNC_TAG_TEXT.failed, spoken: ', not saved' },
 };
 
 interface Props {
