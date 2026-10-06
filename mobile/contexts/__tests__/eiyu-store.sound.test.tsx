@@ -164,7 +164,7 @@ describe('completion sound effects', () => {
     await waitFor(() => expect(currentStore?.user.timeZone).toBe('UTC'));
 
     await act(async () => { currentStore!.toggleQuest('habit-1'); });
-    await waitFor(() => expect(currentStore?.questsError).toMatch(/no longer on today/));
+    await waitFor(() => expect(currentStore?.failedSyncs[0]?.failure?.message).toMatch(/no longer on today/));
     expect(mockAudioPlayer.play).not.toHaveBeenCalled();
 
     // Once the write lands, the server reports the new count.

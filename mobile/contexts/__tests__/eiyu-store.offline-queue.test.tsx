@@ -210,7 +210,9 @@ describe('online writes go through the queue', () => {
     await waitFor(() => expect(currentStore?.failedSyncs).toHaveLength(1));
     expect(currentStore?.failedSyncs[0]).toEqual(expect.objectContaining({ label: 'Read', failure: expect.objectContaining({ reason: 'not-on-board' }) }));
     expect(byId('habit-1')?.completed).toBe(false);
-    expect(currentStore?.questsError).toMatch(/no longer on today/);
+    expect(currentStore?.failedSyncs[0].failure?.message).toMatch(/no longer on today/);
+    // The Board's not-saved notice carries this; the read-retry banner would only mislead.
+    expect(currentStore?.questsError).toBeNull();
   });
 
   it('dismissing a failed write removes it and refreshes the board', async () => {

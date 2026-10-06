@@ -1,6 +1,7 @@
 import type { Quest } from '@eiyu/shared';
 import {
   applyOverlay,
+  describeEntry,
   classifyError,
   decodeQueue,
   encodeQueue,
@@ -394,5 +395,18 @@ describe('expireEntries', () => {
   it('returns the same array when nothing expired', () => {
     const list = [entry()];
     expect(expireEntries(list, now, 'UTC')).toBe(list);
+  });
+});
+
+describe('describeEntry', () => {
+  it('names each kind of write in plain words', () => {
+    expect(describeEntry(entry({ kind: 'complete' }))).toBe('Complete');
+    expect(describeEntry(entry({ kind: 'undo' }))).toBe('Undo');
+    expect(describeEntry(entry({ kind: 'recovery' }))).toBe('Recovery');
+  });
+
+  it('shows the size and direction of a progress change', () => {
+    expect(describeEntry(entry({ kind: 'progress', delta: 2, base: 0 }))).toBe('Progress +2');
+    expect(describeEntry(entry({ kind: 'progress', delta: -3, base: 5 }))).toBe('Progress −3');
   });
 });

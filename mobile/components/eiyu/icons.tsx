@@ -350,3 +350,21 @@ export function MoreIcon({ size = 20, color }: GlyphProps) {
     </Glyph>
   );
 }
+
+export function ClockIcon({ size = 14, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Circle cx="12" cy="12" r="9" {...outline(color)} />
+      <Path d="M12 7v5l3 2" {...outline(color)} />
+    </Glyph>
+  );
+}
+
+export function AlertIcon({ size = 14, color }: GlyphProps) {
+  return (
+    <Glyph size={size}>
+      <Path d="M12 3L2.5 20h19L12 3z" {...outline(color)} />
+      <Path d="M12 10v4M12 17.5v.5" {...outline(color)} />
+    </Glyph>
+  );
+}

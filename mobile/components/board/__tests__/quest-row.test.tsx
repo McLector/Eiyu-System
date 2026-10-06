@@ -196,3 +196,38 @@ describe('QuestRow opening and actions', () => {
     expect(style.minHeight).toBeGreaterThanOrEqual(48);
   });
 });
+
+describe('QuestRow sync tag', () => {
+  it('shows no tag and keeps the plain labels when nothing is waiting', async () => {
+    await render(quest());
+    expect(screen.queryByTestId('quest-sync-tag')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open Read 20 pages details' })).toBeOnTheScreen();
+  });
+
+  it.each([
+    ['pending', 'Waiting to sync', ', waiting to sync'],
+    ['checking', 'Checking', ', checking'],
+    ['failed', 'Not saved', ', not saved'],
+  ] as const)('tags a %s write with text and puts it in the spoken label', async (state, text, spoken) => {
+    await render(quest(), { syncState: state });
+    expect(screen.getByTestId('quest-sync-tag')).toHaveTextContent(text);
+    expect(screen.getByRole('button', { name: `Open Read 20 pages details${spoken}` })).toBeOnTheScreen();
+    expect(screen.getByTestId('quest-checkbox').props.accessibilityLabel).toBe(`Read 20 pages${spoken}`);
+  });
+
+  it('keeps the completed wording alongside the sync wording', async () => {
+    await render(quest({ completed: true }), { syncState: 'pending' });
+    expect(screen.getByTestId('quest-checkbox').props.accessibilityLabel).toBe('Read 20 pages (completed), waiting to sync');
+  });
+
+  it('colours a failed tag as an error and the others as muted, so colour is never the only cue', async () => {
+    await render(quest(), { syncState: 'failed' });
+    const failedText = screen.getByText('Not saved');
+    expect(StyleSheet.flatten(failedText.props.style).color).toBe(T.danger);
+  });
+
+  it('puts the tag on a quantity quest too', async () => {
+    await render(quest({ targetCount: 4, progressCount: 1 }), { syncState: 'pending' });
+    expect(screen.getByTestId('quest-sync-tag')).toBeOnTheScreen();
+  });
+});

@@ -62,6 +62,12 @@ function setup() {
     completeRecovery: jest.fn(),
     reminderWarning: null,
     retryReminders: jest.fn(),
+    syncStates: new Map(),
+    syncWaiting: 0,
+    syncOffline: false,
+    failedSyncs: [],
+    retrySync: jest.fn(),
+    dismissSync: jest.fn(),
     archiveQuest: jest.fn().mockResolvedValue(undefined),
     restoreQuest: jest.fn().mockResolvedValue(undefined),
     deleteQuest: jest.fn().mockResolvedValue(undefined),
@@ -501,5 +507,54 @@ describe('mobile BoardScreen lane memory and adding', () => {
     await user.press(screen.getByRole('button', { name: 'ADD A QUEST' }));
     await user.press(screen.getByRole('button', { name: 'Create a habit quest' }));
     expect(mockRouter.push).toHaveBeenCalledWith('/quest-editor');
+  });
+});
+
+describe('mobile BoardScreen offline sync', () => {
+  beforeEach(setup);
+  const failedEntry = (overrides: Record<string, unknown> = {}) => ({
+    id: 'f1', userId: 'u', kind: 'complete', habitId: 'daily', accountDate: '2026-10-05', createdAt: 1, attempts: 1, status: 'failed',
+    label: 'Daily habit', failure: { reason: 'not-on-board', message: "Not saved: this quest is no longer on today's board." }, ...overrides,
+  });
+
+  it('shows nothing extra when everything is synced', async () => {
+    await board();
+    expect(screen.queryByTestId('sync-notice')).toBeNull();
+    expect(screen.queryByTestId('quest-sync-tag')).toBeNull();
+  });
+
+  it('tags the quest row and counts waiting changes in the notice', async () => {
+    mockStoreValue.syncStates = new Map([['daily', 'pending']]);
+    mockStoreValue.syncWaiting = 1;
+    mockStoreValue.syncOffline = true;
+    await board();
+    expect(screen.getByText('1 change waiting to sync')).toBeOnTheScreen();
+    expect(screen.getByTestId('quest-sync-tag')).toHaveTextContent('Waiting to sync');
+  });
+
+  it('opens the review sheet from the notice and retries or dismisses from it', async () => {
+    mockStoreValue.syncStates = new Map([['daily', 'failed']]);
+    mockStoreValue.failedSyncs = [failedEntry()];
+    const user = userEvent.setup();
+    await board();
+    expect(screen.getByText('1 change not saved')).toBeOnTheScreen();
+    expect(screen.queryByText('NOT SAVED')).toBeNull();
+    await user.press(screen.getByRole('button', { name: 'Review changes that were not saved' }));
+    expect(screen.getByText('NOT SAVED')).toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'Retry Daily habit' }));
+    expect(mockStoreValue.retrySync).toHaveBeenCalledWith('f1');
+    await user.press(screen.getByRole('button', { name: 'Dismiss Daily habit' }));
+    expect(mockStoreValue.dismissSync).toHaveBeenCalledWith('f1');
+  });
+
+  it('closes the review sheet by itself once nothing is left to review', async () => {
+    mockStoreValue.failedSyncs = [failedEntry()];
+    const user = userEvent.setup();
+    const view = await board();
+    await user.press(screen.getByRole('button', { name: 'Review changes that were not saved' }));
+    expect(screen.getByText('NOT SAVED')).toBeOnTheScreen();
+    mockStoreValue.failedSyncs = [];
+    await view.rerender(<TestThemeProvider><BoardScreen /></TestThemeProvider>);
+    expect(screen.queryByText('NOT SAVED')).toBeNull();
   });
 });

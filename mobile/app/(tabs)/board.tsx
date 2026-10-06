@@ -20,6 +20,8 @@ import { questActions, type QuestActionKey } from '@/components/board/quest-acti
 import { QuestDetailsSheet } from '@/components/board/quest-details-sheet';
 import { QuestRow } from '@/components/board/quest-row';
 import { RecoverySheet } from '@/components/board/recovery-sheet';
+import { SyncNotice } from '@/components/board/sync-notice';
+import { SyncReviewSheet } from '@/components/board/sync-review-sheet';
 import { ListIcon, PlusIcon, SnowflakeIcon } from '@/components/eiyu/icons';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
@@ -59,6 +61,12 @@ export default function BoardScreen() {
     retryQuests,
     reminderWarning,
     retryReminders,
+    syncStates,
+    syncWaiting,
+    syncOffline,
+    failedSyncs,
+    retrySync,
+    dismissSync,
     archiveQuest,
     restoreQuest,
     deleteQuest,
@@ -75,6 +83,7 @@ export default function BoardScreen() {
   const [detailsTarget, setDetailsTarget] = useState<Quest | null>(null);
   const [allHabitsOpen, setAllHabitsOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [notice, setNotice] = useState<ArchiveNotice | null>(null);
   const noticeSeq = useRef(0);
   const [deleteTarget, setDeleteTarget] = useState<Quest | null>(null);
@@ -188,6 +197,7 @@ export default function BoardScreen() {
       quest={quest}
       pending={pendingIds.has(quest.id)}
       xpToast={xpToast?.id === quest.id ? xpToast.xp : null}
+      syncState={syncStates.get(quest.id)}
       onToggle={() => handleToggle(quest)}
       onOpen={() => setDetailsTarget(quest)}
       onAdjustProgress={delta => adjustProgress(quest.id, delta)}
@@ -253,6 +263,8 @@ export default function BoardScreen() {
             );
           })}
         </View>
+
+        <SyncNotice waiting={syncWaiting} failed={failedSyncs.length} offline={syncOffline} onReview={() => setReviewOpen(true)} />
 
         {questsError && questsHaveCachedData ? (
           <View style={styles.notice}>
@@ -335,6 +347,13 @@ export default function BoardScreen() {
         quests={recoveryRequired}
         onComplete={id => { flashXp(id, EASY_XP); completeRecovery(id); }}
         onClose={() => setRecoveryOpen(false)}
+      />
+      <SyncReviewSheet
+        visible={reviewOpen && failedSyncs.length > 0}
+        entries={failedSyncs}
+        onRetry={retrySync}
+        onDismiss={dismissSync}
+        onClose={() => setReviewOpen(false)}
       />
       <AddQuestSheet visible={addOpen} types={OFFERED_TYPES} onChoose={choose} onClose={() => setAddOpen(false)} />
       <DeleteQuestModal

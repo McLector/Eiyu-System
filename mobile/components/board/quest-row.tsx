@@ -1,10 +1,17 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { questGenreLabel, questWhenLabel, STAT_COLORS, type Quest } from '@eiyu/shared';
 
-import { CheckIcon, MoreIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
+import { AlertIcon, CheckIcon, ClockIcon, MoreIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
 import { FireStreak } from '@/components/ui/fire-streak';
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
+import type { SyncState } from '@/lib/write-queue';
+
+const SYNC_TAGS: Record<SyncState, { text: string; spoken: string }> = {
+  pending: { text: 'Waiting to sync', spoken: ', waiting to sync' },
+  checking: { text: 'Checking', spoken: ', checking' },
+  failed: { text: 'Not saved', spoken: ', not saved' },
+};
 
 interface Props {
   quest: Quest;
@@ -16,19 +23,23 @@ interface Props {
   onActions: () => void;
   /** XP just earned, flashed on the row. */
   xpToast?: number | null;
+  /** A change to this quest that has not reached the server, or could not. Quiet when absent. */
+  syncState?: SyncState;
 }
 
 /**
  * One quest in a lane: a check (or a stepper for a quest with a target), the title and its details, and a more button.
  * The title is its own accessibility element so the check and the more button stay reachable for a screen reader.
  */
-export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, onActions, xpToast = null }: Props) {
+export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, onActions, xpToast = null, syncState }: Props) {
   const t = useTokens();
   const completed = quest.completed;
   const frozen = quest.frozen && !completed;
   const isBacklog = quest.questType === 'backlog';
   const genre = isBacklog || quest.questType === 'one_time' ? questGenreLabel(quest.genre) : null;
   const statColor = STAT_COLORS[quest.stat];
+  const sync = syncState ? SYNC_TAGS[syncState] : null;
+  const syncColor = syncState === 'failed' ? t.danger : t['muted-flat'];
 
   return (
     <View style={[styles.row, { borderBottomColor: t['divider-flat'], opacity: completed ? 0.55 : 1 }]}>
@@ -37,7 +48,7 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
           <Pressable
             testID="quest-checkbox"
             accessibilityRole="checkbox"
-            accessibilityLabel={`${quest.name}${completed ? ' (completed)' : ''}`}
+            accessibilityLabel={`${quest.name}${completed ? ' (completed)' : ''}${sync?.spoken ?? ''}`}
             accessibilityState={{ checked: completed, disabled: pending }}
             disabled={pending}
             onPress={onToggle}
@@ -79,7 +90,7 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
       <Pressable
         testID="quest-edit-trigger"
         accessibilityRole="button"
-        accessibilityLabel={`Open ${quest.name} details`}
+        accessibilityLabel={`Open ${quest.name} details${sync?.spoken ?? ''}`}
         accessibilityActions={[{ name: 'actions', label: 'More actions' }]}
         onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'actions') onActions(); }}
         onPress={onOpen}
@@ -107,6 +118,12 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
           ) : null}
           {frozen ? (
             <View accessible accessibilityLabel="Streak frozen"><SnowflakeIcon size={13} color={t.ice} /></View>
+          ) : null}
+          {sync ? (
+            <View testID="quest-sync-tag" style={styles.chip}>
+              {syncState === 'failed' ? <AlertIcon size={12} color={syncColor} /> : <ClockIcon size={12} color={syncColor} />}
+              <Text style={[styles.syncText, { color: syncColor, fontFamily: fonts.body }]}>{sync.text}</Text>
+            </View>
           ) : null}
           {genre ? <Text style={[styles.genre, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{genre}</Text> : null}
         </View>
@@ -144,6 +161,7 @@ const styles = StyleSheet.create({
   chip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   chipText: { fontSize: 11, letterSpacing: 0.8 },
   when: { fontSize: 12 },
+  syncText: { fontSize: 12 },
   genre: { fontSize: 11, borderWidth: 1, borderRadius: 3, paddingHorizontal: 5, paddingVertical: 1 },
   toast: { position: 'absolute', right: 52, top: 4, fontSize: 12 },
   more: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },

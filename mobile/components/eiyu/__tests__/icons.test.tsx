@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react-native';
 import type { ComponentType } from 'react';
 
 import {
-  ArchiveIcon, CompletionDotIcon, DumbbellIcon, EditIcon, GripIcon, ListIcon, LockIcon, MailIcon, MoveIcon, NoteIcon,
+  AlertIcon, ArchiveIcon, ClockIcon, CompletionDotIcon, DumbbellIcon, EditIcon, GripIcon, ListIcon, LockIcon, MailIcon, MoveIcon, NoteIcon,
   MoreIcon, PlayIcon, RestoreIcon, SignOutIcon, SnowflakeIcon, SparkleIcon, TrashIcon, UndoIcon,
 } from '../icons';
 
@@ -14,6 +14,7 @@ const NEW_ICONS: [string, ComponentType<IconProps>][] = [
   ['SparkleIcon', SparkleIcon], ['CompletionDotIcon', CompletionDotIcon], ['EditIcon', EditIcon], ['ArchiveIcon', ArchiveIcon],
   ['TrashIcon', TrashIcon], ['MoveIcon', MoveIcon], ['GripIcon', GripIcon], ['ListIcon', ListIcon],
   ['RestoreIcon', RestoreIcon], ['UndoIcon', UndoIcon], ['PlayIcon', PlayIcon], ['LockIcon', LockIcon], ['MoreIcon', MoreIcon],
+  ['ClockIcon', ClockIcon], ['AlertIcon', AlertIcon],
 ];
 const DUOTONE = ['MailIcon', 'NoteIcon', 'SparkleIcon', 'CompletionDotIcon'];
 

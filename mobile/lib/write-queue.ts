@@ -233,6 +233,22 @@ export function waitingCount(entries: readonly QueueEntry[], offline: boolean): 
   }).length;
 }
 
+/** What a write was, in a word, for the review list. */
+export function describeEntry(entry: QueueEntry): string {
+  switch (entry.kind) {
+    case 'complete':
+      return 'Complete';
+    case 'undo':
+      return 'Undo';
+    case 'recovery':
+      return 'Recovery';
+    case 'progress': {
+      const delta = entry.delta ?? 0;
+      return delta < 0 ? `Progress −${Math.abs(delta)}` : `Progress +${delta}`;
+    }
+  }
+}
+
 export function encodeQueue(entries: readonly QueueEntry[]): string {
   return JSON.stringify({ v: STORAGE_VERSION, entries });
 }

@@ -619,8 +619,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   );
 
   const reportFailedWrite = useCallback(
-    (entry: QueueEntry) => {
-      setQuestActionError(entry.failure?.message ?? 'Not saved.');
+    () => {
+      // The Board's not-saved notice reports the reason; here the board just returns to what the server holds.
       if (userId) void qc.invalidateQueries({ queryKey: habitsTodayKey(userId) });
     },
     [userId, qc]
