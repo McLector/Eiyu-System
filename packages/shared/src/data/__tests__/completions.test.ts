@@ -49,6 +49,15 @@ describe('undoCompletion', () => {
       p_completed_on: expect.any(String),
     });
   });
+
+  it('undoes the given date instead of recomputing today', async () => {
+    await undoCompletion('user-1', 'habit-1', 'STR', 'UTC', '2026-08-28');
+
+    expect(supabase.rpc).toHaveBeenCalledWith('undo_habit_completion', {
+      p_habit_id: 'habit-1',
+      p_completed_on: '2026-08-28',
+    });
+  });
 });
 
 describe('completeHabitRecovery', () => {

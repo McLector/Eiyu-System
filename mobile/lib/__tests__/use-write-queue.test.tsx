@@ -139,6 +139,45 @@ describe('useWriteQueue', () => {
     expect(opts.send).not.toHaveBeenCalled();
   });
 
+  it('reports whether the device is offline, following the connection', async () => {
+    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false });
+    const { result } = await renderHook(() => useWriteQueue(options()));
+    await waitFor(() => expect(result.current.offline).toBe(true));
+    await act(async () => { networkHandlers.forEach(handler => handler({ isConnected: true })); });
+    expect(result.current.offline).toBe(false);
+    await act(async () => { networkHandlers.forEach(handler => handler({ isConnected: false })); });
+    expect(result.current.offline).toBe(true);
+  });
+
+  it('is not offline while the connection is still unknown', async () => {
+    mockNetwork.getNetworkStateAsync.mockReturnValue(new Promise(() => {}));
+    const { result } = await renderHook(() => useWriteQueue(options()));
+    expect(result.current.offline).toBe(false);
+  });
+
+  it('passes what the request returned to the applied hook', async () => {
+    const opts = options({ send: jest.fn(async () => 4) });
+    const { result } = await renderHook(() => useWriteQueue(opts));
+    await act(async () => { result.current.enqueue({ kind: 'progress', habitId: 'h1', delta: 1, base: 3 }); await result.current.flush(); });
+    expect(opts.onApplied).toHaveBeenCalledWith(expect.objectContaining({ kind: 'progress' }), 4);
+  });
+
+  it('keeps entries from an earlier session when the user acts before the stored queue has been read', async () => {
+    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false });
+    const initial = encodeQueue([stored({ id: 'old', habitId: 'h-old' })]);
+    await AsyncStorage.setItem('eiyu.writeQueue.v1.user-1', initial);
+    const realGet = AsyncStorage.getItem as jest.Mock;
+    const original = realGet.getMockImplementation();
+    let release: () => void = () => {};
+    realGet.mockImplementation((async (key: string) => { await new Promise<void>(resolve => { release = resolve; }); return original?.(key); }) as never);
+    const { result } = await renderHook(() => useWriteQueue(options()));
+    await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h-new' }); });
+    realGet.mockImplementation(original as never);
+    await act(async () => { release(); });
+    await waitFor(() => expect(result.current.entries.map(e => e.habitId)).toEqual(['h-old', 'h-new']));
+    await waitFor(async () => expect(JSON.parse((await AsyncStorage.getItem('eiyu.writeQueue.v1.user-1')) ?? '{}').entries).toHaveLength(2));
+  });
+
   it('removes its listeners on unmount', async () => {
     const { unmount } = await renderHook(() => useWriteQueue(options()));
     await unmount();

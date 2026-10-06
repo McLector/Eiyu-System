@@ -12,14 +12,16 @@ export interface UseWriteQueueOptions {
   userId: string | undefined;
   /** The account's IANA zone, read fresh each time (it can change while entries wait). */
   timeZone: () => string;
-  send: (entry: QueueEntry) => Promise<void>;
+  send: (entry: QueueEntry) => Promise<unknown>;
   readQuest: (habitId: string) => Promise<Quest | undefined>;
-  onApplied: (entry: QueueEntry) => Promise<void> | void;
+  onApplied: (entry: QueueEntry, result?: unknown) => Promise<void> | void;
   onFailed?: (entry: QueueEntry) => void;
 }
 
 export interface WriteQueue {
   entries: QueueEntry[];
+  /** True only when the device is known to be offline; unknown counts as online. */
+  offline: boolean;
   enqueue: (request: EnqueueRequest) => void;
   flush: () => Promise<void>;
   /** Fails entries from an earlier account day (the midnight tick). */
@@ -40,6 +42,7 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
     latest.current = options;
   });
   const [engine, setEngine] = useState<WriteQueueEngine | null>(null);
+  const [offline, setOffline] = useState(false);
   const [snapshot, setSnapshot] = useState<{ userId: string | undefined; entries: QueueEntry[] }>({ userId: undefined, entries: [] });
 
   useEffect(() => {
@@ -49,6 +52,7 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
     }
     let online: boolean | null = null;
     let heardFromListener = false;
+    setOffline(false);
     const created = createWriteQueueEngine({
       userId,
       storage: AsyncStorage,
@@ -58,7 +62,7 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
       newId: newRequestId,
       send: entry => latest.current.send(entry),
       readQuest: habitId => latest.current.readQuest(habitId),
-      onApplied: entry => latest.current.onApplied(entry),
+      onApplied: (entry, result) => latest.current.onApplied(entry, result),
       onFailed: entry => latest.current.onFailed?.(entry),
     });
     setEngine(created);
@@ -67,6 +71,7 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
     const networkSubscription = Network.addNetworkStateListener(state => {
       heardFromListener = true;
       online = state.isConnected ?? null;
+      setOffline(online === false);
       if (state.isConnected === true) void created.flush();
     });
     const appStateSubscription = AppState.addEventListener('change', state => {
@@ -75,7 +80,9 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
 
     void Network.getNetworkStateAsync()
       .then(state => {
-        if (!heardFromListener) online = state.isConnected ?? null;
+        if (heardFromListener) return;
+        online = state.isConnected ?? null;
+        setOffline(online === false);
       })
       .catch(() => {})
       .then(() => created.load())
@@ -103,7 +110,7 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
   const dismiss = useCallback((id: string) => engine?.dismiss(id), [engine]);
 
   const entries = snapshot.userId === userId ? snapshot.entries : EMPTY;
-  return useMemo(() => ({ entries, enqueue, flush, sweep, retry, dismiss }), [entries, enqueue, flush, sweep, retry, dismiss]);
+  return useMemo(() => ({ entries, offline, enqueue, flush, sweep, retry, dismiss }), [entries, offline, enqueue, flush, sweep, retry, dismiss]);
 }
 
 const EMPTY: QueueEntry[] = [];

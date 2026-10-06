@@ -72,8 +72,7 @@ describe('write queue engine', () => {
       const t = setup();
       await t.engine.load();
       t.engine.enqueue({ kind: 'complete', habitId: 'h1' });
-      await Promise.resolve();
-      await Promise.resolve();
+      await new Promise(resolve => setTimeout(resolve, 0));
       expect(t.persisted()).toEqual([expect.objectContaining({ id: 'id-1', kind: 'complete', habitId: 'h1', accountDate: '2026-10-05', status: 'pending' })]);
       expect(t.deps.send).not.toHaveBeenCalled();
     });
@@ -107,7 +106,74 @@ describe('write queue engine', () => {
     });
   });
 
+  describe('cold start', () => {
+    it('keeps entries persisted by an earlier session when a write is made before load() is even called', async () => {
+      const t = setup({ isOnline: () => false }, [stored({ id: 'old', habitId: 'h-old', createdAt: 1 })]);
+      t.engine.enqueue({ kind: 'complete', habitId: 'h-new' });
+      await t.engine.load();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(t.engine.getEntries().map(e => e.habitId)).toEqual(['h-old', 'h-new']);
+      expect(t.persisted().map(e => e.habitId)).toEqual(['h-old', 'h-new']);
+    });
+
+    it('keeps them too when the read is slow and the write comes first', async () => {
+      let release: (value: string | null) => void = () => {};
+      const initial = encodeQueue([stored({ id: 'old', habitId: 'h-old', createdAt: 1 })]);
+      const store = new Map<string, string>([[KEY, initial]]);
+      const t = setup({
+        isOnline: () => false,
+        storage: {
+          getItem: jest.fn(() => new Promise<string | null>(resolve => { release = resolve; })),
+          setItem: jest.fn(async (key: string, value: string) => { store.set(key, value); }),
+          removeItem: jest.fn(async (key: string) => { store.delete(key); }),
+        },
+      });
+      t.engine.enqueue({ kind: 'complete', habitId: 'h-new' });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(store.get(KEY)).toBe(initial);
+      release(initial);
+      await t.engine.load();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(decodeQueue(store.get(KEY), 'user-1').map(e => e.habitId)).toEqual(['h-old', 'h-new']);
+    });
+
+    it('does not duplicate an entry that is both in storage and already in memory', async () => {
+      const t = setup({ isOnline: () => false }, [stored({ id: 'same' })]);
+      await t.engine.load();
+      await t.engine.load();
+      expect(t.engine.getEntries().map(e => e.id)).toEqual(['same']);
+    });
+
+    it('sends the old entry before the new one when the device is online', async () => {
+      let release: (value: string | null) => void = () => {};
+      const initialRaw = encodeQueue([stored({ id: 'old', habitId: 'h-old', createdAt: 1 })]);
+      const store = new Map<string, string>([[KEY, initialRaw]]);
+      const t = setup({
+        storage: {
+          getItem: jest.fn(() => new Promise<string | null>(resolve => { release = resolve; })),
+          setItem: jest.fn(async (key: string, value: string) => { store.set(key, value); }),
+          removeItem: jest.fn(async (key: string) => { store.delete(key); }),
+        },
+      });
+      t.engine.enqueue({ kind: 'complete', habitId: 'h-new' });
+      const flushing = t.engine.flush();
+      release(initialRaw);
+      await t.engine.load();
+      await flushing;
+      expect(t.calls).toEqual(['complete:h-old', 'complete:h-new']);
+      expect(store.has(KEY)).toBe(false);
+    });
+  });
+
   describe('flush', () => {
+    it('hands the result of the request to the applied hook', async () => {
+      const t = setup({ send: jest.fn(async () => 7) });
+      await t.engine.load();
+      t.engine.enqueue({ kind: 'progress', habitId: 'h1', delta: 1, base: 6 });
+      await t.engine.flush();
+      expect(t.deps.onApplied).toHaveBeenCalledWith(expect.objectContaining({ kind: 'progress' }), 7);
+    });
+
     it('sends entries in the order they were made, one at a time, and clears storage', async () => {
       const t = setup();
       await t.engine.load();
@@ -335,26 +401,18 @@ describe('write queue engine', () => {
       await t.engine.flush();
       expect(send).toHaveBeenCalledTimes(1);
       expect(t.engine.getEntries().map(e => e.status)).toEqual(['pending', 'pending']);
+      expect(t.engine.getEntries()[0].attempts).toBe(1);
       authOk = true;
       await t.engine.flush();
       expect(t.engine.getEntries()).toEqual([]);
     });
 
-    it('backs off an unknown server error, retries it, and fails it after three attempts', async () => {
-      jest.useFakeTimers();
-      jest.setSystemTime(DAY1);
+    it('fails an unknown server error at once with its message, so the user can retry it', async () => {
       const t = setup({ send: jest.fn(async () => { throw { message: 'upstream exploded' }; }) });
       await t.engine.load();
       t.engine.enqueue({ kind: 'complete', habitId: 'h1' });
       await t.engine.flush();
       expect(t.deps.send).toHaveBeenCalledTimes(1);
-      expect(t.engine.getEntries()[0].status).toBe('pending');
-      await t.engine.flush();
-      expect(t.deps.send).toHaveBeenCalledTimes(1);
-      await jest.advanceTimersByTimeAsync(31_000);
-      expect(t.deps.send).toHaveBeenCalledTimes(2);
-      await jest.advanceTimersByTimeAsync(121_000);
-      expect(t.deps.send).toHaveBeenCalledTimes(3);
       expect(t.engine.getEntries()[0]).toEqual(expect.objectContaining({ status: 'failed', failure: expect.objectContaining({ reason: 'server', message: expect.stringContaining('upstream exploded') }) }));
     });
   });
@@ -388,17 +446,13 @@ describe('write queue engine', () => {
       expect(t.engine.dismiss('stored-1')).toBeUndefined();
     });
 
-    it('dispose stops pending retries and later flushes', async () => {
-      jest.useFakeTimers();
-      jest.setSystemTime(DAY1);
-      const t = setup({ send: jest.fn(async () => { throw { message: 'upstream exploded' }; }) });
+    it('dispose stops later flushes', async () => {
+      const t = setup();
       await t.engine.load();
       t.engine.enqueue({ kind: 'complete', habitId: 'h1' });
-      await t.engine.flush();
       t.engine.dispose();
-      await jest.advanceTimersByTimeAsync(300_000);
       await t.engine.flush();
-      expect(t.deps.send).toHaveBeenCalledTimes(1);
+      expect(t.deps.send).not.toHaveBeenCalled();
     });
   });
 });

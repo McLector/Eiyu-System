@@ -37,12 +37,12 @@ export interface WriteQueueDeps {
   /** null = unknown, which is treated as "try". */
   isOnline: () => boolean | null;
   newId: () => string;
-  /** Performs the RPC for one entry. Throws on any failure. */
-  send: (entry: QueueEntry) => Promise<void>;
+  /** Performs the RPC for one entry and returns what it answered (the progress count). Throws on any failure. */
+  send: (entry: QueueEntry) => Promise<unknown>;
   /** A fresh server read of one habit, for resolving an uncertain entry. */
   readQuest: (habitId: string) => Promise<Quest | undefined>;
   /** The write landed. Awaited before the entry leaves the queue so the board never flickers back. */
-  onApplied: (entry: QueueEntry) => Promise<void> | void;
+  onApplied: (entry: QueueEntry, result?: unknown) => Promise<void> | void;
   /** The server refused the write (not a network or auth problem). */
   onFailed?: (entry: QueueEntry) => void;
 }
@@ -68,29 +68,39 @@ export interface WriteQueueEngine {
   dispose(): void;
 }
 
-export const MAX_ATTEMPTS = 3;
-const BACKOFF_MS = [30_000, 120_000];
-
 export const writeQueueKey = (userId: string) => `eiyu.writeQueue.v1.${userId}`;
 
 export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
   const key = writeQueueKey(deps.userId);
   const listeners = new Set<(entries: QueueEntry[]) => void>();
-  const notBefore = new Map<string, number>();
   let entries: QueueEntry[] = [];
   let persistChain: Promise<unknown> = Promise.resolve();
-  let loading: Promise<void> | null = null;
   let running: Promise<void> | null = null;
   let rerun = false;
   let disposed = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
 
   const emit = () => listeners.forEach(listener => listener(entries));
 
+  // Reading starts at construction, so no write can be persisted ahead of what an earlier session left behind.
+  const loading: Promise<void> = (async () => {
+    let raw: string | null = null;
+    try {
+      raw = await deps.storage.getItem(key);
+    } catch {
+      raw = null;
+    }
+    const revived = reviveEntries(decodeQueue(raw, deps.userId), deps.now(), deps.timeZone());
+    const known = new Set(revived.map(entry => entry.id));
+    entries = [...revived, ...entries.filter(entry => !known.has(entry.id))];
+    emit();
+  })();
+  void loading.then(() => persist());
+
+  /** Writes the newest state once the load has finished, so an early write can never replace what an earlier session left. */
   const persist = (): Promise<unknown> => {
-    const snapshot = entries;
     persistChain = persistChain
-      .then(() => (snapshot.length > 0 ? deps.storage.setItem(key, encodeQueue(snapshot)) : deps.storage.removeItem(key)))
+      .then(() => loading)
+      .then(() => (entries.length > 0 ? deps.storage.setItem(key, encodeQueue(entries)) : deps.storage.removeItem(key)))
       .catch(() => {});
     return persistChain;
   };
@@ -113,30 +123,17 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     deps.onFailed?.({ ...entry, status: 'failed', failure: { reason, message } });
   };
 
-  const applied = async (entry: QueueEntry) => {
+  const applied = async (entry: QueueEntry, result?: unknown) => {
     try {
-      await deps.onApplied(entry);
+      await deps.onApplied(entry, result);
     } catch {
       // The write landed; a failed refresh must not keep it in the queue.
     }
     remove(entry.id);
   };
 
-  /** Oldest entry that may be tried now. An entry waiting out a backoff also holds back later ones for the same habit. */
-  const nextEligible = (): QueueEntry | undefined => {
-    const blocked = new Set<string>();
-    const clock = Date.now();
-    for (const entry of entries) {
-      if (entry.status !== 'pending' && entry.status !== 'uncertain') continue;
-      if (blocked.has(entry.habitId)) continue;
-      if ((notBefore.get(entry.id) ?? 0) > clock) {
-        blocked.add(entry.habitId);
-        continue;
-      }
-      return entry;
-    }
-    return undefined;
-  };
+  const nextEligible = (): QueueEntry | undefined =>
+    entries.find(entry => entry.status === 'pending' || entry.status === 'uncertain');
 
   /** Returns false when the run should stop (offline or auth), true to carry on with the next entry. */
   const process = async (entry: QueueEntry): Promise<boolean> => {
@@ -162,8 +159,9 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     patch(entry.id, { status: 'sending', attempts });
     await persist();
     const sending: QueueEntry = { ...entry, status: 'sending', attempts };
+    let result: unknown;
     try {
-      await deps.send(sending);
+      result = await deps.send(sending);
     } catch (error) {
       const outcome = classifyError(entry.kind, error);
       switch (outcome.type) {
@@ -171,7 +169,8 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
           patch(entry.id, { status: 'uncertain' });
           return false;
         case 'auth':
-          patch(entry.id, { status: 'pending', attempts: entry.attempts });
+          // Nothing ran on the server. Keep the attempt so the row still says it is waiting.
+          patch(entry.id, { status: 'pending' });
           return false;
         case 'applied':
           await applied(sending);
@@ -180,26 +179,12 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
           fail(sending, outcome.reason, outcome.message);
           return true;
         case 'retry':
-          if (attempts >= MAX_ATTEMPTS) {
-            fail(sending, 'server', `${FAILURE_MESSAGES.server} (${outcome.message})`);
-          } else {
-            notBefore.set(entry.id, Date.now() + BACKOFF_MS[attempts - 1]);
-            patch(entry.id, { status: 'pending' });
-          }
+          fail(sending, 'server', `${FAILURE_MESSAGES.server} (${outcome.message})`);
           return true;
       }
     }
-    await applied(sending);
+    await applied(sending, result);
     return true;
-  };
-
-  const scheduleRetry = () => {
-    clearTimeout(timer);
-    if (disposed) return;
-    const waiting = entries.filter(entry => (entry.status === 'pending' || entry.status === 'uncertain') && notBefore.has(entry.id));
-    if (waiting.length === 0) return;
-    const earliest = Math.min(...waiting.map(entry => notBefore.get(entry.id) as number));
-    timer = setTimeout(() => void flush(), Math.max(0, earliest - Date.now()) + 1);
   };
 
   const pass = async () => {
@@ -219,7 +204,6 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
       rerun = false;
       await pass();
     } while (rerun && !disposed);
-    scheduleRetry();
   };
 
   function flush(): Promise<void> {
@@ -238,21 +222,7 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
   }
 
   return {
-    load() {
-      loading = (async () => {
-        let raw: string | null = null;
-        try {
-          raw = await deps.storage.getItem(key);
-        } catch {
-          raw = null;
-        }
-        const revived = reviveEntries(decodeQueue(raw, deps.userId), deps.now(), deps.timeZone());
-        entries = [...revived, ...entries];
-        if (raw !== null) void persist();
-        emit();
-      })();
-      return loading;
-    },
+    load: () => loading,
     getEntries: () => entries,
     subscribe(listener) {
       listeners.add(listener);
@@ -276,7 +246,6 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
       const entry = entries.find(candidate => candidate.id === id);
       if (!entry || entry.status !== 'failed' || entry.failure?.reason === 'day-passed') return false;
       if (isExpired(entry, deps.now(), deps.timeZone())) return false;
-      notBefore.delete(id);
       patch(id, { status: 'pending', attempts: 0, failure: undefined });
       return true;
     },
@@ -287,7 +256,6 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     },
     dispose() {
       disposed = true;
-      clearTimeout(timer);
       listeners.clear();
     },
   };

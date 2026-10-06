@@ -72,7 +72,8 @@ export async function undoCompletion(
   userId: string,
   habitId: string,
   stat: Stat,
-  timeZone: string = deviceTimeZone()
+  timeZone: string = deviceTimeZone(),
+  completedOn?: string
 ) {
   // userId/stat remain in the signature for API stability; the RPC resolves
   // both server-side so client and DB can't disagree.
@@ -81,7 +82,7 @@ export async function undoCompletion(
 
   const { error } = await supabase.rpc('undo_habit_completion', {
     p_habit_id: habitId,
-    p_completed_on: todayKey(timeZone),
+    p_completed_on: completedOn ?? todayKey(timeZone),
   });
   if (error) throw error;
 }

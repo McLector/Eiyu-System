@@ -10,6 +10,7 @@ import {
   reviveEntries,
   resolveUncertain,
   syncStateByHabit,
+  waitingCount,
   type QueueEntry,
 } from '../write-queue';
 
@@ -268,17 +269,49 @@ describe('applyOverlay', () => {
 describe('syncStateByHabit', () => {
   it('reports pending, checking and failed per habit, with failed winning over the rest', () => {
     const map = syncStateByHabit([
-      entry({ id: 'a', habitId: 'h1', status: 'pending' }),
+      entry({ id: 'a', habitId: 'h1', status: 'pending', attempts: 1 }),
       entry({ id: 'b', habitId: 'h2', status: 'uncertain' }),
-      entry({ id: 'c', habitId: 'h3', status: 'sending' }),
       entry({ id: 'd', habitId: 'h4', status: 'failed' }),
-      entry({ id: 'e', habitId: 'h4', status: 'pending' }),
-    ]);
+      entry({ id: 'e', habitId: 'h4', status: 'pending', attempts: 1 }),
+    ], false);
     expect(map.get('h1')).toBe('pending');
     expect(map.get('h2')).toBe('checking');
-    expect(map.get('h3')).toBe('pending');
     expect(map.get('h4')).toBe('failed');
     expect(map.get('h5')).toBeUndefined();
+  });
+
+  it('stays quiet about a write that is simply being sent while online', () => {
+    const map = syncStateByHabit([
+      entry({ id: 'a', habitId: 'h1', status: 'sending', attempts: 1 }),
+      entry({ id: 'b', habitId: 'h2', status: 'pending', attempts: 0 }),
+    ], false);
+    expect(map.size).toBe(0);
+  });
+
+  it('tags every live write as waiting while the device is offline', () => {
+    const map = syncStateByHabit([
+      entry({ id: 'a', habitId: 'h1', status: 'pending', attempts: 0 }),
+      entry({ id: 'b', habitId: 'h2', status: 'pending', attempts: 0 }),
+    ], true);
+    expect([...map.values()]).toEqual(['pending', 'pending']);
+  });
+});
+
+describe('waitingCount', () => {
+  it('counts the habits that show a waiting or checking tag, not failed ones or quiet in-flight writes', () => {
+    const entries = [
+      entry({ id: 'a', habitId: 'h1', status: 'pending', attempts: 1 }),
+      entry({ id: 'b', habitId: 'h2', status: 'uncertain' }),
+      entry({ id: 'c', habitId: 'h3', status: 'failed' }),
+      entry({ id: 'd', habitId: 'h4', status: 'sending', attempts: 1 }),
+    ];
+    expect(waitingCount(entries, false)).toBe(2);
+    expect(waitingCount([], true)).toBe(0);
+  });
+
+  it('counts entries, so two writes to one habit are two changes', () => {
+    const entries = [entry({ id: 'a', status: 'pending' }), entry({ id: 'b', kind: 'progress', delta: 1, base: 0, status: 'pending' })];
+    expect(waitingCount(entries, true)).toBe(2);
   });
 });
 

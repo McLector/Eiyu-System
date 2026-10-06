@@ -200,16 +200,33 @@ export function applyOverlay(quests: Quest[], entries: readonly QueueEntry[], to
 
 export type SyncState = 'pending' | 'checking' | 'failed';
 
+/** The tag a single entry earns, or null when it is just being sent (a tap while online must not flash a notice). */
+function tagFor(entry: QueueEntry, offline: boolean): SyncState | null {
+  if (entry.status === 'failed') return 'failed';
+  if (entry.status === 'uncertain') return 'checking';
+  if (entry.status === 'pending' && (offline || entry.attempts > 0)) return 'pending';
+  return offline && entry.status === 'sending' ? 'pending' : null;
+}
+
 /** One tag per habit for the Board: failed beats checking beats pending. */
-export function syncStateByHabit(entries: readonly QueueEntry[]): Map<string, SyncState> {
+export function syncStateByHabit(entries: readonly QueueEntry[], offline: boolean): Map<string, SyncState> {
   const rank: Record<SyncState, number> = { pending: 0, checking: 1, failed: 2 };
   const result = new Map<string, SyncState>();
   for (const entry of entries) {
-    const state: SyncState = entry.status === 'failed' ? 'failed' : entry.status === 'uncertain' ? 'checking' : 'pending';
+    const state = tagFor(entry, offline);
+    if (state === null) continue;
     const current = result.get(entry.habitId);
     if (current === undefined || rank[state] > rank[current]) result.set(entry.habitId, state);
   }
   return result;
+}
+
+/** Changes the notice reports as waiting to sync. Failed ones have their own summary. */
+export function waitingCount(entries: readonly QueueEntry[], offline: boolean): number {
+  return entries.filter(entry => {
+    const tag = tagFor(entry, offline);
+    return tag === 'pending' || tag === 'checking';
+  }).length;
 }
 
 export function encodeQueue(entries: readonly QueueEntry[]): string {
