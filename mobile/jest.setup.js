@@ -68,5 +68,22 @@ jest.mock('expo-video', () => {
   };
 });
 
+// The home-screen widget library draws through native code. Its primitives become plain components that tests can
+// compare by identity (the widget is inspected as a React element tree, not rendered), and its calls are spies.
+jest.mock('react-native-android-widget', () => {
+  const primitive = name => {
+    const Component = () => null;
+    Component.displayName = name;
+    return Component;
+  };
+  return {
+    FlexWidget: primitive('FlexWidget'),
+    TextWidget: primitive('TextWidget'),
+    OverlapWidget: primitive('OverlapWidget'),
+    requestWidgetUpdate: jest.fn(async () => undefined),
+    registerWidgetTaskHandler: jest.fn(),
+  };
+});
+
 // The keyboard library is native; it ships its own jest mock (individual tests may still override it).
 jest.mock('react-native-keyboard-controller', () => require('react-native-keyboard-controller/jest'));

@@ -1,5 +1,6 @@
-import { accountDateKey } from '@eiyu/shared';
-import type { Quest } from '@eiyu/shared';
+// Deep imports: the widget's headless task reaches this file, and the @eiyu/shared barrel loads the Supabase library.
+import { accountDateKey } from '@eiyu/shared/src/logic/date-utils';
+import type { Quest } from '@eiyu/shared/src/types/eiyu';
 
 /**
  * The offline write queue's model: plain data and pure functions, no React and no storage. The provider in

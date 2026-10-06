@@ -1,13 +1,11 @@
-import {
-  accountDateKey,
-  boardTodayProgress,
-  parsePalette,
-  parseThemeMode,
-  partitionBoardQuests,
-  type Palette,
-  type Quest,
-  type ThemeMode,
-} from '@eiyu/shared';
+// Deep imports on purpose: the @eiyu/shared barrel re-exports the data layer, which loads the Supabase library, and this
+// module runs in the headless widget task (see widgets/__tests__/widget-purity.test.ts).
+import { accountDateKey } from '@eiyu/shared/src/logic/date-utils';
+import { boardTodayProgress, partitionBoardQuests } from '@eiyu/shared/src/logic/quest-recurrence';
+import { parsePalette, type Palette } from '@eiyu/shared/src/theme/palettes';
+import { parseThemeMode } from '@eiyu/shared/src/theme/theme-mode';
+import type { ThemeMode } from '@eiyu/shared/src/theme/palettes';
+import type { Quest } from '@eiyu/shared/src/types/eiyu';
 
 import { applyOverlay, SYNC_TAG_TEXT, type QueueEntry, type SyncState } from './write-queue';
 
