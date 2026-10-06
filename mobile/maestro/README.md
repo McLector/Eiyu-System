@@ -94,6 +94,10 @@ flow at normal or increased Android font scale.
 - `board_offline_queue` — offline write queue: airplane mode on, a tap shows Waiting to sync and a count, two taps
   cancel, the queue survives killing the app, and reconnecting sends it and flashes Synced. Android only (airplane
   mode); written in mobile parity slice 6, not yet run on a device.
+- `pilot_readonly_navigation` — read-only walk through the Board lanes, All Habits, the account menu, Settings,
+  Quest History, Status and Chain. Safe on a real signed-in account: no `clearState`, and it never ticks a quest,
+  flips a switch, saves or logs out. Run on a physical Android phone (release build, signed in) with Maestro 2.x
+  from the CLI; taps take 3-25 s to settle there, so allow about 8 minutes.
 - The home-screen widget is not covered: it lives on the launcher, outside the app, and Maestro drives the app.
   Check it by hand on a release build (see the by-screen checklist in the slice 7 handoff): add "Eiyu: Today",
   force-stop the app with Metro off and confirm it still draws, tap it and confirm it opens the Board on Daily,

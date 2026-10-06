@@ -1,0 +1,72 @@
+appId: com.mclector.eiyusystem
+---
+# Read-only navigation pilot. Safe on a real signed-in account: it never taps a
+# checkbox, stepper, switch, palette, Logout or Edit details, and never saves.
+# Precondition: the app is installed and already signed in (no clearState).
+- launchApp
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 30000
+
+# Lanes: tabs by id.
+- assertVisible:
+    id: "board-lane-tab-daily"
+- assertVisible:
+    id: "board-lane-tab-one-time"
+- assertVisible:
+    id: "board-lane-tab-backlog"
+- tapOn:
+    id: "board-lane-tab-backlog"
+- tapOn:
+    id: "board-lane-tab-one-time"
+- tapOn:
+    id: "board-lane-tab-daily"
+
+# All Habits is a sheet opened from the Daily lane.
+- tapOn: "ALL HABITS"
+- assertVisible: "ALL HABITS"
+- back
+- assertVisible:
+    id: "board-lane-tab-daily"
+
+# Account menu lists its four actions; Back closes it without choosing one.
+- tapOn:
+    id: "account-trigger"
+- assertVisible: "Edit details"
+- assertVisible: "Settings"
+- assertVisible: "Archived habits"
+- assertVisible: "Logout"
+- back
+- assertVisible:
+    id: "board-lane-tab-daily"
+
+# Settings and Quest History: open and leave, touch nothing inside.
+- tapOn:
+    id: "account-trigger"
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "SETTINGS"
+    timeout: 5000
+# Quest History is below the fold of the sheet.
+- scrollUntilVisible:
+    element: "Quest History"
+    direction: DOWN
+- tapOn: "Quest History"
+- extendedWaitUntil:
+    visible: "HISTORY"
+    timeout: 10000
+- back
+- assertVisible: "BOARD"
+
+# Status and Chain tabs (list only).
+- tapOn: "STATUS"
+- assertVisible: "STATUS"
+- swipe:
+    direction: LEFT
+- swipe:
+    direction: LEFT
+- tapOn: "CHAIN"
+- assertVisible: "CHAIN"
+- tapOn: "BOARD"
+- assertVisible:
+    id: "board-lane-tab-daily"
