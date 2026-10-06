@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
@@ -443,13 +443,19 @@ describe('Backlog and moving quests between lanes', () => {
 
   it('drops a deleted quest from the Backlog list straight away', async () => {
     // Every read before the delete sees the quest (a second early read must not empty the list), every read after it does not.
-    mockShared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
-    await mountStore();
-    await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
-    mockShared.fetchBacklogQuests.mockResolvedValue([]);
-    await act(async () => { await currentStore!.deleteQuest('backlog-1'); });
-    expect(mockShared.deleteHabit).toHaveBeenCalledWith('backlog-1');
-    expect(currentStore!.backlog).toEqual([]);
+    // React Query hands state changes to React on a timer; a slow one stands in for a loaded machine.
+    notifyManager.setScheduler(callback => { setTimeout(callback, 60); });
+    try {
+      mockShared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
+      await mountStore();
+      await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
+      mockShared.fetchBacklogQuests.mockResolvedValue([]);
+      await act(async () => { await currentStore!.deleteQuest('backlog-1'); });
+      expect(mockShared.deleteHabit).toHaveBeenCalledWith('backlog-1');
+      await waitFor(() => expect(currentStore!.backlog).toEqual([]));
+    } finally {
+      notifyManager.setScheduler(callback => { setTimeout(callback, 0); });
+    }
   });
 
   it('refetches Backlog on Retry along with the rest of the board', async () => {
