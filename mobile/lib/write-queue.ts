@@ -246,13 +246,19 @@ export function decodeQueue(raw: string | null | undefined, userId: string): Que
   }
 }
 
+/** Fails every pending or uncertain entry from an earlier account day. A sending one is left for its in-flight request. */
+export function expireEntries(entries: readonly QueueEntry[], now: Date, timeZone: string): QueueEntry[] {
+  let changed = false;
+  const next = entries.map(entry => {
+    if ((entry.status !== 'pending' && entry.status !== 'uncertain') || !isExpired(entry, now, timeZone)) return entry;
+    changed = true;
+    return { ...entry, status: 'failed' as const, failure: { reason: 'day-passed' as const, message: FAILURE_MESSAGES['day-passed'] } };
+  });
+  return changed ? next : (entries as QueueEntry[]);
+}
+
 /** After a launch: a write caught mid-send becomes uncertain, and one from an earlier account day is failed. */
 export function reviveEntries(entries: readonly QueueEntry[], now: Date, timeZone: string): QueueEntry[] {
-  return entries.map(entry => {
-    if (entry.status === 'failed') return entry;
-    if (isExpired(entry, now, timeZone)) {
-      return { ...entry, status: 'failed', failure: { reason: 'day-passed', message: FAILURE_MESSAGES['day-passed'] } };
-    }
-    return entry.status === 'sending' ? { ...entry, status: 'uncertain' } : entry;
-  });
+  const revived = entries.map(entry => (entry.status === 'sending' ? { ...entry, status: 'uncertain' as const } : entry));
+  return expireEntries(revived, now, timeZone);
 }

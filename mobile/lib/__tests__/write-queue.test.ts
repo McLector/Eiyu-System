@@ -4,6 +4,7 @@ import {
   classifyError,
   decodeQueue,
   encodeQueue,
+  expireEntries,
   enqueue,
   isExpired,
   reviveEntries,
@@ -326,5 +327,25 @@ describe('reviveEntries', () => {
     const result = reviveEntries([entry({ id: 'p' }), failed], now, 'UTC');
     expect(result[0].status).toBe('pending');
     expect(result[1]).toEqual(failed);
+  });
+});
+
+describe('expireEntries', () => {
+  const now = new Date('2026-10-05T12:00:00Z');
+
+  it('fails pending and uncertain entries from an earlier day but leaves sending ones for the in-flight request', () => {
+    const list = [
+      entry({ id: 'p', accountDate: '2026-10-04' }),
+      entry({ id: 'u', accountDate: '2026-10-04', status: 'uncertain' }),
+      entry({ id: 's', accountDate: '2026-10-04', status: 'sending' }),
+    ];
+    const result = expireEntries(list, now, 'UTC');
+    expect(result.map(e => e.status)).toEqual(['failed', 'failed', 'sending']);
+    expect(result[0].failure?.reason).toBe('day-passed');
+  });
+
+  it('returns the same array when nothing expired', () => {
+    const list = [entry()];
+    expect(expireEntries(list, now, 'UTC')).toBe(list);
   });
 });
