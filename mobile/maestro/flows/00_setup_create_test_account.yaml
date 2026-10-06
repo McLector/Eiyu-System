@@ -3,18 +3,31 @@ appId: com.mclector.eiyusystem
 # Run this with E2E_EMAIL, E2E_PASSWORD, and E2E_NAME supplied through the
 # Maestro environment to create a disposable account. Re-running after signup
 # will fail because Supabase rejects the duplicate address.
-- launchApp:
-    clearState: true
-- extendedWaitUntil:
-    visible: "EIYU SYSTEM"
-    timeout: 30000
+- runFlow: _helpers/launch_fresh.yaml
 - tapOn: "Register"
-- tapOn: "Kaito Mizuru"
+- tapOn: "Display name"
 - inputText: ${E2E_NAME}
-- tapOn: "you@example.com"
+- tapOn: "Email address"
 - inputText: ${E2E_EMAIL}
-- tapOn: "••••••••"
+- tapOn: "Password"
 - inputText: ${E2E_PASSWORD}
 - hideKeyboard
+- scrollUntilVisible:
+    element: "Confirm password"
+    direction: DOWN
+- tapOn: "Confirm password"
+- inputText: ${E2E_PASSWORD}
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "terms-checkbox"
+    direction: DOWN
+- tapOn:
+    id: "terms-checkbox"
+- scrollUntilVisible:
+    element: "BEGIN JOURNEY"
+    direction: DOWN
 - tapOn: "BEGIN JOURNEY"
-- assertVisible: "BOARD"
+- extendedWaitUntil:
+    visible: "BOARD"
+    timeout: 60000

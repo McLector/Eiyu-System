@@ -5,11 +5,23 @@ appId: com.mclector.eiyusystem
 # - that connection is process-level, not persisted data, so clearState
 # doesn't change this. Handle both outcomes: tap the remembered server if the
 # picker shows, no-op otherwise, then wait for the real app.
-- launchApp:
-    clearState: true
+# No clearState: ColorOS denies `pm clear` to adb (CLEAR_APP_USER_DATA), so
+# reach the signed-out state through the app's own Logout instead.
+- launchApp
 - extendedWaitUntil:
-    visible: ".*(EIYU SYSTEM|10\\.0\\.2\\.2).*"
+    visible: ".*(EIYU SYSTEM|BOARD|10\\.0\\.2\\.2).*"
     timeout: 60000
+- runFlow:
+    when:
+      visible:
+        id: "account-trigger"
+    commands:
+      - tapOn:
+          id: "account-trigger"
+      - tapOn: "Logout"
+      - extendedWaitUntil:
+          visible: "EIYU SYSTEM"
+          timeout: 30000
 - tapOn:
     text: ".*10\\.0\\.2\\.2.*"
     optional: true

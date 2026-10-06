@@ -6,6 +6,14 @@ appId: com.mclector.eiyusystem
 - runFlow: launch_fresh.yaml
 - tapOn: "Email address"
 - inputText: ${E2E_EMAIL}
+# On the phone the IME occasionally drops a character (a "." went missing once);
+# retype once if the field does not show the exact address.
+- runFlow:
+    when:
+      notVisible: ${E2E_EMAIL}
+    commands:
+      - eraseText: 80
+      - inputText: ${E2E_EMAIL}
 - tapOn: "Password"
 - inputText: ${E2E_PASSWORD}
 - hideKeyboard

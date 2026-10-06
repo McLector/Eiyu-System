@@ -7,20 +7,25 @@ appId: com.mclector.eiyusystem
 # fields exist to tap on).
 - tapOn: "HABIT QUEST"
 - assertVisible: "NEW QUEST"
-- tapOn: "e.g. Code for 2 hours"
+- tapOn: "Quest name"
 - inputText: "Maestro Habit Happy Path"
-- tapOn: "e.g. Code for 20 minutes"
+- hideKeyboard
+# A habit needs a penalty or a target count of at least 2 before it can be saved.
+- tapOn: "Penalty"
 - inputText: "Shorter version of it"
 - hideKeyboard
-- tapOn: "STR"
-- tapOn: "Hard"
 - scrollUntilVisible:
-    element: "CREATE QUEST"
+    element:
+      id: "quest-save"
     direction: DOWN
     timeout: 8000
-- tapOn: "CREATE QUEST"
+- tapOn:
+    id: "quest-save"
+# The editor must close (NEW QUEST gone) and the quest must be on the Board.
+- extendedWaitUntil:
+    notVisible: "NEW QUEST"
+    timeout: 15000
 - assertVisible: "Maestro Habit Happy Path"
-- assertVisible: "STR"
 
 # Cleanup: this flow shares one persistent test account across runs, so
 # leaving the quest behind would break other flows on the next run.
