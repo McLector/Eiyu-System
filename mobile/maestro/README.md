@@ -91,6 +91,9 @@ flow at normal or increased Android font scale.
 - `gym_*` — Gym tab: create routine and exercise, log a weight, delete; validation and the discard guard.
   Written in mobile parity slice 4, not yet run on a device. GIF/MP4 upload is not covered (the system
   picker cannot be driven); do it by hand.
+- `board_offline_queue` — offline write queue: airplane mode on, a tap shows Waiting to sync and a count, two taps
+  cancel, the queue survives killing the app, and reconnecting sends it and flashes Synced. Android only (airplane
+  mode); written in mobile parity slice 6, not yet run on a device.
 - `phase6_whole_product_acceptance.yaml` — disposable cross-platform lifecycle,
   account-isolation, retained-history, and Android navigation journey
 - `phase6_reload_smoke.yaml` — same-account relaunch, persisted board state,

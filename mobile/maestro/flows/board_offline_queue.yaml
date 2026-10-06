@@ -1,0 +1,78 @@
+appId: com.mclector.eiyusystem
+---
+# Offline write queue (slice 6). Android only: airplane mode needs a device or emulator that allows it.
+# Written from reading the code; NOT RUN yet. Expect selector or timing fixes on the first run.
+- runFlow: _helpers/login.yaml
+- tapOn: "ADD A QUEST"
+- tapOn: "HABIT QUEST"
+- tapOn: "e.g. Code for 2 hours"
+- inputText: "Offline Queue Habit"
+- tapOn: "e.g. Code for 20 minutes"
+- inputText: "offline queue easy version"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "CREATE QUEST"
+    direction: DOWN
+    timeout: 8000
+- tapOn: "CREATE QUEST"
+- assertVisible: "Offline Queue Habit"
+- assertVisible: "0/1"
+
+# Online: a tap is sent at once, so no sync tag or notice appears.
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- assertVisible: "1/1"
+- assertNotVisible: "Waiting to sync"
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- assertVisible: "0/1"
+
+# Offline: the change shows at once, is tagged, and is counted in the notice. Nothing is sent.
+- setAirplaneMode: enabled
+- extendedWaitUntil:
+    visible: "Offline Queue Habit"
+    timeout: 5000
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- assertVisible: "1/1"
+- assertVisible: "Waiting to sync"
+- assertVisible: "1 change waiting to sync"
+- assertVisible: "You're offline. They will send when you reconnect."
+
+# Two taps offline cancel out: nothing is left to send.
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- assertVisible: "0/1"
+- assertNotVisible: "Waiting to sync"
+- tapOn:
+    id: "quest-checkbox"
+    index: 0
+- assertVisible: "1/1"
+- assertVisible: "1 change waiting to sync"
+
+# The queue survives the app being killed.
+- killApp
+- launchApp:
+    clearState: false
+- assertVisible: "Offline Queue Habit"
+- assertVisible: "1/1"
+- assertVisible: "Waiting to sync"
+
+# Back online: the change is sent, the tag goes, and "Synced" flashes.
+- setAirplaneMode: disabled
+- extendedWaitUntil:
+    visible: "Synced"
+    timeout: 30000
+- assertNotVisible: "Waiting to sync"
+- assertVisible: "1/1"
+
+# Cleanup: keep the shared test account's board empty between flow runs.
+- tapOn:
+    id: "quest-edit-trigger"
+- tapOn: "Edit quest"
+- runFlow: _helpers/delete_open_quest.yaml
+- assertNotVisible: "Offline Queue Habit"
