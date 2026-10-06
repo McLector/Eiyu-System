@@ -86,10 +86,10 @@ flow at normal or increased Android font scale.
   double-tap race-condition probe
 - `longquest_*` — Chain CRUD, stage list bounds (at least one stage, no maximum),
   stage completion and undo, delete (centred confirmation). Rewritten for the
-  Chain list and detail screens in mobile parity slice 3; not yet run on a device.
+  Chain list and detail screens in mobile parity slice 3; run green on a phone (2026-10-06).
   The AI stage breakdown flow was removed with "Suggest stages" (D17).
 - `gym_*` — Gym tab: create routine and exercise, log a weight, delete; validation and the discard guard.
-  Written in mobile parity slice 4, not yet run on a device. GIF/MP4 upload is not covered (the system
+  Written in mobile parity slice 4; run green on a phone (2026-10-06). GIF/MP4 upload is not covered (the system
   picker cannot be driven); do it by hand.
 - `board_offline_queue` — offline write queue: airplane mode on, a tap shows Waiting to sync and a count, two taps
   cancel, the queue survives killing the app, and reconnecting sends it and flashes Synced. Android only (airplane
@@ -111,6 +111,26 @@ flow at normal or increased Android font scale.
   then serves from cache on revisit
 - `history_month_navigation` — calendar month paging
 - `settings_toggles_and_signout` — theme switch (stable `Dark Theme` name, `settings-dark-theme` id, checked state flips), palette radiogroup, sound switch, Logout from the account menu
+
+## Running on a physical Android phone
+
+First run on a real phone (Oppo, Android 12, release build) was 2026-10-06.
+- `pm clear` is denied to adb on ColorOS, so `_helpers/launch_fresh.yaml` reaches the signed-out
+  state through the app's own Logout instead of `clearState`. Use a disposable account for any
+  flow that writes (signup, quests, chains, routines, profile): the helper signs the phone out.
+- Passing at that point: `pilot_readonly_navigation`, `auth_login_happy`, `auth_forgot_password`,
+  `auth_signup_negative_validation`, `habit_*`, `board_toggle_complete`,
+  `board_rapid_double_tap_edge_case`, `one_time_quest_create_complete`, `longquest_*`,
+  `gym_*`, `history_month_navigation`, `settings_toggles_and_signout`, and in `e2e/`:
+  `A3_quantity`, `A8_profile_edit`, `board_lane_phone_visibility`, `status_heatmap_latest`.
+- Not run: `status_weekly_summary_and_cache` (the AI service was busy), the `A10_*` font-scale
+  flows (they change the phone's system font scale), `A9_offline_complete` and
+  `board_offline_queue` (airplane mode cannot be switched from adb here), `A13_*` (needs a midnight
+  crossing), and the `phase2`/`phase4`/`phase6`/`phase8` flows (local stack and dev client).
+- Taps take 3-25 s to settle, so run a flow in the background with a long timeout. The phone's
+  keyboard occasionally drops a typed character; email and name fields are checked or matched loosely.
+- Maestro matches text case-insensitively, so an exact title and a same-letters button collide
+  (use `index`), and `eraseText` only deletes backward from the cursor (tap the field's end first).
 
 ## Notes on the app changes made to support this
 
