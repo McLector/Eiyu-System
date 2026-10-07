@@ -27,7 +27,7 @@ Your real-life habits translate directly into XP for your character's stats (STR
 * **Safe layout (Android)**: The tab bar is part of the screen rather than floating over it, and it includes the phone's navigation bar, so ADD A QUEST, NEW CHAIN, ADD EXERCISE and the last row of every list stay visible with gesture or 3-button navigation and at any system font size.
 * **Show password**: an eye button on the password and confirm-password fields of the sign-in and sign-up forms (web and Android).
 * **Supabase Backend**: Full cloud sync — habits, stats, completions, streaks, and long quests are all persisted and synced across devices, shared between the mobile and web clients.
-* **Auth**: Email/password auth with session persistence, display-name sign-up, and password reset. On Android, Settings is a sheet from the account menu: dark/light switch, eight colour palettes (saved on the account, like on web), quest reminders, completion sound and Quest History.
+* **Auth**: Email/password auth with session persistence, display-name sign-up, and password reset. On Android, Settings is a sheet from the account menu: dark/light switch, eight colour palettes (System blue is the default for an account with no saved choice; a choice, cyan included, is saved on the account like on web), quest reminders, completion sound and Quest History. The 英 logo mark pulses softly on web and Android and holds still when the system asks for reduced motion (and under forced colours on web).
 * **History**: Calendar-based completion history with per-day drill-down.
 * **Notifications**: Local push notification scheduling for habit reminders (mobile only).
 * **Weekly Quests**: Auto-generated weekly targets per stat (not shown in the current Status screens of either app).
