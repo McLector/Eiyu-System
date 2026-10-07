@@ -125,5 +125,4 @@ export const REORDER_COPY = {
   moveTopFor: (name: string) => `Move ${name} to top`,
   moveUpFor: (name: string) => `Move ${name} up`,
   moveDownFor: (name: string) => `Move ${name} down`,
-  failed: 'Could not save the new order. It has been put back.',
 } as const;

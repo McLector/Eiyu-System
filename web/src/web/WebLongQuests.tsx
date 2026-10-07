@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type DragEvent } from 'react';
+import { useEffect, useState, type CSSProperties, type DragEvent } from 'react';
 import {
   CHAIN_ORDER_COPY,
   LONG_QUEST_COPY,
@@ -216,6 +216,9 @@ export default function WebLongQuests() {
   const [chosen, setChosen] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const selected = chains.find(quest => quest.id === chosen) ?? chains[0];
+  // Whatever is shown stays shown: finishing the open chain or adding a new one re-sorts the list, which would
+  // otherwise swap the panel for whichever chain is now first, just as the reward card appears.
+  useEffect(() => { if (selected && chosen !== selected.id) setChosen(selected.id); }, [selected, chosen]);
   const rewardCardShown = !!rewardReceipt && !rewardReceipt.replayed && rewardReceipt.totals.length > 0;
 
   return (

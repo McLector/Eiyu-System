@@ -4,6 +4,7 @@ import { cleanup, createEvent, fireEvent, render, screen, within } from '@testin
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import { initialUser, type LongQuest } from '@eiyu/shared';
+import { useState } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,14 +22,24 @@ const chain = (id: string, position?: number, done = false): LongQuest => ({
   stages: [{ id: `${id}-1`, name: 'Stage', done, description: null }, { id: `${id}-2`, name: 'Stage two', done, description: null }],
 });
 
-function setup(chains: LongQuest[]) {
-  store.reorderChains.mockReset().mockResolvedValue(undefined);
+function mockStore(chains: LongQuest[]) {
   store.useEiyu.mockReturnValue({
     user: { ...initialUser, timeZone: 'UTC', longQuests: chains }, stageRewardNotice: null, rewardReceipt: null,
     longQuestsLoading: false, longQuestsError: null, retryLongQuests: vi.fn(), toggleStage: vi.fn(),
     removeLongQuest: vi.fn(), saveLongQuest: vi.fn(), pendingStageIds: [], reorderChains: store.reorderChains,
   });
-  render(<RouterProvider router={createMemoryRouter([{ path: '/', element: <NavigationGuard><WebLongQuests /></NavigationGuard> }])} />);
+}
+
+// Re-renders the page without touching its own state, the way a store update does.
+function Harness() {
+  const [, bump] = useState(0);
+  return <><button onClick={() => bump(n => n + 1)}>refresh</button><WebLongQuests /></>;
+}
+
+function setup(chains: LongQuest[]) {
+  store.reorderChains.mockReset().mockResolvedValue(undefined);
+  mockStore(chains);
+  render(<RouterProvider router={createMemoryRouter([{ path: '/', element: <NavigationGuard><Harness /></NavigationGuard> }])} />);
 }
 const nav = () => screen.getByRole('navigation', { name: 'Your chains' });
 const names = () => within(nav()).getAllByRole('button').filter(b => b.classList.contains('chain-nav-item')).map(b => b.querySelector('.chain-nav-name')?.textContent);
@@ -87,6 +98,37 @@ describe('Chain list manual order', () => {
     expect(row('done').querySelector('.chain-nav-grip')).toBeNull();
     expect(within(row('done')).queryByRole('button', { name: /More actions for/ })).toBeNull();
     expect(row('a').querySelector('.chain-nav-grip')).not.toBeNull();
+  });
+
+  describe('the chain you are reading stays open when the list re-sorts', () => {
+    const title = () => document.querySelector('.chain-panel .chain-title')?.textContent;
+
+    it('when its last stage is done and it sinks below the others', async () => {
+      const user = userEvent.setup();
+      setup([chain('a', 0), chain('b', 1)]);
+      expect(title()).toBe('A');
+      mockStore([chain('a', 0, true), chain('b', 1)]);
+      await user.click(screen.getByRole('button', { name: 'refresh' }));
+      expect(names()).toEqual(['B', 'A']);
+      expect(title()).toBe('A');
+    });
+
+    it('when a new chain lands on top of the list', async () => {
+      const user = userEvent.setup();
+      setup([chain('a', 0), chain('b', 1)]);
+      mockStore([chain('new', -1), chain('a', 0), chain('b', 1)]);
+      await user.click(screen.getByRole('button', { name: 'refresh' }));
+      expect(names()).toEqual(['NEW', 'A', 'B']);
+      expect(title()).toBe('A');
+    });
+
+    it('but still falls back to the first chain when the open one is deleted', async () => {
+      const user = userEvent.setup();
+      setup([chain('a', 0), chain('b', 1)]);
+      mockStore([chain('b', 1)]);
+      await user.click(screen.getByRole('button', { name: 'refresh' }));
+      expect(title()).toBe('B');
+    });
   });
 
   it('still selects a chain by pressing its name', async () => {
