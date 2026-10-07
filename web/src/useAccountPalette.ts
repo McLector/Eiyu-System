@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchAccountPalette, saveAccountPalette } from '@eiyu/shared';
-import { isPalette, readStoredPalette, storePalette, type Palette } from './palette';
+import { fetchAccountPalette, resolvePaletteOnLoad, saveAccountPalette } from '@eiyu/shared';
+import { readStoredPalette, readStoredPaletteChoice, storePalette, type Palette } from './palette';
 
 /**
  * The palette follows the account. The browser copy paints first, so there is no wait and no flash; the account's
- * choice then wins, and an account with none takes the one this browser already uses. A palette is cosmetic, so a
- * failed read or save never surfaces: the pick still applies here, and the next one tries the account again.
+ * choice then wins. An account with no choice takes the one this browser has stored, cyan included, and pushes it up
+ * so the account adopts it. A failed read changes nothing and pushes nothing, so a flaky read cannot overwrite the
+ * account. A palette is cosmetic, so a failed save never surfaces: the pick still applies here, and the next one tries
+ * the account again.
  */
 export function useAccountPalette(userId: string | undefined): [Palette, (next: Palette) => void] {
   const [palette, setPalette] = useState<Palette>(readStoredPalette);
@@ -17,12 +19,12 @@ export function useAccountPalette(userId: string | undefined): [Palette, (next: 
     let current = true;
     void fetchAccountPalette(userId).then(saved => {
       if (!current || picked.current) return;
-      if (saved === null) {
-        const local = readStoredPalette();
-        if (local !== 'cyan') void saveAccountPalette(local).catch(() => {});
-      } else if (isPalette(saved)) {
-        setPalette(saved);
-        storePalette(saved);
+      const resolved = resolvePaletteOnLoad({ account: saved, local: readStoredPaletteChoice() });
+      if (resolved.storeAccount) {
+        setPalette(resolved.palette);
+        storePalette(resolved.palette);
+      } else if (resolved.pushLocal) {
+        void saveAccountPalette(resolved.palette).catch(() => {});
       }
     });
     return () => { current = false; };

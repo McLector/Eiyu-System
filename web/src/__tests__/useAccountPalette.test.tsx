@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const shared = vi.hoisted(() => ({ fetchAccountPalette: vi.fn(), saveAccountPalette: vi.fn() }));
 vi.mock('@eiyu/shared', async importActual => ({ ...(await importActual<typeof import('@eiyu/shared')>()), ...shared }));
 
-import { PALETTE_STORAGE_KEY } from '../palette';
+import { DEFAULT_PALETTE, PALETTE_STORAGE_KEY } from '../palette';
 import { useAccountPalette } from '../useAccountPalette';
 
 beforeEach(() => {
@@ -50,11 +50,63 @@ describe('useAccountPalette', () => {
     expect(result.current[0]).toBe('lime');
   });
 
-  it('does not write anything for an account with no palette on a browser that is on cyan', async () => {
+  it.each(['cyan', 'jade'])('gives an account with no palette a stored %s choice, cyan included', async id => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, id);
     renderHook(() => useAccountPalette('user-1'));
+    await waitFor(() => expect(shared.saveAccountPalette).toHaveBeenCalledWith(id));
+    expect(shared.saveAccountPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for an account with no palette when this browser has no choice stored', async () => {
+    const { result } = renderHook(() => useAccountPalette('user-1'));
     await waitFor(() => expect(shared.fetchAccountPalette).toHaveBeenCalled());
     await act(async () => {});
     expect(shared.saveAccountPalette).not.toHaveBeenCalled();
+    expect(result.current[0]).toBe(DEFAULT_PALETTE);
+    expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBeNull();
+  });
+
+  it('ignores a stored value that is not a palette, and saves nothing for it', async () => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'crimson');
+    const { result } = renderHook(() => useAccountPalette('user-1'));
+    await waitFor(() => expect(shared.fetchAccountPalette).toHaveBeenCalled());
+    await act(async () => {});
+    expect(shared.saveAccountPalette).not.toHaveBeenCalled();
+    expect(result.current[0]).toBe(DEFAULT_PALETTE);
+  });
+
+  it.each(['cyan', 'jade'])('keeps the stored %s and saves nothing when the account read fails', async id => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, id);
+    shared.fetchAccountPalette.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useAccountPalette('user-1'));
+    await waitFor(() => expect(shared.fetchAccountPalette).toHaveBeenCalled());
+    await act(async () => {});
+    expect(result.current[0]).toBe(id);
+    expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBe(id);
+    expect(shared.saveAccountPalette).not.toHaveBeenCalled();
+  });
+
+  it('keeps the default and saves nothing when the account read fails and nothing is stored', async () => {
+    shared.fetchAccountPalette.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useAccountPalette('user-1'));
+    await waitFor(() => expect(shared.fetchAccountPalette).toHaveBeenCalled());
+    await act(async () => {});
+    expect(result.current[0]).toBe(DEFAULT_PALETTE);
+    expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBeNull();
+    expect(shared.saveAccountPalette).not.toHaveBeenCalled();
+  });
+
+  it('lets a pick made while a palette-less account is being read win over the stored choice', async () => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'jade');
+    let answer: (value: null) => void = () => {};
+    shared.fetchAccountPalette.mockReturnValue(new Promise<null>(resolve => { answer = resolve; }));
+    const { result } = renderHook(() => useAccountPalette('user-1'));
+    await act(async () => { result.current[1]('indigo'); });
+    await act(async () => { answer(null); });
+    expect(result.current[0]).toBe('indigo');
+    expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBe('indigo');
+    expect(shared.saveAccountPalette).toHaveBeenCalledTimes(1);
+    expect(shared.saveAccountPalette).toHaveBeenCalledWith('indigo');
   });
 
   it('applies and saves a pick, locally first', async () => {
