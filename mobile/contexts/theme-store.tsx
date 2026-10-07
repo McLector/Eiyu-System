@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import {
+  DEFAULT_PALETTE,
   fetchAccountPalette,
   fetchAccountTheme,
-  isPalette,
   PALETTE_TOKENS,
+  resolvePaletteOnLoad,
   resolveThemeOnLoad,
   saveAccountPalette,
   saveAccountTheme,
@@ -44,7 +45,7 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const userId = session?.user.id;
   const [mode, setModeState] = useState<ThemeMode>('dark');
-  const [palette, setPaletteState] = useState<Palette>('cyan');
+  const [palette, setPaletteState] = useState<Palette>(DEFAULT_PALETTE);
   const [hydrated, setHydrated] = useState(false);
   // Bumped by every pick. An account answer is dropped when a pick happened while it was loading; a pick made long
   // before (and already saved) must not block a later answer, or a change made on web could never arrive.
@@ -83,11 +84,12 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
         if (pushLocal) void saveAccountTheme(theme).then(clearThemeUnsynced).catch(() => {});
       }
       if (paletteEpoch.current === paletteAtStart) {
-        if (accountPalette === null) {
-          if (stored.palette && stored.palette !== 'cyan') void saveAccountPalette(stored.palette).catch(() => {});
-        } else if (isPalette(accountPalette)) {
-          setPaletteState(accountPalette);
-          void storePalette(accountPalette);
+        const resolved = resolvePaletteOnLoad({ account: accountPalette, local: stored.palette });
+        if (resolved.storeAccount) {
+          setPaletteState(resolved.palette);
+          void storePalette(resolved.palette);
+        } else if (resolved.pushLocal) {
+          void saveAccountPalette(resolved.palette).catch(() => {});
         }
       }
     };

@@ -152,6 +152,134 @@ describe('AppThemeProvider', () => {
   });
 });
 
+describe('AppThemeProvider palette on load', () => {
+  // The palette step runs in the same synchronous continuation as the mode step, after both account answers arrive.
+  // Mode flipping to light proves the palette step has already run, so a "not called" assertion cannot pass vacuously.
+  const expectPaletteStepRan = () => waitFor(() => expect(current!.mode).toBe('light'));
+
+  it('gives an account with no palette the stored lime and pushes it up', async () => {
+    await AsyncStorage.setItem('eiyu:palette', 'lime');
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    await mount();
+    await expectPaletteStepRan();
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledTimes(1);
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledWith('lime');
+    expect(current!.palette).toBe('lime');
+  });
+
+  it.each(['cyan', 'jade'])('gives an account with no palette the stored %s choice, cyan included, and pushes it once', async id => {
+    await AsyncStorage.setItem('eiyu:palette', id);
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    await mount();
+    await expectPaletteStepRan();
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledTimes(1);
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledWith(id);
+    expect(current!.palette).toBe(id);
+  });
+
+  it('writes nothing for an account with no palette when nothing is stored', async () => {
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    await mount();
+    await expectPaletteStepRan();
+    expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
+    expect(current!.palette).toBe('cyan');
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBeNull();
+  });
+
+  it('ignores a stored value that is not a palette, and saves nothing for it', async () => {
+    await AsyncStorage.setItem('eiyu:palette', 'crimson');
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    await mount();
+    await expectPaletteStepRan();
+    expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
+    expect(current!.palette).toBe('cyan');
+  });
+
+  it('takes an account palette over a stored one and saves nothing', async () => {
+    await AsyncStorage.setItem('eiyu:palette', 'jade');
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    mockShared.fetchAccountPalette.mockResolvedValue('violet');
+    await mount();
+    await expectPaletteStepRan();
+    expect(current!.palette).toBe('violet');
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBe('violet');
+    expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
+  });
+
+  it('ignores an account palette it does not know and keeps the stored choice without saving', async () => {
+    await AsyncStorage.setItem('eiyu:palette', 'jade');
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    mockShared.fetchAccountPalette.mockResolvedValue('crimson');
+    await mount();
+    await expectPaletteStepRan();
+    expect(current!.palette).toBe('jade');
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBe('jade');
+    expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
+  });
+
+  it('keeps a stored choice when pushing it to the account is rejected', async () => {
+    await AsyncStorage.setItem('eiyu:palette', 'jade');
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    mockShared.saveAccountPalette.mockRejectedValue(new Error('offline'));
+    await mount();
+    await expectPaletteStepRan();
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledWith('jade');
+    expect(current!.palette).toBe('jade');
+  });
+
+  it.each(['cyan', 'jade'])('keeps the stored %s and saves nothing when the account read fails', async id => {
+    await AsyncStorage.setItem('eiyu:palette', id);
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    mockShared.fetchAccountPalette.mockResolvedValue(undefined);
+    await mount();
+    await expectPaletteStepRan();
+    expect(current!.palette).toBe(id);
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBe(id);
+    expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
+  });
+
+  it('keeps the default and saves nothing when the account read fails and nothing is stored', async () => {
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    mockShared.fetchAccountPalette.mockResolvedValue(undefined);
+    await mount();
+    await expectPaletteStepRan();
+    expect(current!.palette).toBe('cyan');
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBeNull();
+    expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
+  });
+
+  it('lets a pick made while a palette-less account is being read win over the stored choice', async () => {
+    await AsyncStorage.setItem('eiyu:palette', 'jade');
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    let answer: (value: null) => void = () => {};
+    mockShared.fetchAccountPalette.mockReturnValue(new Promise<null>(resolve => { answer = resolve; }));
+    await mount();
+    await waitFor(() => expect(mockShared.fetchAccountPalette).toHaveBeenCalled());
+    await act(async () => { current!.setPalette('indigo'); });
+    await act(async () => { answer(null); });
+    await expectPaletteStepRan();
+    expect(current!.palette).toBe('indigo');
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBe('indigo');
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledTimes(1);
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledWith('indigo');
+  });
+
+  it('does not let a slow account palette undo a pick made while it was loading', async () => {
+    mockShared.fetchAccountTheme.mockResolvedValue('light');
+    let answer: (value: string) => void = () => {};
+    mockShared.fetchAccountPalette.mockReturnValue(new Promise<string>(resolve => { answer = resolve; }));
+    await mount();
+    await waitFor(() => expect(mockShared.fetchAccountPalette).toHaveBeenCalled());
+    await act(async () => { current!.setPalette('indigo'); });
+    await act(async () => { answer('violet'); });
+    await expectPaletteStepRan();
+    expect(current!.palette).toBe('indigo');
+    expect(await AsyncStorage.getItem('eiyu:palette')).toBe('indigo');
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledTimes(1);
+    expect(mockShared.saveAccountPalette).toHaveBeenCalledWith('indigo');
+  });
+});
+
 describe('AppThemeProvider when the app returns to the foreground', () => {
   it('picks up a theme and palette changed elsewhere (the web app) while the app was in the background', async () => {
     mockShared.fetchAccountTheme.mockResolvedValue('light');
