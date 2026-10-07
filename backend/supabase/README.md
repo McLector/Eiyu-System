@@ -336,6 +336,12 @@ with checks(marker, ok) as (
     and has_function_privilege('authenticated',to_regprocedure('public.reorder_long_quests(uuid[])'),'EXECUTE')
     and not has_function_privilege('anon',to_regprocedure('public.reorder_quests(text,uuid[])'),'EXECUTE')
     and not has_function_privilege('authenticated',to_regprocedure('public.backfill_manual_order(uuid)'),'EXECUTE'), false)
+  union all select '045 AI providers: exhaustion ledger, configurable per-user cap', coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'private' and table_name = 'ai_quota_config' and column_name = 'max_user_requests_per_action')
+    and to_regclass('private.ai_provider_exhaustion') is not null
+    and has_function_privilege('service_role',to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'),'EXECUTE')
+    and not has_function_privilege('authenticated',to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'),'EXECUTE')
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)')), false), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -347,7 +353,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–044
+re-run an old file over a newer definition. This query covers migrations 001–045
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -401,6 +407,21 @@ Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional 
 ## Theme rollout (041)
 
 Apply **041** (`041_profile_theme.sql`) and verify its marker. Both clients treat it as optional: a failed save keeps the theme on the device and re-sends it on the next launch, so deploying either side first breaks nothing. Until 041 is applied the theme simply stays per device. Test with `supabase/tests/022_profile_theme.test.sql`.
+
+## AI providers rollout (045)
+
+Apply **045** (`045_ai_providers.sql`) after 044 and verify its marker; compare the live `ai_begin_request` with 030 first (the file header says what was compared). It moves the per-user daily AI cap (2 per action) into `private.ai_quota_config.max_user_requests_per_action`, adds the private `ai_provider_exhaustion` table, makes `ai_begin_request` also return `exhaustedProviders`, and adds `ai_mark_provider_exhausted(request, provider, time_zone)` (service role only). To raise the cap later: `update private.ai_quota_config set max_user_requests_per_action = 3 where singleton;`. Either order is safe: the new `ai-proxy` treats a missing field or a missing mark RPC as "nothing exhausted", and the old one ignores the extra field. Test with `supabase/tests/013_ai_quota.test.sql`.
+
+**Edge secrets.** Without `AI_PROVIDERS`, `ai-proxy` behaves as before (`GEMINI_API_KEY`, `GEMINI_PRIMARY_MODEL`, `GEMINI_FALLBACK_MODEL`, `AI_RETRY_ENABLED`). To add providers, set one `AI_PROVIDERS` secret holding an ordered JSON list and one secret per key, then redeploy once:
+
+```json
+[
+  {"name": "gemini", "kind": "gemini", "model": "gemini-3.6-flash", "keyEnv": "GEMINI_API_KEY"},
+  {"name": "groq", "kind": "openai", "baseUrl": "https://api.groq.com/openai/v1", "model": "<model id>", "keyEnv": "GROQ_API_KEY"}
+]
+```
+
+`kind` is `gemini` or `openai` (any OpenAI-compatible `/chat/completions` host); `baseUrl` must be `https`; `resetTimeZone` is optional (default `UTC`, `America/Los_Angeles` for `gemini`, because Google resets its daily quota at midnight Pacific). Providers are tried in order. Adding a provider later is a secret change plus a redeploy of the function, not a code change. Quest names, habit names and weekly counts go into the prompt, so read each provider's data terms before adding it.
 
 ## Manual order rollout (044)
 

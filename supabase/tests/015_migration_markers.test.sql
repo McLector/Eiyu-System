@@ -209,5 +209,14 @@ select ok(coalesce(
     and not has_function_privilege('authenticated', to_regprocedure('public.backfill_manual_order(uuid)'), 'EXECUTE'), false),
   '044 The manual order is in place');
 
+-- Migration 045: AI providers (exhaustion ledger, configurable per-user cap).
+select ok(coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'private' and table_name = 'ai_quota_config' and column_name = 'max_user_requests_per_action')
+    and to_regclass('private.ai_provider_exhaustion') is not null
+    and has_function_privilege('service_role', to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'), 'EXECUTE')
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)')), false), false),
+  '045 The AI provider ledger is in place');
+
 select * from finish();
 rollback;

@@ -300,6 +300,78 @@ select is(
   'an idempotent retry replay does not add a provider quota charge'
 );
 
+-- Migration 045: per-user cap from config, exhausted-provider ledger.
+reset role;
+select is((select max_user_requests_per_action from private.ai_quota_config where singleton), 2,
+  'the per-user cap lives in the config row and is still 2');
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('d1300000-0000-4000-8000-000000000003', 'quota-third@example.invalid', '{"display_name":"Quota Third","time_zone":"UTC"}'::jsonb),
+  ('d1300000-0000-4000-8000-000000000004', 'quota-fourth@example.invalid', '{"display_name":"Quota Fourth","time_zone":"UTC"}'::jsonb);
+update private.ai_quota_config set max_user_requests_per_action = 3 where singleton;
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000201', null)->>'allowed'), 'true', 'cap 3: first request is allowed');
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000202', null)->>'allowed'), 'true', 'cap 3: second request is allowed');
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000203', null)->>'allowed'), 'true', 'cap 3: third request is allowed once the config row says 3');
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000204', null)->>'reason'), 'user_limit', 'cap 3: the fourth request is refused as user_limit');
+reset role;
+update private.ai_quota_config set max_user_requests_per_action = 2 where singleton;
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000205', null)->>'allowed'), 'false', 'cap back at 2: a user already at 3 stays refused');
+reset role;
+select throws_ok($$update private.ai_quota_config set max_user_requests_per_action = 0 where singleton$$, '23514', null, 'the cap must be at least 1');
+select throws_ok($$update private.ai_quota_config set max_user_requests_per_action = 101 where singleton$$, '23514', null, 'the cap is at most 100');
+
+select ok(to_regclass('private.ai_provider_exhaustion') is not null, 'the exhausted-provider ledger exists');
+select ok((select relrowsecurity from pg_class where oid = 'private.ai_provider_exhaustion'::regclass), 'the exhausted-provider ledger has RLS on');
+select ok(
+  not has_table_privilege('service_role', 'private.ai_provider_exhaustion', 'SELECT')
+    and not has_table_privilege('authenticated', 'private.ai_provider_exhaustion', 'SELECT'),
+  'API roles cannot read the exhausted-provider ledger directly'
+);
+select ok(to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)') is not null, 'the mark-exhausted RPC exists');
+select ok(
+  has_function_privilege('service_role', 'public.ai_mark_provider_exhausted(uuid,text,text)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.ai_mark_provider_exhausted(uuid,text,text)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.ai_mark_provider_exhausted(uuid,text,text)', 'EXECUTE'),
+  'only the service role can mark a provider exhausted'
+);
+
+select is(private.ai_next_midnight('UTC', '2026-10-07 13:00+00'), '2026-10-08 00:00+00'::timestamptz, 'next UTC midnight');
+select is(private.ai_next_midnight('America/Los_Angeles', '2026-10-08 00:30+00'), '2026-10-08 07:00+00'::timestamptz, 'next Pacific midnight is 07:00 UTC in October');
+select is(private.ai_next_midnight('America/Los_Angeles', '2026-10-08 08:00+00'), '2026-10-09 07:00+00'::timestamptz, 'a moment after Pacific midnight rolls to the following one');
+select is(private.ai_next_midnight('Asia/Manila', '2026-10-07 17:00+00'), '2026-10-08 16:00+00'::timestamptz, 'a zone ahead of UTC resolves to its own midnight');
+
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000004', 'easy-versions', 'd1300000-0000-4000-8000-000000000211', null)->'exhaustedProviders'), '[]'::jsonb, 'no provider is exhausted at first');
+select is(public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-000000000211', 'groq', 'UTC'), true, 'a daily-quota failure marks the provider');
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000004', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000212', null)->'exhaustedProviders'), '["groq"]'::jsonb, 'the next request is told which provider to skip');
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000004', 'easy-versions', 'd1300000-0000-4000-8000-000000000211', null)->'exhaustedProviders'), '["groq"]'::jsonb, 'a replayed request id also reports exhausted providers');
+select is(public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-0000000002ff', 'groq', 'UTC'), false, 'an unknown request id marks nothing');
+select throws_ok($$select public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-000000000211', 'Bad Name!', 'UTC')$$, '22023', null, 'a malformed provider name is refused');
+select throws_ok($$select public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-000000000211', 'groq', 'Not/AZone')$$, '22023', null, 'an unknown time zone is refused');
+select throws_ok($$select public.ai_mark_provider_exhausted(null, 'groq', 'UTC')$$, '22023', null, 'a null request id is refused');
+reset role;
+select ok((select exhausted_until from private.ai_provider_exhaustion where provider = 'groq')
+  = private.ai_next_midnight('UTC', statement_timestamp()), 'the mark lasts until the next midnight in the given zone');
+update private.ai_provider_exhaustion set exhausted_until = statement_timestamp() + interval '3 days' where provider = 'groq';
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-000000000211', 'groq', 'UTC');
+reset role;
+select ok((select exhausted_until from private.ai_provider_exhaustion where provider = 'groq') > statement_timestamp() + interval '2 days', 'a later mark never shortens an existing one');
+update private.ai_provider_exhaustion set exhausted_until = statement_timestamp() - interval '1 minute' where provider = 'groq';
+set local role service_role;
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000001', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000213', null)->'exhaustedProviders'), '[]'::jsonb, 'an expired mark is not reported');
+
 reset role;
 update private.ai_quota_config
 set max_provider_attempts = (select attempt_count from private.ai_provider_daily_usage
