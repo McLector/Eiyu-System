@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { formatDisplayDate, formatError, STAT_COLORS, stageSequenceState, type LongQuest } from '@eiyu/shared';
+import { CHAIN_ORDER_COPY, formatDisplayDate, formatError, STAT_COLORS, stageSequenceState, type LongQuest } from '@eiyu/shared';
 
 import { chainPercent, ChainProgressBar } from '@/components/chain/progress-bar';
 import { CheckIcon, ChevronIcon, EditIcon, LockIcon, MoreIcon, StatIcon, TrashIcon, UndoIcon } from '@/components/eiyu/icons';
@@ -13,8 +13,9 @@ import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { useTokens } from '@/contexts/theme-store';
 
-type StageStatus = 'done' | 'current' | 'locked';
-const STATUS_LABEL: Record<StageStatus, string> = { done: 'Done', current: 'Current', locked: 'Locked' };
+// "open" is an unfinished stage of a chain done in any order: nothing locks it and none is "the" current one.
+type StageStatus = 'done' | 'current' | 'open' | 'locked';
+const STATUS_LABEL: Record<StageStatus, string> = { done: 'Done', current: 'Current', open: 'Open', locked: 'Locked' };
 const DESCRIPTION_CLAMP_AT = 140;
 /** The tab bar floats over the content at normal font size; this keeps the last stage clear of it. */
 
@@ -23,6 +24,7 @@ function Stats({ chain, done, timeZone }: { chain: LongQuest; done: number; time
   const cells = [
     { label: 'Stages', value: String(chain.stages.length) },
     { label: 'Done', value: String(done) },
+    { label: 'Order', value: chain.strictOrder === false ? CHAIN_ORDER_COPY.anyOrder : CHAIN_ORDER_COPY.inOrder },
     { label: 'Created', value: chain.createdAt ? formatDisplayDate(new Date(chain.createdAt), timeZone) : '—' },
     { label: 'Finished', value: chain.completedAt ? formatDisplayDate(new Date(chain.completedAt), timeZone) : '—' },
   ];
@@ -104,12 +106,14 @@ export default function ChainDetailScreen() {
   }
 
   const color = STAT_COLORS[chain.stat];
+  const strictOrder = chain.strictOrder !== false;
   const statuses = chain.stages.map((stage, index) => {
-    const sequence = stageSequenceState(chain.stages, index);
-    const status: StageStatus = stage.done ? 'done' : sequence.locked ? 'locked' : 'current';
+    const sequence = stageSequenceState(chain.stages, index, strictOrder);
+    const status: StageStatus = stage.done ? 'done' : sequence.locked ? 'locked' : strictOrder ? 'current' : 'open';
     return { stage, sequence, status };
   });
-  const currentId = statuses.find(item => item.status === 'current')?.stage.id;
+  // The stage whose details start open: the current one, or the first open one when order does not matter.
+  const currentId = statuses.find(item => item.status === 'current' || item.status === 'open')?.stage.id;
   const isOpen = (stageId: string) => (stageId === currentId) !== flipped.has(stageId);
   const toggleOpen = (stageId: string) => setFlipped(prev => { const next = new Set(prev); if (next.has(stageId)) next.delete(stageId); else next.add(stageId); return next; });
   const done = chain.stages.filter(stage => stage.done).length;
@@ -121,7 +125,7 @@ export default function ChainDetailScreen() {
   const menuStage = menu?.kind === 'stage' ? statuses.find(item => item.stage.id === menu.id) : undefined;
   const stageActions = (item: (typeof statuses)[number]): SheetAction[] => [
     ...(item.stage.description ? [{ key: 'toggle', label: isOpen(item.stage.id) ? 'Hide details' : 'Show details', icon: <ChevronIcon direction={isOpen(item.stage.id) ? 'up' : 'down'} size={14} color={t.text} /> }] : []),
-    // Only the last finished stage can be undone; the database enforces the same order.
+    // In order, only the last finished stage can be undone (the database enforces it); in any order, every finished stage can.
     ...(item.stage.done && !item.sequence.locked ? [{ key: 'undo', label: 'Mark not done', icon: <UndoIcon size={16} color={t.text} />, disabled: pendingStageIds.includes(item.stage.id) }] : []),
   ];
   const chainActions: SheetAction[] = [
@@ -206,7 +210,7 @@ export default function ChainDetailScreen() {
               const open = isOpen(stage.id);
               const pending = pendingStageIds.includes(stage.id);
               const hasMenu = stageActions(item).length > 0;
-              const tint = status === 'done' ? t.success : status === 'current' ? t['accent-text'] : t['dim-flat'];
+              const tint = status === 'done' ? t.success : status === 'current' || status === 'open' ? t['accent-text'] : t['dim-flat'];
               return (
                 <View key={stage.id} testID={`stage-${stage.id}`} style={[styles.stage, { borderBottomColor: t['divider-flat'] }, status === 'locked' && styles.locked]}>
                   <View style={styles.stageRow}>
@@ -237,6 +241,17 @@ export default function ChainDetailScreen() {
                       variant="primary"
                       label="COMPLETE STAGE"
                       icon={<CheckIcon size={16} color={t['on-accent']} />}
+                      disabled={pending}
+                      onPress={() => toggleStage(chain.id, stage.id)}
+                    />
+                  ) : null}
+                  {status === 'open' ? (
+                    <Button
+                      testID={`stage-complete-${stage.id}`}
+                      variant="secondary"
+                      label="COMPLETE STAGE"
+                      accessibilityLabel={`COMPLETE STAGE: ${stage.name}`}
+                      icon={<CheckIcon size={16} color={t['accent-text']} />}
                       disabled={pending}
                       onPress={() => toggleStage(chain.id, stage.id)}
                     />

@@ -4,6 +4,8 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  CHAIN_ORDER_COPY,
+  doneStagesFormPrefix,
   formatError,
   isStageDescriptionWithinLimit,
   NAVIGATION_GUARD_COPY,
@@ -17,6 +19,7 @@ import {
 
 import { PlusIcon } from '@/components/eiyu/icons';
 import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
 import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
 import { Field } from '@/components/ui/field';
 import { StatChip } from '@/components/ui/stat-chip';
@@ -46,6 +49,8 @@ export default function LongQuestEditorScreen() {
   const [stages, setStages] = useState<StageField[]>(
     quest ? quest.stages.map(s => ({ id: s.id, name: s.name, description: s.description })) : [blankStage(), blankStage()]
   );
+  // Absent (an older row, or migration 043 not applied) reads as in order, like a new chain.
+  const [strictOrder, setStrictOrder] = useState(quest?.strictOrder !== false);
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +59,7 @@ export default function LongQuestEditorScreen() {
   const heldAction = useRef<unknown>(null);
   const busy = saving || uncertain;
 
-  const snapshot = () => JSON.stringify({ name, stat, description, stages });
+  const snapshot = () => JSON.stringify({ name, stat, description, stages, strictOrder });
   const [initialSnapshot] = useState(snapshot);
   const dirty = snapshot() !== initialSnapshot;
 
@@ -86,6 +91,8 @@ export default function LongQuestEditorScreen() {
   const filled = stages.map(s => ({ ...s, name: s.name.trim() })).filter(s => s.name.length > 0);
   const valid = !nameProblem && filled.length >= MIN_STAGES;
   const isDone = (stageId: string | null) => !!quest?.stages.find(s => s.id === stageId)?.done;
+  // Going back to in order needs the done stages to form a run from the start, judged on the draft (removing an open stage can fix a gap).
+  const orderBlocked = !strictOrder && !doneStagesFormPrefix(stages.map(s => ({ done: isDone(s.id) })));
 
   const setStageAt = (i: number, patch: Partial<StageField>) => setStages(prev => prev.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
   const removeStage = (i: number) => {
@@ -103,6 +110,7 @@ export default function LongQuestEditorScreen() {
           name: editing && name === quest.name ? name : normalizeNameBoundaries(name),
           stat,
           description: description.trim() || undefined,
+          strictOrder,
           stages: filled.map(s => ({ id: s.id, name: s.name, description: s.description })),
         },
         quest?.id
@@ -181,8 +189,15 @@ export default function LongQuestEditorScreen() {
             multiline
           />
 
+          <View style={styles.orderOption}>
+            <Chip kind="checkbox" label={CHAIN_ORDER_COPY.label} selected={strictOrder} disabled={busy || orderBlocked} onPress={() => setStrictOrder(v => !v)} />
+            <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>
+              {orderBlocked ? CHAIN_ORDER_COPY.blocked : strictOrder ? CHAIN_ORDER_COPY.hintOn : CHAIN_ORDER_COPY.hintOff}
+            </Text>
+          </View>
+
           <View style={styles.stages}>
-            <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>STAGES (IN ORDER)</Text>
+            <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>{strictOrder ? 'STAGES (IN ORDER)' : 'STAGES (ANY ORDER)'}</Text>
             {stages.map((s, i) => {
               const done = isDone(s.id);
               const canRemove = stages.length > MIN_STAGES;
@@ -280,6 +295,7 @@ const styles = StyleSheet.create({
   formContent: { padding: 20, gap: 18 },
   label: { fontSize: 11, letterSpacing: 1.2, marginBottom: 6 },
   row: { flexDirection: 'row', gap: 8 },
+  orderOption: { gap: 6, alignItems: 'flex-start' },
   stages: { gap: 12 },
   stage: { flexDirection: 'row', alignItems: 'flex-start', gap: 4 },
   stageFields: { flex: 1, gap: 8 },

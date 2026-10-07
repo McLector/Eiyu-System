@@ -3,9 +3,11 @@ import Dialog from '../components/Dialog';
 import StatChip from '../components/StatChip';
 import { useEditorGuard } from '../components/NavigationGuard';
 import {
+  CHAIN_ORDER_COPY,
   LongQuest,
   STAGE_DESCRIPTION_MAX_LENGTH,
   STATS,
+  doneStagesFormPrefix,
   formatError,
   isStageDescriptionWithinLimit,
   normalizeNameBoundaries,
@@ -29,13 +31,15 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
   const [stat, setStat] = useState<Stat>(quest?.stat ?? 'INT');
   const [description, setDescription] = useState(quest?.description ?? '');
   const [stages, setStages] = useState<DraftStage[]>(() => stagesOf(quest));
+  // Absent (an older row, or migration 043 not applied) reads as in order, like a new chain.
+  const [strictOrder, setStrictOrder] = useState(quest?.strictOrder !== false);
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dirty = editing
-    ? name !== quest.name || stat !== quest.stat || description !== (quest.description ?? '') || JSON.stringify(stages) !== JSON.stringify(stagesOf(quest))
-    : !!name || !!description || stat !== 'INT' || stages.some(s => s.name || s.description);
+    ? name !== quest.name || stat !== quest.stat || description !== (quest.description ?? '') || strictOrder !== (quest.strictOrder !== false) || JSON.stringify(stages) !== JSON.stringify(stagesOf(quest))
+    : !!name || !!description || stat !== 'INT' || !strictOrder || stages.some(s => s.name || s.description);
   const guardedClose = useEditorGuard(dirty, saving || uncertain);
 
   // Shown only once the name has been typed in; an untouched form is incomplete, not wrong.
@@ -51,6 +55,8 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
     if (stages.length <= MIN_STAGES || isDone(stages[i].id)) return;
     setStages(prev => prev.filter((_, idx) => idx !== i));
   };
+  // Going back to in order needs the done stages to form a run from the start, judged on the draft (removing an open stage can fix a gap).
+  const orderBlocked = !strictOrder && !doneStagesFormPrefix(stages.map(s => ({ done: isDone(s.id) })));
 
   const save = async () => {
     if (!valid || saving) return;
@@ -61,6 +67,7 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
         name: editing && name === quest.name ? name : normalizeNameBoundaries(name),
         stat,
         description: description.trim() || undefined,
+        strictOrder,
         stages: editing
           ? filled.map(s => ({ id: s.id, name: s.name, description: s.description }))
           : filled.map(s => ({ name: s.name, description: s.description ?? '' })),
@@ -87,6 +94,10 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
             {STATS.map(s => <StatChip key={s} stat={s} selected={stat === s} onClick={() => setStat(s)} />)}
           </div>
           <textarea className="field" placeholder="Note (optional) — context, why it matters..." value={description} onChange={e => setDescription(e.target.value)} rows={2} />
+          <div>
+            <label className="gym-checkbox"><input type="checkbox" checked={strictOrder} disabled={orderBlocked} aria-describedby="long-quest-order-hint" onChange={e => setStrictOrder(e.target.checked)} />{CHAIN_ORDER_COPY.label}</label>
+            <p id="long-quest-order-hint" className="field-hint">{orderBlocked ? CHAIN_ORDER_COPY.blocked : strictOrder ? CHAIN_ORDER_COPY.hintOn : CHAIN_ORDER_COPY.hintOff}</p>
+          </div>
           <div className="field-label" style={{ marginBottom: 0 }}>STAGES</div>
           {stages.map((st, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>

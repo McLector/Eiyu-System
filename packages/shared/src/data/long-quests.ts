@@ -6,8 +6,24 @@ import { readBatches } from './pagination';
 import { isConfirmedFailure, UncertainSaveError } from './save-outcome';
 
 /** R-32/R-33: real Long Quests, replacing the mock data that shipped with the UI. */
+const QUEST_COLUMNS = 'id, name, stat, description, completed_at, created_at';
+
+/** The database says `strict_order` is unknown: migration 043 is not applied yet. Nothing else counts. */
+function isMissingOrderColumn(error: unknown): boolean {
+  const { code, message } = (error ?? {}) as { code?: string; message?: string };
+  return typeof message === 'string' && message.includes('strict_order') && (!code || code === '42703' || code === 'PGRST204');
+}
+
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
-  const quests = await readBatches((from, to) => supabase.from('long_quests').select('id, name, stat, description, completed_at, created_at').eq('user_id', userId).order('created_at').order('id').range(from, to));
+  const readQuests = (columns: string) => readBatches((from, to) => supabase.from('long_quests').select(columns).eq('user_id', userId).order('created_at').order('id').range(from, to));
+  let quests: Array<Record<string, any>>;
+  try {
+    quests = await readQuests(`${QUEST_COLUMNS}, strict_order`);
+  } catch (error) {
+    // Either side may deploy before the migration: read again without the mode, so every chain reads as in order.
+    if (!isMissingOrderColumn(error)) throw error;
+    quests = await readQuests(QUEST_COLUMNS);
+  }
   if (!quests.length) return [];
   const stages = await readBatches((from, to) => supabase.from('long_quest_stages').select('id, long_quest_id, name, done, position, description').eq('user_id', userId).order('long_quest_id').order('position').order('id').range(from, to));
 
@@ -24,6 +40,7 @@ export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
     description: q.description,
     completedAt: q.completed_at,
     createdAt: q.created_at,
+    strictOrder: q.strict_order,
     stages: stagesByQuest.get(q.id) ?? [],
   }));
 }
@@ -38,6 +55,8 @@ export interface LongQuestInput {
   name: string;
   stat: Stat;
   description?: string | null;
+  /** Leave undefined to keep the quest's current mode (a new quest starts in order). */
+  strictOrder?: boolean;
   stages: LongQuestStageInput[];
 }
 

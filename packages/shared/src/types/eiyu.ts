@@ -68,6 +68,8 @@ export interface LongQuest {
   completedAt: string | null;
   /** When the chain was created; absent on rows read before the column was selected. */
   createdAt?: string;
+  /** False when the stages may be done in any order. Absent (older rows, or the column is not deployed) means in order. */
+  strictOrder?: boolean;
   stages: QuestStage[];
 }
 

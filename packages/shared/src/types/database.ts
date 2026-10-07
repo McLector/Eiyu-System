@@ -238,6 +238,8 @@ export interface Database {
           deadline: string | null;
           completed_at: string | null;
           created_at: string;
+          /** Migration 043. False means the stages may be done in any order. */
+          strict_order: boolean;
         };
         Insert: Partial<Database['public']['Tables']['long_quests']['Row']> & {
           user_id: string;

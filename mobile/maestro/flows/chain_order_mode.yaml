@@ -1,0 +1,49 @@
+appId: com.mclector.eiyusystem
+---
+# Slice 4 (migration 043 must be applied): a chain can be done in any order.
+# UNRUN. Turning "Stages in order" off makes every unfinished stage Open, so the
+# last stage can be completed first and any finished stage can be undone.
+- runFlow: _helpers/login.yaml
+- tapOn: "CHAIN"
+- tapOn: "NEW CHAIN"
+- tapOn: "e.g. Ship a Side Project"
+- inputText: "Maestro Any Order Chain"
+- hideKeyboard
+- tapOn: "Stages in order"
+- assertVisible: "STAGES (ANY ORDER)"
+- tapOn: "Stage 1"
+- inputText: "First stage"
+- hideKeyboard
+- tapOn: "Stage 2"
+- inputText: "Second stage"
+- hideKeyboard
+- tapOn:
+    id: "long-quest-save"
+- assertVisible: "Maestro Any Order Chain"
+
+# Open the chain: both stages are Open and nothing is Locked.
+- tapOn: "Maestro Any Order Chain.*"
+- extendedWaitUntil:
+    visible: "Any order"
+    timeout: 15000
+- assertNotVisible: "Locked"
+
+# Complete the SECOND stage first, then undo it from its menu.
+- tapOn:
+    id: "stage-complete-.*"
+    index: 1
+- assertVisible: "Stage completed."
+- assertVisible: "50%"
+- tapOn: "Actions for Second stage"
+- tapOn: "Mark not done"
+- assertVisible: "Stage undone."
+- assertVisible: "0%"
+
+# Cleanup, as in longquest_create_happy.
+- tapOn:
+    id: "chain-more"
+- tapOn: "Delete"
+- assertVisible: ".*Earned XP remains.*"
+- tapOn:
+    id: "chain-delete-confirm"
+- assertNotVisible: "Maestro Any Order Chain"

@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react';
 import {
+  CHAIN_ORDER_COPY,
   LONG_QUEST_COPY,
   LongQuest,
   STAT_COLORS,
@@ -16,11 +17,12 @@ import LongQuestEditorDialog from './LongQuestEditorDialog';
 import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, LockIcon, UndoIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 
-type StageStatus = 'done' | 'current' | 'locked';
-const STATUS_LABEL: Record<StageStatus, string> = { done: 'Done', current: 'Current', locked: 'Locked' };
+// "open" is an unfinished stage of a chain done in any order: nothing locks it and none is "the" current one.
+type StageStatus = 'done' | 'current' | 'open' | 'locked';
+const STATUS_LABEL: Record<StageStatus, string> = { done: 'Done', current: 'Current', open: 'Open', locked: 'Locked' };
 // Spelled out whole so the stylesheet hygiene test can find every class it styles.
-const ROW_CLASS: Record<StageStatus, string> = { done: 'is-done', current: 'is-current', locked: 'is-locked' };
-const CHIP_CLASS: Record<StageStatus, string> = { done: 'is-done', current: 'is-cur', locked: 'is-locked' };
+const ROW_CLASS: Record<StageStatus, string> = { done: 'is-done', current: 'is-current', open: 'is-open', locked: 'is-locked' };
+const CHIP_CLASS: Record<StageStatus, string> = { done: 'is-done', current: 'is-cur', open: 'is-open', locked: 'is-locked' };
 const DESCRIPTION_CLAMP_AT = 140;
 
 function ChainPanel({ lq }: { lq: LongQuest }) {
@@ -30,12 +32,14 @@ function ChainPanel({ lq }: { lq: LongQuest }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editing, setEditing] = useState(false);
   const [fullDescription, setFullDescription] = useState(false);
+  const strictOrder = lq.strictOrder !== false;
   const statuses = lq.stages.map((stage, index) => {
-    const sequence = stageSequenceState(lq.stages, index);
-    const status: StageStatus = stage.done ? 'done' : sequence.locked ? 'locked' : 'current';
+    const sequence = stageSequenceState(lq.stages, index, strictOrder);
+    const status: StageStatus = stage.done ? 'done' : sequence.locked ? 'locked' : strictOrder ? 'current' : 'open';
     return { stage, sequence, status };
   });
-  const currentId = statuses.find(item => item.status === 'current')?.stage.id;
+  // The stage whose details start open: the current one, or the first open one when order does not matter.
+  const currentId = statuses.find(item => item.status === 'current' || item.status === 'open')?.stage.id;
   // Stages whose details the viewer flipped away from the default; the current stage's details start open,
   // and that default follows progress instead of staying on the stage that was current at mount.
   const [flipped, setFlipped] = useState<Set<string>>(() => new Set());
@@ -65,6 +69,7 @@ function ChainPanel({ lq }: { lq: LongQuest }) {
       <dl className="chain-stats">
         <div><dt>Stages</dt><dd>{lq.stages.length}</dd></div>
         <div><dt>Done</dt><dd>{done}</dd></div>
+        <div><dt>Order</dt><dd>{strictOrder ? CHAIN_ORDER_COPY.inOrder : CHAIN_ORDER_COPY.anyOrder}</dd></div>
         <div><dt>Created</dt><dd>{lq.createdAt ? formatDisplayDate(new Date(lq.createdAt), user.timeZone) : '—'}</dd></div>
         <div><dt>Finished</dt><dd>{lq.completedAt ? formatDisplayDate(new Date(lq.completedAt), user.timeZone) : '—'}</dd></div>
       </dl>
@@ -81,7 +86,7 @@ function ChainPanel({ lq }: { lq: LongQuest }) {
             const pending = pendingStageIds.includes(stage.id);
             const items: ActionMenuItem[] = [
               ...(stage.description ? [{ label: open ? 'Hide details' : 'Show details', onSelect: () => toggleOpen(stage.id), icon: <ChevronIcon direction={open ? 'up' : 'down'} size={14} /> }] : []),
-              // Only the last finished stage can be undone; the database enforces the same order.
+              // In order, only the last finished stage can be undone (the database enforces it); in any order, every finished stage can.
               ...(stage.done && !sequence.locked ? [{ label: 'Mark not done', onSelect: () => toggleStageAction(lq.id, stage.id), icon: <UndoIcon size={14} />, disabled: pending }] : []),
             ];
             return (
@@ -93,11 +98,16 @@ function ChainPanel({ lq }: { lq: LongQuest }) {
                   {status === 'locked' && <span className="sr-only">{sequence.reason ?? 'Complete earlier stages first.'}</span>}
                   {items.length > 0 && <ActionMenu label={`Actions for ${stage.name}`} items={items} />}
                 </div>
-                {((open && stage.description) || status === 'current') && (
+                {((open && stage.description) || status === 'current' || status === 'open') && (
                   <div className="chain-stage-body">
                     {open && stage.description && <p className="chain-stage-description">{stage.description}</p>}
                     {status === 'current' && (
                       <button type="button" className="btn-primary btn-compact chain-complete" disabled={pending} onClick={() => toggleStageAction(lq.id, stage.id)}>
+                        <CheckIcon size={14} />COMPLETE STAGE
+                      </button>
+                    )}
+                    {status === 'open' && (
+                      <button type="button" className="btn-secondary btn-compact chain-complete" aria-label={`COMPLETE STAGE: ${stage.name}`} disabled={pending} onClick={() => toggleStageAction(lq.id, stage.id)}>
                         <CheckIcon size={14} />COMPLETE STAGE
                       </button>
                     )}

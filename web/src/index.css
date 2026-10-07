@@ -1434,6 +1434,7 @@ button:disabled { opacity: .45; cursor: default; }
 .chain-stats dd { margin: 0; color: var(--c-text); font: 700 18px Rajdhani, sans-serif; letter-spacing: .04em; }
 .chain-stage { border: 1px solid var(--c-divider-flat); border-radius: 4px; }
 .chain-stage.is-current { border-color: var(--c-accent-strong); background: var(--c-accent-glass); }
+.chain-stage.is-open { border-color: var(--c-accent-border); }
 .chain-stage.is-locked .chain-stage-name { color: var(--c-muted-flat); }
 .chain-stage-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; color: var(--c-text); }
 .chain-stage-mark { display: grid; place-items: center; width: 24px; height: 24px; border: 1.5px solid var(--c-accent-border); border-radius: 50%; color: var(--c-muted-flat); font: 700 12px Rajdhani, sans-serif; }
@@ -1447,6 +1448,7 @@ button:disabled { opacity: .45; cursor: default; }
 .quest-chip.is-done { border-color: var(--c-success-border); background: var(--c-success-glass); color: var(--c-success); }
 .quest-chip.is-cur { border-color: var(--c-accent-strong); background: var(--c-accent-glass); color: var(--c-accent-text); }
 .quest-chip.is-locked { border-style: dashed; color: var(--c-muted-flat); }
+.quest-chip.is-open { border-color: var(--c-accent-border); color: var(--c-accent-text); }
 /* After the chain rules so it wins the cascade. */
 @media (prefers-reduced-motion: reduce) { .chain-bar > i { transition: none; } }
 
