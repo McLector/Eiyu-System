@@ -29,7 +29,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { initialUser } from '@eiyu/shared';
+import { DEFAULT_PALETTE, initialUser } from '@eiyu/shared';
 import { useAuth } from '@/contexts/auth-store';
 import { ThemeContext } from '@/contexts/theme-store';
 import { completeHabit, completeHabitRecovery, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
@@ -678,7 +678,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     cachedQuests: habitsQuery.data,
     dataUpdatedAt: habitsQuery.dataUpdatedAt,
     entries: syncEntries,
-    palette: theme?.palette ?? 'cyan',
+    palette: theme?.palette ?? DEFAULT_PALETTE,
     mode: theme?.mode ?? 'dark',
   });
 

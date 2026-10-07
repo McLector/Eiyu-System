@@ -22,7 +22,12 @@ function renderLayout(entry = '/status?account=settings') {
 }
 
 describe('System blue palette', () => {
-  it('stays cyan by default: no palette attribute on the page', () => {
+  it('is blue by default, not cyan: the page root carries blue', () => {
+    renderLayout('/status');
+    expect(root().dataset.palette).toBe('blue');
+  });
+  it('keeps cyan as no palette attribute when cyan is the stored choice', () => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'cyan');
     renderLayout('/status');
     expect(root().dataset.palette).toBeUndefined();
   });
@@ -41,34 +46,35 @@ describe('System blue palette', () => {
     expect(root().dataset.palette).toBe('jade');
     expect(screen.getByRole('radio', { name: 'Jade' })).toBeEnabled();
   });
-  it('ignores a stored value it does not know', () => {
+  it('ignores a stored value it does not know and shows blue', () => {
     window.localStorage.setItem(PALETTE_STORAGE_KEY, 'crimson');
     renderLayout('/status');
-    expect(root().dataset.palette).toBeUndefined();
+    expect(root().dataset.palette).toBe('blue');
   });
   it('switches live from Settings and remembers the choice', async () => {
     const user = userEvent.setup();
     renderLayout();
-    await user.click(await screen.findByRole('radio', { name: 'System blue' }));
-    expect(root().dataset.palette).toBe('blue');
-    expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBe('blue');
-    await user.click(screen.getByRole('radio', { name: 'Cyan' }));
+    // Cyan first: System blue is the default now, so picking it would not be a change.
+    await user.click(await screen.findByRole('radio', { name: 'Cyan' }));
     expect(root().dataset.palette).toBeUndefined();
     expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBe('cyan');
-  });
-  it('leaves the page cyan again when the signed-in area goes away', () => {
-    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'blue');
-    const view = renderLayout('/status');
+    await user.click(screen.getByRole('radio', { name: 'System blue' }));
     expect(root().dataset.palette).toBe('blue');
+    expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBe('blue');
+  });
+  it('goes back to blue, not left on the chosen palette, when the signed-in area goes away', () => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'jade');
+    const view = renderLayout('/status');
+    expect(root().dataset.palette).toBe('jade');
     view.unmount();
-    expect(root().dataset.palette).toBeUndefined();
+    expect(root().dataset.palette).toBe('blue');
   });
   it('still applies the choice when storage is unavailable', async () => {
     const user = userEvent.setup();
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
     renderLayout();
-    await user.click(await screen.findByRole('radio', { name: 'System blue' }));
-    expect(root().dataset.palette).toBe('blue');
+    await user.click(await screen.findByRole('radio', { name: 'Jade' }));
+    expect(root().dataset.palette).toBe('jade');
   });
 });
 

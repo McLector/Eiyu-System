@@ -90,6 +90,16 @@ async function mountStore(theme: { palette?: 'cyan' | 'jade'; mode?: 'dark' | 'l
   );
 }
 
+// The store alone, with no theme provider above it: the widget falls back to the shared default palette.
+async function mountStoreWithoutTheme() {
+  activeClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return await render(
+    <QueryClientProvider client={activeClient}>
+      <EiyuProvider><Probe /></EiyuProvider>
+    </QueryClientProvider>
+  );
+}
+
 async function storedSnapshot() {
   return decodeSnapshot(await AsyncStorage.getItem(WIDGET_KEY));
 }
@@ -156,6 +166,12 @@ describe('the store keeps the widget snapshot current', () => {
     expect(snapshot).toMatchObject({ accountDate: '2026-10-05', timeZone: 'UTC', completed: 0, total: 2, waiting: 0, palette: 'cyan', mode: 'dark' });
     expect(snapshot.rows.map(row => row.name).sort()).toEqual(['Drink water', 'Read']);
     expect(update).toHaveBeenCalled();
+  });
+
+  it('falls back to System blue in the dark when no theme provider is mounted', async () => {
+    await mountStoreWithoutTheme();
+    await waitFor(async () => expect((await storedSnapshot())?.state).toBe('ready'));
+    expect(await storedReady()).toMatchObject({ palette: 'blue', mode: 'dark' });
   });
 
   it('uses the saved palette and mode', async () => {

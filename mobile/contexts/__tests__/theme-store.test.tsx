@@ -53,11 +53,17 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); appStateSpy.mockRestore(); });
 
 describe('AppThemeProvider', () => {
-  it('starts dark and cyan with nothing stored', async () => {
+  it('starts dark and System blue with nothing stored', async () => {
     await mount();
     expect(current!.mode).toBe('dark');
-    expect(current!.palette).toBe('cyan');
+    expect(current!.palette).toBe('blue');
     expect(current!.darkMode).toBe(true);
+  });
+
+  it('shows System blue, not cyan, before the account answers when nothing is stored', async () => {
+    mockShared.fetchAccountPalette.mockReturnValue(new Promise(() => {}));
+    await mount();
+    expect(current!.palette).toBe('blue');
   });
 
   it('paints the stored copy first', async () => {
@@ -79,11 +85,12 @@ describe('AppThemeProvider', () => {
     expect(await AsyncStorage.getItem('eiyu:theme')).toBe('light');
   });
 
-  it('ignores an account palette it does not know', async () => {
+  it('ignores an account palette it does not know and keeps the stored choice on this device', async () => {
+    await AsyncStorage.setItem('eiyu:palette', 'jade');
     mockShared.fetchAccountPalette.mockResolvedValue('crimson');
     await mount();
     await waitFor(() => expect(mockShared.fetchAccountPalette).toHaveBeenCalled());
-    expect(current!.palette).toBe('cyan');
+    await waitFor(() => expect(current!.palette).toBe('jade'));
   });
 
   it('saves a mode change to the account and keeps it when the save is rejected', async () => {
@@ -182,7 +189,7 @@ describe('AppThemeProvider palette on load', () => {
     await mount();
     await expectPaletteStepRan();
     expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
-    expect(current!.palette).toBe('cyan');
+    expect(current!.palette).toBe('blue');
     expect(await AsyncStorage.getItem('eiyu:palette')).toBeNull();
   });
 
@@ -192,7 +199,7 @@ describe('AppThemeProvider palette on load', () => {
     await mount();
     await expectPaletteStepRan();
     expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
-    expect(current!.palette).toBe('cyan');
+    expect(current!.palette).toBe('blue');
   });
 
   it('takes an account palette over a stored one and saves nothing', async () => {
@@ -243,7 +250,7 @@ describe('AppThemeProvider palette on load', () => {
     mockShared.fetchAccountPalette.mockResolvedValue(undefined);
     await mount();
     await expectPaletteStepRan();
-    expect(current!.palette).toBe('cyan');
+    expect(current!.palette).toBe('blue');
     expect(await AsyncStorage.getItem('eiyu:palette')).toBeNull();
     expect(mockShared.saveAccountPalette).not.toHaveBeenCalled();
   });
@@ -343,8 +350,8 @@ describe('AppThemeProvider when the app returns to the foreground', () => {
 describe('AppThemeProvider tokens', () => {
   it('exposes the palette tokens for the current mode and palette', async () => {
     await mount();
-    expect(current!.tokens).toEqual(PALETTE_TOKENS.cyan.dark);
-    expect(current!.tokens.accent).toBe(PALETTE_TOKENS.cyan.dark.accent);
+    expect(current!.tokens).toEqual(PALETTE_TOKENS.blue.dark);
+    expect(current!.tokens.accent).toBe(PALETTE_TOKENS.blue.dark.accent);
   });
 
   it('follows a palette and mode change', async () => {

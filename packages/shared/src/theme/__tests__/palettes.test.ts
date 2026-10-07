@@ -4,7 +4,11 @@ describe('PALETTES', () => {
   it('lists the eight palettes, cyan first, no duplicates', () => {
     expect(PALETTES.map(p => p.id)).toEqual(['cyan', 'blue', 'indigo', 'violet', 'magenta', 'steel', 'jade', 'lime']);
     expect(new Set(PALETTES.map(p => p.id)).size).toBe(PALETTES.length);
-    expect(DEFAULT_PALETTE).toBe('cyan');
+    expect(DEFAULT_PALETTE).toBe('blue');
+  });
+  it('defaults to System blue, not cyan: an account or device with no choice gets blue', () => {
+    expect(DEFAULT_PALETTE).toBe('blue');
+    expect(DEFAULT_PALETTE).not.toBe('cyan');
   });
   it('gives each palette a label and a hex swatch', () => {
     for (const p of PALETTES) {
@@ -20,15 +24,20 @@ describe('parsePalette / isPalette', () => {
     expect(parsePalette(id)).toBe(id);
   });
   it.each([null, undefined, '', 'BLUE', ' blue', 'Jade', 'red', 'blue ', 'constructor', '__proto__', 0, 1, true, {}, []])(
-    'falls back to cyan for %j', value => {
+    'falls back to System blue for %j', value => {
       expect(isPalette(value)).toBe(false);
-      expect(parsePalette(value)).toBe('cyan');
+      expect(parsePalette(value)).toBe('blue');
     });
 });
 
 describe('resolvePaletteOnLoad', () => {
   const IDS: Palette[] = PALETTES.map(p => p.id);
   const otherThan = (id: Palette): Palette => IDS[(IDS.indexOf(id) + 1) % IDS.length];
+
+  it('shows System blue when neither the account nor this device has a choice', () => {
+    expect(resolvePaletteOnLoad({ account: null, local: null }).palette).toBe('blue');
+    expect(resolvePaletteOnLoad({ account: undefined, local: null }).palette).toBe('blue');
+  });
 
   it('takes the account palette and stores it on this device, never pushing', () => {
     expect(resolvePaletteOnLoad({ account: 'jade', local: null })).toEqual({ palette: 'jade', pushLocal: false, storeAccount: true });

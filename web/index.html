@@ -1,8 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-palette="blue">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Paints the stored palette before first paint. The ids must match PALETTES in packages/shared/src/theme/palettes.ts;
+      // web/src/__tests__/index-html.palette.test.ts checks that. Cyan is no attribute, and a blocked store leaves blue.
+      try {
+        const p = localStorage.getItem('eiyu:palette');
+        const ids = ['cyan', 'blue', 'indigo', 'violet', 'magenta', 'steel', 'jade', 'lime'];
+        if (p === 'cyan') document.documentElement.removeAttribute('data-palette');
+        else if (ids.indexOf(p) !== -1) document.documentElement.dataset.palette = p;
+      } catch (e) {}
+    </script>
     <title>Eiyu System</title>
   </head>
   <body>

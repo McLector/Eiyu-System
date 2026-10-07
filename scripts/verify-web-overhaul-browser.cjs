@@ -613,6 +613,16 @@ async function boardFlows(browser, report) {
 
 // Every palette, chosen in Settings in both themes: the page surface and the dialog agree, the accents differ, the choice survives a reload (dark), and it is reversible.
 const PALETTES=[['cyan','Cyan','#67e8f9'],['blue','System blue','#5e9cf0'],['indigo','Indigo','#818cf8'],['violet','Monarch violet','#a78bfa'],['magenta','Magenta','#e879f9'],['steel','Steel','#cbd5e1'],['jade','Jade','#2dd4b0'],['lime','Lime','#a3e635']];
+// A signed-out page in a fresh browser is System blue: index.html paints the default before the app loads.
+async function signedOutPalette(browser,report) {
+  const context=await browser.newContext({viewport:{width:1440,height:900}});
+  try {
+    const page=await context.newPage(); page.setDefaultTimeout(15000); page.on('pageerror',e=>report.errors.push(e.message));
+    await page.goto(WEB+'/auth'); await page.waitForLoadState('load');
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.palette),'blue','signed-out page is System blue');
+    report.flows.push('signed-out page in a fresh browser is System blue');
+  } finally { await context.close(); }
+}
 async function paletteAcceptance(page,report) {
   const identity=/Layout Hero, Ranger, rank/;
   const openSettings=async()=>{ await page.getByRole('button',{name:identity}).click(); await page.getByRole('menuitem',{name:'Settings'}).click(); await page.getByRole('dialog',{name:'SETTINGS'}).waitFor(); };
@@ -655,6 +665,7 @@ async function main() {
       return;
     }
     if (process.argv.includes('--palettes')) {
+      await signedOutPalette(browser,report);
       const pc=await browser.newContext({viewport:{width:1440,height:900}}); await prepare(pc);
       const pp=await pc.newPage(); pp.setDefaultTimeout(15000); pp.on('pageerror',e=>report.errors.push(e.message));
       await paletteAcceptance(pp,report); await pc.close();
@@ -786,6 +797,7 @@ async function main() {
     assert.equal(await page.getByRole('combobox',{name:'Workouts'}).inputValue(),'');
     await screenshot(page,'history-deleted',report); await page.keyboard.press('Escape');
     report.flows.push('all-workout deleted-routine history');
+    await signedOutPalette(browser,report);
     await paletteAcceptance(page,report);
     for(const route of ['board','status','status-weekly','status-hero','settings','history','quest-editor','profile','archived','routine-editor','exercise-editor']) {
       await page.goto(WEB+'/board'); await page.getByRole('button',{name:/Layout Hero, Ranger, rank/}).waitFor();

@@ -312,7 +312,7 @@ describe('encode and decode', () => {
 
   it('falls back to the default look for an unknown palette or mode instead of failing', () => {
     const decoded = decodeSnapshot(JSON.stringify({ ...build([]), palette: 'neon', mode: 'sepia' })) as ReadySnapshot;
-    expect(decoded.palette).toBe('cyan');
+    expect(decoded.palette).toBe('blue');
     expect(decoded.mode).toBe('dark');
   });
 

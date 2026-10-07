@@ -17,7 +17,8 @@ export type Palette = (typeof PALETTES)[number]['id'];
 
 export type ThemeMode = 'dark' | 'light';
 
-export const DEFAULT_PALETTE: Palette = 'cyan';
+/** What an account or device with no saved choice shows. Cyan stays a real choice, and an explicit cyan is kept. */
+export const DEFAULT_PALETTE: Palette = 'blue';
 
 const IDS: readonly string[] = PALETTES.map(p => p.id);
 

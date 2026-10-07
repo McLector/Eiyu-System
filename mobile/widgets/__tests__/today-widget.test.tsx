@@ -227,8 +227,8 @@ describe('signed out and not set up', () => {
     }
   });
 
-  it('draws not set up in the default look', () => {
-    expect(styleOf(root({ kind: 'not-set-up' })).backgroundColor).toBe(PALETTE_TOKENS.cyan.dark['page-flat']);
+  it('draws not set up in System blue, the default look', () => {
+    expect(styleOf(root({ kind: 'not-set-up' })).backgroundColor).toBe(PALETTE_TOKENS.blue.dark['page-flat']);
   });
 });
 

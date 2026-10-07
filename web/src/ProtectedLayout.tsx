@@ -5,6 +5,7 @@ import ArchiveNotice from './components/ArchiveNotice';
 import { NavigationGuard } from './components/NavigationGuard';
 import AccountShell, { type AccountOverlay } from './web/AccountShell';
 import { useSession } from './store/session-context';
+import { DEFAULT_PALETTE } from './palette';
 import { useAccountPalette } from './useAccountPalette';
 import { useAccountTheme } from './useAccountTheme';
 
@@ -20,11 +21,11 @@ export default function ProtectedLayout() {
   const darkMode = theme === 'dark';
   const [palette, changePalette] = useAccountPalette(session?.user.id);
   // On the page root, not the shell: dialogs render outside the shell and must agree with the page behind them.
-  // Cyan is the absence of the attribute, and signing out puts the sign-in pages back to cyan.
+  // Cyan is the absence of the attribute. Leaving the signed-in area puts the page back on the default, System blue.
   useEffect(() => {
     if (palette !== 'cyan') document.documentElement.dataset.palette = palette;
     else delete document.documentElement.dataset.palette;
-    return () => { delete document.documentElement.dataset.palette; };
+    return () => { document.documentElement.dataset.palette = DEFAULT_PALETTE; };
   }, [palette]);
   const location = useLocation();
   const navigate = useNavigate();

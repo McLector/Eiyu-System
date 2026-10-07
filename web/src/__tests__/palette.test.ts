@@ -5,11 +5,15 @@ import { DEFAULT_PALETTE, PALETTES, PALETTE_STORAGE_KEY, parsePalette, readStore
 afterEach(() => { window.localStorage.clear(); vi.restoreAllMocks(); });
 
 describe('parsePalette', () => {
+  it('defaults to System blue, not cyan', () => {
+    expect(DEFAULT_PALETTE).toBe('blue');
+    expect(parsePalette(undefined)).toBe('blue');
+  });
   it.each(PALETTES.map(p => p.id))('accepts %s', id => {
     expect(parsePalette(id)).toBe(id);
   });
-  it.each([null, undefined, '', 'BLUE', ' blue', 'Jade', 'red', 'crimson', 'blue ', 'constructor', '__proto__', 0, 1, true, {}, []])('falls back to cyan for %j', value => {
-    expect(parsePalette(value)).toBe('cyan');
+  it.each([null, undefined, '', 'BLUE', ' blue', 'Jade', 'red', 'crimson', 'blue ', 'constructor', '__proto__', 0, 1, true, {}, []])('falls back to System blue for %j', value => {
+    expect(parsePalette(value)).toBe('blue');
   });
 });
 
@@ -41,6 +45,7 @@ describe('readStoredPalette', () => {
     expect(readStoredPalette()).toBe('blue');
   });
   it('is the default when nothing is stored or the stored value is garbage', () => {
+    expect(readStoredPalette()).toBe('blue');
     expect(readStoredPalette()).toBe(DEFAULT_PALETTE);
     window.localStorage.setItem(PALETTE_STORAGE_KEY, '<script>');
     expect(readStoredPalette()).toBe(DEFAULT_PALETTE);
@@ -51,11 +56,12 @@ describe('readStoredPalette', () => {
   });
   it('takes the fallback from the shared default, not a literal, when storage cannot be read', async () => {
     vi.resetModules();
-    vi.doMock('@eiyu/shared', async importActual => ({ ...(await importActual<typeof import('@eiyu/shared')>()), DEFAULT_PALETTE: 'blue' }));
+    vi.doMock('@eiyu/shared', async importActual => ({ ...(await importActual<typeof import('@eiyu/shared')>()), DEFAULT_PALETTE: 'jade' }));
     try {
       const fresh = await import('../palette');
       vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
-      expect(fresh.readStoredPalette()).toBe('blue');
+      // Not blue: blue is the real default, so a hard-coded 'blue' would pass here without this mock having any effect.
+      expect(fresh.readStoredPalette()).toBe('jade');
     } finally {
       vi.doUnmock('@eiyu/shared');
       vi.resetModules();
