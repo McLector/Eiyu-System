@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
 import type { Quest } from '@eiyu/shared';
@@ -168,5 +168,117 @@ describe('QuestCard', () => {
     cleanup();
     renderCard(quest(), { onDragStart });
     expect(card().querySelector('.quest-card-grip')).toBeNull();
+  });
+});
+
+describe('QuestCard manual order', () => {
+  const reorder = (over: Record<string, unknown> = {}) => ({
+    state: { index: 1, count: 3, canMoveUp: true, canMoveDown: true },
+    onMove: vi.fn(), onDrop: vi.fn(), dropReady: false, ...over,
+  });
+  const grip = () => card().querySelector('.quest-card-grip') as HTMLElement | null;
+  const itemsOf = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(within(card()).getByRole('button', { name: 'More actions for Walk' }));
+    return within(screen.getByRole('menu')).getAllByRole('menuitem');
+  };
+
+  it('offers Move to top, up and down after Edit, and runs them', async () => {
+    const user = userEvent.setup();
+    const r = reorder();
+    renderCard(quest(), { reorder: r, onDragStart: vi.fn() });
+    const items = await itemsOf(user);
+    expect(items.map(item => item.getAttribute('aria-label'))).toEqual(['Edit Walk', 'Move Walk to top', 'Move Walk up', 'Move Walk down', 'Archive Walk', 'Delete Walk']);
+    await user.click(screen.getByRole('menuitem', { name: 'Move Walk up' }));
+    expect(r.onMove).toHaveBeenCalledWith('up');
+  });
+
+  it('disables the moves that go nowhere', async () => {
+    const user = userEvent.setup();
+    renderCard(quest(), { reorder: reorder({ state: { index: 0, count: 3, canMoveUp: false, canMoveDown: true } }), onDragStart: vi.fn() });
+    const byName = Object.fromEntries((await itemsOf(user)).map(item => [item.getAttribute('aria-label'), item]));
+    expect(byName['Move Walk to top']).toBeDisabled();
+    expect(byName['Move Walk up']).toBeDisabled();
+    expect(byName['Move Walk down']).toBeEnabled();
+  });
+
+  it('disables every move for a lone row', async () => {
+    const user = userEvent.setup();
+    renderCard(quest(), { reorder: reorder({ state: { index: 0, count: 1, canMoveUp: false, canMoveDown: false } }), onDragStart: vi.fn() });
+    const moves = (await itemsOf(user)).filter(item => /^Move Walk (to top|up|down)$/.test(item.getAttribute('aria-label') ?? ''));
+    expect(moves).toHaveLength(3);
+    moves.forEach(item => expect(item).toBeDisabled());
+  });
+
+  it('shows no move items and no grip without a reorder prop (a database before 044)', async () => {
+    const user = userEvent.setup();
+    renderCard(quest(), { onDragStart: vi.fn() });
+    expect(grip()).toBeNull();
+    expect(await menuNames(user)).toEqual(['Edit Walk', 'Archive Walk', 'Delete Walk']);
+  });
+
+  it('gives a Daily habit a draggable grip that names its lane', () => {
+    const onDragStart = vi.fn();
+    renderCard(quest(), { reorder: reorder(), onDragStart });
+    const store = new Map<string, string>();
+    fireEvent.dragStart(grip()!, { dataTransfer: { setData: (t: string, v: string) => store.set(t, v), effectAllowed: 'none', setDragImage: vi.fn() } });
+    expect(store.get(QUEST_DRAG_TYPE)).toBe(JSON.stringify({ id: 'q1', from: 'habit' }));
+    expect(onDragStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'q1' }));
+  });
+
+  it('has no grip when no drag handler is given, since there would be nothing to start', () => {
+    renderCard(quest(), { reorder: reorder() });
+    expect(grip()).toBeNull();
+  });
+
+  const dropOn = (halfY: number, transfer: unknown) => {
+    const event = createEvent.drop(card(), { dataTransfer: transfer });
+    Object.defineProperty(event, 'clientY', { value: halfY });
+    return { event, accepted: fireEvent(card(), event) };
+  };
+  const payload = (value: unknown) => ({ types: [QUEST_DRAG_TYPE], getData: (t: string) => (t === QUEST_DRAG_TYPE ? JSON.stringify(value) : ''), dropEffect: 'none' });
+
+  it('takes a same-lane drop on its top half as before, and on its bottom half as after', () => {
+    const r = reorder({ dropReady: true });
+    renderCard(quest(), { reorder: r, onDragStart: vi.fn() });
+    vi.spyOn(card(), 'getBoundingClientRect').mockReturnValue({ top: 100, height: 40, bottom: 140, left: 0, right: 100, width: 100, x: 0, y: 100, toJSON: () => ({}) });
+    expect(dropOn(110, payload({ id: 'other', from: 'habit' })).event.defaultPrevented).toBe(true);
+    expect(dropOn(130, payload({ id: 'other', from: 'habit' })).event.defaultPrevented).toBe(true);
+    expect(r.onDrop.mock.calls).toEqual([['other', 'before'], ['other', 'after']]);
+  });
+
+  it('ignores a drop of itself, of another lane, or of junk', () => {
+    const r = reorder({ dropReady: true });
+    renderCard(quest(), { reorder: r, onDragStart: vi.fn() });
+    dropOn(0, payload({ id: 'q1', from: 'habit' }));
+    dropOn(0, payload({ id: 'x', from: 'backlog' }));
+    dropOn(0, { types: [QUEST_DRAG_TYPE], getData: () => '{oops' });
+    dropOn(0, { types: ['Files'], getData: () => '' });
+    expect(r.onDrop).not.toHaveBeenCalled();
+  });
+
+  it('is not a drop target unless a same-lane drag is under way', () => {
+    const r = reorder({ dropReady: false });
+    renderCard(quest(), { reorder: r, onDragStart: vi.fn() });
+    const over = createEvent.dragOver(card(), { dataTransfer: payload({ id: 'other', from: 'habit' }) });
+    fireEvent(card(), over);
+    expect(over.defaultPrevented).toBe(false);
+    dropOn(0, payload({ id: 'other', from: 'habit' }));
+    expect(r.onDrop).not.toHaveBeenCalled();
+  });
+
+  it('marks the half under the pointer while a drag hovers, and clears it on leave and drop', () => {
+    renderCard(quest(), { reorder: reorder({ dropReady: true }), onDragStart: vi.fn() });
+    vi.spyOn(card(), 'getBoundingClientRect').mockReturnValue({ top: 100, height: 40, bottom: 140, left: 0, right: 100, width: 100, x: 0, y: 100, toJSON: () => ({}) });
+    const over = (y: number) => { const e = createEvent.dragOver(card(), { dataTransfer: payload({ id: 'other', from: 'habit' }) }); Object.defineProperty(e, 'clientY', { value: y }); fireEvent(card(), e); return e; };
+    expect(over(105).defaultPrevented).toBe(true);
+    expect(card()).toHaveClass('is-reorder-before');
+    over(135);
+    expect(card()).toHaveClass('is-reorder-after');
+    expect(card()).not.toHaveClass('is-reorder-before');
+    fireEvent.dragLeave(card(), { relatedTarget: document.body });
+    expect(card()).not.toHaveClass('is-reorder-after');
+    over(135);
+    dropOn(135, payload({ id: 'other', from: 'habit' }));
+    expect(card()).not.toHaveClass('is-reorder-after');
   });
 });

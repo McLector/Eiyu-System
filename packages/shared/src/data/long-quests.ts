@@ -8,21 +8,31 @@ import { isConfirmedFailure, UncertainSaveError } from './save-outcome';
 /** R-32/R-33: real Long Quests, replacing the mock data that shipped with the UI. */
 const QUEST_COLUMNS = 'id, name, stat, description, completed_at, created_at';
 
-/** The database says `strict_order` is unknown: migration 043 is not applied yet. Nothing else counts. */
-function isMissingOrderColumn(error: unknown): boolean {
+/** Columns added by later migrations (043, 044). A database that lacks one is read again without it. */
+const OPTIONAL_COLUMNS = ['strict_order', 'position'] as const;
+
+/** Which optional column the database says is unknown, if any. Any other error counts as none. */
+function missingOptionalColumn(error: unknown, wanted: readonly string[]): string | undefined {
   const { code, message } = (error ?? {}) as { code?: string; message?: string };
-  return typeof message === 'string' && message.includes('strict_order') && (!code || code === '42703' || code === 'PGRST204');
+  if (typeof message !== 'string' || !(!code || code === '42703' || code === 'PGRST204')) return undefined;
+  return wanted.find(column => message.includes(column));
 }
 
 export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
   const readQuests = (columns: string) => readBatches((from, to) => supabase.from('long_quests').select(columns).eq('user_id', userId).order('created_at').order('id').range(from, to));
+  // Either side may deploy before a migration: read again without the column the database lacks (at most once per
+  // column), so every chain reads as in order (043) and in its fetched order (044).
+  let wanted: string[] = [...OPTIONAL_COLUMNS];
   let quests: Array<Record<string, any>>;
-  try {
-    quests = await readQuests(`${QUEST_COLUMNS}, strict_order`);
-  } catch (error) {
-    // Either side may deploy before the migration: read again without the mode, so every chain reads as in order.
-    if (!isMissingOrderColumn(error)) throw error;
-    quests = await readQuests(QUEST_COLUMNS);
+  for (;;) {
+    try {
+      quests = await readQuests([QUEST_COLUMNS, ...wanted].join(', '));
+      break;
+    } catch (error) {
+      const column = missingOptionalColumn(error, wanted);
+      if (!column) throw error;
+      wanted = wanted.filter(name => name !== column);
+    }
   }
   if (!quests.length) return [];
   const stages = await readBatches((from, to) => supabase.from('long_quest_stages').select('id, long_quest_id, name, done, position, description').eq('user_id', userId).order('long_quest_id').order('position').order('id').range(from, to));
@@ -41,6 +51,7 @@ export async function fetchLongQuests(userId: string): Promise<LongQuest[]> {
     completedAt: q.completed_at,
     createdAt: q.created_at,
     strictOrder: q.strict_order,
+    position: typeof q.position === 'number' ? q.position : undefined,
     stages: stagesByQuest.get(q.id) ?? [],
   }));
 }
@@ -128,6 +139,12 @@ export async function setStageDone(stageId: string, done: boolean) {
     p_stage_id: stageId,
     p_done: done,
   });
+  if (error) throw error;
+}
+
+/** Saves the Chain list's manual order: the unfinished chains in their new order (finished ones keep their slots). */
+export async function reorderLongQuests(ids: string[]): Promise<void> {
+  const { error } = await supabase.rpc('reorder_long_quests', { p_ids: ids });
   if (error) throw error;
 }
 

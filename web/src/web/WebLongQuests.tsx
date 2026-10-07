@@ -1,11 +1,17 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type DragEvent } from 'react';
 import {
   CHAIN_ORDER_COPY,
   LONG_QUEST_COPY,
   LongQuest,
+  REORDER_COPY,
   STAT_COLORS,
   formatDisplayDate,
   formatError,
+  hasManualOrder,
+  isChainFinished,
+  moveId,
+  reorderState,
+  sortChains,
   stageSequenceState,
 } from '@eiyu/shared';
 import ActionMenu, { type ActionMenuItem } from '../components/ActionMenu';
@@ -14,7 +20,8 @@ import Dialog from '../components/Dialog';
 import RewardFeedback from '../components/RewardFeedback';
 import StateBlock from '../components/StateBlock';
 import LongQuestEditorDialog from './LongQuestEditorDialog';
-import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, LockIcon, UndoIcon } from '../Icons';
+import { StatIcon, PlusIcon, CheckIcon, ChevronIcon, GripIcon, LockIcon, UndoIcon } from '../Icons';
+import { hasChainDrag, readChainDrag, writeChainDrag } from './lane-drag';
 import { useEiyu } from '../store/eiyu-store';
 
 // "open" is an unfinished stage of a chain done in any order: nothing locks it and none is "the" current one.
@@ -130,18 +137,72 @@ function ChainPanel({ lq }: { lq: LongQuest }) {
 }
 
 /** The chain picker beside the selected chain, so you can jump between chains without leaving the page. */
-function ChainNav({ chains, selectedId, onSelect, onNew }: { chains: LongQuest[]; selectedId: string; onSelect: (id: string) => void; onNew: () => void }) {
+function ChainNav({ chains, selectedId, onSelect, onNew, onReorder }: {
+  chains: LongQuest[]; selectedId: string; onSelect: (id: string) => void; onNew: () => void;
+  /** Saves the unfinished chains in their new order; absent where the store has no reorder. */
+  onReorder?: (ids: string[]) => Promise<void>;
+}) {
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [hover, setHover] = useState<{ id: string; half: 'before' | 'after' } | null>(null);
+  // Only unfinished chains move, and only once every chain has a position; this is exactly what the server is sent.
+  const movable = onReorder && hasManualOrder(chains) ? chains.filter(chain => !isChainFinished(chain)).map(chain => chain.id) : null;
+  const save = (next: string[]) => { void onReorder?.(next).catch(() => { /* the store publishes the failure */ }); };
+  const halfOf = (event: DragEvent<HTMLElement>): 'before' | 'after' => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+  };
   return (
-    <nav className="chain-nav" aria-label="Your chains">
+    <nav className="chain-nav" aria-label="Your chains" onDropCapture={() => { setDragging(null); setHover(null); }}>
       <span className="chain-nav-label">Your chains</span>
       <FlowList label="Chains" size={6} narrowSize={4} protectEditors>
-        {chains.map(quest => (
-          <button key={quest.id} type="button" data-item-id={quest.id} className={`chain-nav-item${quest.id === selectedId ? ' is-selected' : ''}`}
-            aria-current={quest.id === selectedId ? 'true' : undefined} onClick={() => onSelect(quest.id)}>
-            <span className="chain-nav-name">{quest.name}</span>
-            <span className="chain-nav-count">{quest.stages.filter(stage => stage.done).length}/{quest.stages.length}</span>
-          </button>
-        ))}
+        {chains.map(quest => {
+          const state = movable && !isChainFinished(quest) ? reorderState(movable, quest.id) : null;
+          const select = (
+            <button type="button" className={`chain-nav-item${quest.id === selectedId ? ' is-selected' : ''}`}
+              aria-current={quest.id === selectedId ? 'true' : undefined} onClick={() => onSelect(quest.id)}>
+              <span className="chain-nav-name">{quest.name}</span>
+              <span className="chain-nav-count">{quest.stages.filter(stage => stage.done).length}/{quest.stages.length}</span>
+            </button>
+          );
+          if (!movable || !state) return <div key={quest.id} data-item-id={quest.id} className="chain-nav-row">{select}</div>;
+          const dropReady = !!dragging && dragging !== quest.id;
+          const items: ActionMenuItem[] = [
+            { label: REORDER_COPY.moveTop, ariaLabel: REORDER_COPY.moveTopFor(quest.name), onSelect: () => save(moveId(movable, quest.id, 'top')), disabled: !state.canMoveUp, icon: <ChevronIcon direction="up" />, tone: 'edit' },
+            { label: REORDER_COPY.moveUp, ariaLabel: REORDER_COPY.moveUpFor(quest.name), onSelect: () => save(moveId(movable, quest.id, 'up')), disabled: !state.canMoveUp, icon: <ChevronIcon direction="up" />, tone: 'edit' },
+            { label: REORDER_COPY.moveDown, ariaLabel: REORDER_COPY.moveDownFor(quest.name), onSelect: () => save(moveId(movable, quest.id, 'down')), disabled: !state.canMoveDown, icon: <ChevronIcon direction="down" />, tone: 'edit' },
+          ];
+          const target = dropReady ? {
+            onDragOver: (event: DragEvent<HTMLElement>) => {
+              if (!hasChainDrag(event.dataTransfer)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+              setHover({ id: quest.id, half: halfOf(event) });
+            },
+            onDragLeave: (event: DragEvent<HTMLElement>) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHover(null); },
+            onDrop: (event: DragEvent<HTMLElement>) => {
+              setHover(null);
+              const id = readChainDrag(event.dataTransfer);
+              if (!id || id === quest.id || !movable.includes(id)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              save(moveId(movable, id, halfOf(event) === 'before' ? { before: quest.id } : { after: quest.id }));
+            },
+          } : {};
+          return (
+            <div key={quest.id} data-item-id={quest.id} className={`chain-nav-row${hover?.id !== quest.id ? '' : hover.half === 'before' ? ' is-reorder-before' : ' is-reorder-after'}`} {...target}>
+              {select}
+              <span className="chain-nav-grip" draggable aria-hidden="true"
+                onDragStart={event => {
+                  writeChainDrag(event.dataTransfer, quest.id);
+                  const row = event.currentTarget.closest('.chain-nav-row');
+                  if (row) event.dataTransfer.setDragImage?.(row, 16, 16);
+                  setDragging(quest.id);
+                }}
+                onDragEnd={() => { setDragging(null); setHover(null); }}><GripIcon size={14} /></span>
+              <ActionMenu label={`More actions for ${quest.name}`} items={items} />
+            </div>
+          );
+        })}
       </FlowList>
       <button type="button" className="btn-secondary chain-nav-new" onClick={onNew}><PlusIcon size={14} />NEW CHAIN</button>
     </nav>
@@ -149,11 +210,12 @@ function ChainNav({ chains, selectedId, onSelect, onNew }: { chains: LongQuest[]
 }
 
 export default function WebLongQuests() {
-  const { user, stageRewardNotice, rewardReceipt, longQuestsLoading, longQuestsError, retryLongQuests } = useEiyu();
+  const { user, stageRewardNotice, rewardReceipt, longQuestsLoading, longQuestsError, retryLongQuests, reorderChains } = useEiyu();
+  const chains = sortChains(user.longQuests);
   // Until the viewer picks one (or after the picked chain is deleted), the first chain is the selected one.
   const [chosen, setChosen] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const selected = user.longQuests.find(quest => quest.id === chosen) ?? user.longQuests[0];
+  const selected = chains.find(quest => quest.id === chosen) ?? chains[0];
   const rewardCardShown = !!rewardReceipt && !rewardReceipt.replayed && rewardReceipt.totals.length > 0;
 
   return (
@@ -182,7 +244,7 @@ export default function WebLongQuests() {
         selected ? (
           <div className="chain-layout">
             <ChainPanel key={selected.id} lq={selected} />
-            <ChainNav chains={user.longQuests} selectedId={selected.id} onSelect={setChosen} onNew={() => setShowNew(true)} />
+            <ChainNav chains={chains} selectedId={selected.id} onSelect={setChosen} onNew={() => setShowNew(true)} onReorder={reorderChains} />
           </div>
         ) : (
           <StateBlock kind="empty" title={LONG_QUEST_COPY.emptyTitle}>{LONG_QUEST_COPY.empty}</StateBlock>

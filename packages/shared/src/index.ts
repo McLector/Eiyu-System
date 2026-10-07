@@ -13,6 +13,7 @@ export * from './logic/contrast';
 export * from './logic/color-tint';
 export * from './logic/board-summary';
 export * from './logic/long-quest-sequence';
+export * from './logic/manual-order';
 export * from './logic/stage-description';
 export * from './logic/legal-content';
 export * from './data/habits';

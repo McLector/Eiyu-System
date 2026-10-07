@@ -26,6 +26,10 @@ import {
   formatError,
   incrementHabitProgress,
   initialUser,
+  applyManualOrder,
+  hasManualOrder,
+  reorderLongQuests,
+  reorderQuests as reorderQuestsRequest,
   moveBacklogToOneTime,
   moveOneTimeToBacklog,
   rankFromStats,
@@ -42,6 +46,7 @@ import {
   type LongQuest,
   type LongQuestInput,
   type Quest,
+  type QuestType,
   type UserProfile,
 } from '@eiyu/shared';
 
@@ -72,6 +77,13 @@ interface EiyuStore {
   /** Server-dated to the account's today; single-flight per quest. */
   moveToOneTime: (id: string) => Promise<void>;
   moveToBacklog: (id: string) => Promise<void>;
+  /**
+   * Manual order (044). `ids` are the unfinished quests of one lane in their new order. The new order shows at once;
+   * the server's answer then replaces it, and a refusal puts the old order back. Moves in one lane run in turn.
+   */
+  reorderQuests: (lane: QuestType, ids: string[]) => Promise<void>;
+  /** The same for the Chain list. */
+  reorderChains: (ids: string[]) => Promise<void>;
   /** Full completion if not yet done, undo if already done. */
   toggleQuest: (id: string) => Promise<boolean>;
   /** Slice 5: adjust a quantity habit's today progress by delta, clamped server-side. */
@@ -111,6 +123,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const definitionRequests = useRef(new Map<string, { id: string; request: string }>());
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const lifecycleRequests = useRef(new Map<string, Promise<void>>());
+  const reorderQueues = useRef(new Map<string, Promise<void>>());
   const deletedHabitIds = useRef(new Set<string>());
   const stageRequests = useRef(new Set<string>());
   const activeUserId = useRef(userId);
@@ -394,6 +407,63 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const moveToOneTime = useCallback((id: string) => runMove(id, 'to-one-time'), [runMove]);
   const moveToBacklog = useCallback((id: string) => runMove(id, 'to-backlog'), [runMove]);
 
+  /** Runs saves for one list in the order they were asked for; a failed one does not stop the next. */
+  const inTurn = useCallback((key: string, run: () => Promise<void>): Promise<void> => {
+    const next = (reorderQueues.current.get(key) ?? Promise.resolve()).catch(() => undefined).then(run);
+    reorderQueues.current.set(key, next);
+    const clear = () => { if (reorderQueues.current.get(key) === next) reorderQueues.current.delete(key); };
+    next.then(clear, clear);
+    return next;
+  }, []);
+
+  const reorderQuests = useCallback(
+    (lane: QuestType, ids: string[]): Promise<void> => {
+      if (!userId) return Promise.resolve();
+      if (lane === 'backlog') {
+        qc.setQueryData<Quest[]>(backlogKey(userId), rows => (rows ? applyManualOrder(rows, ids) : rows));
+      } else {
+        qc.setQueryData<Quest[]>(habitsTodayKey(userId), rows => {
+          const laneRows = rows?.filter(row => row.questType === lane) ?? [];
+          if (!rows || !hasManualOrder(laneRows)) return rows;
+          const placed = new Map(applyManualOrder(laneRows, ids).map(row => [row.id, row]));
+          return rows.map(row => placed.get(row.id) ?? row);
+        });
+      }
+      return inTurn(`quests:${lane}`, async () => {
+        try {
+          await reorderQuestsRequest(lane, ids);
+          setQuestActionError(null);
+        } catch (err) {
+          setQuestActionError(formatError(err));
+          throw err;
+        } finally {
+          // The server's numbering replaces the optimistic one; after a refusal this is what puts the old order back.
+          await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
+        }
+      });
+    },
+    [qc, userId, inTurn]
+  );
+
+  const reorderChains = useCallback(
+    (ids: string[]): Promise<void> => {
+      if (!userId) return Promise.resolve();
+      qc.setQueryData<LongQuest[]>(longQuestsKey(userId), rows => (rows ? applyManualOrder(rows, ids) : rows));
+      return inTurn('chains', async () => {
+        try {
+          await reorderLongQuests(ids);
+          setLqActionError(null);
+        } catch (err) {
+          setLqActionError(formatError(err));
+          throw err;
+        } finally {
+          await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
+        }
+      });
+    },
+    [qc, userId, inTurn]
+  );
+
   const retryQuests = useCallback(async () => {
     setQuestActionError(null);
     setRetryingQuests(true);
@@ -507,6 +577,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       backlogLoading: backlogQuery.isLoading,
       moveToOneTime,
       moveToBacklog,
+      reorderQuests,
+      reorderChains,
       toggleQuest,
       adjustProgress,
       completeRecovery,
@@ -537,6 +609,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       backlogQuery.isLoading,
       moveToOneTime,
       moveToBacklog,
+      reorderQuests,
+      reorderChains,
       toggleQuest,
       adjustProgress,
       completeRecovery,

@@ -5,6 +5,7 @@ import { Database } from '../types/database';
 import { Difficulty, Quest, QuestGenre, QuestType, Stat } from '../types/eiyu';
 import { initializeAccountTimeZone } from './profile';
 import { normalizeEditableQuestName } from '../logic/validation';
+import { byPosition, hasManualOrder } from '../logic/manual-order';
 import { readBatches } from './pagination';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
@@ -59,6 +60,7 @@ function toQuest(
     timeSet: row.time_set ?? true,
     scheduledDate: row.scheduled_date,
     createdAt: row.created_at,
+    position: typeof row.position === 'number' ? row.position : undefined,
     archived: row.archived,
     time: row.reminder_time.slice(0, 5),
     days: row.days,
@@ -338,7 +340,7 @@ export async function fetchUpcomingOneTimeHabits(
   }));
 }
 
-/** Active Backlog quests, newest first. Kept apart from the board read: Backlog has no day, so the daily RPC never returns it. */
+/** Active Backlog quests in their manual order, or newest first until every row has a position (before 044). Kept apart from the board read: Backlog has no day, so the daily RPC never returns it. */
 export async function fetchBacklogQuests(userId: string): Promise<Quest[]> {
   const rows = await readBatches((from, to) =>
     supabase
@@ -350,9 +352,20 @@ export async function fetchBacklogQuests(userId: string): Promise<Quest[]> {
       .order('id')
       .range(from, to)
   );
-  return rows
-    .sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id))
+  const ordered = hasManualOrder(rows)
+    ? byPosition(rows)
+    : rows.sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
+  return ordered
     .map(row => toQuest(row, false, new Set(), new Set(), new Date(), 0, 'UTC', false));
+}
+
+/**
+ * Saves a lane's manual order. `ids` are the unfinished quests the screen shows, in their new order; the server
+ * puts them into the slots they already hold, so quests it does not show keep their place.
+ */
+export async function reorderQuests(questType: QuestType, ids: string[]): Promise<void> {
+  const { error } = await supabase.rpc('reorder_quests', { p_quest_type: questType, p_ids: ids });
+  if (error) throw error;
 }
 
 /** Server-dated: the account's current day, never a client clock. */

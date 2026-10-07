@@ -182,3 +182,56 @@ describe('splitQuestsByType', () => {
     expect(splitQuestsByType(quests)).toEqual({ habitQuests: quests, oneTimeQuests: [] });
   });
 });
+
+describe('manual order in the board lanes', () => {
+  const make = (id: string, over: Partial<Quest> = {}): Quest => ({
+    id, name: id, stat: 'STR', difficulty: 'Medium', easyVersion: 'less', description: null,
+    questType: 'habit', time: '08:00', days: [0, 1, 2, 3, 4, 5, 6], streak: 0, frozen: false, completed: false,
+    targetCount: null, progressCount: 0, timeSet: true, dailyEligible: true, ...over,
+  });
+  const today = '2026-10-05';
+
+  it('orders Daily by position instead of time once every row has one', () => {
+    const quests = [make('late', { time: '20:00', position: 0 }), make('early', { time: '06:00', position: 1 })];
+    expect(partitionBoardQuests(quests).dailyQuests.map(q => q.id)).toEqual(['late', 'early']);
+  });
+
+  it('still sinks finished Daily quests below the unfinished ones', () => {
+    const quests = [make('done', { completed: true, position: 0 }), make('b', { position: 2 }), make('a', { position: 1 })];
+    expect(partitionBoardQuests(quests).dailyQuests.map(q => q.id)).toEqual(['a', 'b', 'done']);
+  });
+
+  it('orders One-time by position, ignoring due date and time, with finished last', () => {
+    const one = (id: string, over: Partial<Quest>) => make(id, { questType: 'one_time', days: [], easyVersion: null, timeSet: false, ...over });
+    const quests = [
+      one('later', { scheduledDate: '2026-10-20', position: 0 }),
+      one('now', { scheduledDate: today, position: 1 }),
+      one('done', { scheduledDate: today, completed: true, position: -5 }),
+      one('undated', { scheduledDate: null, position: 2 }),
+    ];
+    expect(partitionBoardQuests(quests, today).oneTimeQuests.map(q => q.id)).toEqual(['later', 'now', 'undated', 'done']);
+  });
+
+  it('breaks position ties by id', () => {
+    const quests = [make('b', { position: 0 }), make('a', { position: 0 })];
+    expect(partitionBoardQuests(quests).dailyQuests.map(q => q.id)).toEqual(['a', 'b']);
+  });
+
+  it('falls back to the automatic order for a lane where a quest has no position', () => {
+    const quests = [make('late', { time: '20:00', position: 0 }), make('early', { time: '06:00' })];
+    expect(partitionBoardQuests(quests).dailyQuests.map(q => q.id)).toEqual(['early', 'late']);
+  });
+
+  it('judges each lane on its own rows', () => {
+    const one = make('one', { questType: 'one_time', days: [], easyVersion: null, scheduledDate: today });
+    const quests = [make('late', { time: '20:00', position: 0 }), make('early', { time: '06:00', position: 1 }), one];
+    const sections = partitionBoardQuests(quests, today);
+    expect(sections.dailyQuests.map(q => q.id)).toEqual(['late', 'early']);
+    expect(sections.oneTimeQuests.map(q => q.id)).toEqual(['one']);
+  });
+
+  it('leaves All Habits and Recovery on their automatic order', () => {
+    const quests = [make('late', { time: '20:00', position: 0 }), make('early', { time: '06:00', position: 1 })];
+    expect(partitionBoardQuests(quests).allHabits.map(q => q.id)).toEqual(['early', 'late']);
+  });
+});

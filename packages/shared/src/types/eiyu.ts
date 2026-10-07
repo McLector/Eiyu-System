@@ -30,6 +30,8 @@ export interface Quest {
   scheduledDate?: string | null;
   /** Row creation time, used to list Backlog newest first. */
   createdAt?: string;
+  /** Stored manual order within the quest's lane (migration 044); lower comes first. Absent before 044. */
+  position?: number;
   /** Catalog lifecycle state; archived habits remain visible in All Habits. */
   archived?: boolean;
   time: string;
@@ -70,6 +72,8 @@ export interface LongQuest {
   createdAt?: string;
   /** False when the stages may be done in any order. Absent (older rows, or the column is not deployed) means in order. */
   strictOrder?: boolean;
+  /** Stored manual order in the Chain list (migration 044); lower comes first. Absent before 044. */
+  position?: number;
   stages: QuestStage[];
 }
 

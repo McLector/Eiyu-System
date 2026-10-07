@@ -1,4 +1,5 @@
 import { accountDateKey, weekdayForDateKey } from './date-utils';
+import { hasManualOrder } from './manual-order';
 import { oneTimeTiming } from './quest-labels';
 import { Quest } from '../types/eiyu';
 
@@ -68,6 +69,18 @@ function compareActionable(a: Quest, b: Quest): number {
     || compareNameAndId(a, b);
 }
 
+/** A lane the user has ordered by hand: unfinished first, then the stored position. */
+function compareManual(a: Quest, b: Quest): number {
+  return Number(a.completed) - Number(b.completed)
+    || (a.position ?? 0) - (b.position ?? 0)
+    || compareCodePoints(a.id, b.id);
+}
+
+/** The stored order when every row in the lane has one, otherwise the automatic order. */
+function sortLane(lane: Quest[], automatic: (a: Quest, b: Quest) => number): Quest[] {
+  return lane.sort(hasManualOrder(lane) ? compareManual : automatic);
+}
+
 function compareCatalog(a: Quest, b: Quest): number {
   return compareTimeSet(a, b) || compareCodePoints(a.time, b.time) || compareNameAndId(a, b);
 }
@@ -107,12 +120,14 @@ function compareOneTimeLane(today?: string) {
 /** One shared routing contract for mobile and web board sections. Pass the account's today to order the One-time lane. */
 export function partitionBoardQuests(quests: Quest[], today?: string): BoardQuestSections {
   const active = quests.filter(quest => !quest.archived);
-  const dailyQuests = active
-    .filter(quest => quest.questType === 'habit' && quest.dailyEligible === true)
-    .sort(compareActionable);
-  const oneTimeQuests = active
-    .filter(quest => quest.questType === 'one_time')
-    .sort(compareOneTimeLane(today));
+  const dailyQuests = sortLane(
+    active.filter(quest => quest.questType === 'habit' && quest.dailyEligible === true),
+    compareActionable
+  );
+  const oneTimeQuests = sortLane(
+    active.filter(quest => quest.questType === 'one_time'),
+    compareOneTimeLane(today)
+  );
   const allHabits = active
     .filter(quest => quest.questType === 'habit')
     .sort(compareCatalog);

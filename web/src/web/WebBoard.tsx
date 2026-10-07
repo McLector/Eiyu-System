@@ -14,6 +14,9 @@ import {
   boardSummaryLine,
   recoveryDeadlineLabel,
   formatError,
+  hasManualOrder,
+  moveId,
+  reorderState,
   type QuestType,
 } from '@eiyu/shared';
 import { StatIcon, PlusIcon, SnowflakeIcon, ListIcon } from '../Icons';
@@ -23,7 +26,7 @@ import Dialog from '../components/Dialog';
 import PaginatedList from '../components/PaginatedList';
 import StateBlock from '../components/StateBlock';
 import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
-import QuestCard from './QuestCard';
+import QuestCard, { type QuestCardReorder } from './QuestCard';
 import QuestDetailsDialog from './QuestDetailsDialog';
 import AllHabitsDialog from './AllHabitsDialog';
 import { hasQuestDrag, readQuestDrag } from './lane-drag';
@@ -112,7 +115,8 @@ function BoardLane({
       aria-labelledby={`${id}-heading`}
       data-testid={`board-lane-${id}`}
       onDragOver={droppable ? event => {
-        if (!hasQuestDrag(event.dataTransfer)) return;
+        // Only a drag from the lane this one accepts counts: a card dragged within its own lane is a reorder.
+        if (!ready || !hasQuestDrag(event.dataTransfer)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
         setOver(true);
@@ -154,6 +158,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     deleteQuest,
     moveToOneTime,
     moveToBacklog,
+    reorderQuests,
   } = useEiyu();
   const rankCfg = RANK_CONFIG[user.rank];
   const today = accountDateKey(new Date(), user.timeZone);
@@ -231,6 +236,29 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
     if (quest && !(target === 'backlog' && quest.completed)) move(quest);
   };
 
+  // The unfinished quests of each lane that carries a manual order, in order: exactly what the server is sent, so a
+  // finished quest (shown last) never counts as a place to move to.
+  const movable: Partial<Record<QuestType, string[]>> = {
+    habit: hasManualOrder(dailyQuests) ? dailyQuests.filter(q => !q.completed).map(q => q.id) : undefined,
+    one_time: hasManualOrder(oneTimeQuests) ? oneTimeQuests.filter(q => !q.completed).map(q => q.id) : undefined,
+    backlog: hasManualOrder(backlog) ? backlog.filter(q => !q.completed).map(q => q.id) : undefined,
+  };
+  const reorderFor = (quest: Quest): QuestCardReorder | undefined => {
+    const ids = movable[quest.questType];
+    const state = ids && !quest.completed ? reorderState(ids, quest.id) : null;
+    if (!ids || !state) return undefined;
+    const save = (draggedId: string, next: string[]) => queueLifecycle(draggedId, () => reorderQuests(quest.questType, next));
+    return {
+      state,
+      dropReady: !!dragging && dragging.from === quest.questType && dragging.id !== quest.id,
+      onMove: to => save(quest.id, moveId(ids, quest.id, to)),
+      onDrop: (draggedId, half) => {
+        if (!ids.includes(draggedId)) return;
+        save(draggedId, moveId(ids, draggedId, half === 'before' ? { before: quest.id } : { after: quest.id }));
+      },
+    };
+  };
+
   const card = (quest: Quest) => (
     <QuestCard
       key={quest.id}
@@ -246,6 +274,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
       onMove={quest.questType === 'habit' ? undefined : () => move(quest)}
       onDragStart={q => setDragging({ id: q.id, from: q.questType })}
       onDragEnd={() => setDragging(null)}
+      reorder={reorderFor(quest)}
     />
   );
   const addButton = (type: 'habit' | 'one_time' | 'backlog') => (

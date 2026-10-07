@@ -73,6 +73,8 @@ export interface Database {
           schedule_start_on: string;
           genre: QuestGenre | null;
           time_set: boolean;
+          /** Migration 044. Manual order within the quest's lane. */
+          position: number;
         };
         Insert: Partial<Omit<Database['public']['Tables']['habits']['Row'], 'user_id'>> & {
           user_id: string;
@@ -240,6 +242,8 @@ export interface Database {
           created_at: string;
           /** Migration 043. False means the stages may be done in any order. */
           strict_order: boolean;
+          /** Migration 044. Manual order in the Chain list. */
+          position: number;
         };
         Insert: Partial<Database['public']['Tables']['long_quests']['Row']> & {
           user_id: string;
@@ -311,6 +315,8 @@ export interface Database {
       start_gym_session: { Args: { p_routine_id: string }; Returns: string };
       save_gym_session: { Args: { p_session_id: string; p_weights: Json; p_finish: boolean }; Returns: undefined };
       discard_gym_session: { Args: { p_session_id: string }; Returns: undefined };
+      reorder_quests: { Args: { p_quest_type: string; p_ids: string[] }; Returns: undefined };
+      reorder_long_quests: { Args: { p_ids: string[] }; Returns: undefined };
       reorder_gym_exercises: { Args: { p_routine_id: string; p_ids: string[] }; Returns: undefined };
       delete_gym_routine: { Args: { p_routine_id: string; p_discard_draft: boolean }; Returns: undefined };
       save_gym_exercise: { Args: { p_id: string; p_input: Json }; Returns: string };

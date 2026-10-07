@@ -1,4 +1,4 @@
-import { createHabit, updateHabit, fetchTodayOneTimeHabits, fetchUpcomingOneTimeHabits, fetchTodayHabits, fetchAllActiveHabits, fetchBacklogQuests, moveBacklogToOneTime, moveOneTimeToBacklog } from '../habits';
+import { createHabit, updateHabit, fetchTodayOneTimeHabits, fetchUpcomingOneTimeHabits, fetchTodayHabits, fetchAllActiveHabits, fetchBacklogQuests, moveBacklogToOneTime, moveOneTimeToBacklog, reorderQuests } from '../habits';
 import { supabase } from '../../supabase/client';
 
 function chainable(result: { data?: unknown; error: unknown }) {
@@ -595,6 +595,39 @@ describe('Backlog, genre and optional time', () => {
     expect(builder.eq).toHaveBeenCalledWith('archived', false);
     expect(quests.map(q => q.id)).toEqual(['new', 'old']);
     expect(quests[0]).toMatchObject({ questType: 'backlog', genre: 'concept', timeSet: false, days: [], completed: false, easyVersion: null });
+  });
+
+  it('orders Backlog by the stored position when every row has one', async () => {
+    const row = (id: string, created: string, position?: number) => ({
+      id, user_id: 'user-1', name: id, easy_version: null, description: null, quest_type: 'backlog', stat: 'INT', difficulty: 'Easy',
+      reminder_time: '08:00:00', days: [], archived: false, created_at: created, updated_at: created,
+      scheduled_date: null, target_count: null, schedule_start_on: '2026-10-01', genre: null, time_set: false,
+      ...(position === undefined ? {} : { position }),
+    });
+    const serve = (rows: unknown[]) => {
+      const builder = chainable({ data: rows, error: null });
+      builder.range = jest.fn(() => Promise.resolve({ data: rows, error: null }));
+      (supabase.from as jest.Mock).mockReturnValue(builder);
+    };
+    serve([row('newest', '2026-10-03T00:00:00Z', 2), row('oldest', '2026-10-01T00:00:00Z', 0), row('mid', '2026-10-02T00:00:00Z', 1)]);
+    const ordered = await fetchBacklogQuests('user-1');
+    expect(ordered.map(q => q.id)).toEqual(['oldest', 'mid', 'newest']);
+    expect(ordered.map(q => q.position)).toEqual([0, 1, 2]);
+
+    // One row without a position (a database from before 044): keep newest first.
+    serve([row('old', '2026-10-01T00:00:00Z', 0), row('new', '2026-10-03T00:00:00Z')]);
+    const fallback = await fetchBacklogQuests('user-1');
+    expect(fallback.map(q => q.id)).toEqual(['new', 'old']);
+    expect(fallback.map(q => q.position)).toEqual([undefined, 0]);
+  });
+
+  it('sends the visible ids in order to the reorder function and surfaces its error', async () => {
+    (supabase.rpc as jest.Mock).mockReset().mockResolvedValue({ data: null, error: null });
+    await reorderQuests('backlog', ['b', 'a']);
+    expect(supabase.rpc).toHaveBeenCalledWith('reorder_quests', { p_quest_type: 'backlog', p_ids: ['b', 'a'] });
+    const failure = new Error('Quest order is out of date. Reload and try again.');
+    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: failure });
+    await expect(reorderQuests('habit', ['a'])).rejects.toBe(failure);
   });
 
   it('maps the stored scheduled_date onto the quest so an edit can keep it', async () => {
