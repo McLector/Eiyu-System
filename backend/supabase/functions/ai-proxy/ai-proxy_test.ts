@@ -1,5 +1,7 @@
 import { createAiProxyHandler } from './ai-proxy-core.ts';
 import './ai-proxy-generator_test.ts';
+import './ai-proxy-providers_test.ts';
+import './ai-proxy-failover_test.ts';
 
 type RpcResponse = { data: unknown; error: unknown };
 type FakeClient = {
@@ -217,5 +219,69 @@ Deno.test('the default clock works on a runtime whose timers reject a foreign `t
   } finally {
     globalThis.setTimeout = realSet;
     globalThis.clearTimeout = realClear;
+  }
+});
+
+Deno.test('exhaustedProviders from the begin RPC reach the generator as plain strings; a missing field means none', async () => {
+  const seen: Array<string[] | undefined> = [];
+  for (const begin of [
+    { allowed: true, requestClass: 'suggestion', attemptNumber: 1, exhaustedProviders: ['groq', 7, null, 'cerebras'] },
+    { allowed: true, requestClass: 'suggestion', attemptNumber: 1 },
+    { allowed: true, requestClass: 'suggestion', attemptNumber: 1, exhaustedProviders: 'groq' },
+  ]) {
+    const client = fakeClient({ begin: { data: begin, error: null } });
+    const handler = createAiProxyHandler({
+      createUserClient: () => client,
+      createServiceClient: () => client,
+      generate: async (_action, _payload, _reserve, context) => {
+        seen.push(context.exhaustedProviders);
+        return { suggestions: ['a b', 'c d', 'e f'] };
+      },
+    });
+    const response = await handler(new Request('https://local.test/ai', {
+      method: 'POST', headers: authHeaders, body: JSON.stringify({ action: 'easy-versions', habitName: 'Read' }),
+    }));
+    if (response.status !== 200) throw new Error(`expected 200, got ${response.status}`);
+  }
+  if (JSON.stringify(seen) !== JSON.stringify([['groq', 'cerebras'], [], []])) {
+    throw new Error(`unexpected exhausted lists ${JSON.stringify(seen)}`);
+  }
+});
+
+Deno.test('markProviderExhausted calls the RPC with the request id, provider and zone; an RPC error never fails the request', async () => {
+  const observed: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const client = fakeClient({ onRpc: (name, args) => observed.push({ name, args }) });
+  const handler = createAiProxyHandler({
+    createUserClient: () => client,
+    createServiceClient: () => client,
+    requestId: () => 'request-xyz',
+    generate: async (_action, _payload, _reserve, context) => {
+      await context.markProviderExhausted?.('groq', 'UTC');
+      return { suggestions: ['a b', 'c d', 'e f'] };
+    },
+  });
+  const response = await handler(new Request('https://local.test/ai', {
+    method: 'POST', headers: authHeaders, body: JSON.stringify({ action: 'easy-versions', habitName: 'Read' }),
+  }));
+  const mark = observed.find(call => call.name === 'ai_mark_provider_exhausted');
+  if (response.status !== 200) throw new Error('a failing mark RPC (fakeClient answers with an error) must not fail the request');
+  if (!mark || mark.args.p_request_id !== 'request-xyz' || mark.args.p_provider !== 'groq' || mark.args.p_reset_time_zone !== 'UTC') {
+    throw new Error(`unexpected mark call ${JSON.stringify(mark)}`);
+  }
+});
+
+Deno.test('a generator error of kind exhausted answers 503 with the capacity message', async () => {
+  const client = fakeClient();
+  const handler = createAiProxyHandler({
+    createUserClient: () => client,
+    createServiceClient: () => client,
+    generate: async () => { throw Object.assign(new Error('all providers exhausted'), { kind: 'exhausted' }); },
+  });
+  const response = await handler(new Request('https://local.test/ai', {
+    method: 'POST', headers: authHeaders, body: JSON.stringify({ action: 'easy-versions', habitName: 'Read' }),
+  }));
+  const body = await response.json();
+  if (response.status !== 503 || !/used up for today/i.test(body.error)) {
+    throw new Error(`expected the capacity 503, got ${response.status} ${JSON.stringify(body)}`);
   }
 });

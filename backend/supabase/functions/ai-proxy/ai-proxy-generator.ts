@@ -4,6 +4,8 @@ import type {
   AiRequestContext,
   ProviderAttemptReservation,
 } from './ai-proxy-core.ts';
+import { nextMidnightMs } from './ai-proxy-providers.ts';
+import type { Provider } from './ai-proxy-providers.ts';
 
 export const DEFAULT_PROVIDER_ATTEMPT_TIMEOUT_MS = 3_000;
 export const MAX_PROVIDER_ATTEMPTS = 4;
@@ -29,9 +31,9 @@ export type GeminiGeneratorOptions = {
 };
 
 export class GeminiProviderError extends Error {
-  readonly kind: 'busy' | 'error';
+  readonly kind: 'busy' | 'error' | 'exhausted';
 
-  constructor(message = 'The AI provider could not complete the request.', kind: 'busy' | 'error' = 'error') {
+  constructor(message = 'The AI provider could not complete the request.', kind: 'busy' | 'error' | 'exhausted' = 'error') {
     super(message);
     this.name = 'GeminiProviderError';
     this.kind = kind;
@@ -49,6 +51,20 @@ class GeminiTransientError extends Error {
   constructor() {
     super('Transient AI provider failure.');
     this.name = 'GeminiTransientError';
+  }
+}
+
+class GeminiQuotaError extends Error {
+  constructor() {
+    super('The AI provider reported an exhausted daily quota.');
+    this.name = 'GeminiQuotaError';
+  }
+}
+
+class GeminiReservationDeniedError extends Error {
+  constructor() {
+    super('Provider attempt quota was denied.');
+    this.name = 'GeminiReservationDeniedError';
   }
 }
 
@@ -189,12 +205,13 @@ function requestBody(prompt: Prompt): Record<string, unknown> {
   };
 }
 
+// The separators are optional because quota ids are camelCase, e.g. GenerateRequestsPerDayPerProjectPerModel-FreeTier.
 function hasDailyQuotaFailure(body: string): boolean {
-  return /daily|per\s+day|requests?_per_day|quota.{0,24}(day|daily)|day.{0,24}quota/i.test(body);
+  return /daily|per[\s_-]*day|\bRPD\b|quota.{0,40}(day|daily)|day.{0,40}quota/i.test(body);
 }
 
 function isClassifiedPerMinute429(body: string): boolean {
-  return /per\s+minute|requests?_per_minute|minute.{0,24}(limit|quota|rate)|rate.{0,24}per\s+minute/i.test(body);
+  return /per[\s_-]*minute|\bRPM\b|minute.{0,24}(limit|quota|rate)|rate.{0,24}per[\s_-]*minute/i.test(body);
 }
 
 function shouldRetryStatus(status: number, body: string): boolean {
@@ -239,6 +256,7 @@ function extractCandidateText(data: unknown, kind: Prompt['kind']): { text: stri
 
 function parseApiError(status: number, body: string): Error {
   if (shouldRetryStatus(status, body)) return new GeminiTransientError();
+  if (status === 429 && hasDailyQuotaFailure(body)) return new GeminiQuotaError();
   return new GeminiTerminalError();
 }
 
@@ -354,6 +372,231 @@ export function createGeminiGenerator(options: GeminiGeneratorOptions) {
       }
     }
     if (lastTransient) throw new GeminiProviderError('The AI service is busy.', 'busy');
+    throw new GeminiProviderError();
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Multi-provider failover (slice 6). Used when the AI_PROVIDERS secret lists providers; otherwise index.ts keeps the
+// single-provider generator above. Same bounds as there: 4 attempts, 3 s each, every attempt reserved before its fetch.
+// ---------------------------------------------------------------------------------------------------------------
+
+export type FailoverGeneratorOptions = {
+  providers: Provider[];
+  getKey: (keyEnv: string) => string | undefined;
+  fetch?: Fetcher;
+  setTimeout?: typeof globalThis.setTimeout;
+  clearTimeout?: typeof globalThis.clearTimeout;
+  sleep?: Sleep;
+  random?: () => number;
+  attemptTimeoutMs?: number;
+  /** Wall clock used only to remember a quota exhaustion in memory until the provider's next reset. */
+  wallClock?: () => number;
+  /** Receives provider name, kind, attempt number and outcome only: never a key, prompt or provider body. */
+  log?: (line: string) => void;
+};
+
+function openAiBody(provider: Provider, prompt: Prompt): Record<string, unknown> {
+  const system = prompt.kind === 'array'
+    ? `${prompt.system} Respond with ONLY a JSON array of strings, with no code fence and no other text.`
+    : prompt.system;
+  return {
+    model: provider.model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: prompt.user },
+    ],
+    max_tokens: 1024,
+    temperature: 0.4,
+  };
+}
+
+/** Free reasoning models put a <think> block in `content`, and many wrap JSON in a code fence. */
+function cleanOpenAiContent(content: string): string {
+  let text = content.trim();
+  if (/^<think>/i.test(text)) {
+    const end = text.search(/<\/think>/i);
+    if (end < 0) throw new GeminiMalformedOutputError();
+    text = text.slice(end + '</think>'.length).trim();
+  }
+  const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return fenced ? fenced[1].trim() : text;
+}
+
+function extractOpenAiText(data: unknown): string {
+  if (typeof data !== 'object' || data === null) throw new GeminiMalformedOutputError();
+  const choices = (data as { choices?: unknown }).choices;
+  if (!Array.isArray(choices) || typeof choices[0] !== 'object' || choices[0] === null) throw new GeminiMalformedOutputError();
+  const choice = choices[0] as { message?: { content?: unknown }; finish_reason?: unknown };
+  const content = choice.message?.content;
+  if (typeof content !== 'string' || !content.trim()) throw new GeminiMalformedOutputError();
+  if (choice.finish_reason === 'length') throw new GeminiMalformedOutputError();
+  const text = cleanOpenAiContent(content);
+  if (!text) throw new GeminiMalformedOutputError();
+  return text;
+}
+
+export function createFailoverGenerator(options: FailoverGeneratorOptions) {
+  const fetcher = options.fetch ?? fetch;
+  const setTimer = options.setTimeout ?? globalThis.setTimeout;
+  const clearTimer = options.clearTimeout ?? globalThis.clearTimeout;
+  const sleep = options.sleep ?? defaultSleep;
+  const random = options.random ?? Math.random;
+  const attemptTimeoutMs = options.attemptTimeoutMs ?? DEFAULT_PROVIDER_ATTEMPT_TIMEOUT_MS;
+  const wallClock = options.wallClock ?? Date.now;
+  const log = options.log ?? ((line: string) => console.warn(line));
+  // Remembers daily-quota exhaustion inside this isolate, so a database without migration 045 (or a failed mark)
+  // still stops hammering a provider that already said it was out for the day.
+  const localExhausted = new Map<string, number>();
+
+  return async function generate(
+    action: AiAction,
+    payload: AiPayload,
+    reserveProviderAttempt: ProviderAttemptReservation,
+    context: AiRequestContext,
+  ): Promise<Record<string, unknown>> {
+    const prompt = promptFor(action, payload);
+    const usable = options.providers.filter(provider => (options.getKey(provider.keyEnv) ?? '').trim() !== '');
+    if (!usable.length) throw new GeminiProviderError();
+
+    const databaseExhausted = new Set(context.exhaustedProviders ?? []);
+    const isExhausted = (provider: Provider) =>
+      databaseExhausted.has(provider.name) || (localExhausted.get(provider.name) ?? 0) > wallClock();
+    let queue = usable.filter(provider => !isExhausted(provider));
+    if (!queue.length) throw new GeminiProviderError('Every AI provider is out of quota for today.', 'exhausted');
+
+    const attemptOnce = async (provider: Provider, attempt: number, outcome: { status?: number }): Promise<Record<string, unknown>> => {
+      const apiKey = (options.getKey(provider.keyEnv) ?? '').trim();
+      if (!await reserveProviderAttempt(attempt)) throw new GeminiReservationDeniedError();
+      if (context.signal.aborted) throw new GeminiRequestCancelledError();
+      if (context.now() >= context.deadlineAt) throw new GeminiProviderError('The AI request deadline expired.', 'busy');
+      const combined = combineSignals(context.signal);
+      let timedOut = false;
+      const remaining = Math.max(1, context.deadlineAt - context.now());
+      const timer = setTimer(() => {
+        timedOut = true;
+        combined.abort();
+      }, Math.min(attemptTimeoutMs, remaining));
+      try {
+        const request: { url: string; headers: Record<string, string>; body: Record<string, unknown> } = provider.kind === 'gemini'
+          ? {
+            url: `${provider.baseUrl}/${encodeURIComponent(provider.model)}:generateContent`,
+            headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
+            body: requestBody(prompt),
+          }
+          : {
+            url: `${provider.baseUrl}/chat/completions`,
+            headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+            body: openAiBody(provider, prompt),
+          };
+        let response: Response;
+        try {
+          response = await awaitSignal(
+            fetcher(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body), signal: combined.signal }),
+            combined.signal,
+          );
+        } catch {
+          if (context.signal.aborted) throw new GeminiRequestCancelledError();
+          throw new GeminiTransientError();
+        }
+        outcome.status = response.status;
+        let responseText: string;
+        try {
+          responseText = await awaitSignal(response.text(), combined.signal);
+        } catch {
+          if (context.signal.aborted) throw new GeminiRequestCancelledError();
+          throw new GeminiTransientError();
+        }
+        if (!response.ok) throw parseApiError(response.status, responseText);
+        let data: unknown;
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new GeminiMalformedOutputError();
+        }
+        if (provider.kind === 'gemini') {
+          const candidate = extractCandidateText(data, prompt.kind);
+          if (candidate.truncated) throw new GeminiMalformedOutputError();
+          return parseProviderText(candidate.text, action, prompt.kind);
+        }
+        return parseProviderText(extractOpenAiText(data), action, prompt.kind);
+      } catch (error) {
+        if (context.signal.aborted) throw new GeminiRequestCancelledError();
+        if (timedOut && !(error instanceof GeminiTransientError)) throw new GeminiTransientError();
+        throw error;
+      } finally {
+        clearTimer(timer);
+        combined.dispose();
+      }
+    };
+
+    const failedTransient: Provider[] = [];
+    let secondPass = false;
+    let retries = 0;
+    let attemptNumber = 0;
+    let failures = 0;
+    let quotaFailures = 0;
+    let transientSeen = false;
+
+    while (attemptNumber < MAX_PROVIDER_ATTEMPTS) {
+      if (!queue.length) {
+        // Breadth first: only once every provider has had a try do the transient failures get a second chance.
+        if (secondPass || !failedTransient.length) break;
+        secondPass = true;
+        queue = failedTransient.splice(0);
+      }
+      if (context.signal.aborted) throw new GeminiRequestCancelledError();
+      if (context.now() >= context.deadlineAt) throw new GeminiProviderError('The AI request deadline expired.', 'busy');
+      const provider = queue.shift()!;
+      if (isExhausted(provider)) continue;
+
+      if (secondPass) {
+        const base = BACKOFF_BASE_MS[Math.min(retries, BACKOFF_BASE_MS.length - 1)];
+        retries++;
+        const jitter = Math.min(MAX_JITTER_MS, Math.max(0, Math.floor(random() * (MAX_JITTER_MS + 1))));
+        const delay = base + jitter;
+        if (context.deadlineAt - context.now() <= delay) throw new GeminiProviderError('The AI request deadline expired.', 'busy');
+        try {
+          await sleep(delay, context.signal);
+        } catch {
+          if (context.signal.aborted) throw new GeminiRequestCancelledError();
+          throw new GeminiProviderError('The AI request deadline expired.', 'busy');
+        }
+      }
+
+      attemptNumber++;
+      const outcome: { status?: number } = {};
+      try {
+        return await attemptOnce(provider, attemptNumber, outcome);
+      } catch (error) {
+        if (error instanceof GeminiRequestCancelledError) throw error;
+        if (error instanceof GeminiReservationDeniedError) throw new GeminiProviderError('Provider attempt quota was denied.');
+        if (error instanceof GeminiProviderError) throw error;
+        failures++;
+        const label = error instanceof GeminiTransientError ? 'transient'
+          : error instanceof GeminiQuotaError ? 'daily-quota'
+          : error instanceof GeminiMalformedOutputError ? 'malformed'
+          : 'rejected';
+        log(`ai-proxy: provider=${provider.name} kind=${provider.kind} attempt=${attemptNumber} status=${outcome.status ?? 'none'} outcome=${label}`);
+        if (error instanceof GeminiTransientError) {
+          transientSeen = true;
+          if (!secondPass) failedTransient.push(provider);
+        } else if (error instanceof GeminiQuotaError) {
+          quotaFailures++;
+          localExhausted.set(provider.name, nextMidnightMs(provider.resetTimeZone, wallClock()));
+          try {
+            await context.markProviderExhausted?.(provider.name, provider.resetTimeZone);
+          } catch {
+            // Best effort: the in-memory mark above still protects this isolate.
+          }
+        }
+      }
+    }
+
+    if (transientSeen) throw new GeminiProviderError('The AI service is busy.', 'busy');
+    if (quotaFailures > 0 && quotaFailures === failures) {
+      throw new GeminiProviderError('Every AI provider is out of quota for today.', 'exhausted');
+    }
     throw new GeminiProviderError();
   };
 }

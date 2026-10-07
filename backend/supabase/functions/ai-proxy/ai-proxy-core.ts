@@ -8,6 +8,10 @@ export type AiRequestContext = {
   signal: AbortSignal;
   deadlineAt: number;
   now: () => number;
+  /** Providers the database says hit a daily quota; absent on a database from before migration 045. */
+  exhaustedProviders?: string[];
+  /** Records a daily-quota failure. Best effort: resolves even if the RPC is missing or fails. */
+  markProviderExhausted?: (provider: string, resetTimeZone: string) => Promise<void>;
 };
 
 type Clock = {
@@ -61,6 +65,10 @@ function json(body: unknown, status: number, cors: Record<string, string>, retry
 
 function busyResponse(cors: Record<string, string>): Response {
   return json({ error: 'The AI service is busy right now. Please try again shortly.' }, 503, cors, 1);
+}
+
+function capacityResponse(cors: Record<string, string>): Response {
+  return json({ error: 'The free AI capacity is used up for today. Please try again tomorrow.' }, 503, cors);
 }
 
 function unavailableResponse(cors: Record<string, string>): Response {
@@ -228,6 +236,10 @@ function isBusyGenerationError(error: unknown): boolean {
   return error instanceof Error && (error.name === 'GeminiBusyError' || (error as Error & { kind?: string }).kind === 'busy');
 }
 
+function isExhaustedGenerationError(error: unknown): boolean {
+  return error instanceof Error && (error as Error & { kind?: string }).kind === 'exhausted';
+}
+
 /** The gate is injectable so quota and provider behavior can be tested without a Supabase or Gemini project. */
 export function createAiProxyHandler(dependencies: AiProxyDependencies): (request: Request) => Promise<Response> {
   const makeCorsHeaders = dependencies.corsHeaders ?? defaultCorsHeaders;
@@ -338,9 +350,30 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
         }
       };
 
+      // Both are optional extras from migration 045: an older database simply omits the field and has no mark RPC.
+      const exhaustedProviders = Array.isArray(begin.exhaustedProviders)
+        ? begin.exhaustedProviders.filter((name): name is string => typeof name === 'string')
+        : [];
+      const markProviderExhausted = async (provider: string, resetTimeZone: string): Promise<void> => {
+        if (budget.signal.aborted) return;
+        try {
+          const { error } = await awaitAbortable(quotaClient.rpc('ai_mark_provider_exhausted', {
+            p_request_id: requestId,
+            p_provider: provider,
+            p_reset_time_zone: resetTimeZone,
+          }), budget.signal);
+          if (error) console.warn(`ai-proxy: could not record that provider ${provider} is exhausted`);
+        } catch {
+          if (!budget.cancelled() && !budget.timedOut()) {
+            console.warn(`ai-proxy: could not record that provider ${provider} is exhausted`);
+          }
+        }
+      };
+      const generationContext: AiRequestContext = { ...budget.context, exhaustedProviders, markProviderExhausted };
+
       try {
         const result = await awaitAbortable(
-          dependencies.generate(payload.action, payload, reserveProviderAttempt, budget.context),
+          dependencies.generate(payload.action, payload, reserveProviderAttempt, generationContext),
           budget.signal,
         );
         const stopped = abortedResponse(budget, cors);
@@ -357,6 +390,7 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
           return json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors);
         }
         if (reservationFailure === 'unavailable') return unavailableResponse(cors);
+        if (isExhaustedGenerationError(error)) return capacityResponse(cors);
         if (isBusyGenerationError(error)) return busyResponse(cors);
         return json({ error: 'The AI request failed. Please try again.' }, 503, cors);
       }
