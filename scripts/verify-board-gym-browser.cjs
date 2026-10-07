@@ -189,7 +189,10 @@ async function main() {
     assert.equal(report.errors.length,0);
     await page.goto(`${WEB}/board`);
     await page.emulateMedia({reducedMotion:'reduce'});
-    assert.equal(await page.locator('.phase4-brand-mark').evaluate(e=>getComputedStyle(e).animationName),'none');
+    assert.equal(await page.locator('.phase4-brand-mark').evaluate(e=>getComputedStyle(e,'::after').animationName),'none');
+    // The pulse runs on the ::after glow, not on the mark, so the computed animation is read from that pseudo-element.
+    await page.emulateMedia({reducedMotion:'no-preference'});
+    assert.equal(await page.locator('.phase4-brand-mark').evaluate(e=>getComputedStyle(e,'::after').animationName),'eiyuStar');
     report.flows.push('reduced-motion logo');
     await context.close();
     // Actual Chrome page zoom, using a disposable profile preference rather than CSS/CDP scaling.

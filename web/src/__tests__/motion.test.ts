@@ -99,10 +99,39 @@ describe('entrances', () => {
 });
 
 describe('ambient loops', () => {
-  it('has no infinite glow on the logo, and no animated drop-shadow on the streak flame', () => {
-    expect(css).not.toMatch(/@keyframes eiyuStar/);
+  const NO_PREFERENCE = '@media (prefers-reduced-motion: no-preference)';
+  const PAINT_OR_LAYOUT = /\b(box-shadow|text-shadow|filter|width|height|left|top|margin|padding)\s*:/;
+  const pulseFrame = keyframes.filter(k => k.startsWith('@keyframes eiyuStar'));
+  const pulseUsers = chunks.filter(c => /animation(-name)?:[^;]*\beiyuStar\b/.test(c));
+
+  it('has no animated drop-shadow on the streak flame', () => {
     expect(css).not.toMatch(/@keyframes fireGlow/);
-    expect(css).not.toMatch(/animation:\s*eiyuStar/);
+  });
+  it('defines the logo pulse as one keyframe that animates opacity only, so it never repaints', () => {
+    expect(pulseFrame).toHaveLength(1);
+    const body = pulseFrame[0].slice(pulseFrame[0].indexOf('{') + 1);
+    expect(body).toMatch(/\bopacity\s*:/);
+    expect(body).not.toMatch(PAINT_OR_LAYOUT);
+  });
+  it('runs the pulse only when the visitor has no reduced-motion preference', () => {
+    expect(pulseUsers.length).toBeGreaterThan(0);
+    for (const chunk of pulseUsers) expect(chunk.startsWith(NO_PREFERENCE), chunk.slice(0, 80)).toBe(true);
+    expect(pulseUsers.join('\n')).toMatch(/\.brand-pulse::after\s*\{\s*animation:\s*eiyuStar 2\.8s ease-in-out infinite;?\s*\}/);
+  });
+  it('hides the glow under forced colours', () => {
+    const forced = chunks.filter(c => c.startsWith('@media (forced-colors: active)')).join('\n');
+    expect(forced).toMatch(/\.brand-pulse::after\s*\{\s*display:\s*none;?\s*\}/);
+  });
+  it('draws the glow as a static shadow on a pseudo-element that follows the mark and never takes clicks', () => {
+    expect(bodiesFor(/^\.brand-pulse$/)).toMatch(/position:\s*relative/);
+    const glow = bodiesFor(/^\.brand-pulse::after$/);
+    expect(glow).toMatch(/content:\s*''/);
+    expect(glow).toMatch(/position:\s*absolute/);
+    expect(glow).toMatch(/inset:\s*0/);
+    expect(glow).toMatch(/border-radius:\s*inherit/);
+    expect(glow).toMatch(/pointer-events:\s*none/);
+    expect(glow).toMatch(/opacity:\s*0\s*(;|$)/);
+    expect(glow).toMatch(/box-shadow:\s*0 0 12px var\(--c-accent\), 0 0 22px var\(--c-accent-border\)/);
   });
 });
 

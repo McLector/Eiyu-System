@@ -97,7 +97,7 @@ export default function Landing({ onGetStarted }: Props) {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
+          <div className="brand-pulse" style={{
             width: 34, height: 34, borderRadius: 9,
             background: 'var(--c-accent-glass)', border: '1.5px solid var(--c-accent-border)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',

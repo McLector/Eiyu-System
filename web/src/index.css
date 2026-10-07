@@ -1227,6 +1227,8 @@ input, textarea { caret-color: var(--c-accent); }
 .surface-flat input[type='checkbox'], .surface-flat select, .phase4-overlay input[type='checkbox'], .phase4-overlay select { cursor: pointer; }
 .surface-flat :disabled, .phase4-overlay :disabled { cursor: default !important; }
 .phase4-brand-mark { text-shadow: 0 0 2px var(--c-accent), 0 0 10px var(--c-accent-border); }
+.brand-pulse { position: relative; }
+.brand-pulse::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0; box-shadow: 0 0 12px var(--c-accent), 0 0 22px var(--c-accent-border); }
 .protected-main .long-quests-page { max-width: none; }
 .phase4-primary-nav { gap: clamp(4px,1vw,18px); }
 .phase4-nav-link { padding-inline: 10px; }
@@ -1236,8 +1238,13 @@ input, textarea { caret-color: var(--c-accent); }
   .phase4-nav-link span { white-space: normal; text-align: center; }
   .phase4-nav-link svg { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .phase4-brand-mark { animation: none; text-shadow: 0 0 2px var(--c-accent); } }
-@media (forced-colors: active) { * { scrollbar-color: auto; } .phase4-brand-mark { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .phase4-brand-mark { text-shadow: 0 0 2px var(--c-accent); } }
+@media (forced-colors: active) { * { scrollbar-color: auto; } .brand-pulse::after { display: none; } }
+@keyframes eiyuStar {
+  0%,100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) { .brand-pulse::after { animation: eiyuStar 2.8s ease-in-out infinite; } }
 @media (max-width: 1199px) {
   .gym-page { height: calc(100svh - 170px); min-height: 520px; }
   .gym-heading h1 { font-size: 20px; }

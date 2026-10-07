@@ -155,7 +155,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
       >
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{
+          <div className="brand-pulse" style={{
             width: 56, height: 56, borderRadius: 16, margin: '0 auto 14px',
             background: 'var(--c-accent-glass)', border: '1.5px solid var(--c-accent-border)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',

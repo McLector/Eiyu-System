@@ -154,7 +154,7 @@ export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, d
     <>
       <header className="phase4-header">
         <NavLink to="/board" className="phase4-brand" aria-label="Eiyu System home">
-          <span className="phase4-brand-mark">英</span>
+          <span className="phase4-brand-mark brand-pulse">英</span>
           <span><strong>EIYU</strong><small>SYSTEM</small></span>
         </NavLink>
         <nav aria-label="Primary navigation" className="phase4-primary-nav">
