@@ -62,12 +62,15 @@ describe('System blue palette', () => {
     expect(root().dataset.palette).toBe('blue');
     expect(window.localStorage.getItem(PALETTE_STORAGE_KEY)).toBe('blue');
   });
-  it('goes back to blue, not left on the chosen palette, when the signed-in area goes away', () => {
-    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'jade');
-    const view = renderLayout('/status');
+  it('goes back to the stored choice, not the palette picked here, when the signed-in area goes away', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'lime');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
+    const view = renderLayout();
+    await user.click(await screen.findByRole('radio', { name: 'Jade' }));
     expect(root().dataset.palette).toBe('jade');
     view.unmount();
-    expect(root().dataset.palette).toBe('blue');
+    expect(root().dataset.palette).toBe('lime');
   });
   it('still applies the choice when storage is unavailable', async () => {
     const user = userEvent.setup();
@@ -75,6 +78,33 @@ describe('System blue palette', () => {
     renderLayout();
     await user.click(await screen.findByRole('radio', { name: 'Jade' }));
     expect(root().dataset.palette).toBe('jade');
+  });
+});
+
+describe('leaving the signed-in area shows what a reload would show', () => {
+  it('keeps a stored jade on the sign-in page', () => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'jade');
+    const view = renderLayout('/status');
+    expect(root().dataset.palette).toBe('jade');
+    view.unmount();
+    expect(root().dataset.palette).toBe('jade');
+  });
+  it('removes the attribute for a stored cyan, as a reload does', () => {
+    window.localStorage.setItem(PALETTE_STORAGE_KEY, 'cyan');
+    const view = renderLayout('/status');
+    view.unmount();
+    expect(root().dataset.palette).toBeUndefined();
+  });
+  it('shows blue when nothing is stored', () => {
+    const view = renderLayout('/status');
+    view.unmount();
+    expect(root().dataset.palette).toBe('blue');
+  });
+  it('shows blue, and does not throw, when storage cannot be read', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('denied', 'SecurityError'); });
+    const view = renderLayout('/status');
+    expect(() => view.unmount()).not.toThrow();
+    expect(root().dataset.palette).toBe('blue');
   });
 });
 

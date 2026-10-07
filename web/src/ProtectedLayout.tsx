@@ -5,7 +5,7 @@ import ArchiveNotice from './components/ArchiveNotice';
 import { NavigationGuard } from './components/NavigationGuard';
 import AccountShell, { type AccountOverlay } from './web/AccountShell';
 import { useSession } from './store/session-context';
-import { DEFAULT_PALETTE } from './palette';
+import { DEFAULT_PALETTE, readStoredPaletteChoice } from './palette';
 import { useAccountPalette } from './useAccountPalette';
 import { useAccountTheme } from './useAccountTheme';
 
@@ -21,11 +21,16 @@ export default function ProtectedLayout() {
   const darkMode = theme === 'dark';
   const [palette, changePalette] = useAccountPalette(session?.user.id);
   // On the page root, not the shell: dialogs render outside the shell and must agree with the page behind them.
-  // Cyan is the absence of the attribute. Leaving the signed-in area puts the page back on the default, System blue.
+  // Cyan is the absence of the attribute. Leaving the signed-in area restores what a reload would show: index.html paints
+  // the stored choice (cyan as no attribute) on the sign-in pages, so this must match it, not a fixed colour.
   useEffect(() => {
     if (palette !== 'cyan') document.documentElement.dataset.palette = palette;
     else delete document.documentElement.dataset.palette;
-    return () => { document.documentElement.dataset.palette = DEFAULT_PALETTE; };
+    return () => {
+      const stored = readStoredPaletteChoice();
+      if (stored === 'cyan') delete document.documentElement.dataset.palette;
+      else document.documentElement.dataset.palette = stored ?? DEFAULT_PALETTE;
+    };
   }, [palette]);
   const location = useLocation();
   const navigate = useNavigate();
