@@ -197,5 +197,17 @@ select ok(coalesce(
     and not has_function_privilege('authenticated', to_regprocedure('public.validate_long_quest_order_mode()'), 'EXECUTE'), false),
   '043 The chain order mode is in place');
 
+-- Migration 044: manual order for the Board lanes and the Chain list.
+select ok(coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'habits' and column_name = 'position' and is_nullable = 'NO')
+    and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'long_quests' and column_name = 'position' and is_nullable = 'NO')
+    and exists (select 1 from pg_trigger where tgrelid = 'public.habits'::regclass and tgname = 'habits_place_on_top' and not tgisinternal)
+    and exists (select 1 from pg_trigger where tgrelid = 'public.long_quests'::regclass and tgname = 'long_quests_place_on_top' and not tgisinternal)
+    and has_function_privilege('authenticated', to_regprocedure('public.reorder_quests(text,uuid[])'), 'EXECUTE')
+    and has_function_privilege('authenticated', to_regprocedure('public.reorder_long_quests(uuid[])'), 'EXECUTE')
+    and not has_function_privilege('anon', to_regprocedure('public.reorder_quests(text,uuid[])'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.backfill_manual_order(uuid)'), 'EXECUTE'), false),
+  '044 The manual order is in place');
+
 select * from finish();
 rollback;

@@ -327,6 +327,15 @@ with checks(marker, ok) as (
     and coalesce((select pg_get_functiondef(p.oid) ilike '%Mark the later done stages not done%' from pg_proc p where p.oid = to_regprocedure('public.save_long_quest_definition(uuid,uuid,jsonb,boolean)')), false)
     and coalesce((select pg_get_functiondef(p.oid) ilike '%coalesce(v_strict_order, true)%' from pg_proc p where p.oid = to_regprocedure('public.guard_long_quest_stage_sequence()')), false)
     and not has_function_privilege('authenticated',to_regprocedure('public.validate_long_quest_order_mode()'),'EXECUTE'), false)
+  union all select '044 manual order: positions, top-of-lane triggers, reorder functions', coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'habits' and column_name = 'position' and is_nullable = 'NO')
+    and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'long_quests' and column_name = 'position' and is_nullable = 'NO')
+    and exists (select 1 from pg_trigger where tgrelid = 'public.habits'::regclass and tgname = 'habits_place_on_top' and not tgisinternal)
+    and exists (select 1 from pg_trigger where tgrelid = 'public.long_quests'::regclass and tgname = 'long_quests_place_on_top' and not tgisinternal)
+    and has_function_privilege('authenticated',to_regprocedure('public.reorder_quests(text,uuid[])'),'EXECUTE')
+    and has_function_privilege('authenticated',to_regprocedure('public.reorder_long_quests(uuid[])'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.reorder_quests(text,uuid[])'),'EXECUTE')
+    and not has_function_privilege('authenticated',to_regprocedure('public.backfill_manual_order(uuid)'),'EXECUTE'), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -338,7 +347,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–043
+re-run an old file over a newer definition. This query covers migrations 001–044
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -392,6 +401,10 @@ Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional 
 ## Theme rollout (041)
 
 Apply **041** (`041_profile_theme.sql`) and verify its marker. Both clients treat it as optional: a failed save keeps the theme on the device and re-sends it on the next launch, so deploying either side first breaks nothing. Until 041 is applied the theme simply stays per device. Test with `supabase/tests/022_profile_theme.test.sql`.
+
+## Manual order rollout (044)
+
+Apply **044** (`044_manual_order.sql`) after 043 and verify its marker. It adds `habits.position` and `long_quests.position`, numbers every existing row from today's auto-sort (so nothing moves the day it is applied), puts new quests and any quest that changes lane (menu move, drag, midnight rollover) at the top of its lane through triggers, and adds `reorder_quests(lane, ids)` and `reorder_long_quests(ids)`. Compare the triggers already on `habits` and `long_quests` first (the file header lists the expected ones). It is safe in either deploy order: a client from before 044 ignores the column and auto-sorts, a client from after it hides the reorder controls until positions arrive, but reordering only works once 044 is live. Test with `supabase/tests/025_manual_order.test.sql`.
 
 ## Chain order mode rollout (043)
 
