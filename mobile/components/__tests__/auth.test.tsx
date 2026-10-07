@@ -62,6 +62,13 @@ describe('mobile auth: flat card', () => {
     expect(mockSignIn).not.toHaveBeenCalled();
   });
 
+  it('puts the logo glyph under a pulsing glow that screen readers never see', async () => {
+    await render();
+    expect(screen.getByTestId('auth-brand-mark')).toHaveTextContent('英');
+    expect(screen.getByTestId('brand-mark-glow', { includeHiddenElements: true })).toHaveProp('accessibilityElementsHidden', true);
+    expect(screen.getAllByText('英')).toHaveLength(1);
+  });
+
   it('signs in with the trimmed email', async () => {
     await render();
     await fireEvent.changeText(screen.getByLabelText('Email address'), '  kaito@example.com ');

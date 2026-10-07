@@ -49,6 +49,13 @@ describe('native account header', () => {
     expect(screen.getByRole('button', { name: TRIGGER })).toBeOnTheScreen();
   });
 
+  it('lays a pulsing glow under the brand mark, invisible to screen readers', async () => {
+    await renderWithTheme(<AccountHeader />);
+    expect(screen.getByTestId('account-brand-mark')).toHaveTextContent('英');
+    expect(screen.getByTestId('brand-mark-glow', { includeHiddenElements: true })).toHaveProp('accessibilityElementsHidden', true);
+    expect(screen.getAllByText('英')).toHaveLength(1);
+  });
+
   it('offers exactly four account actions, in order, and opens profile editing', async () => {
     const user = userEvent.setup();
     await renderWithTheme(<AccountHeader />);

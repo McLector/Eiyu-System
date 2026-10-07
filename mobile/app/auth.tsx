@@ -16,6 +16,7 @@ import {
   type LegalDocumentId,
 } from '@eiyu/shared';
 
+import { BrandMark } from '@/components/eiyu/brand-mark';
 import { CheckIcon, MailIcon } from '@/components/eiyu/icons';
 import { Screen } from '@/components/eiyu/screen';
 import { Button } from '@/components/ui/button';
@@ -122,7 +123,7 @@ export default function AuthScreen() {
       <Screen edges={['top', 'bottom']} contentContainerStyle={styles.scroll}>
         <View style={styles.brand}>
           <View style={[styles.logo, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
-            <Text style={[styles.logoGlyph, { color: t['accent-text'], fontFamily: fonts.display }]}>英</Text>
+            <BrandMark testID="auth-brand-mark" style={[styles.logoGlyph, { color: t['accent-text'], fontFamily: fonts.display }]}>英</BrandMark>
           </View>
           <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>EIYU SYSTEM</Text>
           <Text style={[styles.subtitle, { color: t['muted-flat'], fontFamily: fonts.body }]}>{SUBTITLES[mode]}</Text>

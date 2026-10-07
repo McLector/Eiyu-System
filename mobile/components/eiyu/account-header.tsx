@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
 
 import ArchivedHabitsSheet from '@/components/eiyu/archived-habits-sheet';
+import { BrandMark } from '@/components/eiyu/brand-mark';
 import { SettingsSheet } from '@/components/settings/settings-sheet';
 import { Button } from '@/components/ui/button';
 import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
@@ -136,7 +137,7 @@ export default function AccountHeader() {
     <>
       <View style={[styles.header, { backgroundColor: t.nav, borderBottomColor: t['nav-border'], paddingTop: insets.top }]}>
         <View style={styles.brand}>
-          <Text testID="account-brand-mark" style={[styles.brandMark, { color: t['accent-text'], borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }]}>英</Text>
+          <BrandMark testID="account-brand-mark" style={[styles.brandMark, { color: t['accent-text'], borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }]}>英</BrandMark>
           <Text style={[styles.brandText, { color: t.text, fontFamily: fonts.display }]}>EIYU</Text>
         </View>
         <Pressable
