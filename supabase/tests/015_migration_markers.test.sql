@@ -186,5 +186,16 @@ select ok(coalesce(
     and not has_function_privilege('authenticated', to_regprocedure('public.guard_one_time_date_change()'), 'EXECUTE'), false),
   '042 Optional one-time date and upcoming quests are in place');
 
+-- Migration 043: per-quest chain order mode.
+select ok(coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'long_quests' and column_name = 'strict_order' and is_nullable = 'NO')
+    and exists (select 1 from pg_trigger where tgrelid = 'public.long_quests'::regclass and tgname = 'validate_long_quest_order_mode' and not tgisinternal)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%Mark the later done stages not done%'
+      from pg_proc p where p.oid = to_regprocedure('public.save_long_quest_definition(uuid,uuid,jsonb,boolean)')), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%coalesce(v_strict_order, true)%'
+      from pg_proc p where p.oid = to_regprocedure('public.guard_long_quest_stage_sequence()')), false)
+    and not has_function_privilege('authenticated', to_regprocedure('public.validate_long_quest_order_mode()'), 'EXECUTE'), false),
+  '043 The chain order mode is in place');
+
 select * from finish();
 rollback;

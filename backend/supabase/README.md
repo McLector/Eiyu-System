@@ -321,6 +321,12 @@ with checks(marker, ok) as (
     and coalesce((select pg_get_functiondef(p.oid) ilike '%is already completed%' from pg_proc p where p.oid = to_regprocedure('public.complete_habit(uuid,date,public.completion_kind)')), false)
     and coalesce((select pg_get_functiondef(p.oid) ilike '%scheduled_date > v_today%' from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false)
     and not has_function_privilege('authenticated',to_regprocedure('public.guard_one_time_date_change()'),'EXECUTE'), false)
+  union all select '043 chains: per-quest order mode', coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'long_quests' and column_name = 'strict_order' and is_nullable = 'NO')
+    and exists (select 1 from pg_trigger where tgrelid = 'public.long_quests'::regclass and tgname = 'validate_long_quest_order_mode' and not tgisinternal)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%Mark the later done stages not done%' from pg_proc p where p.oid = to_regprocedure('public.save_long_quest_definition(uuid,uuid,jsonb,boolean)')), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%coalesce(v_strict_order, true)%' from pg_proc p where p.oid = to_regprocedure('public.guard_long_quest_stage_sequence()')), false)
+    and not has_function_privilege('authenticated',to_regprocedure('public.validate_long_quest_order_mode()'),'EXECUTE'), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -332,7 +338,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–042
+re-run an old file over a newer definition. This query covers migrations 001–043
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -386,6 +392,10 @@ Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional 
 ## Theme rollout (041)
 
 Apply **041** (`041_profile_theme.sql`) and verify its marker. Both clients treat it as optional: a failed save keeps the theme on the device and re-sends it on the next launch, so deploying either side first breaks nothing. Until 041 is applied the theme simply stays per device. Test with `supabase/tests/022_profile_theme.test.sql`.
+
+## Chain order mode rollout (043)
+
+Apply **043** (`043_long_quest_order_mode.sql`) and verify its marker **before** pushing the web app or shipping a mobile build. It adds `long_quests.strict_order` (default true, so every existing chain stays in order) and re-issues `assert_long_quest_stage_sequence`, `guard_long_quest_stage_sequence`, `set_long_quest_stage_done`, `reconcile_long_quest_stages` and `save_long_quest_definition`; compare the deployed bodies with 023 and 037 first. A chain set to any order skips the sequence rules; switching back to in order is refused while the done stages have a gap (the save gives a clear message, and a direct table write is stopped by a deferred trigger). Both clients tolerate the column being absent (the Chain page still loads, every chain reads as in order), but the toggle only takes effect once 043 is live. Test with `supabase/tests/024_long_quest_order_mode.test.sql`.
 
 ## One-time optional date rollout (042)
 
