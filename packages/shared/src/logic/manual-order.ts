@@ -51,6 +51,32 @@ export function moveId(ids: readonly string[], id: string, to: MoveTarget): stri
   return [...rest.slice(0, at), id, ...rest.slice(at)];
 }
 
+/** The ids with `id` placed at `index` (clamped to the list). An unknown id leaves the order as it was. */
+export function moveToIndex(ids: readonly string[], id: string, index: number): string[] {
+  if (!ids.includes(id)) return [...ids];
+  const rest = ids.filter(other => other !== id);
+  const at = Math.max(0, Math.min(rest.length, index));
+  return [...rest.slice(0, at), id, ...rest.slice(at)];
+}
+
+/**
+ * Where a dragged row lands: the index of the row the dragged row's centre is over after moving `dy` points.
+ * `heights` are the rows' measured heights in order. Unmeasured rows (no height yet) leave the row where it is.
+ */
+export function dropIndex(heights: readonly number[], from: number, dy: number): number {
+  if (from < 0 || from >= heights.length) return from;
+  if (!heights.some(height => height > 0)) return from;
+  let top = 0;
+  for (let index = 0; index < from; index += 1) top += heights[index];
+  const centre = top + heights[from] / 2 + dy;
+  let edge = 0;
+  for (let index = 0; index < heights.length; index += 1) {
+    edge += heights[index];
+    if (centre < edge) return index;
+  }
+  return heights.length - 1;
+}
+
 /** Where a row sits among the ids that can be moved (unfinished rows), and which moves make sense. */
 export function reorderState(movableIds: readonly string[], id: string): ReorderState | null {
   const index = movableIds.indexOf(id);

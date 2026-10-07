@@ -2,9 +2,11 @@ import {
   REORDER_COPY,
   applyManualOrder,
   byPosition,
+  dropIndex,
   hasManualOrder,
   isChainFinished,
   moveId,
+  moveToIndex,
   reorderState,
   sortChains,
 } from '../manual-order';
@@ -195,5 +197,60 @@ describe('REORDER_COPY', () => {
     expect(REORDER_COPY.moveTopFor('Read')).toBe('Move Read to top');
     expect(REORDER_COPY.moveUpFor('Read')).toBe('Move Read up');
     expect(REORDER_COPY.moveDownFor('Read')).toBe('Move Read down');
+  });
+});
+
+describe('moveToIndex', () => {
+  const ids = ['a', 'b', 'c', 'd'];
+
+  it('puts the id at the index, shifting the rest', () => {
+    expect(moveToIndex(ids, 'a', 2)).toEqual(['b', 'c', 'a', 'd']);
+    expect(moveToIndex(ids, 'd', 0)).toEqual(['d', 'a', 'b', 'c']);
+    expect(moveToIndex(ids, 'b', 1)).toEqual(ids);
+  });
+
+  it('clamps an index outside the list', () => {
+    expect(moveToIndex(ids, 'a', 99)).toEqual(['b', 'c', 'd', 'a']);
+    expect(moveToIndex(ids, 'd', -5)).toEqual(['d', 'a', 'b', 'c']);
+  });
+
+  it('leaves an unknown id alone and never mutates', () => {
+    const input = ['a', 'b'];
+    expect(moveToIndex(input, 'x', 0)).toEqual(['a', 'b']);
+    moveToIndex(input, 'b', 0);
+    expect(input).toEqual(['a', 'b']);
+  });
+});
+
+describe('dropIndex (where a dragged row lands)', () => {
+  it('stays put for no movement or a small one inside its own row', () => {
+    expect(dropIndex([50, 50, 50], 1, 0)).toBe(1);
+    expect(dropIndex([50, 50, 50], 1, 20)).toBe(1);
+    expect(dropIndex([50, 50, 50], 1, -20)).toBe(1);
+  });
+
+  it('moves one row once the row centre crosses into the next row', () => {
+    expect(dropIndex([50, 50, 50], 0, 26)).toBe(1);
+    expect(dropIndex([50, 50, 50], 2, -26)).toBe(1);
+  });
+
+  it('moves several rows for a long drag and clamps at both ends', () => {
+    expect(dropIndex([50, 50, 50, 50], 0, 120)).toBe(2);
+    expect(dropIndex([50, 50, 50, 50], 0, 5000)).toBe(3);
+    expect(dropIndex([50, 50, 50, 50], 3, -5000)).toBe(0);
+  });
+
+  it('follows unequal row heights', () => {
+    // Row 0 is 100 tall (centre 50), row 1 is 40 (top 100), row 2 is 40 (top 140).
+    expect(dropIndex([100, 40, 40], 0, 40)).toBe(0);
+    expect(dropIndex([100, 40, 40], 0, 60)).toBe(1);
+    expect(dropIndex([100, 40, 40], 0, 100)).toBe(2);
+  });
+
+  it('keeps the row where it is when heights are unknown or the row is out of range', () => {
+    expect(dropIndex([0, 0, 0], 1, 300)).toBe(1);
+    expect(dropIndex([], 0, 10)).toBe(0);
+    expect(dropIndex([50, 50], 5, 10)).toBe(5);
+    expect(dropIndex([50, 50], -1, 10)).toBe(-1);
   });
 });

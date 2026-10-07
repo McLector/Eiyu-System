@@ -41,3 +41,42 @@ describe('questActions', () => {
     }
   });
 });
+
+describe('questActions manual order', () => {
+  const order = (index: number, count: number) => ({ index, count, canMoveUp: index > 0, canMoveDown: index < count - 1 });
+  const withOrder = (q: Quest, o: ReturnType<typeof order> | null) => questActions(q, o);
+
+  it('adds Move to top, up and down right after Edit quest', () => {
+    const actions = withOrder(quest({ questType: 'habit' }), order(1, 3));
+    expect(actions.map(a => a.key)).toEqual(['details', 'edit', 'move-top', 'move-up', 'move-down', 'archive', 'delete']);
+    expect(actions.filter(a => a.key.startsWith('move-')).map(a => a.label)).toEqual(['Move to top', 'Move up', 'Move down']);
+  });
+
+  it('keeps the lane moves after the reorder moves', () => {
+    expect(withOrder(quest({ questType: 'backlog' }), order(0, 2)).map(a => a.key))
+      .toEqual(['details', 'edit', 'move-top', 'move-up', 'move-down', 'move-to-one-time', 'delete']);
+    expect(withOrder(quest({ questType: 'one_time' }), order(0, 2)).map(a => a.key))
+      .toEqual(['details', 'edit', 'move-top', 'move-up', 'move-down', 'move-to-backlog', 'archive', 'delete']);
+  });
+
+  it('disables the moves that go nowhere', () => {
+    const first = withOrder(quest({}), order(0, 3));
+    expect(first.find(a => a.key === 'move-top')?.disabled).toBe(true);
+    expect(first.find(a => a.key === 'move-up')?.disabled).toBe(true);
+    expect(first.find(a => a.key === 'move-down')?.disabled).toBe(false);
+    const last = withOrder(quest({}), order(2, 3));
+    expect(last.find(a => a.key === 'move-down')?.disabled).toBe(true);
+    expect(last.find(a => a.key === 'move-top')?.disabled).toBe(false);
+  });
+
+  it('adds nothing without an order, or for a finished quest', () => {
+    expect(withOrder(quest({}), null).map(a => a.key)).toEqual(['details', 'edit', 'archive', 'delete']);
+    expect(questActions(quest({})).map(a => a.key)).toEqual(['details', 'edit', 'archive', 'delete']);
+    expect(withOrder(quest({ completed: true }), order(0, 2)).map(a => a.key)).toEqual(['details', 'edit', 'archive', 'delete']);
+  });
+
+  it('never repeats an action', () => {
+    const list = withOrder(quest({ questType: 'one_time' }), order(1, 3)).map(a => a.key);
+    expect(new Set(list).size).toBe(list.length);
+  });
+});

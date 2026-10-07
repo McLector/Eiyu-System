@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import {
@@ -8,8 +8,12 @@ import {
   EASY_XP,
   formatError,
   FULL_XP,
+  hasManualOrder,
+  moveId,
   partitionBoardQuests,
+  reorderState,
   type Quest,
+  type QuestType,
 } from '@eiyu/shared';
 
 import { AddQuestSheet, type QuestTypeChoice } from '@/components/board/add-quest-sheet';
@@ -25,6 +29,7 @@ import { SyncReviewSheet } from '@/components/board/sync-review-sheet';
 import { ListIcon, PlusIcon, SnowflakeIcon } from '@/components/eiyu/icons';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
+import { ReorderableList } from '@/components/ui/reorderable-list';
 import { StateBlock } from '@/components/ui/state-block';
 import { UndoBar } from '@/components/ui/undo-bar';
 import { fonts } from '@/constants/eiyu-theme';
@@ -70,6 +75,7 @@ export default function BoardScreen() {
     deleteQuest,
     moveToOneTime,
     moveToBacklog,
+    reorderQuests,
   } = useEiyu();
 
   const [activeLane, setActiveLane] = useState<LaneId>('daily');
@@ -89,6 +95,8 @@ export default function BoardScreen() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteInFlight = useRef(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
+  // A grip is held: the lane and the pager must not take the touch away.
+  const [dragging, setDragging] = useState(false);
   const inFlight = useRef(new Set<string>());
 
   useFocusEffect(useCallback(() => {
@@ -146,11 +154,36 @@ export default function BoardScreen() {
     hapticLight();
   });
 
+  // The unfinished quests of each lane that carries a manual order, in order: exactly what the server is sent, so a
+  // finished quest (listed last) never counts as a place to move to.
+  const laneQuests: Record<QuestType, Quest[]> = { habit: dailyQuests, one_time: oneTimeQuests, backlog };
+  const movable: Partial<Record<QuestType, string[]>> = {};
+  for (const type of ['habit', 'one_time', 'backlog'] as const) {
+    if (hasManualOrder(laneQuests[type])) movable[type] = laneQuests[type].filter(q => !q.completed).map(q => q.id);
+  }
+  const orderFor = (quest: Quest) => {
+    const ids = movable[quest.questType];
+    return ids && !quest.completed ? reorderState(ids, quest.id) : null;
+  };
+  const saveOrder = (type: QuestType, ids: string[]) => {
+    hapticLight();
+    void reorderQuests(type, ids).catch(() => {});
+  };
+
   const openEditor = (quest: Quest) => router.push({ pathname: '/quest-editor', params: { id: quest.id } });
 
   const runAction = (key: QuestActionKey, quest: Quest) => {
     if (key === 'details') setDetailsTarget(quest);
     else if (key === 'edit') openEditor(quest);
+    else if (key === 'move-top' || key === 'move-up' || key === 'move-down') {
+      const ids = movable[quest.questType];
+      if (!ids) return;
+      const to = key === 'move-top' ? 'top' : key === 'move-up' ? 'up' : 'down';
+      queueLifecycle(quest.id, async () => {
+        await reorderQuests(quest.questType, moveId(ids, quest.id, to));
+        hapticLight();
+      });
+    }
     else if (key === 'move-to-one-time') move(quest, 'to-one-time');
     else if (key === 'move-to-backlog') move(quest, 'to-backlog');
     else if (key === 'archive') archive(quest);
@@ -191,9 +224,10 @@ export default function BoardScreen() {
     else router.push({ pathname: '/quest-editor', params: { type, returnLane: type === 'one_time' ? 'one-time' : type } });
   };
 
-  const row = (quest: Quest) => (
+  const row = (quest: Quest, grip?: ReactNode) => (
     <QuestRow
       key={quest.id}
+      grip={grip}
       quest={quest}
       today={accountToday}
       pending={pendingIds.has(quest.id)}
@@ -208,10 +242,27 @@ export default function BoardScreen() {
 
   const empty = (text: string) => <Text style={[styles.empty, { color: t['muted-flat'], fontFamily: fonts.body }]}>{text}</Text>;
 
-  const lists: Record<LaneId, React.ReactNode> = {
-    daily: dailyQuests.length === 0 ? empty('No habits are scheduled for today. Create one or check All Habits.') : dailyQuests.map(row),
-    'one-time': oneTimeQuests.length === 0 ? empty('No one-time quests scheduled for today.') : oneTimeQuests.map(row),
-    backlog: backlog.length === 0 ? empty('Nothing in the Backlog. Capture an idea with ADD A QUEST.') : backlog.map(row),
+  // A lane with a manual order lists its unfinished quests with grips, then the finished ones below.
+  const laneRows = (type: QuestType, quests: Quest[]): ReactNode => {
+    const ids = movable[type];
+    if (!ids) return quests.map(quest => row(quest));
+    const byId = new Map(quests.map(quest => [quest.id, quest] as const));
+    return [
+      <ReorderableList
+        key={`order-${type}`}
+        items={ids.map(id => ({ id, name: byId.get(id)?.name ?? '' }))}
+        onReorder={next => saveOrder(type, next)}
+        onDragChange={setDragging}
+        renderRow={(id, grip) => row(byId.get(id)!, grip)}
+      />,
+      ...quests.filter(quest => quest.completed).map(quest => row(quest)),
+    ];
+  };
+
+  const lists: Record<LaneId, ReactNode> = {
+    daily: dailyQuests.length === 0 ? empty('No habits are scheduled for today. Create one or check All Habits.') : laneRows('habit', dailyQuests),
+    'one-time': oneTimeQuests.length === 0 ? empty('No one-time quests scheduled for today.') : laneRows('one_time', oneTimeQuests),
+    backlog: backlog.length === 0 ? empty('Nothing in the Backlog. Capture an idea with ADD A QUEST.') : laneRows('backlog', backlog),
   };
 
   const firstLoadFailed = !!questsError && !questsHaveCachedData;
@@ -285,6 +336,7 @@ export default function BoardScreen() {
           ref={pagerRef}
           style={styles.pager}
           initialPage={0}
+          scrollEnabled={!dragging}
           onPageSelected={(event: { nativeEvent: { position: number } }) => setActiveLane(LANES[event.nativeEvent.position]?.id ?? 'daily')}>
           {LANES.map(lane => {
             const active = activeLane === lane.id;
@@ -295,7 +347,7 @@ export default function BoardScreen() {
                 accessibilityElementsHidden={!active}
                 importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
                 style={styles.page}>
-                <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">{lists[lane.id]}</ScrollView>
+                <ScrollView testID={`board-lane-scroll-${lane.id}`} scrollEnabled={!dragging} contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">{lists[lane.id]}</ScrollView>
               </View>
             );
           })}
@@ -325,7 +377,7 @@ export default function BoardScreen() {
       <ActionSheet
         visible={actionTarget !== null}
         title={actionTarget?.name}
-        actions={actionTarget ? questActions(actionTarget) : []}
+        actions={actionTarget ? questActions(actionTarget, orderFor(actionTarget)) : []}
         onSelect={key => { if (actionTarget) runAction(key as QuestActionKey, actionTarget); }}
         onClose={() => setActionTarget(null)}
       />

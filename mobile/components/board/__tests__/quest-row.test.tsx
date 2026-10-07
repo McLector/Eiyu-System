@@ -1,6 +1,6 @@
 import { fireEvent, screen, userEvent } from '@testing-library/react-native';
 import { PALETTE_TOKENS, type Quest } from '@eiyu/shared';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { renderWithTheme } from '../../ui/test-theme';
 import { QuestRow } from '../quest-row';
@@ -250,5 +250,18 @@ describe('QuestRow sync tag', () => {
   it('puts the tag on a quantity quest too', async () => {
     await render(quest({ targetCount: 4, progressCount: 1 }), { syncState: 'pending' });
     expect(screen.getByTestId('quest-sync-tag')).toBeOnTheScreen();
+  });
+});
+
+describe('QuestRow grip slot', () => {
+  it('shows the grip it is given, before the check', async () => {
+    await render(quest(), { grip: <View testID="row-grip" /> });
+    expect(screen.getByTestId('row-grip')).toBeOnTheScreen();
+    expect(screen.getByTestId('quest-checkbox')).toBeOnTheScreen();
+  });
+
+  it('shows no grip by default', async () => {
+    await render(quest());
+    expect(screen.queryByTestId('row-grip')).toBeNull();
   });
 });

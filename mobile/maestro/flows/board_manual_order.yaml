@@ -1,0 +1,31 @@
+appId: com.mclector.eiyusystem
+---
+# Slice 5 (migration 044 must be applied): quests can be put in order by hand.
+# UNRUN. Uses the action sheet moves, which are the guaranteed path; dragging the
+# grip needs a real touch and is checked by hand on a phone. Needs at least two
+# unfinished Backlog quests on the account (create them first, newest lands on top).
+- runFlow: _helpers/login.yaml
+- tapOn:
+    id: "board-lane-tab-backlog"
+
+# The first Backlog quest can move down, so it offers Move down.
+- tapOn:
+    text: "More actions for .*"
+    index: 0
+- assertVisible: "Move to top"
+- assertVisible: "Move down"
+- tapOn: "Move down"
+
+# The lane still shows grips once the board has read the order again from the server.
+- extendedWaitUntil:
+    visible:
+      id: "reorder-grip-.*"
+    timeout: 15000
+
+# The second quest can go straight back to the top.
+- tapOn:
+    text: "More actions for .*"
+    index: 1
+- tapOn: "Move to top"
+- assertVisible:
+    id: "reorder-grip-.*"

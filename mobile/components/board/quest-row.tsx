@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { questGenreLabel, questWhenLabel, STAT_COLORS, type Quest } from '@eiyu/shared';
 
@@ -27,13 +28,15 @@ interface Props {
   syncState?: SyncState;
   /** The account's current date key; lets a one-time row say No date or Upcoming. */
   today?: string;
+  /** A reorder grip, shown before the check, when the lane can be reordered by hand. */
+  grip?: ReactNode;
 }
 
 /**
  * One quest in a lane: a check (or a stepper for a quest with a target), the title and its details, and a more button.
  * The title is its own accessibility element so the check and the more button stay reachable for a screen reader.
  */
-export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, onActions, xpToast = null, syncState, today }: Props) {
+export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, onActions, xpToast = null, syncState, today, grip }: Props) {
   const t = useTokens();
   const completed = quest.completed;
   const frozen = quest.frozen && !completed;
@@ -45,6 +48,7 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
 
   return (
     <View style={[styles.row, { borderBottomColor: t['divider-flat'], opacity: completed ? 0.55 : 1 }]}>
+      {grip}
       <View style={styles.control}>
         {isBacklog ? null : quest.targetCount == null ? (
           <Pressable
