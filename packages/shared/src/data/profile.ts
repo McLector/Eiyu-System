@@ -62,16 +62,18 @@ export async function fetchProfile(userId: string): Promise<ProfileData> {
 }
 
 /**
- * The palette the account chose, or null when it has none or the column is not deployed yet.
- * Never throws: a palette is cosmetic, and the sign-in must not depend on it.
+ * The palette the account chose. `null` means the account has no choice (no row, or an empty palette). `undefined`
+ * means the read failed (an error came back, the request threw, or the column is not deployed yet), which says
+ * nothing about the account's choice and must not be treated as one. Never throws: a palette is cosmetic, and the
+ * sign-in must not depend on it.
  */
-export async function fetchAccountPalette(userId: string): Promise<string | null> {
+export async function fetchAccountPalette(userId: string): Promise<string | null | undefined> {
   try {
     const { data, error } = await supabase.from('profiles').select('palette').eq('user_id', userId).maybeSingle();
-    if (error) return null;
+    if (error) return undefined;
     return (data as { palette: string | null } | null)?.palette ?? null;
   } catch {
-    return null;
+    return undefined;
   }
 }
 

@@ -63,15 +63,20 @@ describe('account palette', () => {
     await expect(fetchAccountPalette('user-1')).resolves.toBeNull();
   });
 
-  it('is null, never a throw, when the column is not deployed yet', async () => {
+  it('is undefined, a failed read and not a choice, when the column is not deployed yet', async () => {
     chain({ data: null, error: { code: '42703', message: 'column profiles.palette does not exist' } });
-    await expect(fetchAccountPalette('user-1')).resolves.toBeNull();
+    await expect(fetchAccountPalette('user-1')).resolves.toBeUndefined();
   });
 
-  it('is null when the request itself fails', async () => {
+  it('is undefined when the read errors even if data came back alongside it', async () => {
+    chain({ data: { palette: 'jade' }, error: new Error('denied') });
+    await expect(fetchAccountPalette('user-1')).resolves.toBeUndefined();
+  });
+
+  it('is undefined when the request itself fails', async () => {
     const maybeSingle = jest.fn().mockRejectedValue(new Error('network down'));
     (supabase as unknown as { from: jest.Mock }).from = jest.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }));
-    await expect(fetchAccountPalette('user-1')).resolves.toBeNull();
+    await expect(fetchAccountPalette('user-1')).resolves.toBeUndefined();
   });
 
   it('saves the palette through the owner-scoped RPC', async () => {

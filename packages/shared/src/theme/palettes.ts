@@ -28,3 +28,17 @@ export function isPalette(value: unknown): value is Palette {
 export function parsePalette(value: unknown): Palette {
   return isPalette(value) ? value : DEFAULT_PALETTE;
 }
+
+/**
+ * Which palette to show once the account has answered. `account` is the palette the account chose, `null` when it has
+ * no choice, or `undefined` when the read failed. A choice this device made (`local`) fills in only when the account has
+ * no choice, and is pushed so the account adopts it; cyan counts as a choice. A failed read keeps the local copy and
+ * pushes nothing, so a flaky read cannot overwrite the account. A stored value that is not a palette counts as a failed
+ * read.
+ */
+export function resolvePaletteOnLoad(input: { account: string | null | undefined; local: Palette | null }): { palette: Palette; pushLocal: boolean; storeAccount: boolean } {
+  const { account, local } = input;
+  if (isPalette(account)) return { palette: account, pushLocal: false, storeAccount: true };
+  if (account === null && local) return { palette: local, pushLocal: true, storeAccount: false };
+  return { palette: local ?? DEFAULT_PALETTE, pushLocal: false, storeAccount: false };
+}
