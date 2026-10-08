@@ -1,14 +1,16 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import { authErrorMessage, confirmEmailMessage, resetLinkSentMessage } from '@eiyu/shared';
 
 import AuthScreen from '../../app/auth';
+import { AUTH_COMPACT_MIN_HEIGHT, AUTH_ROOMY_MIN_HEIGHT } from '../../lib/auth-density';
 import { renderWithTheme } from '../ui/test-theme';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+let mockInsets = { top: 0, bottom: 0, left: 0, right: 0 };
 jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+  useSafeAreaInsets: () => mockInsets,
 }));
 
 const mockSignIn = jest.fn();
@@ -238,5 +240,63 @@ describe('mobile auth: flat card', () => {
       await openSignup();
       expect(screen.queryByTestId('legal-sheet-panel')).toBeNull();
     });
+  });
+});
+
+describe('mobile auth: fits the window', () => {
+  const original = Dimensions.get('window');
+  const setWindow = (height: number, fontScale = 1) => Dimensions.set({
+    window: { ...original, width: 360, height, fontScale },
+    screen: { ...original, width: 360, height, fontScale },
+  });
+  const style = (id: string) => StyleSheet.flatten(screen.getByTestId(id).props.style);
+
+  beforeEach(() => { mockInsets = { top: 0, bottom: 0, left: 0, right: 0 }; });
+  afterEach(() => {
+    mockInsets = { top: 0, bottom: 0, left: 0, right: 0 };
+    Dimensions.set({ window: original, screen: original });
+  });
+
+  it("keeps today's roomy spacing on a tall window", async () => {
+    setWindow(AUTH_ROOMY_MIN_HEIGHT + 100);
+    await render();
+    expect(style('auth-logo')).toMatchObject({ width: 56, height: 56 });
+    expect(style('auth-form')).toMatchObject({ gap: 14 });
+  });
+
+  it('shrinks the logo and the form gap on a short window', async () => {
+    setWindow(AUTH_COMPACT_MIN_HEIGHT - 40);
+    await render();
+    expect(style('auth-logo')).toMatchObject({ width: 36, height: 36 });
+    expect(style('auth-form')).toMatchObject({ gap: 8 });
+  });
+
+  it('counts the safe-area insets against the window height', async () => {
+    setWindow(AUTH_ROOMY_MIN_HEIGHT + 10);
+    mockInsets = { top: 40, bottom: 40, left: 0, right: 0 };
+    await render();
+    expect(style('auth-logo').width).toBeLessThan(56);
+  });
+
+  it("drops a tier when the user's font scale is large", async () => {
+    setWindow(AUTH_ROOMY_MIN_HEIGHT + 10, 1.5);
+    await render();
+    expect(style('auth-logo').width).toBeLessThan(56);
+  });
+
+  it('never shrinks the interactive targets, even in the tightest tier', async () => {
+    setWindow(500);
+    await render();
+    await fireEvent.press(screen.getByText('Register'));
+    expect(style('auth-logo')).toMatchObject({ width: 36 });
+    expect(StyleSheet.flatten(screen.getByTestId('terms-checkbox').props.style)).toMatchObject({ minWidth: 48, minHeight: 48 });
+    expect(StyleSheet.flatten(screen.getByRole('button', { name: 'BEGIN JOURNEY' }).props.style)).toMatchObject({ minHeight: 48 });
+    expect(StyleSheet.flatten(screen.getByLabelText('Email address').props.style)).toMatchObject({ minHeight: 48 });
+  });
+
+  it('keeps the scroll view as the fallback for the keyboard and huge fonts', async () => {
+    setWindow(500);
+    await render();
+    expect(JSON.stringify(screen.toJSON())).toContain('ScrollView');
   });
 });

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   authErrorMessage,
   confirmEmailMessage,
@@ -27,6 +28,7 @@ import { SignaturePanel } from '@/components/ui/signature-panel';
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useTokens } from '@/contexts/theme-store';
+import { authDensity } from '@/lib/auth-density';
 
 interface Notice {
   icon: 'mail' | 'check';
@@ -40,6 +42,9 @@ const SUBMIT_LABELS: Record<AuthMode, string> = { login: 'ENTER SYSTEM', signup:
 
 export default function AuthScreen() {
   const t = useTokens();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const density = authDensity(windowHeight - insets.top - insets.bottom, fontScale);
   const { signIn, signUp, resetPassword } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
@@ -120,17 +125,23 @@ export default function AuthScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: t['page-flat'] }]}>
-      <Screen edges={['top', 'bottom']} contentContainerStyle={styles.scroll}>
-        <View style={styles.brand}>
-          <View style={[styles.logo, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
-            <BrandMark testID="auth-brand-mark" style={[styles.logoGlyph, { color: t['accent-text'], fontFamily: fonts.display }]}>英</BrandMark>
+      <Screen edges={['top', 'bottom']} contentContainerStyle={[styles.scroll, { paddingVertical: density.scrollPadV }]}>
+        <View style={[styles.brand, { marginBottom: density.brandMargin }]}>
+          <View
+            testID="auth-logo"
+            style={[
+              styles.logo,
+              { width: density.logoSize, height: density.logoSize, marginBottom: density.logoGap, backgroundColor: t['accent-glass'], borderColor: t['accent-border'] },
+            ]}>
+            <BrandMark testID="auth-brand-mark" style={[styles.logoGlyph, { fontSize: density.logoGlyph, color: t['accent-text'], fontFamily: fonts.display }]}>英</BrandMark>
           </View>
-          <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>EIYU SYSTEM</Text>
+          <Text accessibilityRole="header" style={[styles.title, { fontSize: density.titleSize, color: t.text, fontFamily: fonts.display }]}>EIYU SYSTEM</Text>
           <Text style={[styles.subtitle, { color: t['muted-flat'], fontFamily: fonts.body }]}>{SUBTITLES[mode]}</Text>
         </View>
 
-        <SignaturePanel style={styles.card}>
-          <View style={[styles.accentLine, { backgroundColor: t.accent }]} />
+        <SignaturePanel
+          style={[styles.card, { paddingHorizontal: density.cardPadX, paddingTop: density.cardPadTop, paddingBottom: density.cardPadBottom }]}>
+          <View style={[styles.accentLine, { marginBottom: density.accentGap, backgroundColor: t.accent }]} />
           {notice ? (
             <View style={styles.notice}>
               <View
@@ -150,7 +161,7 @@ export default function AuthScreen() {
               <Button variant="secondary" label="BACK TO LOGIN" onPress={backToLogin} style={styles.full} />
             </View>
           ) : (
-            <View style={styles.form}>
+            <View testID="auth-form" style={[styles.form, { gap: density.formGap }]}>
               {mode === 'signup' ? (
                 <Field label="Display name" placeholder="Kaito Mizuru" autoCapitalize="words" value={name} onChangeText={setName} error={shown('name')} />
               ) : null}
@@ -257,7 +268,7 @@ export default function AuthScreen() {
         </SignaturePanel>
 
         {!notice ? (
-          <View style={styles.switchRow}>
+          <View style={[styles.switchRow, { marginTop: density.switchGap }]}>
             {mode !== 'forgot' ? (
               <Text style={[styles.switchText, { color: t['dim-flat'], fontFamily: fonts.body }]}>{mode === 'login' ? 'New adventurer?' : 'Already enrolled?'}</Text>
             ) : null}
