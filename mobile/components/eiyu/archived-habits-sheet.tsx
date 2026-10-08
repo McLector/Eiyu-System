@@ -10,7 +10,7 @@ import { useEiyu } from '@/contexts/eiyu-store';
 import { useTokens } from '@/contexts/theme-store';
 
 const kindLabel = (quest: Quest) =>
-  quest.questType === 'one_time' ? 'One-time quest' : quest.questType === 'backlog' ? 'Backlog quest' : 'Recurring habit';
+  quest.questType === 'one_time' ? '1-Time quest' : quest.questType === 'backlog' ? 'Backlog quest' : 'Recurring habit';
 
 /** Archived quests, reached from the account menu. Restore brings one back; Delete removes it and its history for good. */
 export default function ArchivedHabitsSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {

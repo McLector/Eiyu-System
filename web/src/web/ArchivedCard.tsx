@@ -13,7 +13,7 @@ export default function ArchivedCard({ quest, onOpen, onRestore, onDelete, pendi
         <span className="quest-card-title">{quest.name}</span>
         <span className="quest-card-meta">
           <span className="quest-chip is-stat"><StatIcon stat={quest.stat} size={11} /> {quest.stat}</span>
-          <span className="quest-card-when">{quest.questType === 'one_time' ? 'One-time quest' : 'Recurring habit'}</span>
+          <span className="quest-card-when">{quest.questType === 'one_time' ? '1-Time quest' : 'Recurring habit'}</span>
           {genre && <span className="quest-chip">{genre}</span>}
         </span>
       </button>

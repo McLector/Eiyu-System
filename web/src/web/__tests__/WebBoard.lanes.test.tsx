@@ -49,7 +49,7 @@ describe('board lanes', () => {
   it('shows Daily, One Time and Backlog lanes and no All Habits lane', () => {
     renderBoard([habit(), oneTime()], [idea()]);
     expect(lane('Daily Quest')).toBeInTheDocument();
-    expect(lane('One Time Quest')).toBeInTheDocument();
+    expect(lane('1-Time Quest')).toBeInTheDocument();
     expect(lane('Backlog')).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'All Habits' })).toBeNull();
     expect(within(lane('Backlog')).getByText('Try Obsidian')).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe('board lanes', () => {
     const user = userEvent.setup();
     const { onNewQuest } = renderBoard([habit()], []);
     await user.click(within(lane('Backlog')).getByRole('button', { name: /ADD QUEST/ }));
-    await user.click(within(lane('One Time Quest')).getByRole('button', { name: /ADD QUEST/ }));
+    await user.click(within(lane('1-Time Quest')).getByRole('button', { name: /ADD QUEST/ }));
     await user.click(within(lane('Daily Quest')).getByRole('button', { name: /ADD QUEST/ }));
     expect(onNewQuest.mock.calls.map(call => call[0])).toEqual(['backlog', 'one_time', 'habit']);
   });
@@ -100,7 +100,7 @@ describe('One Time lane with undated and upcoming quests', () => {
   const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 
   // The lane pages its cards (one or two per page under jsdom), so order is checked on the first card.
-  const firstCard = () => within(lane('One Time Quest')).getAllByTestId(/^quest-card-/)[0].getAttribute('data-testid');
+  const firstCard = () => within(lane('1-Time Quest')).getAllByTestId(/^quest-card-/)[0].getAttribute('data-testid');
 
   it('puts an undated quest before an upcoming one, and today before an undated one', () => {
     renderBoard([oneTime({ id: 'far', scheduledDate: day(9) }), oneTime({ id: 'und', scheduledDate: null })], []);
@@ -113,11 +113,11 @@ describe('One Time lane with undated and upcoming quests', () => {
 
   it('labels an undated quest No date and an upcoming one Upcoming', () => {
     renderBoard([oneTime({ id: 'und', scheduledDate: null })], []);
-    expect(within(lane('One Time Quest')).getByText('No date')).toBeInTheDocument();
+    expect(within(lane('1-Time Quest')).getByText('No date')).toBeInTheDocument();
     cleanup();
     store.useEiyu.mockReset();
     renderBoard([oneTime({ id: 'far', scheduledDate: day(9) })], []);
-    expect(within(lane('One Time Quest')).getByText(/^Upcoming /)).toBeInTheDocument();
+    expect(within(lane('1-Time Quest')).getByText(/^Upcoming /)).toBeInTheDocument();
   });
 
   it('does not count an open upcoming quest toward today, and counts it once done', () => {
@@ -133,33 +133,33 @@ describe('One Time lane with undated and upcoming quests', () => {
 describe('moving quests between lanes', () => {
   beforeEach(() => store.useEiyu.mockReset());
 
-  it('moves a Backlog quest to One-time from its menu', async () => {
+  it('moves a Backlog quest to 1-Time from its menu', async () => {
     const user = userEvent.setup();
     const { moveToOneTime } = renderBoard([], [idea()]);
     await user.click(within(lane('Backlog')).getByRole('button', { name: 'More actions for Try Obsidian' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Move Try Obsidian to One-time' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Move Try Obsidian to 1-Time' }));
     expect(moveToOneTime).toHaveBeenCalledWith('b1');
   });
 
   it('moves a One-time quest back to Backlog from its menu', async () => {
     const user = userEvent.setup();
     const { moveToBacklog } = renderBoard([oneTime()], []);
-    await user.click(within(lane('One Time Quest')).getByRole('button', { name: 'More actions for Pay rent' }));
+    await user.click(within(lane('1-Time Quest')).getByRole('button', { name: 'More actions for Pay rent' }));
     await user.click(screen.getByRole('menuitem', { name: 'Move Pay rent to Backlog' }));
     expect(moveToBacklog).toHaveBeenCalledWith('t1');
   });
 
-  it('moves a Backlog quest when it is dropped on One Time Quest, and only once for a double drop', async () => {
+  it('moves a Backlog quest when it is dropped on 1-Time Quest, and only once for a double drop', async () => {
     let release!: () => void;
     const moveToOneTime = vi.fn(() => new Promise<void>(resolve => { release = resolve; }));
     renderBoard([], [idea()], { moveToOneTime });
     const grip = screen.getByTestId('quest-card-b1').querySelector('.quest-card-grip') as HTMLElement;
     fireEvent.dragStart(grip, { dataTransfer: transfer() });
-    expect(within(lane('One Time Quest')).getByText(/Drop to schedule for today/)).toBeInTheDocument();
+    expect(within(lane('1-Time Quest')).getByText(/Drop to schedule for today/)).toBeInTheDocument();
     const payload = transfer({ id: 'b1', from: 'backlog' });
-    fireEvent.dragOver(lane('One Time Quest'), { dataTransfer: payload });
-    fireEvent.drop(lane('One Time Quest'), { dataTransfer: payload });
-    fireEvent.drop(lane('One Time Quest'), { dataTransfer: payload });
+    fireEvent.dragOver(lane('1-Time Quest'), { dataTransfer: payload });
+    fireEvent.drop(lane('1-Time Quest'), { dataTransfer: payload });
+    fireEvent.drop(lane('1-Time Quest'), { dataTransfer: payload });
     expect(moveToOneTime).toHaveBeenCalledTimes(1);
     expect(moveToOneTime).toHaveBeenCalledWith('b1');
     release();
@@ -169,7 +169,7 @@ describe('moving quests between lanes', () => {
     const { moveToBacklog, moveToOneTime } = renderBoard([oneTime()], [idea()]);
     fireEvent.drop(lane('Backlog'), { dataTransfer: transfer({ id: 't1', from: 'one_time' }) });
     expect(moveToBacklog).toHaveBeenCalledWith('t1');
-    fireEvent.drop(lane('One Time Quest'), { dataTransfer: transfer({ id: 't1', from: 'one_time' }) });
+    fireEvent.drop(lane('1-Time Quest'), { dataTransfer: transfer({ id: 't1', from: 'one_time' }) });
     fireEvent.drop(lane('Backlog'), { dataTransfer: transfer({ id: 'b1', from: 'backlog' }) });
     expect(moveToOneTime).not.toHaveBeenCalled();
     expect(moveToBacklog).toHaveBeenCalledTimes(1);
@@ -183,9 +183,9 @@ describe('moving quests between lanes', () => {
     ['an unknown id', transfer({ id: 'nope', from: 'backlog' })],
   ])('ignores %s dropped on a lane', (_label, dataTransfer) => {
     const { moveToOneTime, moveToBacklog } = renderBoard([habit(), oneTime()], [idea()]);
-    const accepted = fireEvent.dragOver(lane('One Time Quest'), { dataTransfer });
+    const accepted = fireEvent.dragOver(lane('1-Time Quest'), { dataTransfer });
     if (dataTransfer.types.length === 0 || !dataTransfer.types.includes(QUEST_DRAG_TYPE)) expect(accepted).toBe(true);
-    fireEvent.drop(lane('One Time Quest'), { dataTransfer });
+    fireEvent.drop(lane('1-Time Quest'), { dataTransfer });
     fireEvent.drop(lane('Backlog'), { dataTransfer });
     expect(moveToOneTime).not.toHaveBeenCalled();
     expect(moveToBacklog).not.toHaveBeenCalled();
@@ -202,8 +202,8 @@ describe('moving quests between lanes', () => {
     const moveToOneTime = vi.fn(() => new Promise<void>(() => {}));
     renderBoard([], [idea()], { moveToOneTime });
     await user.click(within(lane('Backlog')).getByRole('button', { name: 'More actions for Try Obsidian' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Move Try Obsidian to One-time' }));
-    fireEvent.drop(lane('One Time Quest'), { dataTransfer: transfer({ id: 'b1', from: 'backlog' }) });
+    await user.click(screen.getByRole('menuitem', { name: 'Move Try Obsidian to 1-Time' }));
+    fireEvent.drop(lane('1-Time Quest'), { dataTransfer: transfer({ id: 'b1', from: 'backlog' }) });
     expect(moveToOneTime).toHaveBeenCalledTimes(1);
   });
 
@@ -218,7 +218,7 @@ describe('moving quests between lanes', () => {
     renderBoard([], [idea()], { moveToOneTime });
     const trigger = () => within(lane('Backlog')).getByRole('button', { name: 'More actions for Try Obsidian' });
     await user.click(trigger());
-    await user.click(screen.getByRole('menuitem', { name: 'Move Try Obsidian to One-time' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Move Try Obsidian to 1-Time' }));
     expect(moveToOneTime).toHaveBeenCalledOnce();
     await waitFor(() => expect(trigger()).not.toBeDisabled());
   });

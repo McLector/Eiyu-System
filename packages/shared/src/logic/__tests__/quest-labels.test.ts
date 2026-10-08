@@ -11,7 +11,7 @@ function quest(overrides: Partial<Quest> = {}): Quest {
 
 describe('QUEST_TYPE_LABEL', () => {
   it('names the three kinds the way the quest form does', () => {
-    expect(QUEST_TYPE_LABEL).toEqual({ habit: 'Habit', one_time: 'One-time', backlog: 'Backlog' });
+    expect(QUEST_TYPE_LABEL).toEqual({ habit: 'Habit', one_time: '1-Time', backlog: 'Backlog' });
   });
 });
 

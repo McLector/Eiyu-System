@@ -544,22 +544,22 @@ async function boardFlows(browser, report) {
     }
     await page.setViewportSize({width:1440,height:900});
     // Details from the card; Edit Quest from the menu.
-    await lane('One Time Quest').getByRole('button',{name:'View Pay rent details'}).click();
+    await lane('1-Time Quest').getByRole('button',{name:'View Pay rent details'}).click();
     const details=page.getByRole('dialog',{name:'Quest details'}); await details.waitFor();
     assert.equal(await details.locator('input,textarea,select').count(),0,'details are read-only');
     await assertFits(page,'details dialog');
     await page.keyboard.press('Escape'); await details.waitFor({state:'hidden'});
     // Move by menu, then back by drag.
     await lane('Backlog').getByRole('button',{name:'More actions for Try Obsidian'}).click();
-    await page.getByRole('menuitem',{name:'Move Try Obsidian to One-time'}).click();
-    await lane('One Time Quest').getByText('Try Obsidian').waitFor();
+    await page.getByRole('menuitem',{name:'Move Try Obsidian to 1-Time'}).click();
+    await lane('1-Time Quest').getByText('Try Obsidian').waitFor();
     assert.equal(tables.habits.find(h=>h.id==='idea-0').quest_type,'one_time');
-    await lane('One Time Quest').locator('[data-testid="quest-card-idea-0"] .quest-card-grip').dragTo(lane('Backlog'));
+    await lane('1-Time Quest').locator('[data-testid="quest-card-idea-0"] .quest-card-grip').dragTo(lane('Backlog'));
     await lane('Backlog').getByText('Try Obsidian').waitFor();
     assert.equal(tables.habits.find(h=>h.id==='idea-0').quest_type,'backlog');
-    await lane('Backlog').locator('[data-testid="quest-card-idea-0"] .quest-card-grip').dragTo(lane('One Time Quest'));
-    await lane('One Time Quest').getByText('Try Obsidian').waitFor();
-    await lane('One Time Quest').getByRole('button',{name:'More actions for Try Obsidian'}).click();
+    await lane('Backlog').locator('[data-testid="quest-card-idea-0"] .quest-card-grip').dragTo(lane('1-Time Quest'));
+    await lane('1-Time Quest').getByText('Try Obsidian').waitFor();
+    await lane('1-Time Quest').getByRole('button',{name:'More actions for Try Obsidian'}).click();
     await page.getByRole('menuitem',{name:'Move Try Obsidian to Backlog'}).click();
     await lane('Backlog').getByText('Try Obsidian').waitFor();
     assert.equal(tables.habits.find(h=>h.id==='idea-0').quest_type,'backlog');
@@ -571,7 +571,7 @@ async function boardFlows(browser, report) {
     await page.keyboard.press('Escape');
     for(const [w,h] of VIEWPORTS) {
       await page.setViewportSize({width:w,height:h});
-      for(const type of ['Habit','One-time','Backlog']) {
+      for(const type of ['Habit','1-Time','Backlog']) {
         await page.goto(WEB+'/board');
         await lane('Daily Quest').getByRole('button',{name:'ADD QUEST'}).click();
         await page.getByRole('group',{name:'Quest type'}).getByRole('button',{name:type,exact:true}).click();
@@ -584,7 +584,7 @@ async function boardFlows(browser, report) {
       await page.getByRole('dialog',{name:'EDIT QUEST'}).waitFor();
       await assertFits(page,`edit habit ${w}x${h}`);
       // Editing keeps every field of a One-time and a Backlog quest too.
-      for(const [laneName,quest] of [['One Time Quest','Pay rent'],['Backlog','Try Obsidian']]) {
+      for(const [laneName,quest] of [['1-Time Quest','Pay rent'],['Backlog','Try Obsidian']]) {
         await page.goto(WEB+'/board');
         if(w<1200) await page.getByRole('tab',{name:new RegExp(laneName)}).click();
         await lane(laneName).getByRole('button',{name:`More actions for ${quest}`}).click();

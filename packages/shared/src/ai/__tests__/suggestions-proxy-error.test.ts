@@ -1,6 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
-import { suggestEasyVersions } from '../suggestions';
+import { suggestStages } from '../suggestions';
 import { supabase } from '../../supabase/client';
 import { initCacheAdapter, type CacheAdapter } from '../../cache/adapter';
 
@@ -25,20 +25,20 @@ function inMemoryCacheAdapter(): CacheAdapter {
   };
 }
 
-describe('invokeAiProxy error handling (via suggestEasyVersions)', () => {
+describe('invokeAiProxy error handling (via suggestStages)', () => {
   beforeEach(() => {
     (supabase.functions.invoke as jest.Mock).mockClear();
     initCacheAdapter(inMemoryCacheAdapter());
   });
 
   it("surfaces ai-proxy's own JSON error message instead of the generic SDK one", async () => {
-    const fakeResponse = { json: async () => ({ error: 'habitName is required' }) };
+    const fakeResponse = { json: async () => ({ error: 'questName is required' }) };
     (supabase.functions.invoke as jest.Mock).mockResolvedValueOnce({
       data: null,
       error: new FunctionsHttpError(fakeResponse),
     });
 
-    await expect(suggestEasyVersions('', 'STR')).rejects.toThrow('habitName is required');
+    await expect(suggestStages('', 'STR')).rejects.toThrow('questName is required');
   });
 
   it('falls back to the generic SDK message when the error body is not parseable JSON', async () => {
@@ -52,7 +52,7 @@ describe('invokeAiProxy error handling (via suggestEasyVersions)', () => {
       error: new FunctionsHttpError(fakeResponse),
     });
 
-    await expect(suggestEasyVersions('Read', 'INT')).rejects.toThrow(
+    await expect(suggestStages('Read', 'INT')).rejects.toThrow(
       'Edge Function returned a non-2xx status code'
     );
   });
@@ -63,6 +63,6 @@ describe('invokeAiProxy error handling (via suggestEasyVersions)', () => {
       error: new Error('Failed to fetch'),
     });
 
-    await expect(suggestEasyVersions('Read', 'WIS')).rejects.toThrow('Failed to fetch');
+    await expect(suggestStages('Read', 'WIS')).rejects.toThrow('Failed to fetch');
   });
 });

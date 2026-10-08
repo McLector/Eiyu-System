@@ -208,7 +208,7 @@ export async function scheduleOneTimeReminder(
     const id = await Notifications.scheduleNotificationAsync({
       content: {
         title: input.name,
-        body: 'One-time quest reminder — tap to open Eiyu System.',
+        body: '1-Time quest reminder — tap to open Eiyu System.',
         sound: true,
         data: { lane: 'one-time' },
       },

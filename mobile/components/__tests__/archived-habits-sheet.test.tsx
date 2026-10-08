@@ -43,7 +43,7 @@ describe('ArchivedHabitsSheet', () => {
     expect(screen.getByText('Read 20 pages')).toBeOnTheScreen();
     expect(screen.getByText('Recurring habit')).toBeOnTheScreen();
     expect(screen.getByText('Pay the rent')).toBeOnTheScreen();
-    expect(screen.getByText('One-time quest')).toBeOnTheScreen();
+    expect(screen.getByText('1-Time quest')).toBeOnTheScreen();
     expect(screen.queryByText('Still active')).toBeNull();
   });
 

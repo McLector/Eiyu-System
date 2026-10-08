@@ -81,8 +81,8 @@ flow at normal or increased Android font scale.
 
 - `auth_*` — signup/login/forgot-password happy paths, validation errors,
   wrong password, mode-switching state leaks
-- `habit_*`, `board_*` — quest CRUD, save-button validation, AI
-  Penalty suggestions, complete/un-complete toggling, a rapid
+- `habit_*`, `board_*` — quest CRUD, save-button validation,
+  complete/un-complete toggling, a rapid
   double-tap race-condition probe
 - `longquest_*` — Chain CRUD, stage list bounds (at least one stage, no maximum),
   stage completion and undo, delete (centred confirmation). Rewritten for the

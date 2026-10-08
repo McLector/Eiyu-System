@@ -24,7 +24,7 @@ describe('questActions', () => {
     expect(keys(quest({ questType: 'one_time', completed: true }))).toEqual(['details', 'edit', 'archive', 'delete']);
   });
 
-  it('offers a Backlog quest a move to One-time and no archive', () => {
+  it('offers a Backlog quest a move to 1-Time and no archive', () => {
     expect(keys(quest({ questType: 'backlog' }))).toEqual(['details', 'edit', 'move-to-one-time', 'delete']);
   });
 

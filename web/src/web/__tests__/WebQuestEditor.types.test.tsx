@@ -154,7 +154,7 @@ describe('quest editor types', () => {
     const user = userEvent.setup();
     render(<WebQuestEditor initialType="habit" onClose={vi.fn()} />);
     expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();
-    await user.click(within(screen.getByRole('group', { name: 'Quest type' })).getByRole('button', { name: 'One-time' }));
+    await user.click(within(screen.getByRole('group', { name: 'Quest type' })).getByRole('button', { name: '1-Time' }));
     expect(screen.getByRole('checkbox', { name: 'No date' })).not.toBeChecked();
   });
 
@@ -183,7 +183,7 @@ describe('quest editor types', () => {
     const type = screen.getByRole('group', { name: 'Quest type' });
     expect(screen.getByText(/PENALTY/)).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Genre' })).toBeNull();
-    await user.click(within(type).getByRole('button', { name: 'One-time' }));
+    await user.click(within(type).getByRole('button', { name: '1-Time' }));
     expect(screen.queryByText(/PENALTY/)).toBeNull();
     expect(screen.getByText('DATE')).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Genre' })).toBeInTheDocument();

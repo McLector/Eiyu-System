@@ -27,7 +27,7 @@ describe('AddQuestSheet', () => {
     expect(screen.getByText('What kind of quest is this?')).toBeOnTheScreen();
     expect(screen.getByText('HABIT QUEST')).toBeOnTheScreen();
     expect(screen.getByText('Repeats on chosen days — build streaks')).toBeOnTheScreen();
-    expect(screen.getByText('ONE-TIME QUEST')).toBeOnTheScreen();
+    expect(screen.getByText('1-TIME QUEST')).toBeOnTheScreen();
     expect(screen.getByText('A todo for today only — done or gone, no streak')).toBeOnTheScreen();
   });
 
@@ -44,7 +44,7 @@ describe('AddQuestSheet', () => {
 
   it.each([
     ['Create a habit quest', 'habit'],
-    ['Create a one-time quest', 'one_time'],
+    ['Create a 1-time quest', 'one_time'],
     ['Create a backlog quest', 'backlog'],
   ] as const)('%s reports %s once', async (name, type) => {
     const p = await open(['habit', 'one_time', 'backlog']);
@@ -55,7 +55,7 @@ describe('AddQuestSheet', () => {
 
   it('keeps every choice at least 48dp tall and the list scrollable at large font sizes', async () => {
     await open(['habit', 'one_time', 'backlog']);
-    for (const name of ['Create a habit quest', 'Create a one-time quest', 'Create a backlog quest']) {
+    for (const name of ['Create a habit quest', 'Create a 1-time quest', 'Create a backlog quest']) {
       expect(StyleSheet.flatten(screen.getByRole('button', { name }).props.style).minHeight).toBeGreaterThanOrEqual(48);
     }
     expect(screen.getByTestId('board-type-chooser-scroll')).toBeOnTheScreen();

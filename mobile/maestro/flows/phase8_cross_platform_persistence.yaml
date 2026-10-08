@@ -52,8 +52,8 @@ appId: com.anonymous.eiyusystem
 # The browser completed the one-time quest on Sep 12. This Android switch ran
 # after the account-local midnight boundary, so it must not leak into Sep 13's
 # board; its completion remains independently available in history.
-- assertVisible: "ONE-TIME QUESTS"
-- assertVisible: "No one-time quests scheduled for today."
+- assertVisible: "1-TIME QUEST"
+- assertVisible: "No 1-time quests scheduled for today."
 - tapOn:
     id: "account-trigger"
 - tapOn: "Settings"

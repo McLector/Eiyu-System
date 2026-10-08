@@ -93,9 +93,9 @@ it('creates only the requested one-time type and saved types take precedence', a
   setup();
   const user = userEvent.setup();
   render(<WebQuestEditor initialType="one_time" onClose={vi.fn()} />);
-  expect(screen.getByText('NEW ONE TIME QUEST')).toBeInTheDocument();
+  expect(screen.getByText('NEW 1-TIME QUEST')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Monday' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'ONE-TIME' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '1-TIME' })).not.toBeInTheDocument();
   await user.type(screen.getByRole('textbox', { name: 'Quest name' }), 'Appointment');
   await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
   await waitFor(() => expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', targetCount: null }), undefined));

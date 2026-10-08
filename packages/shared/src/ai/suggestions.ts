@@ -51,7 +51,7 @@ export interface CachedSuggestions {
 
 export type SuggestionCache = Record<string, CachedSuggestions>;
 
-export type SuggestionAction = 'easy-versions' | 'stage-breakdown';
+export type SuggestionAction = 'stage-breakdown';
 
 /** Pure: normalized cache key - case/whitespace-insensitive per input. */
 export function suggestionCacheKey(
@@ -113,22 +113,6 @@ async function invokeAiProxy<T>(body: Record<string, unknown>): Promise<T> {
   } finally {
     clearTimeout(timer);
   }
-}
-
-/** R-61: 3 AI-suggested easy versions, always optional (R-64). Runs through the ai-proxy Edge Function so no API key ships in the app (R-63). */
-export async function suggestEasyVersions(habitName: string, stat: Stat): Promise<string[]> {
-  const key = suggestionCacheKey('easy-versions', habitName, stat);
-  const cached = (await readSuggestionCache())[key];
-  if (isFreshSuggestions(cached)) return cached.value;
-
-  const data = await invokeAiProxy<{ suggestions?: string[] }>({
-    action: 'easy-versions',
-    habitName: habitName.trim(),
-    stat,
-  });
-  if (!data?.suggestions) throw new Error('No suggestions returned');
-  await writeSuggestionCacheEntry(key, data.suggestions);
-  return data.suggestions;
 }
 
 /** R-62: break a Long Quest name into 3-6 editable stages, always optional (R-64). */

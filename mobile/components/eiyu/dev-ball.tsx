@@ -84,7 +84,7 @@ function seedOneTimeInput(): HabitInput {
     name: pick(ONE_TIME_SEEDS),
     easyVersion: null,
     questType: 'one_time' as QuestType,
-    description: 'One-time todo seeded by the dev ball.',
+    description: '1-Time todo seeded by the dev ball.',
     time: '23:50',
   };
 }
@@ -167,7 +167,7 @@ function DevBallInner() {
 
   const tools: Tool[] = [
     { label: 'Seed habit quest', run: () => saveHabit(seedHabitInput()) },
-    { label: 'Seed ONE-TIME quest', run: () => saveHabit(seedOneTimeInput()) },
+    { label: 'Seed 1-TIME quest', run: () => saveHabit(seedOneTimeInput()) },
     {
       label: 'Complete all today',
       run: () => user.quests.filter(q => !q.completed).forEach(q => toggleQuest(q.id)),

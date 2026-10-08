@@ -51,7 +51,7 @@ export default function QuestCard({ quest, today, pending, onToggle, onOpen, onE
   const items: ActionMenuItem[] = [
     { label: 'Edit Quest', ariaLabel: `Edit ${quest.name}`, onSelect: onEdit, icon: <EditIcon />, tone: 'edit' },
     ...moves,
-    ...(isBacklog && onMove ? [{ label: 'Move to One-time', ariaLabel: `Move ${quest.name} to One-time`, onSelect: onMove, icon: <MoveIcon direction="left" />, tone: 'edit' as const }] : []),
+    ...(isBacklog && onMove ? [{ label: 'Move to 1-Time', ariaLabel: `Move ${quest.name} to 1-Time`, onSelect: onMove, icon: <MoveIcon direction="left" />, tone: 'edit' as const }] : []),
     ...(isOneTime && onMove && !quest.completed ? [{ label: 'Move to Backlog', ariaLabel: `Move ${quest.name} to Backlog`, onSelect: onMove, icon: <MoveIcon />, tone: 'edit' as const }] : []),
     ...(!isBacklog ? [{ label: 'Archive', ariaLabel: `Archive ${quest.name}`, onSelect: onArchive, icon: <ArchiveIcon />, tone: 'warn' as const }] : []),
     { label: 'Delete', ariaLabel: `Delete ${quest.name}`, onSelect: onDelete, icon: <TrashIcon />, danger: true, tone: 'danger' },

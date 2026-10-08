@@ -2,7 +2,7 @@ import { DAYS } from '../constants/eiyu-data';
 import type { Quest } from '../types/eiyu';
 
 /** The kind of a quest, as the quest form and the details view name it. */
-export const QUEST_TYPE_LABEL = { habit: 'Habit', one_time: 'One-time', backlog: 'Backlog' } as const;
+export const QUEST_TYPE_LABEL = { habit: 'Habit', one_time: '1-Time', backlog: 'Backlog' } as const;
 
 const daysLabel = (quest: Quest) => (quest.days.length === 7 ? 'Every day' : quest.days.map(day => DAYS[day]).join(', '));
 

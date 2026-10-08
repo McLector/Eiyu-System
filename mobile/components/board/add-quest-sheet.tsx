@@ -8,8 +8,8 @@ export type QuestTypeChoice = 'habit' | 'one_time' | 'backlog';
 
 const CHOICES: Record<QuestTypeChoice, { title: string; hint: string; label: string }> = {
   habit: { title: 'HABIT QUEST', hint: 'Repeats on chosen days — build streaks', label: 'Create a habit quest' },
-  one_time: { title: 'ONE-TIME QUEST', hint: 'A todo for today only — done or gone, no streak', label: 'Create a one-time quest' },
-  backlog: { title: 'BACKLOG QUEST', hint: 'An idea with no date — move it to One-time when you are ready', label: 'Create a backlog quest' },
+  one_time: { title: '1-TIME QUEST', hint: 'A todo for today only — done or gone, no streak', label: 'Create a 1-time quest' },
+  backlog: { title: 'BACKLOG QUEST', hint: 'An idea with no date — move it to 1-Time when you are ready', label: 'Create a backlog quest' },
 };
 
 interface Props {

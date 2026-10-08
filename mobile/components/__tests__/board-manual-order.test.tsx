@@ -108,7 +108,7 @@ describe('mobile Board manual order', () => {
     setup([oneTime('t1', 0), oneTime('t2', 1)], [idea('i1', 0), idea('i2', 1)]);
     const user = userEvent.setup();
     await board();
-    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    await user.press(screen.getByRole('tab', { name: '1-TIME QUEST' }));
     await openActions(user, 'T2');
     await choose(user, 'Move up');
     expect(mockStoreValue.reorderQuests).toHaveBeenLastCalledWith('one_time', ['t2', 't1']);
@@ -133,7 +133,7 @@ describe('mobile Board manual order', () => {
     await board();
     await user.press(screen.getByRole('tab', { name: 'BACKLOG' }));
     await openActions(user, 'I1');
-    await choose(user, 'Move to One-time');
+    await choose(user, 'Move to 1-Time');
     expect(mockStoreValue.moveToOneTime).toHaveBeenCalledWith('i1');
   });
 

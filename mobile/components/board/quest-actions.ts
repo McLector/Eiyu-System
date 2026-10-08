@@ -26,7 +26,7 @@ export function questActions(quest: Quest, order?: ReorderState | null): QuestAc
     { key: 'details', label: 'Details' },
     { key: 'edit', label: 'Edit quest' },
     ...moves,
-    ...(isBacklog ? [{ key: 'move-to-one-time' as const, label: 'Move to One-time' }] : []),
+    ...(isBacklog ? [{ key: 'move-to-one-time' as const, label: 'Move to 1-Time' }] : []),
     ...(isOneTime && !quest.completed ? [{ key: 'move-to-backlog' as const, label: 'Move to Backlog' }] : []),
     ...(!isBacklog ? [{ key: 'archive' as const, label: 'Archive' }] : []),
     { key: 'delete', label: 'Delete permanently', destructive: true },

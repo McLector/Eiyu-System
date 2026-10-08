@@ -107,7 +107,7 @@ describe('WebBoard recovery state', () => {
     );
     expect(container).toHaveTextContent('0 / 2 quests');
     expect(container).toHaveTextContent('Daily Quest');
-    expect(container).toHaveTextContent('One Time Quest');
+    expect(container).toHaveTextContent('1-Time Quest');
     expect(container).toHaveTextContent('Backlog');
     expect(screen.getByRole('button', { name: 'Complete Daily habit' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Complete Off-day habit' })).not.toBeInTheDocument();
@@ -165,7 +165,7 @@ describe('WebBoard recovery state', () => {
     });
     rerender(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
     expect(screen.getByText(/No habits are scheduled for today/)).toBeInTheDocument();
-    expect(screen.getByText(/No one-time quests scheduled for today\./)).toBeInTheDocument();
+    expect(screen.getByText(/No 1-time quests scheduled for today\./)).toBeInTheDocument();
     expect(screen.getByText(/Nothing parked yet/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /ALL HABITS/ }));
     expect(within(screen.getByRole('dialog', { name: 'All habits' })).getByText(/No saved habits yet/)).toBeInTheDocument();
@@ -198,10 +198,10 @@ describe('WebBoard recovery state', () => {
     render(<WebBoard onNewQuest={vi.fn()} onEditQuest={vi.fn()} darkMode />);
 
     const dailyLane = screen.getByRole('region', { name: 'Daily Quest' });
-    const oneTimeLane = screen.getByRole('region', { name: 'One Time Quest' });
+    const oneTimeLane = screen.getByRole('region', { name: '1-Time Quest' });
     expect(screen.getByRole('region', { name: 'Backlog' })).toBeInTheDocument();
     expect(within(dailyLane).getByText('Daily habit')).toBeInTheDocument();
-    expect(within(oneTimeLane).getByText(/No one-time quests scheduled for today\./)).toBeInTheDocument();
+    expect(within(oneTimeLane).getByText(/No 1-time quests scheduled for today\./)).toBeInTheDocument();
     await interaction.click(within(dailyLane).getByRole('button', { name: /ALL HABITS/ }));
     const catalog = screen.getByRole('dialog', { name: 'All habits' });
     expect(within(catalog).getByText('Off-day habit')).toBeInTheDocument();

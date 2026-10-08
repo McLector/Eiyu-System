@@ -7,10 +7,11 @@ function source(relativePath: string) {
 }
 
 describe('Penalty terminology on active web surfaces', () => {
-  it('uses Penalty in the habit editor and suggestion action', () => {
+  it('uses Penalty in the habit editor, with no AI suggestion button', () => {
     const editor = source('../web/WebQuestEditor.tsx');
     expect(editor).toContain('PENALTY');
-    expect(editor).toContain('SUGGEST PENALTIES');
+    expect(editor).not.toContain('SUGGEST PENALTIES');
+    expect(editor).not.toContain('suggestEasyVersions');
     expect(editor).not.toContain('EASY VERSION');
     expect(editor).not.toContain('SUGGEST EASY VERSIONS');
   });

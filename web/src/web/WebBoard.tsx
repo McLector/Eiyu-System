@@ -292,7 +292,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
         {([
           ['profile', 'Profile', 5],
           ['daily-quest', 'Daily Quest', dailyQuests.length],
-          ['one-time-quest', 'One Time Quest', oneTimeQuests.length],
+          ['one-time-quest', '1-Time Quest', oneTimeQuests.length],
           ['backlog', 'Backlog', backlog.length],
         ] as const).map(([id, title, count]) => (
           <button key={id} type="button" role="tab" aria-selected={activeLane === id} onClick={() => selectLane(id)}>
@@ -349,7 +349,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
         }>
           {dailyQuests.map(card)}
         </BoardLane>
-        <BoardLane id="one-time-quest" title="One Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} empty={oneTimeQuests.length === 0 ? 'No one-time quests scheduled for today. Drag one in from Backlog.' : false} action={addButton('one_time')}
+        <BoardLane id="one-time-quest" title="1-Time Quest" count={oneTimeQuests.length} active={activeLane === 'one-time-quest'} empty={oneTimeQuests.length === 0 ? 'No 1-time quests scheduled for today. Drag one in from Backlog.' : false} action={addButton('one_time')}
           acceptsFrom="backlog" onDropQuest={dropOn('one_time')} dragFrom={dragging?.from ?? null} hint="Drop to schedule for today">
           {oneTimeQuests.map(card)}
         </BoardLane>

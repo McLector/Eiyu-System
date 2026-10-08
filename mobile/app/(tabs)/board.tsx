@@ -41,7 +41,7 @@ import { hapticLight, hapticSuccess } from '@/lib/haptics';
 type LaneId = 'daily' | 'one-time' | 'backlog';
 const LANES: { id: LaneId; label: string }[] = [
   { id: 'daily', label: 'DAILY QUEST' },
-  { id: 'one-time', label: 'ONE TIME QUEST' },
+  { id: 'one-time', label: '1-TIME QUEST' },
   { id: 'backlog', label: 'BACKLOG' },
 ];
 /** The kinds the add sheet offers. */
@@ -261,7 +261,7 @@ export default function BoardScreen() {
 
   const lists: Record<LaneId, ReactNode> = {
     daily: dailyQuests.length === 0 ? empty('No habits are scheduled for today. Create one or check All Habits.') : laneRows('habit', dailyQuests),
-    'one-time': oneTimeQuests.length === 0 ? empty('No one-time quests scheduled for today.') : laneRows('one_time', oneTimeQuests),
+    'one-time': oneTimeQuests.length === 0 ? empty('No 1-time quests scheduled for today.') : laneRows('one_time', oneTimeQuests),
     backlog: backlog.length === 0 ? empty('Nothing in the Backlog. Capture an idea with ADD A QUEST.') : laneRows('backlog', backlog),
   };
 

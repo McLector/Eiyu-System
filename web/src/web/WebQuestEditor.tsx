@@ -3,10 +3,9 @@ import Dialog from '../components/Dialog';
 import { useEditorGuard } from '../components/NavigationGuard';
 import {
   accountDateKey, DEFAULT_HABIT_DAYS, QUEST_GENRES, Quest, QuestGenre, QuestType, Stat, Difficulty, STATS, HabitInput,
-  formatError, normalizeNameBoundaries, suggestEasyVersions, validateQuestName,
+  formatError, normalizeNameBoundaries, validateQuestName,
 } from '@eiyu/shared';
 import StatChip from '../components/StatChip';
-import { SparkleIcon } from '../Icons';
 import { useEiyu } from '../store/eiyu-store';
 import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
 
@@ -19,10 +18,10 @@ interface Props {
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
 const TYPES: { id: QuestType; label: string }[] = [
   { id: 'habit', label: 'Habit' },
-  { id: 'one_time', label: 'One-time' },
+  { id: 'one_time', label: '1-Time' },
   { id: 'backlog', label: 'Backlog' },
 ];
-const TITLES: Record<QuestType, string> = { habit: 'NEW DAILY QUEST', one_time: 'NEW ONE TIME QUEST', backlog: 'NEW BACKLOG QUEST' };
+const TITLES: Record<QuestType, string> = { habit: 'NEW DAILY QUEST', one_time: 'NEW 1-TIME QUEST', backlog: 'NEW BACKLOG QUEST' };
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function WebQuestEditor({ editingQuest, initialType = 'habit', onClose }: Props) {
@@ -47,9 +46,6 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[] | null>(null);
-  const [suggestError, setSuggestError] = useState<string | null>(null);
   const lifecycleInFlight = useRef(false);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
   const snapshot = () => JSON.stringify({ name, note, easyVer, time, scheduledDate, targetCount, days, stat, difficulty, type, genre, noTime, noDate });
@@ -115,19 +111,6 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
     }
   };
 
-  const handleAiSuggest = async () => {
-    if (!name.trim() || suggesting) return;
-    setSuggesting(true);
-    setSuggestError(null);
-    try {
-      setSuggestions(await suggestEasyVersions(name.trim(), stat));
-    } catch (err) {
-      setSuggestError(`The System couldn't summon a suggestion — ${formatError(err)}`);
-    } finally {
-      setSuggesting(false);
-    }
-  };
-
   const optional = <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}>(optional)</span>;
   const timeField = (
     <div>
@@ -180,24 +163,8 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           <div>
             <div className="field-label-row">
               <label className="field-label">PENALTY <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}> (required for habits)</span></label>
-              <button
-                type="button"
-                onClick={() => void handleAiSuggest()}
-                disabled={suggesting || !name.trim()}
-                className="btn-quiet btn-compact"
-              >
-                <SparkleIcon size={12} /> {suggesting ? 'Reading the possibilities…' : 'SUGGEST PENALTIES'}
-              </button>
             </div>
             <input className="field" placeholder="e.g. Walk for 10 min instead" value={easyVer} onChange={e => setEasyVer(e.target.value)} />
-            {suggestError && <p role="alert" className="phase4-error">{suggestError}</p>}
-            {suggestions && suggestions.length > 0 && (
-              <div className="chip-row" style={{ marginTop: 8 }}>
-                {suggestions.map(s => (
-                  <button key={s} type="button" onClick={() => { setEasyVer(s); setSuggestions(null); }} className="choice-chip">{s}</button>
-                ))}
-              </div>
-            )}
           </div>
         )}
 

@@ -55,7 +55,7 @@ describe('QuestEditor quest types', () => {
     expect(screen.getByText('NEW BACKLOG QUEST')).toBeOnTheScreen();
     expect(screen.getByRole('radio', { name: 'Backlog' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Habit' })).not.toBeChecked();
-    expect(screen.getByRole('radio', { name: 'One-time' })).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: '1-Time' })).not.toBeChecked();
   });
 
   it('keeps what was typed when the type changes, and swaps the fields that belong to it', async () => {
@@ -67,8 +67,8 @@ describe('QuestEditor quest types', () => {
     expect(screen.getByPlaceholderText('e.g. Code for 20 minutes')).toBeOnTheScreen();
     expect(screen.queryByRole('checkbox', { name: 'No set time' })).toBeNull();
 
-    await user.press(screen.getByRole('radio', { name: 'One-time' }));
-    expect(screen.getByText('NEW ONE-TIME QUEST')).toBeOnTheScreen();
+    await user.press(screen.getByRole('radio', { name: '1-Time' }));
+    expect(screen.getByText('NEW 1-TIME QUEST')).toBeOnTheScreen();
     expect(screen.getByLabelText('Quest name').props.value).toBe('Write notes');
     expect(screen.queryByPlaceholderText('e.g. Code for 20 minutes')).toBeNull();
     expect(screen.queryByRole('checkbox', { name: 'Sunday' })).toBeNull();
@@ -235,7 +235,7 @@ describe('QuestEditor quest types', () => {
     setup(undefined, 'habit');
     await renderWithTheme(<QuestEditorScreen />);
     expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();
-    await user.press(screen.getByRole('radio', { name: 'One-time' }));
+    await user.press(screen.getByRole('radio', { name: '1-Time' }));
     expect(screen.getByRole('checkbox', { name: 'No date' })).not.toBeChecked();
     await user.press(screen.getByRole('radio', { name: 'Backlog' }));
     expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();

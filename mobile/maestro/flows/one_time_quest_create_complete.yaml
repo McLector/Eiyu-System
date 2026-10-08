@@ -5,8 +5,8 @@ appId: com.mclector.eiyusystem
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
 - assertVisible: "NEW QUEST"
-- tapOn: "ONE-TIME QUEST"
-- assertVisible: "NEW ONE-TIME QUEST"
+- tapOn: "1-TIME QUEST"
+- assertVisible: "NEW 1-TIME QUEST"
 - assertNotVisible: "PENALTY"
 - assertNotVisible: "DAYS"
 - tapOn: "e.g. Code for 2 hours"

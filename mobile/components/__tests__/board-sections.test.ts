@@ -9,7 +9,7 @@ describe('mobile board section contract', () => {
     expect(board).toContain('partitionBoardQuests');
     expect(board).toContain('RECOVERY REQUIRED');
     expect(board).toContain('DAILY QUEST');
-    expect(board).toContain('ONE TIME QUEST');
+    expect(board).toContain('1-TIME QUEST');
     expect(board).toContain('BACKLOG');
     expect(board).toContain('ALL HABITS');
   });

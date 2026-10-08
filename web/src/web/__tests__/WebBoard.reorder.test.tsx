@@ -97,7 +97,7 @@ describe('manual order on the board', () => {
   it('reorders the One-time and Backlog lanes under their own lane names', async () => {
     const user = userEvent.setup();
     const { reorderQuests } = renderBoard([oneTime('t1', 0), oneTime('t2', 1)], [idea('i1', 0), idea('i2', 1)]);
-    await menuFor(user, 'One Time Quest', 'T2');
+    await menuFor(user, '1-Time Quest', 'T2');
     await user.click(screen.getByRole('menuitem', { name: 'Move T2 up' }));
     expect(reorderQuests).toHaveBeenLastCalledWith('one_time', ['t2', 't1']);
     await menuFor(user, 'Backlog', 'I1');
@@ -123,7 +123,7 @@ describe('manual order on the board', () => {
     const user = userEvent.setup();
     renderBoard([], [idea('i1', 0), idea('i2', 1)]);
     await menuFor(user, 'Backlog', 'I1');
-    expect(screen.getByRole('menuitem', { name: 'Move I1 to One-time' })).toBeEnabled();
+    expect(screen.getByRole('menuitem', { name: 'Move I1 to 1-Time' })).toBeEnabled();
   });
 
   describe('dragging a grip onto a card in the same lane', () => {
@@ -162,7 +162,7 @@ describe('manual order on the board', () => {
       expect(reorderQuests).not.toHaveBeenCalled();
     });
 
-    it('is not mistaken for a lane move: dropping Backlog on Backlog never moves it to One-time', () => {
+    it('is not mistaken for a lane move: dropping Backlog on Backlog never moves it to 1-Time', () => {
       const { reorderQuests } = renderBoard([], [idea('i1', 0), idea('i2', 1)]);
       const dataTransfer = transfer({ id: 'i2', from: 'backlog' });
       fireEvent.dragStart(card('i2').querySelector('.quest-card-grip') as HTMLElement, { dataTransfer });

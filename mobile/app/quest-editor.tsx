@@ -5,13 +5,13 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  accountDateKey, DEFAULT_HABIT_DAYS, formatError, normalizeNameBoundaries, QUEST_GENRES, STATS, suggestEasyVersions,
+  accountDateKey, DEFAULT_HABIT_DAYS, formatError, normalizeNameBoundaries, QUEST_GENRES, STATS,
   validateQuestName,
   type Difficulty, type HabitInput, type Quest, type QuestGenre, type QuestType, type Stat,
 } from '@eiyu/shared';
 
 import { DeleteQuestModal } from '@/components/board/delete-quest-modal';
-import { PlusIcon, SparkleIcon } from '@/components/eiyu/icons';
+import { PlusIcon } from '@/components/eiyu/icons';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
@@ -25,10 +25,10 @@ import { hapticLight, hapticSuccess } from '@/lib/haptics';
 const DIFFICULTIES: Difficulty[] = ['Easy', 'Medium', 'Hard'];
 const TYPES: { id: QuestType; label: string }[] = [
   { id: 'habit', label: 'Habit' },
-  { id: 'one_time', label: 'One-time' },
+  { id: 'one_time', label: '1-Time' },
   { id: 'backlog', label: 'Backlog' },
 ];
-const TITLES: Record<QuestType, string> = { habit: 'NEW QUEST', one_time: 'NEW ONE-TIME QUEST', backlog: 'NEW BACKLOG QUEST' };
+const TITLES: Record<QuestType, string> = { habit: 'NEW QUEST', one_time: 'NEW 1-TIME QUEST', backlog: 'NEW BACKLOG QUEST' };
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 /** reminder_time is required by the database; untimed quests keep this placeholder and timeSet false. */
@@ -132,9 +132,6 @@ export default function QuestEditorScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [suggesting, setSuggesting] = useState(false);
-  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [discardPrompt, setDiscardPrompt] = useState(false);
   const lifecycleInFlight = useRef(false);
   const pendingRef = useRef(false);
@@ -162,19 +159,6 @@ export default function QuestEditorScreen() {
     committed.current = true;
     setDiscardPrompt(false);
     navigation.dispatch(heldAction.current as Parameters<typeof navigation.dispatch>[0]);
-  };
-
-  const handleSuggest = async () => {
-    if (!name.trim() || suggesting) return;
-    setSuggesting(true);
-    setSuggestError(null);
-    try {
-      setSuggestions(await suggestEasyVersions(name.trim(), stat));
-    } catch (err) {
-      setSuggestError(formatError(err));
-    } finally {
-      setSuggesting(false);
-    }
   };
 
   const toggleDay = (d: number) => setDays(prev => (prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort()));
@@ -307,26 +291,6 @@ export default function QuestEditorScreen() {
                 onChangeText={setEasyVersion}
                 hint={penaltyMissing ? 'Add a penalty, or set a target count of at least 2.' : 'Required unless a target count is set.'}
               />
-              <Button
-                variant="quiet"
-                label="SUGGEST PENALTIES"
-                icon={<SparkleIcon color={t.accent} />}
-                disabled={!name.trim()}
-                busy={suggesting}
-                onPress={() => void handleSuggest()}
-              />
-              {suggestError ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{suggestError}</Text> : null}
-              {suggestions.map((s, i) => (
-                <Pressable
-                  key={s}
-                  testID={`quest-ai-suggestion-${i + 1}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={s}
-                  onPress={() => { setEasyVersion(s); setSuggestions([]); }}
-                  style={[styles.suggestion, { borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }]}>
-                  <Text style={{ color: t.text, fontFamily: fonts.body, fontSize: 14 }}>{s}</Text>
-                </Pressable>
-              ))}
             </View>
           ) : null}
 
@@ -517,7 +481,6 @@ const styles = StyleSheet.create({
   trigger: { minHeight: 48, borderWidth: 1, borderRadius: 4, paddingHorizontal: 12, justifyContent: 'center' },
   disabled: { opacity: 0.5 },
   lockedDate: { fontSize: 15, minHeight: 32 },
-  suggestion: { borderWidth: 1, borderRadius: 4, paddingVertical: 12, paddingHorizontal: 12, minHeight: 48, justifyContent: 'center' },
   footer: { flexShrink: 0, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 8 },
   secondaryAction: { flexGrow: 1, flexBasis: '40%' },

@@ -94,7 +94,7 @@ describe('mobile BoardScreen lanes', () => {
     expect(screen.getByText('1/2')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Open Daily habit details' })).toBeOnTheScreen();
     expect(screen.queryByRole('button', { name: 'Open Today only details' })).toBeNull();
-    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    await user.press(screen.getByRole('tab', { name: '1-TIME QUEST' }));
     expect(screen.getByRole('button', { name: 'Open Today only details' })).toBeOnTheScreen();
   });
 
@@ -109,7 +109,7 @@ describe('mobile BoardScreen lanes', () => {
     const user = userEvent.setup();
     await board();
     expect(screen.getByText('0/1')).toBeOnTheScreen();
-    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    await user.press(screen.getByRole('tab', { name: '1-TIME QUEST' }));
     expect(screen.getByRole('button', { name: 'Open Someday details' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Open Far away details' })).toBeOnTheScreen();
     expect(screen.getByText('No date')).toBeOnTheScreen();
@@ -152,7 +152,7 @@ describe('mobile BoardScreen lanes', () => {
 
   it('offers three lanes by name, with Backlog in place of All Habits and Archived', async () => {
     await board();
-    for (const label of ['DAILY QUEST', 'ONE TIME QUEST', 'BACKLOG']) expect(screen.getByRole('tab', { name: label })).toBeOnTheScreen();
+    for (const label of ['DAILY QUEST', '1-TIME QUEST', 'BACKLOG']) expect(screen.getByRole('tab', { name: label })).toBeOnTheScreen();
     expect(screen.queryByRole('tab', { name: 'ALL HABITS' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'ARCHIVED' })).toBeNull();
   });
@@ -189,8 +189,8 @@ describe('mobile BoardScreen lanes', () => {
     mockStoreValue.user = { ...mockStoreValue.user, quests: [] };
     await board();
     expect(screen.getByText('No habits are scheduled for today. Create one or check All Habits.')).toBeOnTheScreen();
-    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
-    expect(screen.getByText('No one-time quests scheduled for today.')).toBeOnTheScreen();
+    await user.press(screen.getByRole('tab', { name: '1-TIME QUEST' }));
+    expect(screen.getByText('No 1-time quests scheduled for today.')).toBeOnTheScreen();
     await user.press(screen.getByRole('tab', { name: 'BACKLOG' }));
     expect(screen.getByText(/Nothing in the Backlog/)).toBeOnTheScreen();
   });
@@ -312,14 +312,14 @@ describe('mobile BoardScreen quest actions', () => {
     expect(screen.queryByText('Habit archived')).toBeNull();
   });
 
-  it('moves a Backlog quest to One-time', async () => {
+  it('moves a Backlog quest to 1-Time', async () => {
     mockStoreValue.backlog = [backlogItem];
     const user = userEvent.setup();
     await board();
     await user.press(screen.getByRole('tab', { name: 'BACKLOG' }));
     await openActions(user, 'Try Zig');
     expect(screen.queryByRole('menuitem', { name: 'Archive' })).toBeNull();
-    await choose(user, 'Move to One-time');
+    await choose(user, 'Move to 1-Time');
     expect(mockStoreValue.moveToOneTime).toHaveBeenCalledWith('idea');
     expect(hapticLight).toHaveBeenCalled();
   });
@@ -328,7 +328,7 @@ describe('mobile BoardScreen quest actions', () => {
     const user = userEvent.setup();
     mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTimeQuest(), oneTimeQuest({ id: 'done', name: 'Finished', completed: true })] };
     await board();
-    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    await user.press(screen.getByRole('tab', { name: '1-TIME QUEST' }));
     await openActions(user, 'Finished');
     expect(screen.queryByRole('menuitem', { name: 'Move to Backlog' })).toBeNull();
     await user.press(screen.getByRole('button', { name: 'Close' }));
@@ -343,7 +343,7 @@ describe('mobile BoardScreen quest actions', () => {
     mockStoreValue.moveToBacklog.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
     mockStoreValue.user = { ...mockStoreValue.user, quests: [oneTimeQuest()] };
     await board();
-    await user.press(screen.getByRole('tab', { name: 'ONE TIME QUEST' }));
+    await user.press(screen.getByRole('tab', { name: '1-TIME QUEST' }));
     await openActions(user, 'Today only');
     await choose(user, 'Move to Backlog');
     await user.press(screen.getByRole('button', { name: 'More actions for Today only' }));
@@ -493,7 +493,7 @@ describe('mobile BoardScreen lane memory and adding', () => {
     publishBoardReturnIntent('one-time');
     await board();
     await act(async () => { mockFocusCallbacks[0]?.(); });
-    expect(screen.getByRole('tab', { name: 'ONE TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByRole('tab', { name: '1-TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.getByText('Created from Daily')).toBeOnTheScreen();
     expect(consumeBoardReturnIntent()).toBeNull();
   });
@@ -501,7 +501,7 @@ describe('mobile BoardScreen lane memory and adding', () => {
   it('opens the lane a tapped reminder asks for, then clears the request so it is not replayed', async () => {
     mockBoardParams = { lane: 'one-time' };
     await board();
-    expect(screen.getByRole('tab', { name: 'ONE TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByRole('tab', { name: '1-TIME QUEST' }).props.accessibilityState).toMatchObject({ selected: true });
     expect(mockRouter.setParams).toHaveBeenCalledWith({ lane: undefined });
   });
 
@@ -535,9 +535,9 @@ describe('mobile BoardScreen lane memory and adding', () => {
     await user.press(screen.getByRole('button', { name: 'ADD A QUEST' }));
     expect(screen.getByTestId('board-type-chooser-scroll')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Create a habit quest' })).toBeOnTheScreen();
-    expect(screen.getByRole('button', { name: 'Create a one-time quest' })).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Create a 1-time quest' })).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: 'Create a backlog quest' })).toBeOnTheScreen();
-    await user.press(screen.getByRole('button', { name: 'Create a one-time quest' }));
+    await user.press(screen.getByRole('button', { name: 'Create a 1-time quest' }));
     expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/quest-editor', params: { type: 'one_time', returnLane: 'one-time' } });
   });
 

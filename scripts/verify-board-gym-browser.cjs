@@ -65,8 +65,8 @@ async function main() {
     await page.getByRole('heading',{name:'NEW DAILY QUEST'}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Monday',exact:true}).count(),1);
     await page.goto(`${WEB}/board`);
-    await page.getByRole('region',{name:'One Time Quest',exact:true}).getByRole('button',{name:'ADD QUEST',exact:true}).click();
-    await page.getByRole('heading',{name:'NEW ONE TIME QUEST'}).waitFor();
+    await page.getByRole('region',{name:'1-Time Quest',exact:true}).getByRole('button',{name:'ADD QUEST',exact:true}).click();
+    await page.getByRole('heading',{name:'NEW 1-TIME QUEST'}).waitFor();
     assert.equal(await page.getByRole('button',{name:'Monday',exact:true}).count(),0);
     report.flows.push('separate creation forms');
     await page.goto(`${WEB}/board`);

@@ -96,18 +96,18 @@ describe('QuestCard', () => {
     expect(await menuNames(user)).toEqual(['Edit Walk', 'Archive Walk', 'Delete Walk']);
   });
 
-  it('treats a Backlog quest as an idea: no Complete, no Archive, a move to One-time and a genre chip', async () => {
+  it('treats a Backlog quest as an idea: no Complete, no Archive, a move to 1-Time and a genre chip', async () => {
     const user = userEvent.setup();
     const onMove = vi.fn();
     renderCard(quest({ questType: 'backlog', days: [], genre: 'tool', timeSet: false, easyVersion: null }), { onMove });
     expect(within(card()).queryByRole('button', { name: /Complete Walk|Undo Walk/ })).toBeNull();
     expect(within(card()).getByText('Tool')).toBeInTheDocument();
-    expect(await menuNames(user)).toEqual(['Edit Walk', 'Move Walk to One-time', 'Delete Walk']);
-    await user.click(screen.getByRole('menuitem', { name: 'Move Walk to One-time' }));
+    expect(await menuNames(user)).toEqual(['Edit Walk', 'Move Walk to 1-Time', 'Delete Walk']);
+    await user.click(screen.getByRole('menuitem', { name: 'Move Walk to 1-Time' }));
     expect(onMove).toHaveBeenCalledOnce();
   });
 
-  it('points the move arrow the way the quest travels: right into Backlog, left back to One-time', async () => {
+  it('points the move arrow the way the quest travels: right into Backlog, left back to 1-Time', async () => {
     // The board lanes run One-time then Backlog from left to right.
     const user = userEvent.setup();
     const onMove = vi.fn();
@@ -118,7 +118,7 @@ describe('QuestCard', () => {
     cleanup();
     renderCard(quest({ questType: 'backlog', days: [], genre: 'tool', timeSet: false, easyVersion: null }), { onMove });
     await menuNames(user);
-    expect(arrow('Move Walk to One-time').style.transform).toBe('scaleX(-1)');
+    expect(arrow('Move Walk to 1-Time').style.transform).toBe('scaleX(-1)');
   });
 
   it('says No date for an undated One-time quest and Upcoming with the date for a later one', () => {

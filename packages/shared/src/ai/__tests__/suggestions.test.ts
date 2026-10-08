@@ -1,3 +1,4 @@
+import * as suggestions from '../suggestions';
 import {
   isFreshSuggestions,
   SUGGESTION_TTL_MS,
@@ -7,15 +8,15 @@ import {
 
 describe('suggestionCacheKey', () => {
   it('normalizes case and surrounding whitespace so repeat taps hit the cache', () => {
-    expect(suggestionCacheKey('easy-versions', '  Code Daily ', 'STR')).toBe(
-      suggestionCacheKey('easy-versions', 'code daily', 'STR')
+    expect(suggestionCacheKey('stage-breakdown', '  Code Daily ', 'STR')).toBe(
+      suggestionCacheKey('stage-breakdown', 'code daily', 'STR')
     );
   });
 
   it('separates actions, stats, and names', () => {
-    const a = suggestionCacheKey('easy-versions', 'Read', 'INT');
-    const b = suggestionCacheKey('stage-breakdown', 'Read', 'INT');
-    const c = suggestionCacheKey('easy-versions', 'Read', 'WIS');
+    const a = suggestionCacheKey('stage-breakdown', 'Read', 'INT');
+    const b = suggestionCacheKey('stage-breakdown', 'Write', 'INT');
+    const c = suggestionCacheKey('stage-breakdown', 'Read', 'WIS');
     expect(new Set([a, b, c]).size).toBe(3);
   });
 });
@@ -44,5 +45,12 @@ describe('isFreshSuggestions', () => {
 
     const justInside = { at: Date.now() - SUGGESTION_TTL_MS + 1, value: ['a'] };
     expect(isFreshSuggestions(justInside)).toBe(true);
+  });
+});
+
+describe('penalty suggestions are gone', () => {
+  it('no longer exports a way to ask the AI for penalties', () => {
+    expect(suggestions).not.toHaveProperty('suggestEasyVersions');
+    expect(suggestions).toHaveProperty('suggestStages');
   });
 });
