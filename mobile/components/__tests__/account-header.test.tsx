@@ -1,5 +1,5 @@
-import { act, screen, userEvent } from '@testing-library/react-native';
-import { Alert } from 'react-native';
+import { act, screen, userEvent, within } from '@testing-library/react-native';
+import { Alert, StyleSheet } from 'react-native';
 
 import AccountHeader from '../eiyu/account-header';
 import { renderWithTheme } from '../ui/test-theme';
@@ -14,8 +14,8 @@ const mockSignOut = jest.fn();
 const mockSaveProfile = jest.fn();
 let mockParams: { account?: string } = {};
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => mockParams }));
-const mockRouter = jest.requireMock('expo-router').router as { push: jest.Mock; setParams: jest.Mock };
+jest.mock('expo-router', () => ({ router: { push: jest.fn(), navigate: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => mockParams }));
+const mockRouter = jest.requireMock('expo-router').router as { push: jest.Mock; navigate: jest.Mock; setParams: jest.Mock };
 jest.mock('@/contexts/auth-store', () => ({ useAuth: () => ({ signOut: mockSignOut }) }));
 jest.mock('@/contexts/eiyu-store', () => ({
   useEiyu: () => ({
@@ -37,6 +37,7 @@ describe('native account header', () => {
     mockSignOut.mockReset().mockResolvedValue({ error: null });
     mockSaveProfile.mockReset().mockResolvedValue(undefined);
     mockRouter.push.mockReset();
+    mockRouter.navigate.mockReset();
     mockRouter.setParams.mockReset();
     mockParams = {};
     jest.restoreAllMocks();
@@ -54,6 +55,49 @@ describe('native account header', () => {
     expect(screen.getByTestId('account-brand-mark')).toHaveTextContent('英');
     expect(screen.getByTestId('brand-mark-glow', { includeHiddenElements: true })).toHaveProp('accessibilityElementsHidden', true);
     expect(screen.getAllByText('英')).toHaveLength(1);
+  });
+
+  describe('brand logo', () => {
+    it('is a button labelled "Go to Board" that wraps the brand mark', async () => {
+      await renderWithTheme(<AccountHeader />);
+      const logo = screen.getByRole('button', { name: 'Go to Board' });
+      expect(logo).toBeOnTheScreen();
+      expect(within(logo).getByTestId('account-brand-mark')).toBeOnTheScreen();
+      expect(within(logo).getByText('EIYU')).toBeOnTheScreen();
+    });
+
+    it('opens the Board when pressed, once per press, without opening the account menu', async () => {
+      const user = userEvent.setup();
+      await renderWithTheme(<AccountHeader />);
+      await user.press(screen.getByRole('button', { name: 'Go to Board' }));
+      expect(mockRouter.navigate).toHaveBeenCalledTimes(1);
+      expect(mockRouter.navigate).toHaveBeenCalledWith({ pathname: '/(tabs)/board' });
+      expect(screen.queryByText('ACCOUNT')).toBeNull();
+      expect(mockRouter.push).not.toHaveBeenCalled();
+    });
+
+    it('does not navigate on render, and the account trigger does not navigate either', async () => {
+      const user = userEvent.setup();
+      await renderWithTheme(<AccountHeader />);
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      await openMenu(user);
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('is at least 48 dp tall to tap', async () => {
+      await renderWithTheme(<AccountHeader />);
+      const logo = screen.getByRole('button', { name: 'Go to Board' });
+      const style = StyleSheet.flatten(logo.props.style);
+      const slop = typeof logo.props.hitSlop === 'number'
+        ? logo.props.hitSlop * 2
+        : (logo.props.hitSlop?.top ?? 0) + (logo.props.hitSlop?.bottom ?? 0);
+      expect((style.minHeight ?? 0) + slop).toBeGreaterThanOrEqual(48);
+    });
+
+    it('leaves the account trigger as it was', async () => {
+      await renderWithTheme(<AccountHeader />);
+      expect(screen.getByRole('button', { name: TRIGGER })).toBeOnTheScreen();
+    });
   });
 
   it('offers exactly four account actions, in order, and opens profile editing', async () => {

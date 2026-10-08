@@ -136,10 +136,16 @@ export default function AccountHeader() {
   return (
     <>
       <View style={[styles.header, { backgroundColor: t.nav, borderBottomColor: t['nav-border'], paddingTop: insets.top }]}>
-        <View style={styles.brand}>
+        <Pressable
+          testID="account-brand-link"
+          accessibilityRole="button"
+          accessibilityLabel="Go to Board"
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 8 }}
+          onPress={() => router.navigate({ pathname: '/(tabs)/board' })}
+          style={styles.brand}>
           <BrandMark testID="account-brand-mark" style={[styles.brandMark, { color: t['accent-text'], borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }]}>英</BrandMark>
           <Text style={[styles.brandText, { color: t.text, fontFamily: fonts.display }]}>EIYU</Text>
-        </View>
+        </Pressable>
         <Pressable
           testID="account-trigger"
           accessibilityRole="button"
@@ -186,7 +192,7 @@ export default function AccountHeader() {
 
 const styles = StyleSheet.create({
   header: { minHeight: 62, paddingHorizontal: 16, paddingVertical: 8, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', rowGap: 8, borderBottomWidth: 1 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  brand: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   brandMark: { minWidth: 32, minHeight: 32, paddingHorizontal: 4, paddingVertical: 3, borderRadius: 4, borderWidth: 1.5, textAlign: 'center', textAlignVertical: 'center', fontSize: 17, fontWeight: '700' },
   brandText: { fontSize: 17, letterSpacing: 2 },
   accountTrigger: { maxWidth: '58%', minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 7, padding: 3, flexShrink: 1 },
