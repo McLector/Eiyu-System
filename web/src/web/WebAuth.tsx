@@ -148,35 +148,37 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
   };
 
   return (
-    <div className="surface-flat" style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 16px', position: 'relative' }}>
+    <div className="surface-flat auth-page" style={{ minHeight: '100svh', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
       <div
         aria-hidden={activeLegalDocument ? true : undefined}
         style={{ width: '100%', maxWidth: 440, position: 'relative', zIndex: 1 }}
       >
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div className="brand-pulse" style={{
-            width: 56, height: 56, borderRadius: 16, margin: '0 auto 14px',
+        <div className="auth-brand">
+          <div className="brand-pulse auth-mark" style={{
+            borderRadius: 16,
             background: 'var(--c-accent-glass)', border: '1.5px solid var(--c-accent-border)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 0 24px var(--c-accent-glass)',
           }}>
-            <span style={{ fontFamily: 'Rajdhani', fontSize: 24, fontWeight: 700, color: 'var(--c-accent-text)' }}>英</span>
+            <span className="auth-mark-glyph" style={{ fontFamily: 'Rajdhani', fontWeight: 700, color: 'var(--c-accent-text)' }}>英</span>
           </div>
-          <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.1em', margin: 0 }}>EIYU SYSTEM</h1>
-          <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', marginTop: 6 }}>
-            {mode === 'login' ? 'Enter the system' : mode === 'signup' ? 'Begin your journey' : 'Reset access'}
-          </p>
+          <div className="auth-brand-text">
+            <h1 style={{ fontFamily: 'Rajdhani', fontSize: 28, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '0.1em' }}>EIYU SYSTEM</h1>
+            <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)' }}>
+              {mode === 'login' ? 'Enter the system' : mode === 'signup' ? 'Begin your journey' : 'Reset access'}
+            </p>
+          </div>
         </div>
 
         {/* Card — the only signature panel on this screen (spec 8.4) */}
-        <SignaturePanel style={{ padding: '28px 28px 24px' }}>
+        <SignaturePanel className="auth-card">
           {logoutWarning && <div className="auth-signout-warning" role="alert">
             <p>Signed out on this device. Server sign-out could not be confirmed: {logoutWarning}</p>
             <button type="button" className="phase4-close" aria-label="Dismiss sign-out warning" onClick={onDismissLogoutWarning}>×</button>
           </div>}
           {/* Accent line */}
-          <div style={{ height: 2, background: 'var(--c-accent)', borderRadius: 1, marginBottom: 22, opacity: 0.7 }} />
+          <div className="auth-accent-line" style={{ background: 'var(--c-accent)', borderRadius: 1, opacity: 0.7 }} />
 
           {notice ? (
             <div style={{ textAlign: 'center', padding: '12px 0' }}>
@@ -188,22 +190,22 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
               </button>
             </div>
           ) : (
-            <form onSubmit={e => void handleSubmit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form className="auth-form" onSubmit={e => void handleSubmit(e)}>
               {mode === 'signup' && (
                 <div>
-                  <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>DISPLAY NAME</label>
+                  <label className="field-label auth-label">DISPLAY NAME</label>
                   <input aria-label="Display name" aria-invalid={attempted && !!nameError} aria-describedby={attempted && nameError ? 'signup-name-error' : undefined} className="field" placeholder="Kaito Mizuru" value={name} onChange={e => setName(e.target.value)} />
                   {attempted && nameError && <p id="signup-name-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{nameError}</p>}
                 </div>
               )}
               <div>
-                <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>EMAIL</label>
+                <label className="field-label auth-label">EMAIL</label>
                 <input aria-label="Email address" aria-invalid={attempted && !!emailError} aria-describedby={attempted && emailError ? 'auth-email-error' : undefined} className="field" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
                 {attempted && emailError && <p id="auth-email-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{emailError}</p>}
               </div>
               {mode !== 'forgot' && (
                 <div>
-                  <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>PASSWORD</label>
+                  <label className="field-label auth-label">PASSWORD</label>
                   <PasswordInput key={mode} aria-label="Password" aria-invalid={attempted && !!passwordError} aria-describedby={attempted && passwordError ? 'auth-password-error' : undefined} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} />
                   {attempted && passwordError && <p id="auth-password-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{passwordError}</p>}
                   {mode === 'signup' && <PasswordStrength password={password} />}
@@ -211,7 +213,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
               )}
               {mode === 'signup' && (
                 <div>
-                  <label style={{ fontFamily: 'Rajdhani', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--c-muted-flat)', display: 'block', marginBottom: 7 }}>CONFIRM PASSWORD</label>
+                  <label className="field-label auth-label">CONFIRM PASSWORD</label>
                   <PasswordInput toggleLabel="confirm password" aria-label="Confirm password" placeholder="••••••••" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
                   {attempted && confirmError && <p id="signup-confirm-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', marginTop: 6 }}>{confirmError}</p>}
                 </div>
@@ -270,7 +272,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
 
         {/* Switch mode */}
         {!notice && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 18 }}>
+          <div className="auth-switch">
             <span style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-dim-flat)' }}>
               {mode === 'login' ? 'New adventurer?' : mode === 'signup' ? 'Already enrolled?' : ''}
             </span>
