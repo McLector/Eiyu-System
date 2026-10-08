@@ -25,7 +25,7 @@ appId: com.mclector.eiyusystem
 - tapOn:
     id: "quest-editor-close"
 - tapOn: "ADD A QUEST"
-- tapOn: "1-TIME QUEST"
+- tapOn: "Create a 1-time quest"
 - assertVisible: "NEW 1-TIME QUEST"
 - tapOn:
     id: "quest-editor-close"

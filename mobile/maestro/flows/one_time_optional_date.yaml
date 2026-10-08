@@ -7,7 +7,7 @@ appId: com.mclector.eiyusystem
 - runFlow: _helpers/login.yaml
 - tapOn: "ADD A QUEST"
 - assertVisible: "NEW QUEST"
-- tapOn: "1-TIME QUEST"
+- tapOn: "Create a 1-time quest"
 - assertVisible: "NEW 1-TIME QUEST"
 - tapOn: "e.g. Code for 2 hours"
 - inputText: "Maestro Undated Quest"
