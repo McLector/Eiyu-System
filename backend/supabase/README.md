@@ -342,6 +342,11 @@ with checks(marker, ok) as (
     and has_function_privilege('service_role',to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'),'EXECUTE')
     and not has_function_privilege('authenticated',to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'),'EXECUTE')
     and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)')), false), false)
+  union all select '046 AI refund: a failed request gives its attempt back', coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'private' and table_name = 'ai_logical_requests' and column_name = 'refunded_at')
+    and has_function_privilege('service_role',to_regprocedure('public.ai_release_request(uuid)'),'EXECUTE')
+    and not has_function_privilege('authenticated',to_regprocedure('public.ai_release_request(uuid)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.ai_release_request(uuid)'),'EXECUTE'), false)
 )
 select marker, ok from checks order by marker;
 ```
@@ -353,7 +358,7 @@ undo calls from both decrementing XP. Markers 029–031 also inspect effective
 write grants, private quota-ledger isolation, latest validator bodies, and
 both quest-name triggers. A false marker is a cue to inspect the
 latest compatible migration and the catalog state; it is not an instruction to
-re-run an old file over a newer definition. This query covers migrations 001–045
+re-run an old file over a newer definition. This query covers migrations 001–046
 alongside their source files and tests.
 
 If the catalog shows an older function signature or body, do not drop or
@@ -407,6 +412,12 @@ Apply **040** (`040_profile_palette.sql`) and verify its marker. It is optional 
 ## Theme rollout (041)
 
 Apply **041** (`041_profile_theme.sql`) and verify its marker. Both clients treat it as optional: a failed save keeps the theme on the device and re-sends it on the next launch, so deploying either side first breaks nothing. Until 041 is applied the theme simply stays per device. Test with `supabase/tests/022_profile_theme.test.sql`.
+
+## AI refund rollout (046)
+
+Apply **046** (`046_ai_refund_failed_request.sql`) after 045 and verify its marker. It adds `private.ai_logical_requests.refunded_at` and `ai_release_request(request)` (service role only), which gives one attempt back to the caller's per-user daily counter (never below 0, and a second refund of the same request does nothing). `ai-proxy` calls it, best effort and on its own 3 s deadline, when a request ends in a busy, exhausted, timed-out or failed state; it never refunds a success or a 429, and a failed refund is logged and never changes the response. The project-wide provider-attempt ledger is not refunded (the calls were made). A regeneration charges no per-user bucket, so nothing is given back for it. Either order is safe: a function from before 046 never calls the RPC; one from after it logs a warning if the RPC is missing. Test with `supabase/tests/026_ai_release_request.test.sql`.
+
+**Setting `AI_PROVIDERS` safely.** Never pass the JSON as a command-line value: PowerShell 5.1 strips the inner double quotes, the secret becomes invalid JSON, and `ai-proxy` quietly falls back to the single Gemini key (the boot log says `AI_PROVIDERS is not valid JSON`). Put the one-line `AI_PROVIDERS=[...]` in a gitignored temp file, run `npx supabase secrets set --env-file <file> --project-ref <ref>` from `backend/`, delete the file, redeploy, and confirm the next boot log has no `AI_PROVIDERS` warning.
 
 ## AI providers rollout (045)
 

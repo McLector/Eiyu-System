@@ -2,6 +2,7 @@ import { createAiProxyHandler } from './ai-proxy-core.ts';
 import './ai-proxy-generator_test.ts';
 import './ai-proxy-providers_test.ts';
 import './ai-proxy-failover_test.ts';
+import './ai-proxy-refund_test.ts';
 
 type RpcResponse = { data: unknown; error: unknown };
 type FakeClient = {

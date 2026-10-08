@@ -47,6 +47,7 @@ export type AiProxyDependencies = {
 const MAX_NAME_CODE_POINTS = 200;
 const MAX_WEEKLY_INPUT_BYTES = 24_000;
 const MAX_REQUEST_BODY_BYTES = 32_000;
+const REFUND_TIMEOUT_MS = 3_000;
 
 function defaultCorsHeaders(origin: string | null): Record<string, string> {
   const headers: Record<string, string> = {
@@ -252,6 +253,22 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
   };
   const totalRequestTimeoutMs = dependencies.totalRequestTimeoutMs ?? DEFAULT_AI_REQUEST_TIMEOUT_MS;
 
+  // Best effort, on its own short deadline: by the time a timed-out or cancelled request refunds, the request budget's
+  // signal has already fired. A failure here is logged and never changes the answer the user gets.
+  const releaseRequest = async (requestId: string): Promise<void> => {
+    const controller = new AbortController();
+    const timer = clock.setTimeout(() => controller.abort(new Error('refund deadline exceeded')), REFUND_TIMEOUT_MS);
+    try {
+      const client = dependencies.createServiceClient(controller.signal);
+      const { error } = await awaitAbortable(client.rpc('ai_release_request', { p_request_id: requestId }), controller.signal);
+      if (error) console.warn('ai-proxy: could not refund a failed request');
+    } catch {
+      console.warn('ai-proxy: could not refund a failed request');
+    } finally {
+      clock.clearTimeout(timer);
+    }
+  };
+
   const handle = async (request: Request): Promise<Response> => {
     const cors = makeCorsHeaders(request.headers.get('Origin'));
     if (request.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -371,29 +388,35 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
       };
       const generationContext: AiRequestContext = { ...budget.context, exhaustedProviders, markProviderExhausted };
 
-      try {
-        const result = await awaitAbortable(
-          dependencies.generate(payload.action, payload, reserveProviderAttempt, generationContext),
-          budget.signal,
-        );
-        const stopped = abortedResponse(budget, cors);
-        if (stopped) return stopped;
-        if (reservationFailure === 'quota') {
-          return json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors);
+      // The user is charged when the request begins. A request that ends without a result or a 429 gives that attempt back.
+      const outcome = async (): Promise<{ response: Response; refund: boolean }> => {
+        try {
+          const result = await awaitAbortable(
+            dependencies.generate(payload.action, payload, reserveProviderAttempt, generationContext),
+            budget.signal,
+          );
+          const stopped = abortedResponse(budget, cors);
+          if (stopped) return { response: stopped, refund: true };
+          if (reservationFailure === 'quota') {
+            return { response: json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors), refund: false };
+          }
+          if (reservationFailure === 'unavailable') return { response: unavailableResponse(cors), refund: true };
+          return { response: json(result, 200, cors), refund: false };
+        } catch (error) {
+          const stopped = abortedResponse(budget, cors);
+          if (stopped) return { response: stopped, refund: true };
+          if (reservationFailure === 'quota') {
+            return { response: json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors), refund: false };
+          }
+          if (reservationFailure === 'unavailable') return { response: unavailableResponse(cors), refund: true };
+          if (isExhaustedGenerationError(error)) return { response: capacityResponse(cors), refund: true };
+          if (isBusyGenerationError(error)) return { response: busyResponse(cors), refund: true };
+          return { response: json({ error: 'The AI request failed. Please try again.' }, 503, cors), refund: true };
         }
-        if (reservationFailure === 'unavailable') return unavailableResponse(cors);
-        return json(result, 200, cors);
-      } catch (error) {
-        const stopped = abortedResponse(budget, cors);
-        if (stopped) return stopped;
-        if (reservationFailure === 'quota') {
-          return json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors);
-        }
-        if (reservationFailure === 'unavailable') return unavailableResponse(cors);
-        if (isExhaustedGenerationError(error)) return capacityResponse(cors);
-        if (isBusyGenerationError(error)) return busyResponse(cors);
-        return json({ error: 'The AI request failed. Please try again.' }, 503, cors);
-      }
+      };
+      const { response, refund } = await outcome();
+      if (refund) await releaseRequest(requestId);
+      return response;
     } finally {
       budget.dispose();
     }

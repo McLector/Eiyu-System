@@ -218,5 +218,13 @@ select ok(coalesce(
     and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)')), false), false),
   '045 The AI provider ledger is in place');
 
+-- Migration 046: refund a failed AI request's per-user attempt.
+select ok(coalesce(
+    exists (select 1 from information_schema.columns where table_schema = 'private' and table_name = 'ai_logical_requests' and column_name = 'refunded_at')
+    and has_function_privilege('service_role', to_regprocedure('public.ai_release_request(uuid)'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.ai_release_request(uuid)'), 'EXECUTE')
+    and not has_function_privilege('anon', to_regprocedure('public.ai_release_request(uuid)'), 'EXECUTE'), false),
+  '046 The AI refund is in place');
+
 select * from finish();
 rollback;
