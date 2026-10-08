@@ -5,7 +5,7 @@ import { Children } from 'react';
 import { elementWithText, elementsOf, styleOf, textsOf, type WidgetElement } from '@/test-support/widget-tree';
 import { widgetLayoutHeight, widgetRowCapacity, type ViewRow, type WidgetView } from '@/lib/widget-snapshot';
 import appJson from '../../app.json';
-import { barFillWidth, BOARD_URI, headerShowsUpdated, renderTodayWidget, WIDGET_TOKEN_KEYS } from '../today-widget';
+import { barFillWidth, BOARD_URI, boardUriFor, headerShowsUpdated, renderTodayWidget, WIDGET_TOKEN_KEYS } from '../today-widget';
 
 const TOKENS = PALETTE_TOKENS.cyan.dark;
 const LOOK = { palette: 'cyan', mode: 'dark' } as const;
@@ -371,5 +371,30 @@ describe('colours the widget library accepts', () => {
         if (style[key] !== undefined) expect(values.has(style[key] as string)).toBe(true);
       }
     }
+  });
+});
+
+describe('the Board link follows the app that drew it', () => {
+  it('builds the link from a scheme', () => {
+    expect(boardUriFor('eiyusystem-preview')).toBe('eiyusystem-preview://board?lane=daily');
+    expect(boardUriFor('eiyusystem')).toBe(BOARD_URI);
+  });
+
+  it.each([undefined, '', 'has space', 'UPPER', '://x', '1abc'])('falls back to the production link for %p', scheme => {
+    expect(boardUriFor(scheme)).toBe(BOARD_URI);
+  });
+
+  it('opens the preview app from a ready preview widget', () => {
+    const tree = root(ready({ scheme: 'eiyusystem-preview' }));
+    expect(tree.props.clickActionData).toEqual({ uri: 'eiyusystem-preview://board?lane=daily' });
+  });
+
+  it('opens the preview app from a stale preview widget', () => {
+    const tree = root({ kind: 'stale', completed: 1, total: 2, updated: '14:05', scheme: 'eiyusystem-dev', ...LOOK });
+    expect(tree.props.clickActionData).toEqual({ uri: 'eiyusystem-dev://board?lane=daily' });
+  });
+
+  it('keeps the production link when the view has no scheme', () => {
+    expect(root(ready()).props.clickActionData).toEqual({ uri: BOARD_URI });
   });
 });

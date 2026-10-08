@@ -107,11 +107,21 @@ eiyu-system/
 
 ### Mobile distribution (EAS)
 
-The mobile app isn't on the Play Store — it ships as a downloadable APK, self-hosted for beta use:
+The mobile app isn't on the Play Store. It ships as a downloadable APK, built by EAS in three variants that install side by side (each has its own package and deep link scheme, set by `APP_VARIANT` in `mobile/app.config.js` and `mobile/eas.json`):
 
-- **Full rebuild** (native deps or `app.json` changes): `eas build --profile preview --platform android` from `mobile/`, then install the resulting APK from the link EAS prints.
-  The home-screen widget draws without the app's screens, so a build meant to show it should bundle its JavaScript (a release build); a development build only draws it while Metro is reachable.
-- **JS/asset-only update** (no rebuild needed): `eas update --branch preview` pushes an OTA update that the installed app picks up on next launch.
+| Variant | Package | Use | Build | JavaScript comes from |
+|---|---|---|---|---|
+| development | `com.mclector.eiyusystem.dev` | try things as you build them | `eas build --profile development --platform android` | Metro: `npx expo start --dev-client` |
+| preview | `com.mclector.eiyusystem.preview` | the build you use and test day to day | `eas build --profile preview --platform android` | `eas update --branch preview --platform android` |
+| production | `com.mclector.eiyusystem` | once preview is good enough | `eas build --profile production --platform android` | promote a tested preview update to the `production` branch |
+
+All commands run from `mobile/`. All three read the same EAS environment variables for their Supabase project (today the live one), so a development build also touches live data.
+
+- **JS or asset change:** commit, then `eas update --branch preview --platform android --message "..."`. The installed preview app downloads it on launch and applies it the next launch, so open it twice.
+- **Native change** (a new native package, a plugin, or anything in `app.json` or `app.config.js` that reaches the native project): bump `runtimeVersion` in `app.json`, then run a new `eas build`. An update only reaches builds with the same `runtimeVersion`.
+- The development build is rebuilt only for native changes; day to day you just run Metro against it.
+- The home-screen widget draws without the app's screens, so a build meant to show it should bundle its JavaScript (preview or production); a development build only draws it while Metro is reachable. Each variant's widget opens its own app.
+- The first EAS build for a new package asks to generate an Android keystore, which needs an interactive terminal. The production package has a different signing key from the locally built debug APK, so installing a production build over one needs an uninstall first.
 
 ### Running Tests
 

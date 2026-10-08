@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import type { Quest } from '@eiyu/shared';
 
+import * as appVariant from '../app-variant';
 import { decodeSnapshot, WIDGET_KEY, type ReadySnapshot } from '../widget-snapshot';
 import type { QueueEntry } from '../write-queue';
 import { useWidgetSnapshot, type WidgetSnapshotInput } from '../use-widget-snapshot';
@@ -201,6 +202,19 @@ describe('useWidgetSnapshot signed out and account switches', () => {
     expect(raw).not.toContain('Private quest');
     expect(decodeSnapshot(raw)).toMatchObject({ state: 'signed-out', palette: 'cyan', mode: 'dark' });
     expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it('stores the scheme of the running app, so the widget opens that app', async () => {
+    await renderHook(() => useWidgetSnapshot(input()));
+    await settle();
+    expect(await stored()).toMatchObject({ state: 'ready', scheme: 'eiyusystem' });
+  });
+
+  it('stores the preview scheme when it runs as the preview app', async () => {
+    jest.spyOn(appVariant, 'currentAppScheme').mockReturnValue('eiyusystem-preview');
+    await renderHook(() => useWidgetSnapshot(input()));
+    await settle();
+    expect(await stored()).toMatchObject({ scheme: 'eiyusystem-preview' });
   });
 
   it('stamps the signed-out snapshot with the time it was written', async () => {

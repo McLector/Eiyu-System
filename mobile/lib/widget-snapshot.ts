@@ -65,8 +65,15 @@ interface SnapshotBase {
   mode: ThemeMode;
 }
 
+/** A URL scheme as the app registers it (lowercase letters, digits, + . -). Anything else is not trusted as a link. */
+export function isSchemeName(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z][a-z0-9+.-]{0,63}$/.test(value);
+}
+
 export interface ReadySnapshot extends SnapshotBase {
   state: 'ready';
+  /** The scheme of the app that wrote this, so the widget opens that app when several builds are installed. */
+  scheme?: string;
   /** The account-zone day the cached board belongs to, which is not necessarily today. */
   accountDate: string;
   timeZone: string;
@@ -93,6 +100,8 @@ export interface BuildInput {
   palette: Palette;
   mode: ThemeMode;
   now: number;
+  /** The writing app's own deep link scheme. */
+  scheme?: string;
 }
 
 /** The account-zone day of the moment a board was fetched, never the phone's own zone. */
@@ -150,6 +159,7 @@ export function buildWidgetSnapshot(input: BuildInput): ReadySnapshot {
   return {
     v: SNAPSHOT_VERSION,
     state: 'ready',
+    ...(isSchemeName(input.scheme) ? { scheme: input.scheme } : {}),
     accountDate: input.dataDate,
     timeZone: input.timeZone,
     writtenAt: input.now,
@@ -213,7 +223,17 @@ export function decodeSnapshot(raw: string | null): WidgetSnapshot | null {
     if (!row) return null;
     rows.push(row);
   }
-  return { ...base, state: 'ready', accountDate: value.accountDate, timeZone: value.timeZone, completed: value.completed, total: value.total, waiting: value.waiting, rows };
+  return {
+    ...base,
+    state: 'ready',
+    ...(isSchemeName(value.scheme) ? { scheme: value.scheme } : {}),
+    accountDate: value.accountDate,
+    timeZone: value.timeZone,
+    completed: value.completed,
+    total: value.total,
+    waiting: value.waiting,
+    rows,
+  };
 }
 
 /** How many rows fit a widget this tall. The widget is resizable, so the handler passes its current height. */
@@ -234,7 +254,7 @@ export interface ViewRow {
 export type WidgetView =
   | { kind: 'not-set-up' }
   | { kind: 'signed-out'; palette: Palette; mode: ThemeMode }
-  | { kind: 'stale'; completed: number; total: number; updated: string; palette: Palette; mode: ThemeMode }
+  | { kind: 'stale'; completed: number; total: number; updated: string; palette: Palette; mode: ThemeMode; scheme?: string }
   | {
       kind: 'ready';
       completed: number;
@@ -247,6 +267,7 @@ export type WidgetView =
       updated: string;
       palette: Palette;
       mode: ThemeMode;
+      scheme?: string;
     };
 
 /** HH:MM in the account zone, or an empty string when the moment or zone cannot be formatted. */
@@ -272,7 +293,7 @@ export function widgetView(snapshot: WidgetSnapshot | null, now: Date, heightDp:
     return { kind: 'not-set-up' };
   }
   const updated = clockTime(snapshot.writtenAt, snapshot.timeZone);
-  const look = { palette: snapshot.palette, mode: snapshot.mode };
+  const look = { palette: snapshot.palette, mode: snapshot.mode, ...(snapshot.scheme ? { scheme: snapshot.scheme } : {}) };
   if (snapshot.accountDate !== today) {
     return { kind: 'stale', completed: snapshot.completed, total: snapshot.total, updated, ...look };
   }

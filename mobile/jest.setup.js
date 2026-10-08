@@ -87,3 +87,6 @@ jest.mock('react-native-android-widget', () => {
 
 // The keyboard library is native; it ships its own jest mock (individual tests may still override it).
 jest.mock('react-native-keyboard-controller', () => require('react-native-keyboard-controller/jest'));
+
+// expo-application needs the native module; tests run as the production app. Suites that care mock it themselves.
+jest.mock('expo-application', () => ({ applicationId: 'com.mclector.eiyusystem' }));

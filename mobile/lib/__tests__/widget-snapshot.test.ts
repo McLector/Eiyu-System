@@ -480,3 +480,49 @@ describe('widgetView', () => {
     expect(widgetView(ready({ timeZone: 'Not/AZone' }), now, 200)).toEqual({ kind: 'not-set-up' });
   });
 });
+
+describe('board scheme', () => {
+  const raw = (scheme: unknown) => JSON.stringify({ ...build([quest()]), scheme });
+
+  it('stores the scheme of the app that wrote the snapshot', () => {
+    expect(build([quest()], [], { scheme: 'eiyusystem-preview' }).scheme).toBe('eiyusystem-preview');
+  });
+
+  it('leaves it out when none is given', () => {
+    expect('scheme' in build([quest()])).toBe(false);
+  });
+
+  it('survives encode and decode', () => {
+    const snapshot = build([quest()], [], { scheme: 'eiyusystem-dev' });
+    expect((decodeSnapshot(encodeSnapshot(snapshot)) as ReadySnapshot).scheme).toBe('eiyusystem-dev');
+  });
+
+  it('still reads a snapshot written before the scheme existed', () => {
+    const old = JSON.parse(encodeSnapshot(build([quest()]))) as Record<string, unknown>;
+    delete old.scheme;
+    const decoded = decodeSnapshot(JSON.stringify(old)) as ReadySnapshot;
+    expect(decoded.state).toBe('ready');
+    expect(decoded.scheme).toBeUndefined();
+  });
+
+  it.each(['', 'has space', 'UPPER', '1abc', '://x', 'a'.repeat(65), 42, null, {}, ['eiyusystem']])(
+    'drops a malformed scheme (%p) without rejecting the snapshot',
+    scheme => {
+      const decoded = decodeSnapshot(raw(scheme)) as ReadySnapshot;
+      expect(decoded.state).toBe('ready');
+      expect(decoded.scheme).toBeUndefined();
+    },
+  );
+
+  it.each(['eiyusystem', 'eiyusystem-dev', 'a.b+c-d'])('accepts %s', scheme => {
+    expect((decodeSnapshot(raw(scheme)) as ReadySnapshot).scheme).toBe(scheme);
+  });
+
+  it('hands the scheme to the ready and stale views, and to nothing else', () => {
+    const now = new Date('2026-10-05T06:30:00Z');
+    const snapshot = build([quest()], [], { scheme: 'eiyusystem-preview' });
+    expect(widgetView(snapshot, now, 200)).toMatchObject({ kind: 'ready', scheme: 'eiyusystem-preview' });
+    expect(widgetView(snapshot, new Date('2026-10-07T06:30:00Z'), 200)).toMatchObject({ kind: 'stale', scheme: 'eiyusystem-preview' });
+    expect(widgetView(build([quest()]), now, 200)).not.toHaveProperty('scheme', expect.anything());
+  });
+});

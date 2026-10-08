@@ -5,7 +5,7 @@ import { PALETTE_TOKENS } from '@eiyu/shared/src/theme/palette-tokens';
 import { DEFAULT_PALETTE } from '@eiyu/shared/src/theme/palettes';
 import { DEFAULT_THEME } from '@eiyu/shared/src/theme/theme-mode';
 
-import { scaledDp, WIDGET_LAYOUT, widgetFontScale, type ViewRow, type WidgetView } from '@/lib/widget-snapshot';
+import { isSchemeName, scaledDp, WIDGET_LAYOUT, widgetFontScale, type ViewRow, type WidgetView } from '@/lib/widget-snapshot';
 
 /**
  * What the home-screen widget looks like, as a pure function of a `WidgetView`. It is native-drawn, so it takes colours as
@@ -15,6 +15,11 @@ import { scaledDp, WIDGET_LAYOUT, widgetFontScale, type ViewRow, type WidgetView
 
 /** Opens the Board on the Daily lane. The Board already applies and clears its `lane` param. */
 export const BOARD_URI = 'eiyusystem://board?lane=daily';
+
+/** The Board link for the app that wrote the snapshot (so a preview widget opens the preview app), or the production one. */
+export function boardUriFor(scheme: string | undefined): string {
+  return isSchemeName(scheme) ? `${scheme}://board?lane=daily` : BOARD_URI;
+}
 
 /** Every palette token the widget uses; a test checks each is a colour format the widget library accepts. */
 export const WIDGET_TOKEN_KEYS = [
@@ -85,7 +90,7 @@ function shell(
   );
 }
 
-const OPEN_BOARD = { clickAction: 'OPEN_URI', clickActionData: { uri: BOARD_URI } } as const;
+const openBoard = (scheme: string | undefined) => ({ clickAction: 'OPEN_URI', clickActionData: { uri: boardUriFor(scheme) } }) as const;
 const OPEN_APP = { clickAction: 'OPEN_APP' } as const;
 
 function header(tokens: Tokens, count: string, countColor: string, waiting: number, updated: string, scale: number): ReactElement {
@@ -184,7 +189,7 @@ export function renderTodayWidget(view: WidgetView, widthDp: number, fontScale: 
       return shell(tokens, OPEN_APP, 'Eiyu, signed out. Opens the app.', [message(tokens, 'Sign in to Eiyu')]);
 
     case 'stale':
-      return shell(tokens, OPEN_BOARD, 'Eiyu today is out of date. Opens the Board.', [
+      return shell(tokens, openBoard(view.scheme), 'Eiyu today is out of date. Opens the Board.', [
         header(tokens, `${view.completed}/${view.total}`, tokens['dim-flat'], 0, '', scale),
         message(tokens, 'Open Eiyu to load today'),
         staleFooter(tokens, view.updated ? `Last updated ${view.updated}` : ''),
@@ -195,7 +200,7 @@ export function renderTodayWidget(view: WidgetView, widthDp: number, fontScale: 
       const body = view.empty
         ? [message(tokens, 'No quests due today')]
         : view.rows.map((row, index) => quest(tokens, row, index, widthDp, scale));
-      return shell(tokens, OPEN_BOARD, spoken, [
+      return shell(tokens, openBoard(view.scheme), spoken, [
         header(tokens, `${view.completed}/${view.total}`, tokens['accent-text'], view.waiting, headerShowsUpdated(widthDp, scale, view.waiting) ? view.updated : '', scale),
         progressBar(tokens, view.completed, view.total, widthDp, view.more, scale),
         ...body,

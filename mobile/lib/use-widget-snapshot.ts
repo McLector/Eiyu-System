@@ -7,6 +7,8 @@ import type { Quest } from '@eiyu/shared/src/types/eiyu';
 
 import { drawTodayWidget } from '@/widgets/widget-task-handler';
 
+import { currentAppScheme } from './app-variant';
+
 import {
   buildSignedOutSnapshot,
   buildWidgetSnapshot,
@@ -53,6 +55,7 @@ function snapshotFor(input: WidgetSnapshotInput): WidgetSnapshot | null {
     palette: input.palette,
     mode: input.mode,
     now: input.dataUpdatedAt,
+    scheme: currentAppScheme(),
   });
 }
 
