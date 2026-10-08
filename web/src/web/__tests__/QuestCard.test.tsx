@@ -22,6 +22,19 @@ const renderCard = (q: Quest, extra: Record<string, unknown> = {}) => {
   return h;
 };
 const card = () => screen.getByTestId('quest-card-q1');
+
+describe('frozen streak badge', () => {
+  it('shows the animated frost mark under the label "Streak frozen"', () => {
+    renderCard(quest({ frozen: true, streak: 4 }));
+    const badge = within(card()).getByRole('img', { name: 'Streak frozen' });
+    expect(badge.querySelector('.frost-mark')).not.toBeNull();
+  });
+  it('shows nothing for a streak that is not frozen', () => {
+    renderCard(quest({ frozen: false, streak: 4 }));
+    expect(within(card()).queryByRole('img', { name: 'Streak frozen' })).toBeNull();
+    expect(card().querySelector('.frost-mark')).toBeNull();
+  });
+});
 const menuNames = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(within(card()).getByRole('button', { name: 'More actions for Walk' }));
   return within(screen.getByRole('menu')).getAllByRole('menuitem').map(item => item.getAttribute('aria-label'));

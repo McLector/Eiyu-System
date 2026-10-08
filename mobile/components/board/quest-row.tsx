@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { questGenreLabel, questWhenLabel, STAT_COLORS, type Quest } from '@eiyu/shared';
 
-import { AlertIcon, CheckIcon, ClockIcon, MoreIcon, SnowflakeIcon, StatIcon } from '@/components/eiyu/icons';
+import { AlertIcon, CheckIcon, ClockIcon, MoreIcon, StatIcon } from '@/components/eiyu/icons';
 import { FireStreak } from '@/components/ui/fire-streak';
+import { FrostMark } from '@/components/ui/frost-mark';
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
 import { SYNC_TAG_TEXT, type SyncState } from '@/lib/write-queue';
@@ -123,7 +124,7 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
             </View>
           ) : null}
           {frozen ? (
-            <View accessible accessibilityLabel="Streak frozen"><SnowflakeIcon size={13} color={t.ice} /></View>
+            <View accessible accessibilityLabel="Streak frozen"><FrostMark size={13} /></View>
           ) : null}
           {sync ? (
             <View testID="quest-sync-tag" style={styles.chip}>

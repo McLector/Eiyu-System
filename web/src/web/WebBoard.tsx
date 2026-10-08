@@ -19,7 +19,8 @@ import {
   reorderState,
   type QuestType,
 } from '@eiyu/shared';
-import { StatIcon, PlusIcon, SnowflakeIcon, ListIcon } from '../Icons';
+import { StatIcon, PlusIcon, ListIcon } from '../Icons';
+import FrostMark from '../FrostMark';
 import { useEiyu } from '../store/eiyu-store';
 import SignaturePanel from '../SignaturePanel';
 import Dialog from '../components/Dialog';
@@ -361,7 +362,7 @@ export default function WebBoard({ onNewQuest, onEditQuest, darkMode, storageSco
       </section>
       {recoveryOpen && <Dialog title="Recovery required" onClose={() => setRecoveryOpen(false)}>
         {recoveryRequired.map(quest => <article className="board-recovery-card" key={quest.id}>
-          <strong><SnowflakeIcon size={14} /> Streak frozen</strong><p>{quest.name}</p>
+          <strong><FrostMark size={14} /> Streak frozen</strong><p>{quest.name}</p>
           <span>{recoveryDeadlineLabel(quest)}</span><p>Penalty: {quest.easyVersion}</p>
           <button className="btn-secondary" onClick={() => completeRecovery(quest.id)}>MARK RECOVERY COMPLETE</button>
         </article>)}

@@ -39,6 +39,11 @@ describe('RecoverySheet', () => {
     expect(screen.getAllByText('Streak frozen')).toHaveLength(2);
   });
 
+  it('puts the animated frost mark in every frozen quest header', async () => {
+    await open([frozen({}), frozen({ id: 'b', name: 'Meditate' })]);
+    expect(screen.getAllByTestId('frost-mark', { includeHiddenElements: true })).toHaveLength(2);
+  });
+
   it('shows the deadline in the account time zone when the server gave one', async () => {
     await open([frozen({ recoveryDeadline: '2026-10-06T16:30:00Z', recoveryTimeZone: 'UTC' })]);
     expect(screen.getByText(/^Until Oct 6/)).toBeOnTheScreen();

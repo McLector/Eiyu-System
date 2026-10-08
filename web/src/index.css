@@ -1001,6 +1001,22 @@ select.field option {
   65% { transform: scaleY(1.15) translateY(-1px); }
 }
 
+/* Frozen streak: the flake shimmers, a glint twinkles out of phase. The glow is static (filter is never animated). */
+@keyframes ice-shimmer {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+@keyframes ice-twinkle {
+  0%, 100% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1); opacity: 1; }
+}
+
+.frost-mark { filter: drop-shadow(0 0 3px var(--c-ice-glow)); }
+.frost-shimmer { animation: ice-shimmer 1.6s ease-in-out infinite; }
+.frost-twinkle { opacity: 0; transform-origin: 50% 50%; animation: ice-twinkle 2.4s ease-in-out -0.9s infinite; }
+.board-card-frozen { display: inline-flex; flex-shrink: 0; align-items: center; }
+
 .fire-glow { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--c-fire-outer) 65%, transparent)) drop-shadow(0 0 9px color-mix(in srgb, var(--c-fire-inner) 40%, transparent)); }
 
 .web-board-shell {
@@ -1101,6 +1117,8 @@ select.field option {
 
 @media (prefers-reduced-motion: reduce) {
   .fire-flame { animation: none !important; }
+  .frost-shimmer { animation: none; }
+  .frost-twinkle { animation: none; }
   .heatmap-glow { animation: none !important; }
 }
 

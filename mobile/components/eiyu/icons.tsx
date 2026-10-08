@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import Svg, { Circle, Ellipse, Line, Path, Polygon, Polyline, Rect } from 'react-native-svg';
 
 import { STAT_COLORS } from '@eiyu/shared';
+import { SNOWFLAKE_BRANCHES, SNOWFLAKE_SPOKES } from './snowflake-geometry';
 import { Stat } from '@eiyu/shared';
 
 export function StatIcon({ stat, size = 16 }: { stat: Stat; size?: number }) {
@@ -110,12 +111,8 @@ export function PlusIcon({ size = 20, color = 'currentColor' }: { size?: number;
 export function SnowflakeIcon({ size = 16, color = '#93c5fd' }: { size?: number; color?: string }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <Line x1="12" y1="2" x2="12" y2="22" />
-      <Line x1="2" y1="12" x2="22" y2="12" />
-      <Path d="M8 6l4-4 4 4" />
-      <Path d="M8 18l4 4 4-4" />
-      <Path d="M6 8l-4 4 4 4" />
-      <Path d="M18 8l4 4-4 4" />
+      {SNOWFLAKE_SPOKES.map(spoke => <Line key={`${spoke.x1}:${spoke.y1}`} {...spoke} />)}
+      <Path d={SNOWFLAKE_BRANCHES} />
     </Svg>
   );
 }

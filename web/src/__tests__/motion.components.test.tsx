@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { RewardReceipt } from '@eiyu/shared';
 import WebSettings from '../web/WebSettings';
 import FireStreak from '../FireStreak';
+import FrostMark from '../FrostMark';
 import RewardFeedback from '../components/RewardFeedback';
 
 afterEach(cleanup);
@@ -32,6 +33,25 @@ it('keeps the streak flame glow static and animates only the flame shapes', () =
   expect(root.style.animation).toBe('');
   expect(root).toHaveClass('fire-glow');
   for (const svg of container.querySelectorAll('svg')) expect(svg.getAttribute('style')).toMatch(/lick-/);
+});
+
+it('frost mark is decoration, fixed to its own box so the glint is never clipped or shifts the row', () => {
+  const { container } = render(<FrostMark size={12} />);
+  const root = container.firstElementChild as HTMLElement;
+  expect(root).toHaveClass('frost-mark');
+  expect(root).toHaveAttribute('aria-hidden', 'true');
+  expect(root.style.width).toBe('12px');
+  expect(root.style.height).toBe('12px');
+  expect(root.style.animation).toBe('');
+});
+
+it('frost mark shimmers the flake and twinkles a glint, both from the stylesheet', () => {
+  const { container } = render(<FrostMark />);
+  expect(container.querySelectorAll('.frost-shimmer')).toHaveLength(1);
+  expect(container.querySelectorAll('.frost-twinkle')).toHaveLength(1);
+  expect(container.querySelector('.frost-shimmer')!.querySelectorAll('line')).toHaveLength(3);
+  // no inline animation: the reduced-motion rule in index.css must be able to switch both off
+  expect(container.querySelector('[style*="animation"]')).toBeNull();
 });
 
 const receipt = (before: number, after: number): RewardReceipt => ({

@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { recoveryDeadlineLabel, type Quest } from '@eiyu/shared';
 
-import { SnowflakeIcon } from '@/components/eiyu/icons';
+import { FrostMark } from '@/components/ui/frost-mark';
 import { Button } from '@/components/ui/button';
 import { Sheet } from '@/components/ui/sheet';
 import { fonts } from '@/constants/eiyu-theme';
@@ -24,7 +24,7 @@ export function RecoverySheet({ visible, quests, onComplete, onClose }: Props) {
         <View key={quest.id} style={[styles.card, { borderColor: t['ice-border'], backgroundColor: t['panel-flat'] }]}>
           <View style={styles.header}>
             <View style={styles.title}>
-              <SnowflakeIcon size={15} color={t.ice} />
+              <FrostMark size={15} />
               <Text style={[styles.frozen, { color: t.ice, fontFamily: fonts.display }]}>Streak frozen</Text>
             </View>
             <Text style={[styles.deadline, { color: t.ice, fontFamily: fonts.mono }]}>{recoveryDeadlineLabel(quest)}</Text>

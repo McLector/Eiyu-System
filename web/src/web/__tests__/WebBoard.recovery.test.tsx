@@ -69,6 +69,7 @@ describe('WebBoard recovery state', () => {
     expect(container).toHaveTextContent('1 / 1 quests');
     await user.click(screen.getByRole('button', { name: '1 recovery required' }));
     expect(document.body).toHaveTextContent('Streak frozen');
+    expect(document.querySelector('.board-recovery-card .frost-mark')).not.toBeNull();
     expect(document.body).toHaveTextContent('Penalty: Walk for one minute');
     const recover = screen.getByRole('button', { name: 'MARK RECOVERY COMPLETE' });
     await user.click(recover);

@@ -1,8 +1,9 @@
 import { useState, type CSSProperties, type DragEvent, type ReactNode } from 'react';
 import { REORDER_COPY, STAT_COLORS, oneTimeTiming, questGenreLabel, questWhenLabel, type Quest, type ReorderState } from '@eiyu/shared';
-import { ArchiveIcon, CheckIcon, ChevronIcon, EditIcon, GripIcon, MoveIcon, SnowflakeIcon, TrashIcon, StatIcon } from '../Icons';
+import { ArchiveIcon, CheckIcon, ChevronIcon, EditIcon, GripIcon, MoveIcon, TrashIcon, StatIcon } from '../Icons';
 import ActionMenu, { type ActionMenuItem } from '../components/ActionMenu';
 import FireStreak from '../FireStreak';
+import FrostMark from '../FrostMark';
 import { hasQuestDrag, readQuestDrag, writeQuestDrag } from './lane-drag';
 
 /** Manual order for a card in a lane the user can reorder. Absent means no controls (finished, or no positions yet). */
@@ -133,7 +134,7 @@ export default function QuestCard({ quest, today, pending, onToggle, onOpen, onE
           <span className="quest-chip is-stat"><StatIcon stat={quest.stat} size={11} /> {quest.stat}</span>
           <span className={`quest-card-when${isOneTime && oneTimeTiming(quest, today) === 'upcoming' ? ' is-upcoming' : ''}`}>{questWhenLabel(quest, today)}</span>
           {quest.streak > 0 && <span className="board-card-streak"><FireStreak size={11} /> {quest.streak}</span>}
-          {quest.frozen && <SnowflakeIcon size={12} />}
+          {quest.frozen && <span className="board-card-frozen" role="img" aria-label="Streak frozen"><FrostMark size={12} /></span>}
           {genre && <span className="quest-chip">{genre}</span>}
         </span>
       </button>

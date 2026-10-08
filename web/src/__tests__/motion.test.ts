@@ -135,6 +135,34 @@ describe('ambient loops', () => {
   });
 });
 
+describe('frost mark', () => {
+  const body = (name: string) => {
+    const k = keyframes.find(c => c.startsWith(`@keyframes ${name}`)) ?? '';
+    return k.slice(k.indexOf('{') + 1);
+  };
+  it('shimmers with opacity only, between 0.75 and 1, at 1.6s forever', () => {
+    expect(body('ice-shimmer')).toMatch(/\bopacity\s*:\s*0?\.75/);
+    expect(body('ice-shimmer')).not.toMatch(/transform/);
+    expect(bodiesFor(/^\.frost-shimmer$/)).toMatch(/animation:\s*ice-shimmer 1\.6s ease-in-out infinite/);
+  });
+  it('twinkles with transform and opacity only, 2.4s forever, out of phase with the shimmer', () => {
+    expect(body('ice-twinkle')).toMatch(/scale\(0\)/);
+    expect(body('ice-twinkle')).toMatch(/scale\(1\)/);
+    const rule = bodiesFor(/^\.frost-twinkle$/);
+    expect(rule).toMatch(/animation:\s*ice-twinkle 2\.4s ease-in-out -?[\d.]+s infinite/);
+    expect(rule).toMatch(/opacity:\s*0\s*(;|$)/);
+  });
+  it('keeps the glow static: a drop-shadow on the mark from --c-ice-glow, never inside a keyframe', () => {
+    expect(bodiesFor(/^\.frost-mark$/)).toMatch(/filter:\s*drop-shadow\([^)]*var\(--c-ice-glow\)/);
+    expect(body('ice-shimmer') + body('ice-twinkle')).not.toMatch(/filter|shadow/);
+  });
+  it('switches both loops off for reduced motion, so only the still flake is left', () => {
+    const reduce = chunks.filter(c => c.startsWith('@media (prefers-reduced-motion: reduce)')).join('\n');
+    expect(reduce).toMatch(/\.frost-shimmer[^{}]*\{[^}]*animation:\s*none/);
+    expect(reduce).toMatch(/\.frost-twinkle[^{}]*\{[^}]*animation:\s*none/);
+  });
+});
+
 describe('chain progress', () => {
   it('fills the chain bar by scaling a full-width bar, not by resizing it', () => {
     expect(bodiesFor(/^\.chain-bar > i$/)).toMatch(/transition:\s*transform var\(--dur-slow\) var\(--ease-in-out\)/);

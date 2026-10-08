@@ -1,4 +1,5 @@
 import { Stat, STAT_COLORS } from '@eiyu/shared';
+import { SNOWFLAKE_BRANCHES, SNOWFLAKE_SPOKES } from './snowflakeGeometry';
 
 export function StatIcon({ stat, size = 16 }: { stat: Stat; size?: number }) {
   const color = STAT_COLORS[stat];
@@ -143,12 +144,8 @@ export function PlusIcon({ size = 20 }: { size?: number }) {
 export function SnowflakeIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="var(--c-ice)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="2" x2="12" y2="22" />
-      <line x1="2" y1="12" x2="22" y2="12" />
-      <path d="M8 6l4-4 4 4" />
-      <path d="M8 18l4 4 4-4" />
-      <path d="M6 8l-4 4 4 4" />
-      <path d="M18 8l4 4-4 4" />
+      {SNOWFLAKE_SPOKES.map(s => <line key={s.y1 + ':' + s.x1} {...s} />)}
+      <path d={SNOWFLAKE_BRANCHES} />
     </svg>
   );
 }

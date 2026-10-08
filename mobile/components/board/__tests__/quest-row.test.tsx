@@ -153,6 +153,13 @@ describe('QuestRow details', () => {
   it('marks a frozen streak', async () => {
     await render(quest({ frozen: true }));
     expect(screen.getByLabelText('Streak frozen')).toBeOnTheScreen();
+    expect(screen.getByTestId('frost-mark', { includeHiddenElements: true })).toBeTruthy();
+  });
+
+  it('draws no frost mark on a streak that is not frozen', async () => {
+    await render(quest({ frozen: false, streak: 3 }));
+    expect(screen.queryByLabelText('Streak frozen')).toBeNull();
+    expect(screen.queryByTestId('frost-mark', { includeHiddenElements: true })).toBeNull();
   });
 
   it('flashes the XP just earned', async () => {
