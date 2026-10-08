@@ -23,6 +23,11 @@ describe('sign-in page fit', () => {
     expect(css).toMatch(/\.auth-page\s*\{[^}]*padding:\s*32px 16px/);
     expect(css).toMatch(/\.auth-mark\s*\{[^}]*width:\s*56px/);
   });
+  it('keeps the labels at their old line height in the roomy layout and tightens it only when compact', () => {
+    // .field-label sets 1.2; the labels used to inherit about 1.5, which is 13px of height across sign-up.
+    expect(css).toMatch(/\.auth-label\s*\{[^}]*line-height:\s*1\.5/);
+    expect(compact).toMatch(/\.auth-label\s*\{[^}]*line-height:\s*1\.2/);
+  });
   it('never shrinks the form below usable sizes', () => {
     expect(compact).not.toMatch(/font-size:\s*(?:[0-9]|10)px/);
     expect(compact).not.toMatch(/\.auth-page\s*\{[^}]*padding:\s*(?:[0-7])px/);
