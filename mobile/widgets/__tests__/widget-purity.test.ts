@@ -79,7 +79,8 @@ describe('widget task handler import graph', () => {
   });
 
   it('uses only the packages a headless draw needs', () => {
-    const allowed = new Set(['react', 'react-native-android-widget', '@react-native-async-storage/async-storage']);
+    // react-native is only for PixelRatio.getFontScale(), the phone's font size.
+    const allowed = new Set(['react', 'react-native', 'react-native-android-widget', '@react-native-async-storage/async-storage']);
     expect(graph.packages.filter(name => !allowed.has(name))).toEqual([]);
   });
 });

@@ -9,6 +9,8 @@ import {
   encodeSnapshot,
   MAX_NAME_LENGTH,
   MAX_ROWS,
+  widgetFontScale,
+  widgetLayoutHeight,
   widgetRowCapacity,
   widgetView,
   WIDGET_KEY,
@@ -324,18 +326,51 @@ describe('encode and decode', () => {
 
 describe('widgetRowCapacity', () => {
   it.each([
-    [110, 1],
-    [90, 1],
-    [89, 0],
-    [68, 0],
+    [110, 3],
+    [90, 2],
+    [88, 2],
+    [87, 1],
+    [68, 1],
     [67, 0],
-    [200, 6],
+    [180, 6],
     [0, 0],
     [-10, 0],
     [Number.NaN, 0],
+    [Number.POSITIVE_INFINITY, 0],
   ])('fits %s dp of widget height to %s rows', (height, rows) => {
     expect(widgetRowCapacity(height)).toBe(rows);
   });
+
+  it.each([
+    [110, 1.3, 2],
+    [110, 0.85, 3],
+    [110, 2, 0],
+    [300, 1.3, 9],
+  ])('fits %s dp at font scale %s to %s rows', (height, scale, rows) => {
+    expect(widgetRowCapacity(height, scale)).toBe(rows);
+  });
+
+  it.each([Number.NaN, 0, -1, Number.POSITIVE_INFINITY, undefined])('treats font scale %s as 1', scale => {
+    expect(widgetRowCapacity(110, scale as number)).toBe(widgetRowCapacity(110, 1));
+  });
+
+  it('never grants more rows than the drawn layout can hold', () => {
+    for (const scale of [0.85, 1, 1.15, 1.3, 1.5, 2]) {
+      for (let height = 40; height <= 400; height += 7) {
+        const rows = widgetRowCapacity(height, scale);
+        expect(widgetLayoutHeight(rows, scale)).toBeLessThanOrEqual(Math.max(height, widgetLayoutHeight(0, scale)));
+      }
+    }
+  });
+});
+
+describe('widgetFontScale', () => {
+  it.each([[1, 1], [1.3, 1.3], [0.85, 0.85], [0, 1], [-2, 1], [Number.NaN, 1], [Number.POSITIVE_INFINITY, 1], [undefined, 1], ['1.3', 1], [null, 1]])(
+    'turns %s into %s',
+    (raw, expected) => {
+      expect(widgetFontScale(raw)).toBe(expected);
+    },
+  );
 });
 
 describe('widgetView', () => {
@@ -389,8 +424,16 @@ describe('widgetView', () => {
     const rows = Array.from({ length: 10 }, (_, index) => ({ name: `Q${index}`, done: false }));
     const view = widgetView(ready({ rows, total: 10, completed: 0 }), now, 110);
     if (view.kind !== 'ready') throw new Error('expected ready');
-    expect(view.rows).toHaveLength(1);
-    expect(view.more).toBe(9);
+    expect(view.rows).toHaveLength(3);
+    expect(view.more).toBe(7);
+  });
+
+  it('shows fewer rows when the phone font is larger, and says so in the left-out count', () => {
+    const rows = Array.from({ length: 10 }, (_, index) => ({ name: `Q${index}`, done: false }));
+    const view = widgetView(ready({ rows, total: 10, completed: 0 }), now, 110, 1.3);
+    if (view.kind !== 'ready') throw new Error('expected ready');
+    expect(view.rows).toHaveLength(2);
+    expect(view.more).toBe(8);
   });
 
   it('shows just the header when there is no room for rows', () => {

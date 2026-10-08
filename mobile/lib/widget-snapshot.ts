@@ -28,9 +28,27 @@ const ELLIPSIS = String.fromCharCode(0x2026);
 const TAGS: readonly SyncState[] = ['pending', 'checking', 'failed'];
 const TAG_RANK: Record<SyncState, number> = { pending: 0, checking: 1, failed: 2 };
 
-/** Dp the widget spends on padding, the header and the footer; the rest holds rows. */
-const CHROME_DP = 68;
-const ROW_DP = 22;
+/**
+ * The widget's vertical budget in dp at the normal phone font size. The widget draws text in sp, so the header, the bar
+ * line and each row grow with the phone's font scale (`scaledDp`); the padding, border and bar gap do not.
+ */
+export const WIDGET_LAYOUT = { padY: 6, border: 1, barGap: 2, header: 18, barLine: 14, row: 20 } as const;
+
+/** The phone's font scale, or 1 when it is missing, zero, negative or not a finite number. */
+export function widgetFontScale(raw: unknown): number {
+  return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 1;
+}
+
+/** A layout height grown with the font scale. The widget and the row count must both use this, so they agree. */
+export function scaledDp(dp: number, fontScale: unknown): number {
+  return Math.round(dp * widgetFontScale(fontScale));
+}
+
+/** The height the ready widget draws for this many rows. */
+export function widgetLayoutHeight(rows: number, fontScale: unknown = 1): number {
+  const { padY, border, barGap, header, barLine, row } = WIDGET_LAYOUT;
+  return 2 * (padY + border) + barGap + scaledDp(header, fontScale) + scaledDp(barLine, fontScale) + Math.max(0, rows) * scaledDp(row, fontScale);
+}
 
 export interface WidgetRow {
   name: string;
@@ -199,9 +217,9 @@ export function decodeSnapshot(raw: string | null): WidgetSnapshot | null {
 }
 
 /** How many rows fit a widget this tall. The widget is resizable, so the handler passes its current height. */
-export function widgetRowCapacity(heightDp: number): number {
+export function widgetRowCapacity(heightDp: number, fontScale: unknown = 1): number {
   if (!Number.isFinite(heightDp)) return 0;
-  return Math.max(0, Math.floor((heightDp - CHROME_DP) / ROW_DP));
+  return Math.max(0, Math.floor((heightDp - widgetLayoutHeight(0, fontScale)) / scaledDp(WIDGET_LAYOUT.row, fontScale)));
 }
 
 export interface ViewRow {
@@ -243,7 +261,7 @@ function clockTime(at: number, timeZone: string): string {
 }
 
 /** What the widget draws for a stored snapshot at this moment and height. */
-export function widgetView(snapshot: WidgetSnapshot | null, now: Date, heightDp: number): WidgetView {
+export function widgetView(snapshot: WidgetSnapshot | null, now: Date, heightDp: number, fontScale: unknown = 1): WidgetView {
   if (!snapshot) return { kind: 'not-set-up' };
   if (snapshot.state === 'signed-out') return { kind: 'signed-out', palette: snapshot.palette, mode: snapshot.mode };
 
@@ -259,7 +277,7 @@ export function widgetView(snapshot: WidgetSnapshot | null, now: Date, heightDp:
     return { kind: 'stale', completed: snapshot.completed, total: snapshot.total, updated, ...look };
   }
 
-  const shown = snapshot.rows.slice(0, widgetRowCapacity(heightDp)).map((row): ViewRow => {
+  const shown = snapshot.rows.slice(0, widgetRowCapacity(heightDp, fontScale)).map((row): ViewRow => {
     const view: ViewRow = { name: row.name, done: row.done };
     if (row.time) view.time = row.time;
     if (row.progress) view.progressText = `${row.progress.count}/${row.progress.target}`;

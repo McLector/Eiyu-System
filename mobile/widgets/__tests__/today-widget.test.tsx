@@ -1,8 +1,9 @@
 import { FlexWidget } from 'react-native-android-widget';
 import { PALETTES, PALETTE_TOKENS } from '@eiyu/shared';
 
+import { Children } from 'react';
 import { elementWithText, elementsOf, styleOf, textsOf, type WidgetElement } from '@/test-support/widget-tree';
-import type { ViewRow, WidgetView } from '@/lib/widget-snapshot';
+import { widgetLayoutHeight, widgetRowCapacity, type ViewRow, type WidgetView } from '@/lib/widget-snapshot';
 import appJson from '../../app.json';
 import { barFillWidth, BOARD_URI, renderTodayWidget, WIDGET_TOKEN_KEYS } from '../today-widget';
 
@@ -24,6 +25,13 @@ function root(view: WidgetView, width = 300): WidgetElement {
   const tree = renderTodayWidget(view, width) as WidgetElement;
   return tree;
 }
+
+/** The shell's direct children: the header, the bar line, then the rows. */
+function parts(tree: WidgetElement) {
+  return Children.toArray(tree.props.children as never);
+}
+const headerOf = (tree: WidgetElement) => parts(tree)[0] as WidgetElement;
+const barLineOf = (tree: WidgetElement) => parts(tree)[1] as WidgetElement;
 
 describe('every state is one tappable widget', () => {
   it('opens the Board on the Daily lane when ready', () => {
@@ -119,14 +127,39 @@ describe('ready', () => {
     expect(textsOf(root(ready({ waiting: 2 })))).toContain('2 waiting');
   });
 
-  it('says how fresh it is and how many quests it left out', () => {
-    expect(textsOf(root(ready({ more: 0 })))).toContain('Updated 14:05');
-    expect(textsOf(root(ready({ more: 3 })))).toContain('Updated 14:05  +3 more');
+  it('shows how fresh it is in the header, muted, and no longer in a footer', () => {
+    const tree = root(ready());
+    expect(textsOf(tree)).toContain('14:05');
+    expect(textsOf(tree).some(text => text.startsWith('Updated'))).toBe(false);
+    expect(styleOf(elementWithText(tree, '14:05')).color).toBe(TOKENS['muted-flat']);
+    expect(textsOf(headerOf(tree))).toEqual(expect.arrayContaining(['EIYU', '14:05', 'TODAY', '3/7']));
   });
 
   it('leaves out the update time when it is unknown', () => {
-    const texts = textsOf(root(ready({ updated: '' })));
-    expect(texts.some(text => text.startsWith('Updated'))).toBe(false);
+    expect(textsOf(root(ready({ updated: '' }))).some(text => /^\d\d:\d\d$/.test(text))).toBe(false);
+  });
+
+  it('says how many quests it left out on the bar line, and only when some are', () => {
+    expect(textsOf(root(ready({ more: 0 }))).some(text => /more/.test(text))).toBe(false);
+    const tree = root(ready({ more: 3 }));
+    expect(textsOf(barLineOf(tree))).toEqual(['+3 more']);
+  });
+
+  it('shrinks the progress bar to make room for the left-out label', () => {
+    const fill = (more: number) => styleOf(elementsOf(barLineOf(root(ready({ completed: 4, total: 4, more }), 300)))[2]).width as number;
+    expect(fill(3)).toBeLessThan(fill(0));
+    expect(fill(0)).toBe(barFillWidth(4, 4, 300 - 2 * (10 + 1)));
+  });
+
+  it('keeps the bar fill at zero for an empty day', () => {
+    const tree = root(ready({ completed: 0, total: 0, rows: [], empty: true }));
+    const fillBar = elementsOf(barLineOf(tree))[2];
+    expect(styleOf(fillBar).width).toBe(0);
+  });
+
+  it('adds the update time to the spoken label only when it is known', () => {
+    expect(root(ready()).props.accessibilityLabel as string).toContain('updated 14:05');
+    expect(root(ready({ updated: '' })).props.accessibilityLabel as string).not.toMatch(/updated/);
   });
 
   it('says so on a day with nothing due', () => {
@@ -167,6 +200,63 @@ describe('ready', () => {
   it('keeps the name column positive even in a very narrow widget', () => {
     const tree = root(ready({ rows: [row({ name: 'Run', tag: 'pending', tagText: 'Waiting to sync' })] }), 40);
     expect(styleOf(elementWithText(tree, 'Run')).width as number).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('dense layout', () => {
+  const rows = [row({ name: 'A' }), row({ name: 'B' }), row({ name: 'C', done: true })];
+
+  it.each([
+    [1, 18, 14, 20],
+    [1.3, 23, 18, 26],
+    [2, 36, 28, 40],
+  ])('at font scale %s the header is %s dp, the bar line %s dp and each row %s dp', (scale, header, bar, rowHeight) => {
+    const tree = renderTodayWidget(ready({ rows, more: 2 }), 300, scale) as WidgetElement;
+    expect(styleOf(headerOf(tree)).height).toBe(header);
+    expect(styleOf(barLineOf(tree)).height).toBe(bar);
+    for (const item of parts(tree).slice(2)) expect(styleOf(item as WidgetElement).height).toBe(rowHeight);
+    expect(parts(tree)).toHaveLength(2 + rows.length);
+  });
+
+  it('draws a ready widget with no footer: header, bar line, then only rows', () => {
+    const tree = root(ready({ rows, more: 2 }));
+    expect(parts(tree).slice(2).every(item => styleOf(item as WidgetElement).height === 20)).toBe(true);
+  });
+
+  it.each([0.85, 1, 1.15, 1.3, 1.5, 2])('never draws taller than the height it was granted, at font scale %s', scale => {
+    for (const height of [110, 130, 180, 250]) {
+      const granted = widgetRowCapacity(height, scale);
+      const many = Array.from({ length: granted }, (_, index) => row({ name: `Q${index}` }));
+      const tree = renderTodayWidget(ready({ rows: many, more: 1 }), 300, scale) as WidgetElement;
+      let total = 2 * (6 + 1) + 2;
+      total += styleOf(headerOf(tree)).height as number;
+      total += styleOf(barLineOf(tree)).height as number;
+      for (const item of parts(tree).slice(2)) total += styleOf(item as WidgetElement).height as number;
+      expect(total).toBeLessThanOrEqual(Math.max(height, widgetLayoutHeight(0, scale)));
+      expect(total).toBe(widgetLayoutHeight(granted, scale));
+    }
+  });
+
+  it('widens the tag column with the font scale so a larger tag is not cut', () => {
+    const view = ready({ rows: [row({ name: 'Run', tag: 'pending', tagText: 'Waiting to sync' })] });
+    const tagWidth = (scale: number) => styleOf(elementWithText(renderTodayWidget(view, 300, scale) as WidgetElement, 'Waiting to sync')).width as number;
+    expect(tagWidth(1.3)).toBeGreaterThan(tagWidth(1));
+  });
+
+  it('keeps the name column from going negative in a very narrow, large-font widget', () => {
+    const view = ready({ rows: [row({ name: 'Run', tag: 'pending', tagText: 'Waiting to sync' })] });
+    const tree = renderTodayWidget(view, 40, 2) as WidgetElement;
+    expect(styleOf(elementWithText(tree, 'Run')).width as number).toBeGreaterThanOrEqual(0);
+  });
+
+  it('treats an unusable font scale as 1', () => {
+    const tree = renderTodayWidget(ready({ rows, more: 2 }), 300, Number.NaN) as WidgetElement;
+    expect(styleOf(headerOf(tree)).height).toBe(18);
+  });
+
+  it('puts no update time in the stale header and keeps its footer', () => {
+    const tree = root({ kind: 'stale', completed: 1, total: 2, updated: '14:05', ...LOOK });
+    expect(textsOf(tree).filter(text => text.includes('14:05'))).toEqual(['Last updated 14:05']);
   });
 });
 

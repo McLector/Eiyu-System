@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PixelRatio } from 'react-native';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 
 import { elementWithText, styleOf, textsOf } from '@/test-support/widget-tree';
@@ -38,6 +39,8 @@ function drawn(call: WidgetTaskHandlerProps & { renderWidget: jest.Mock }): stri
 describe('widget task handler', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
+    // Jest's React Native mock reports a font scale of 2; the tests that are not about font size want the normal one.
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1);
     jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'queueMicrotask'] });
   });
 
@@ -111,11 +114,36 @@ describe('widget task handler', () => {
     await AsyncStorage.setItem(WIDGET_KEY, encodeSnapshot(snapshot({ rows, total: 10, completed: 0 })));
     const short = props('WIDGET_RESIZED', { widgetInfo: { ...props('WIDGET_RESIZED').widgetInfo, height: 110 } });
     await widgetTaskHandler(short);
-    expect(drawn(short).filter(text => /^Q\d$/.test(text))).toHaveLength(1);
+    expect(drawn(short).filter(text => /^Q\d$/.test(text))).toHaveLength(3);
 
     const tall = props('WIDGET_RESIZED', { widgetInfo: { ...props('WIDGET_RESIZED').widgetInfo, height: 300 } });
     await widgetTaskHandler(tall);
     expect(drawn(tall).filter(text => /^Q\d$/.test(text))).toHaveLength(10);
+  });
+
+  async function drawnAt110(): Promise<string[]> {
+    const rows = Array.from({ length: 10 }, (_, index) => ({ name: `Q${index}`, done: false }));
+    await AsyncStorage.setItem(WIDGET_KEY, encodeSnapshot(snapshot({ rows, total: 10, completed: 0 })));
+    const call = props('WIDGET_RESIZED', { widgetInfo: { ...props('WIDGET_RESIZED').widgetInfo, height: 110 } });
+    await widgetTaskHandler(call);
+    return drawn(call).filter(text => /^Q\d$/.test(text));
+  }
+
+  it('shows fewer rows when the phone font is larger', async () => {
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(1.3);
+    expect(await drawnAt110()).toHaveLength(2);
+  });
+
+  it.each([Number.NaN, 0, -1])('falls back to normal sizing when the font scale is %s', async scale => {
+    jest.spyOn(PixelRatio, 'getFontScale').mockReturnValue(scale);
+    expect(await drawnAt110()).toHaveLength(3);
+  });
+
+  it('falls back to normal sizing when reading the font scale throws', async () => {
+    jest.spyOn(PixelRatio, 'getFontScale').mockImplementation(() => {
+      throw new Error('no native module');
+    });
+    expect(await drawnAt110()).toHaveLength(3);
   });
 
   it('lays the name column out for the width it is given', async () => {
