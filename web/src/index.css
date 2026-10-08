@@ -1059,7 +1059,7 @@ select.field option {
 .board-lane-tabs { display: none; }
 .board-lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: 16px; min-width: 0; min-height: 0; }
 .board-lane { display: flex; flex-direction: column; min-width: 0; height: clamp(320px, calc(100svh - 455px), 620px); border: 1px solid var(--c-glass-border); border-radius: 4px; background: transparent; overflow: hidden; }
-.board-lane-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--c-divider-flat); }
+.board-lane-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 10px; border-bottom: 1px solid var(--c-divider-flat); }
 .board-lane-header h2 { margin: 0; color: var(--c-text); font: 700 15px Rajdhani, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
 .board-lane-header span { display: block; margin-top: 3px; color: var(--c-dim-flat); font: 11px 'JetBrains Mono', monospace; }
 .board-add-button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; color: var(--c-accent-text); font-size: 11px; }
@@ -1105,9 +1105,9 @@ select.field option {
 }
 
 /* Board composition, pagination and compact dialogs */
-/* Quest cards: compact and a fixed 80px, so a lane's page size is predictable (4 from a 600px-tall viewport).
+/* Quest cards: compact and a fixed 72px (6px apart), so a lane's page size is predictable (5 from a 625px-tall viewport).
    Stat identity is the whole-border tint and the stat chip, never a one-sided stripe. */
-.quest-card { position: relative; display: grid; flex: 0 0 auto; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 80px; padding: 8px 8px 8px 12px; border: 1px solid color-mix(in srgb, var(--quest-stat, var(--c-accent)) 38%, var(--c-glass-border)); border-radius: 4px; background: transparent; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
+.quest-card { position: relative; display: grid; flex: 0 0 auto; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 72px; padding: 8px 8px 8px 12px; border: 1px solid color-mix(in srgb, var(--quest-stat, var(--c-accent)) 38%, var(--c-glass-border)); border-radius: 4px; background: transparent; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
 .quest-card:hover { background: var(--c-accent-glass); }
 .quest-card.is-backlog { border-style: dashed; }
 .quest-card.has-grip { grid-template-columns: auto minmax(0, 1fr) auto; padding-left: 4px; }
@@ -1154,7 +1154,7 @@ select.field option {
 .board-profile-column .web-board-today strong { font-size: 22px; }
 .board-lane { position: relative; height: max(360px, calc(100svh - 112px)); }
 .paged-list { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.paged-list-body { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; padding: 8px; }
+.paged-list-body { display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 0; padding: 8px; }
 .list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px; color: var(--c-muted-flat); font-size: 12px; }
 .list-pagination button { min-height: 32px; padding: 5px 8px; font-size: 11px; }
 .list-pagination button:disabled { opacity: .45; cursor: default; }
