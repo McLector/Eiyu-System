@@ -5,7 +5,7 @@ import { Children } from 'react';
 import { elementWithText, elementsOf, styleOf, textsOf, type WidgetElement } from '@/test-support/widget-tree';
 import { widgetLayoutHeight, widgetRowCapacity, type ViewRow, type WidgetView } from '@/lib/widget-snapshot';
 import appJson from '../../app.json';
-import { barFillWidth, BOARD_URI, renderTodayWidget, WIDGET_TOKEN_KEYS } from '../today-widget';
+import { barFillWidth, BOARD_URI, headerShowsUpdated, renderTodayWidget, WIDGET_TOKEN_KEYS } from '../today-widget';
 
 const TOKENS = PALETTE_TOKENS.cyan.dark;
 const LOOK = { palette: 'cyan', mode: 'dark' } as const;
@@ -247,6 +247,34 @@ describe('dense layout', () => {
     const view = ready({ rows: [row({ name: 'Run', tag: 'pending', tagText: 'Waiting to sync' })] });
     const tree = renderTodayWidget(view, 40, 2) as WidgetElement;
     expect(styleOf(elementWithText(tree, 'Run')).width as number).toBeGreaterThanOrEqual(0);
+  });
+
+  it('drops the header update time first when a large font would squeeze the header', () => {
+    const view = ready({ waiting: 2 });
+    const headerTexts = (width: number, scale: number) => textsOf(headerOf(renderTodayWidget(view, width, scale) as WidgetElement));
+    expect(headerTexts(250, 1)).toContain('14:05');
+    expect(headerTexts(250, 1.3)).not.toContain('14:05');
+    expect(headerTexts(250, 1.3)).toContain('2 waiting');
+    expect(headerTexts(400, 1.3)).toContain('14:05');
+    expect(textsOf(headerOf(renderTodayWidget(ready({ waiting: 0 }), 250, 1.3) as WidgetElement))).toContain('14:05');
+  });
+
+  it('keeps the header update time decision a pure function of width, scale and waiting', () => {
+    expect(headerShowsUpdated(250, 1, 2)).toBe(true);
+    expect(headerShowsUpdated(250, 1.3, 2)).toBe(false);
+    expect(headerShowsUpdated(250, 1.3, 0)).toBe(true);
+    expect(headerShowsUpdated(40, 1, 0)).toBe(false);
+    expect(headerShowsUpdated(Number.NaN, 1, 0)).toBe(false);
+  });
+
+  it('keeps every header text on one line and widens the tick box with the font scale', () => {
+    const tree = renderTodayWidget(ready({ waiting: 2, rows: [row({ name: 'Run' })] }), 250, 1.3) as WidgetElement;
+    for (const element of elementsOf(headerOf(tree))) {
+      if (typeof element.props.text === 'string') expect(element.props.maxLines).toBe(1);
+    }
+    const tickWidth = (scale: number) =>
+      styleOf(elementWithText(renderTodayWidget(ready({ rows: [row({ name: 'Run' })] }), 300, scale) as WidgetElement, String.fromCharCode(0x25cb))).width as number;
+    expect(tickWidth(1.3)).toBeGreaterThan(tickWidth(1));
   });
 
   it('treats an unusable font scale as 1', () => {

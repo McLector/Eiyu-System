@@ -29,6 +29,10 @@ const TAG_WIDTH = 92;
 const TIME_WIDTH = 40;
 const MORE_WIDTH = 52;
 const MORE_GAP = 6;
+// Rough header content widths in dp at the normal font size, used only to decide whether the update time still fits.
+const HEADER_BASE = 110;
+const HEADER_WAITING = 66;
+const HEADER_UPDATED = 44;
 const TICK = String.fromCharCode(0x2713);
 const RING = String.fromCharCode(0x25cb);
 
@@ -38,6 +42,14 @@ const color = (value: string) => value as ColorProp;
 export function barFillWidth(completed: number, total: number, trackDp: number): number {
   if (!Number.isFinite(completed) || !Number.isFinite(total) || !Number.isFinite(trackDp) || total <= 0 || trackDp <= 0) return 0;
   return Math.round(trackDp * Math.min(1, Math.max(0, completed / total)));
+}
+
+/** Whether the header has room for the update time. At a large font or a narrow widget it goes first, so nothing wraps. */
+export function headerShowsUpdated(widthDp: number, fontScale: number, waiting: number): boolean {
+  if (!Number.isFinite(widthDp)) return false;
+  const inner = widthDp - 2 * (PAD_X + BORDER);
+  const content = HEADER_BASE + (waiting > 0 ? HEADER_WAITING : 0) + HEADER_UPDATED;
+  return content * widgetFontScale(fontScale) <= inner;
 }
 
 function tokensFor(view: WidgetView): Tokens {
@@ -81,14 +93,14 @@ function header(tokens: Tokens, count: string, countColor: string, waiting: numb
     <FlexWidget
       key="header"
       style={{ width: 'match_parent', height: scaledDp(WIDGET_LAYOUT.header, scale), flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-      <TextWidget text="EIYU" style={{ fontSize: 11, fontWeight: 'bold', letterSpacing: 1.5, color: color(tokens['accent-text']) }} />
+      <TextWidget text="EIYU" maxLines={1} style={{ fontSize: 11, fontWeight: 'bold', letterSpacing: 1.5, color: color(tokens['accent-text']) }} />
       <FlexWidget style={{ flexDirection: 'row', alignItems: 'center' }}>
         {waiting > 0 ? (
-          <TextWidget text={`${waiting} waiting`} style={{ fontSize: 11, marginRight: 8, color: color(tokens.warning) }} />
+          <TextWidget text={`${waiting} waiting`} maxLines={1} style={{ fontSize: 11, marginRight: 8, color: color(tokens.warning) }} />
         ) : null}
-        {updated ? <TextWidget text={updated} style={{ fontSize: 11, marginRight: 8, color: color(tokens['muted-flat']) }} /> : null}
-        <TextWidget text="TODAY" style={{ fontSize: 11, letterSpacing: 1, marginRight: 6, color: color(tokens['dim-flat']) }} />
-        <TextWidget text={count} style={{ fontSize: 14, fontWeight: 'bold', color: color(countColor) }} />
+        {updated ? <TextWidget text={updated} maxLines={1} style={{ fontSize: 11, marginRight: 8, color: color(tokens['muted-flat']) }} /> : null}
+        <TextWidget text="TODAY" maxLines={1} style={{ fontSize: 11, letterSpacing: 1, marginRight: 6, color: color(tokens['dim-flat']) }} />
+        <TextWidget text={count} maxLines={1} style={{ fontSize: 14, fontWeight: 'bold', color: color(countColor) }} />
       </FlexWidget>
     </FlexWidget>
   );
@@ -132,13 +144,14 @@ function quest(tokens: Tokens, row: ViewRow, index: number, widthDp: number, sca
   const rightText = row.tagText ?? row.time ?? '';
   const rightWidth = scaledDp(row.tagText ? TAG_WIDTH : row.time ? TIME_WIDTH : 0, scale);
   const inner = Math.max(0, widthDp - 2 * (PAD_X + BORDER));
-  const nameWidth = Math.max(0, Math.floor(inner - ICON_WIDTH - rightWidth - 6));
+  const iconWidth = scaledDp(ICON_WIDTH, scale);
+  const nameWidth = Math.max(0, Math.floor(inner - iconWidth - rightWidth - 6));
   const name = row.progressText ? `${row.name}  ${row.progressText}` : row.name;
   return (
     <FlexWidget key={`row-${index}`} style={{ width: 'match_parent', height: scaledDp(WIDGET_LAYOUT.row, scale), flexDirection: 'row', alignItems: 'center' }}>
       <TextWidget
         text={row.done ? TICK : RING}
-        style={{ width: ICON_WIDTH, fontSize: 13, fontWeight: 'bold', color: color(row.done ? tokens.success : tokens['dim-flat']) }}
+        style={{ width: iconWidth, fontSize: 13, fontWeight: 'bold', color: color(row.done ? tokens.success : tokens['dim-flat']) }}
       />
       <TextWidget
         text={name}
@@ -183,7 +196,7 @@ export function renderTodayWidget(view: WidgetView, widthDp: number, fontScale: 
         ? [message(tokens, 'No quests due today')]
         : view.rows.map((row, index) => quest(tokens, row, index, widthDp, scale));
       return shell(tokens, OPEN_BOARD, spoken, [
-        header(tokens, `${view.completed}/${view.total}`, tokens['accent-text'], view.waiting, view.updated, scale),
+        header(tokens, `${view.completed}/${view.total}`, tokens['accent-text'], view.waiting, headerShowsUpdated(widthDp, scale, view.waiting) ? view.updated : '', scale),
         progressBar(tokens, view.completed, view.total, widthDp, view.more, scale),
         ...body,
       ]);
