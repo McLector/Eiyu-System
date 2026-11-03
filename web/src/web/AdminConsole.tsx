@@ -11,15 +11,21 @@ const PURPOSE_LABEL: Record<ReviewPurpose, string> = {
   'custom-tracker': 'Custom tracker', 'fitness-tracking': 'Fitness tracking', 'weekly-debrief': 'Weekly debrief',
 };
 
+/** A stored due date is already a Manila calendar day and is shown as is. An instant is converted to its Manila day. */
 function day(value: string): string {
-  const d = new Date(value.length === 10 ? `${value}T00:00:00Z` : value);
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const dateOnly = value.length === 10;
+  return new Date(dateOnly ? `${value}T00:00:00Z` : value)
+    .toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: dateOnly ? 'UTC' : 'Asia/Manila' });
 }
 
 type Pending = { kind: 'decide'; row: ReviewRequestRow; decision: ReviewDecision } | { kind: 'pause' | 'resume'; account: string; purpose: ReviewPurpose };
 
 function failureMessage(kind: Pending['kind'], error: unknown): string {
-  if (kind === 'decide') return 'Could not record that decision. Nothing was changed.';
+  if (kind === 'decide') {
+    return error instanceof OperatorError && error.kind === 'stale'
+      ? 'This request no longer applies. Nothing was changed.'
+      : 'Could not record that decision. Nothing was changed.';
+  }
   if (kind === 'pause') return 'Could not pause that purpose. Nothing was changed.';
   return error instanceof OperatorError && error.kind === 'not-needed'
     ? 'That purpose is not paused for that account. Nothing was changed.'
@@ -74,6 +80,8 @@ export default function AdminConsole({ userId }: { userId: string }) {
     } catch (error) {
       setPending(null);
       setActionError(failureMessage(action.kind, error));
+      // The row may be out of date, which is often why the decision failed.
+      if (action.kind === 'decide') await loadQueue();
     } finally { setWorking(false); }
   };
 

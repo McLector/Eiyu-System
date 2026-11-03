@@ -177,6 +177,20 @@ describe('operator calls', () => {
     await expect(decideReview(REQ, 'maybe' as never, OWNER_A)).rejects.toThrow(OPERATOR_MESSAGE);
     expect(rpc).not.toHaveBeenCalled();
   });
+  it.each(['ER003', 'ER004'])('reports a decision refused with %s as no longer applying, without echoing the server', async code => {
+    reply(null, {code, message: 'server detail for a@example.com'});
+    const err = await decideReview(REQ, 'approved', OWNER_A).catch(e => e);
+    expect(err).toBeInstanceOf(OperatorError);
+    expect(err.kind).toBe('stale');
+    expect(err.message).toBe('This request no longer applies.');
+  });
+  it('keeps other decision failures generic', async () => {
+    reply(null, {code: 'XX000', message: 'boom'});
+    const err = await decideReview(REQ, 'approved', OWNER_A).catch(e => e);
+    expect(err.kind).toBe('unavailable');
+    reply(null, {code: '42501', message: 'nope'});
+    expect((await decideReview(REQ, 'approved', OWNER_A).catch(e => e)).kind).toBe('denied');
+  });
   it('pauses a purpose with a fixed reason code', async () => {
     reply({ok: true});
     await pausePurpose(USER, 'weekly-debrief', 'dispute', OWNER_A);

@@ -84,6 +84,46 @@ describe('review queue', () => {
     expect(alert).toHaveFocus();
     expect(screen.getByRole('article', { name: /teen@example.com/ })).toBeInTheDocument();
   });
+  it('says a request no longer applies and drops it from the queue', async () => {
+    mocks.decide.mockRejectedValue(new OperatorError('stale', 'This request no longer applies.'));
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await user.click(await screen.findByRole('button', { name: /Approve request from teen@example.com/ }));
+    mocks.list.mockResolvedValue([]);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm approve' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/no longer applies/i);
+    expect(alert).toHaveFocus();
+    expect(await screen.findByText(/no open requests/i)).toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+  });
+  it('reloads the queue after any failed decision, because the row may be out of date', async () => {
+    mocks.decide.mockRejectedValue(new Error('server detail'));
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await user.click(await screen.findByRole('button', { name: /Deny request from teen@example.com/ }));
+    expect(mocks.list).toHaveBeenCalledTimes(1);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm deny' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not record that decision/i);
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/server detail/);
+  });
+  it('keeps the error showing when the reload after a failed decision also fails', async () => {
+    mocks.decide.mockRejectedValue(new OperatorError('stale', 'This request no longer applies.'));
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await user.click(await screen.findByRole('button', { name: /Approve request from teen@example.com/ }));
+    mocks.list.mockRejectedValue(new Error('x'));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm approve' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no longer applies/i);
+    expect(await screen.findByText(/could not load the review queue/i)).toBeInTheDocument();
+  });
+  it('shows a request date as the Manila calendar day', async () => {
+    mocks.list.mockResolvedValue([{ ...row, createdAt: '2026-10-20T20:00:00Z' }]);
+    render(<AdminConsole userId="owner-a" />);
+    const item = await screen.findByRole('article', { name: /teen@example.com/ });
+    expect(within(item).getByText(/Oct 21, 2026/)).toBeInTheDocument();
+  });
   it('shows a safe error when the queue cannot be loaded', async () => {
     mocks.list.mockRejectedValue(new Error('x'));
     render(<AdminConsole userId="owner-a" />);
@@ -213,6 +253,13 @@ describe('retention list and sign out', () => {
     const cells = within(table).getAllByRole('cell').map(c => c.textContent);
     expect(cells).toEqual(expect.arrayContaining(['gone@example.com', 'Fitness tracking', 'reminded']));
     expect(table).toHaveTextContent(/Oct 31, 2026/);
+  });
+  it('shows the withdrawal as the Manila calendar day and leaves due dates exactly as stored', async () => {
+    mocks.retention.mockResolvedValue([{ ...ret, withdrawnAt: '2026-10-01T20:00:00Z', reminderDueOn: '2026-10-26', removalDueOn: '2026-11-02' }]);
+    render(<AdminConsole userId="owner-a" />);
+    const table = await screen.findByRole('table', { name: /retention/i });
+    const cells = within(table).getAllByRole('cell').map(c => c.textContent);
+    expect(cells).toEqual(['gone@example.com', 'Fitness tracking', 'Oct 2, 2026', 'Oct 26, 2026', 'Nov 2, 2026', 'reminded']);
   });
   it('says so when nothing is waiting', async () => {
     mocks.retention.mockResolvedValue([]);

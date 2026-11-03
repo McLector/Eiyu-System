@@ -19,12 +19,13 @@ export interface RetentionNotice {purpose: RetentionPurpose; removalDueOn: strin
 export interface MyReviewRequest {requestId: string; purpose: ReviewPurpose; status: ReviewStatus; createdAt: string}
 
 export const OPERATOR_MESSAGE = 'Operator action unavailable.';
+const STALE_REQUEST_MESSAGE = 'This request no longer applies.';
 export const REVIEW_NOTE_MAX = 280;
 export const REVIEW_PURPOSES: readonly ReviewPurpose[] = ['custom-tracker', 'fitness-tracking', 'weekly-debrief'];
 export const PAUSE_REASON_CODES = ['dispute', 'report', 'other'] as const;
 export type PauseReasonCode = typeof PAUSE_REASON_CODES[number];
 
-export type OperatorErrorKind = 'denied' | 'invalid' | 'limit' | 'already-open' | 'not-needed' | 'unavailable';
+export type OperatorErrorKind = 'denied' | 'invalid' | 'limit' | 'already-open' | 'not-needed' | 'stale' | 'unavailable';
 /** A fixed-text failure. It never carries server text, payloads, emails or ids. */
 export class OperatorError extends Error {
   readonly kind: OperatorErrorKind;
@@ -60,6 +61,7 @@ function serverFailure(error: unknown): OperatorError {
   if (code === 'ER001') return new OperatorError('limit', 'Too many review requests today. Try again tomorrow.');
   if (code === 'ER002') return new OperatorError('already-open', 'A review request is already open.');
   if (code === 'ER003') return new OperatorError('not-needed', 'No review is needed for this permission.');
+  if (code === 'ER004') return new OperatorError('stale', STALE_REQUEST_MESSAGE);
   return new OperatorError();
 }
 
@@ -140,7 +142,13 @@ export async function listReviewRequests(status: ReviewStatus, owner: string): P
 
 export async function decideReview(requestId: string, decision: ReviewDecision, owner: string): Promise<void> {
   if (!isStr(requestId) || !UUID.test(requestId) || !DECISIONS.includes(decision)) bad();
-  await call(owner, 'operator_decide_review', {p_request_id: requestId, p_decision: decision});
+  try {
+    await call(owner, 'operator_decide_review', {p_request_id: requestId, p_decision: decision});
+  } catch (error) {
+    // The server refuses a request already closed (ER004) or whose birthday changed since it was made (ER003).
+    if (error instanceof OperatorError && error.kind === 'not-needed') throw new OperatorError('stale', STALE_REQUEST_MESSAGE);
+    throw error;
+  }
 }
 
 /** Whether the text can name an account for a pause: an account id or an email address. */
