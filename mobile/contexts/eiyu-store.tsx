@@ -15,8 +15,9 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { defaultShouldDehydrateQuery, QueryClient, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
+import { defaultShouldDehydrateQuery, QueryClient, useIsRestoring, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
+import type { Persister } from '@tanstack/react-query-persist-client';
 import * as Network from 'expo-network';
 import {
   createContext,
@@ -139,15 +140,35 @@ export const queryClient = new QueryClient({
   },
 });
 
-export const persister = createAsyncStoragePersister({ storage: AsyncStorage });
+/**
+ * Saves the data a failed refresh left in place, without the failure. Offline, every refresh fails, and the failure says
+ * nothing about the data. Saved as failed, the copy would come back carrying an error that JSON has emptied.
+ */
+export function keepingGoodCopies(target: Persister): Persister {
+  return {
+    ...target,
+    persistClient: client => target.persistClient({
+      ...client,
+      clientState: {
+        ...client.clientState,
+        queries: client.clientState.queries.map(query => query.state.status === 'error'
+          ? { ...query, state: { ...query.state, status: 'success' as const, error: null, fetchFailureCount: 0, fetchFailureReason: null } }
+          : query),
+      },
+    }),
+  };
+}
+
+export const persister = keepingGoodCopies(createAsyncStoragePersister({ storage: AsyncStorage }));
 
 /**
  * What the persisted cache may hold. The tracker capability decides what may be written, so a stored copy could restore a
  * grant the person has since withdrawn: it is read from the server on every start and never saved to the device. The same
- * goes for the age band, which comes from a birthday.
+ * goes for the age band, which comes from a birthday. Anything else with data is kept, even after a failed refresh.
  */
 export function shouldPersistQuery(query: Query): boolean {
-  return query.queryKey[0] !== 'tracker' && query.queryKey[0] !== 'account-age' && defaultShouldDehydrateQuery(query);
+  if (query.queryKey[0] === 'tracker' || query.queryKey[0] === 'account-age') return false;
+  return defaultShouldDehydrateQuery(query) || query.state.data !== undefined;
 }
 
 const habitsTodayKey = (userId?: string) => ['habits', 'today', userId ?? null] as const;
@@ -305,6 +326,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const deletedHabitIds = useRef(new Set<string>());
   const explicitPermissionRequest = useRef(false);
   const activeUserId = useRef(userId);
+  const isRestoring = useIsRestoring();
+  const savedCopyChecked = useRef(false);
   const creationIds = useRef(new Map<string, string>());
   // Deletes whose answer was never seen: a later 42501 for the same id means the first attempt did land.
   const attemptedDeletes = useRef(new Set<string>());
@@ -449,21 +472,28 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const longQuestsError = longQuestsQuery.isPending || retryingLongQuests ? null : longQuestsQuery.error ? formatError(longQuestsQuery.error) : lqActionError;
 
   // Sign-out/account-switch hygiene: no user-scoped query or persisted cache
-  // entry may survive into another account's board.
+  // entry may survive into another account's board. No user during the session
+  // check means "not known yet", and the saved copy may still be on its way, so
+  // nothing is judged until both have arrived.
   useEffect(() => {
+    if (authLoading || isRestoring) return;
     const previousUserId = activeUserId.current;
     if (previousUserId && previousUserId !== userId) {
       qc.removeQueries({ predicate: query => query.queryKey.includes(previousUserId) });
       void clearTrackerWriteMarker(previousUserId);
     }
     if (!userId) qc.removeQueries();
+    else if (!savedCopyChecked.current) {
+      qc.removeQueries({ predicate: query => query.state.data !== undefined && !query.queryKey.includes(userId) });
+    }
+    savedCopyChecked.current = true;
     activeUserId.current = userId;
     deletedHabitIds.current.clear();
     lifecycleRequests.current.clear();
     creationIds.current.clear();
     attemptedDeletes.current.clear();
     setReminderWarning(null);
-  }, [qc, userId]);
+  }, [authLoading, isRestoring, qc, userId]);
 
   useEffect(() => {
     offlineFailurePending.current = false;

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { dehydrate, QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider, type PersistedClient } from '@tanstack/react-query-persist-client';
 import { act, cleanup, configure, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
@@ -54,8 +55,8 @@ jest.doMock('@eiyu/shared', () => ({
   ...mockTracker,
   completeHabit: mockCompleteHabit,
 }));
-const mockAuth: { session: { user: { id: string } } | null } = { session: { user: { id: 'user-1' } } };
-jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: mockAuth.session }) }));
+const mockAuth: { session: { user: { id: string } } | null; loading: boolean } = { session: { user: { id: 'user-1' } }, loading: false };
+jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: mockAuth.session, loading: mockAuth.loading }) }));
 // The store filters reminder rows with the real, pure helper; native scheduling stays mocked.
 jest.doMock('@/lib/notifications', () => ({ ...mockNative, filterReminderRows: jest.requireActual('@/lib/notifications').filterReminderRows }));
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
@@ -63,7 +64,7 @@ jest.doMock('@/lib/sound-effects-prefs', () => mockSoundPreference);
 installExpoNetworkMock(mockNetwork);
 jest.doMock('expo-audio', () => ({ useAudioPlayer: jest.fn(() => mockAudioPlayer) }));
 
-const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../eiyu-store');
+const { useEiyu, EiyuProvider, keepingGoodCopies, persister, shouldPersistQuery } = require('../eiyu-store') as typeof import('../eiyu-store');
 
 const DAY1 = new Date('2026-10-05T12:00:00Z');
 const DAY2 = new Date('2026-10-06T12:00:00Z');
@@ -120,6 +121,7 @@ beforeEach(async () => {
   jest.clearAllMocks();
   resetTrackerMocks(mockTracker);
   mockAuth.session = { user: { id: 'user-1' } };
+  mockAuth.loading = false;
   jest.useFakeTimers({
     now: DAY1,
     doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback'],
@@ -395,6 +397,229 @@ describe('across app launches', () => {
     await mountStore();
     await waitFor(() => expect(currentStore?.failedSyncs).toHaveLength(1));
     expect(mockCompleteHabit).not.toHaveBeenCalled();
+  });
+});
+
+describe('a cold start with a saved copy on the device', () => {
+  const OWN_HABITS = ['habits', 'today', 'user-1'];
+  const OWN_PROFILE = ['profile', 'user-1'];
+  const SAVED_PROFILE = { displayName: 'Saved name', userClass: 'Ranger', timeZone: 'UTC' };
+  const seeded = () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    client.setQueryData(OWN_HABITS, [quest]);
+    client.setQueryData(OWN_PROFILE, SAVED_PROFILE);
+    return client;
+  };
+  const noConnection = () => {
+    const down = new TypeError('Network request failed');
+    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false });
+    mockTracker.fetchTrackerAccess.mockRejectedValue(down);
+    for (const read of [mockShared.fetchTodayHabits, mockShared.fetchTodayOneTimeHabits, mockShared.fetchBacklogQuests,
+      mockShared.fetchProfile, mockShared.fetchStats, mockShared.fetchLongQuests]) read.mockRejectedValue(down);
+  };
+  const ui = (client: QueryClient) => <QueryClientProvider client={client}><EiyuProvider><Probe /></EiyuProvider></QueryClientProvider>;
+  const startChecking = async (client: QueryClient) => {
+    activeClient = client;
+    mockAuth.session = null; mockAuth.loading = true;
+    const view = await render(ui(client));
+    await act(async () => { await tick(); });
+    return view;
+  };
+  const sessionAnswers = async (view: Awaited<ReturnType<typeof render>>, client: QueryClient, userId: string | null) => {
+    mockAuth.session = userId ? { user: { id: userId } } : null; mockAuth.loading = false;
+    await act(async () => { await view.rerender(ui(client)); });
+    await act(async () => { await tick(); });
+  };
+
+  it('keeps the saved quests while the session is still being checked', async () => {
+    noConnection();
+    const client = seeded();
+    await startChecking(client);
+    expect(client.getQueryData(OWN_HABITS)).toEqual([quest]);
+    expect(client.getQueryData(OWN_PROFILE)).toEqual(SAVED_PROFILE);
+  });
+
+  it('shows the saved quests and profile offline once the session answers, and a tap queues', async () => {
+    noConnection();
+    await AsyncStorage.setItem(trackerWriteMarkerKey('user-1'), JSON.stringify({
+      userId: 'user-1', revision: revisionOf(), canWriteBasic: true, canWriteCustom: true, savedAt: DAY1.getTime() - 60_000,
+    }));
+    const client = seeded();
+    const view = await startChecking(client);
+    await sessionAnswers(view, client, 'user-1');
+    await waitFor(() => expect(byId('habit-1')?.name).toBe('Read'));
+    expect(currentStore?.user.name).toBe('Saved name');
+    await waitFor(() => expect(currentStore?.syncOffline).toBe(true));
+    await act(async () => { currentStore!.toggleQuest('habit-1'); });
+    expect(byId('habit-1')?.completed).toBe(true);
+    expect(currentStore?.syncEntries).toEqual([expect.objectContaining({ kind: 'complete', habitId: 'habit-1' })]);
+  });
+
+  it('removes the saved data when the session answers that nobody is signed in', async () => {
+    noConnection();
+    const client = seeded();
+    const view = await startChecking(client);
+    await sessionAnswers(view, client, null);
+    expect(client.getQueryData(OWN_HABITS)).toBeUndefined();
+    expect(client.getQueryData(OWN_PROFILE)).toBeUndefined();
+  });
+
+  it('removes another account\'s saved data when the session answers, and keeps this account\'s', async () => {
+    noConnection();
+    const client = seeded();
+    client.setQueryData(['habits', 'today', 'user-2'], [{ ...quest, name: 'Someone else' }]);
+    client.setQueryData(['profile', 'user-2'], { displayName: 'Someone else' });
+    const view = await startChecking(client);
+    await sessionAnswers(view, client, 'user-1');
+    expect(client.getQueryData(['habits', 'today', 'user-2'])).toBeUndefined();
+    expect(client.getQueryData(['profile', 'user-2'])).toBeUndefined();
+    expect(client.getQueryData(OWN_HABITS)).toEqual([quest]);
+  });
+
+  it('still clears everything on a real sign-out later', async () => {
+    mockShared.fetchTodayHabits.mockResolvedValue([quest]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    activeClient = client;
+    const view = await render(ui(client));
+    await waitFor(() => expect(client.getQueryData(OWN_HABITS)).toBeDefined());
+    await sessionAnswers(view, client, null);
+    expect(client.getQueryData(OWN_HABITS)).toBeUndefined();
+  });
+
+  it('survives two offline starts in a row through the real save and restore', async () => {
+    noConnection();
+    let onDisk: PersistedClient = { timestamp: Date.now(), buster: '', clientState: dehydrate(seeded()) };
+    const device = keepingGoodCopies({
+      persistClient: async (client: PersistedClient) => { onDisk = JSON.parse(JSON.stringify(client)); },
+      restoreClient: async () => JSON.parse(JSON.stringify(onDisk)) as PersistedClient,
+      removeClient: async () => undefined,
+    });
+    for (const launch of [1, 2]) {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+      activeClient = client;
+      mockAuth.session = null; mockAuth.loading = true;
+      const tree = () => <PersistQueryClientProvider client={client} persistOptions={{ persister: device, dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery } }}>
+        <EiyuProvider><Probe /></EiyuProvider>
+      </PersistQueryClientProvider>;
+      const view = await render(tree());
+      await act(async () => { await tick(); });
+      mockAuth.session = { user: { id: 'user-1' } }; mockAuth.loading = false;
+      await act(async () => { await view.rerender(tree()); });
+      await waitFor(() => expect(byId('habit-1')?.name).toBe('Read'));
+      await waitFor(() => expect(client.getQueryState(OWN_HABITS)?.status).toBe('error'));
+      await act(async () => { await tick(); });
+      const saved = onDisk.clientState.queries.map(item => JSON.stringify(item.queryKey));
+      expect({ launch, saved: saved.includes(JSON.stringify(OWN_HABITS)) }).toEqual({ launch, saved: true });
+      expect(currentStore?.questsError).toMatch(/saved quests are still shown/);
+      await act(async () => { await view.unmount(); });
+    }
+  });
+
+  describe('when the session answers before the saved copy finishes loading', () => {
+    const slowRestore = (client: QueryClient) => {
+      const copy: PersistedClient = { timestamp: Date.now(), buster: '', clientState: dehydrate(client) };
+      let finish = () => {};
+      const gate = new Promise<void>(resolve => { finish = resolve; });
+      return {
+        finish: async () => { await act(async () => { finish(); await tick(); await tick(); }); },
+        persister: {
+          persistClient: async () => undefined,
+          restoreClient: async () => { await gate; return JSON.parse(JSON.stringify(copy)) as PersistedClient; },
+          removeClient: async () => undefined,
+        },
+      };
+    };
+    const mountRestoring = async (restore: ReturnType<typeof slowRestore>) => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+      activeClient = client;
+      const tree = () => <PersistQueryClientProvider client={client} persistOptions={{ persister: restore.persister }}>
+        <EiyuProvider><Probe /></EiyuProvider>
+      </PersistQueryClientProvider>;
+      mockAuth.session = null; mockAuth.loading = true;
+      const view = await render(tree());
+      return { client, answer: async (userId: string | null) => {
+        mockAuth.session = userId ? { user: { id: userId } } : null; mockAuth.loading = false;
+        await act(async () => { await view.rerender(tree()); });
+        await act(async () => { await tick(); });
+      } };
+    };
+
+    it('removes a copy that arrives after the answer was nobody', async () => {
+      noConnection();
+      const restore = slowRestore(seeded());
+      const { client, answer } = await mountRestoring(restore);
+      await answer(null);
+      await restore.finish();
+      expect(client.getQueryData(OWN_HABITS)).toBeUndefined();
+      expect(client.getQueryData(OWN_PROFILE)).toBeUndefined();
+    });
+
+    it('removes another account\'s copy that arrives late, and keeps this account\'s', async () => {
+      noConnection();
+      const disk = seeded();
+      disk.setQueryData(['habits', 'today', 'user-2'], [{ ...quest, name: 'Someone else' }]);
+      const restore = slowRestore(disk);
+      const { client, answer } = await mountRestoring(restore);
+      await answer('user-1');
+      await restore.finish();
+      expect(client.getQueryData(['habits', 'today', 'user-2'])).toBeUndefined();
+      await waitFor(() => expect(byId('habit-1')?.name).toBe('Read'));
+    });
+
+    it('still removes this account\'s copy when the account changes later', async () => {
+      noConnection();
+      const restore = slowRestore(seeded());
+      const { client, answer } = await mountRestoring(restore);
+      await answer('user-1');
+      await restore.finish();
+      await waitFor(() => expect(client.getQueryData(OWN_HABITS)).toEqual([quest]));
+      await answer('user-2');
+      expect(client.getQueryData(OWN_HABITS)).toBeUndefined();
+    });
+  });
+});
+
+describe('what the saved copy may hold', () => {
+  const failed = (state: Record<string, unknown>): PersistedClient => ({
+    timestamp: 1, buster: '',
+    clientState: { mutations: [], queries: [{ queryKey: ['habits', 'today', 'u'], queryHash: 'h', state: {
+      status: 'error', fetchStatus: 'idle', data: [quest], dataUpdatedAt: 5, error: new TypeError('Network request failed'), errorUpdatedAt: 9,
+      fetchFailureCount: 3, fetchFailureReason: new TypeError('Network request failed'), ...state,
+    } }] },
+  }) as never;
+  it('saves a failed refresh as the good data it left, without the failure', async () => {
+    let saved: PersistedClient | undefined;
+    const target = { persistClient: async (client: PersistedClient) => { saved = client; }, restoreClient: async () => undefined, removeClient: async () => undefined };
+    await keepingGoodCopies(target).persistClient(failed({}));
+    expect(saved?.clientState.queries[0].state).toMatchObject({ status: 'success', data: [quest], dataUpdatedAt: 5, error: null, fetchFailureCount: 0, fetchFailureReason: null });
+  });
+  it('leaves a healthy query alone', async () => {
+    let saved: PersistedClient | undefined;
+    const target = { persistClient: async (client: PersistedClient) => { saved = client; }, restoreClient: async () => undefined, removeClient: async () => undefined };
+    const healthy = failed({ status: 'success', error: null, fetchFailureCount: 0, fetchFailureReason: null });
+    await keepingGoodCopies(target).persistClient(healthy);
+    expect(saved?.clientState.queries[0]).toBe(healthy.clientState.queries[0]);
+  });
+  it('the device persister the app uses does the same', async () => {
+    await persister.persistClient(failed({}));
+    await waitFor(async () => expect(await persister.restoreClient()).toBeDefined());
+    const restored = await persister.restoreClient();
+    expect(restored?.clientState.queries[0].state).toMatchObject({ status: 'success', error: null });
+    await persister.removeClient();
+  });
+  const asQuery = (queryKey: unknown[], status: string, data: unknown) => ({ queryKey, state: { status, data } }) as never;
+  it('keeps good data after a refresh failed, because the failure says nothing about the data', () => {
+    expect(shouldPersistQuery(asQuery(['habits', 'today', 'u'], 'error', [quest]))).toBe(true);
+    expect(shouldPersistQuery(asQuery(['habits', 'today', 'u'], 'success', [quest]))).toBe(true);
+  });
+  it('holds nothing without data', () => {
+    expect(shouldPersistQuery(asQuery(['habits', 'today', 'u'], 'error', undefined))).toBe(false);
+    expect(shouldPersistQuery(asQuery(['habits', 'today', 'u'], 'pending', undefined))).toBe(false);
+  });
+  it('never holds the tracker capability or the age band, even with data', () => {
+    expect(shouldPersistQuery(asQuery(['tracker', 'u'], 'success', {}))).toBe(false);
+    expect(shouldPersistQuery(asQuery(['tracker', 'u'], 'error', {}))).toBe(false);
+    expect(shouldPersistQuery(asQuery(['account-age', 'u'], 'success', 'teen'))).toBe(false);
   });
 });
 
