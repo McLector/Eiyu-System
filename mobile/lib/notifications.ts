@@ -55,7 +55,14 @@ export async function inspectNotificationPermissions(): Promise<boolean> {
   return existing.granted;
 }
 
-/** Explicit opt-in path used only after the user enables reminders. */
+/** Android reports `undetermined` until the app has asked once, then `denied`. Never opens an OS prompt. */
+export async function notificationPermissionNeverAsked(): Promise<boolean> {
+  if (!SUPPORTED) return false;
+  const existing = await Notifications.getPermissionsAsync();
+  return existing.status === Notifications.PermissionStatus.UNDETERMINED;
+}
+
+/** Prompt path, used only after the person acts: turning reminders on, tapping Retry, or saving a first quest. */
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (!SUPPORTED) return false;
   const existing = await Notifications.getPermissionsAsync();

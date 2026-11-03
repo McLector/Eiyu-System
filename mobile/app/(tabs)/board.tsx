@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import PagerView from 'react-native-pager-view';
 import {
@@ -35,6 +35,7 @@ import { StateBlock } from '@/components/ui/state-block';
 import { UndoBar } from '@/components/ui/undo-bar';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { isReminderPermissionWarning } from '@/lib/reminder-warning';
 import { useTokens } from '@/contexts/theme-store';
 import { consumeBoardReturnIntent } from '@/lib/board-return-intent';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
@@ -278,6 +279,9 @@ export default function BoardScreen() {
           <View style={[styles.notice, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
             <AppText accessibilityRole="alert" style={[styles.noticeText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{reminderWarning}</AppText>
             <Button variant="secondary" label="Retry" accessibilityLabel="Retry reminders" onPress={() => void retryReminders()} />
+            {isReminderPermissionWarning(reminderWarning) ? (
+              <Button variant="quiet" label="Open phone settings" onPress={() => { Linking.openSettings().catch(() => {}); }} />
+            ) : null}
           </View>
         ) : null}
 

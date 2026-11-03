@@ -11,9 +11,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { useAppTheme, useTokens } from '@/contexts/theme-store';
-
-/** The reminder failure that only the phone's own settings can fix (the system refused the permission). */
-const isPermissionWarning = (warning: string) => /permission/i.test(warning);
+import { isReminderPermissionWarning } from '@/lib/reminder-warning';
 
 function Toggle({ on }: { on: boolean }) {
   const t = useTokens();
@@ -127,7 +125,7 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
           <AppText accessibilityRole="alert" style={[styles.warningText, { color: t.warning, fontFamily: fonts.body }]}>{reminderWarning}</AppText>
           <View style={styles.warningActions}>
             <Button variant="secondary" label="Retry" onPress={() => void retryReminders()} />
-            {isPermissionWarning(reminderWarning) ? <Button variant="quiet" label="Open phone settings" onPress={openPhoneSettings} /> : null}
+            {isReminderPermissionWarning(reminderWarning) ? <Button variant="quiet" label="Open phone settings" onPress={openPhoneSettings} /> : null}
           </View>
         </View>
       ) : null}

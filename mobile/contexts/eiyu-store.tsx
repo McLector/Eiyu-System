@@ -64,6 +64,7 @@ import {
   cancelAllHabitReminders,
   ensureNotificationSetup,
   inspectNotificationPermissions,
+  notificationPermissionNeverAsked,
   filterReminderRows,
   notifyRecoveryQuestGenerated,
   requestNotificationPermissions,
@@ -121,6 +122,7 @@ import {
   type QueueEntry,
   type SyncState,
 } from '@/lib/write-queue';
+import { NOTIFICATIONS_NEED_PERMISSION, NOTIFICATIONS_REFUSED } from '@/lib/reminder-warning';
 import { fetchProfile, updateProfile } from '@eiyu/shared';
 import { fetchStats } from '@eiyu/shared';
 import { LongQuest, Quest, UserProfile } from '@eiyu/shared';
@@ -333,6 +335,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const attemptedDeletes = useRef(new Set<string>());
   const offlineFailurePending = useRef(false);
   const lastConnectivity = useRef<boolean | null>(null);
+  const remindersAwaitConnection = useRef(false);
+  const [reminderSyncRevision, setReminderSyncRevision] = useState(0);
   const connectivityEventRevision = useRef(0);
   const playCompletionSound = useCompletionSound();
 
@@ -498,6 +502,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     offlineFailurePending.current = false;
     lastConnectivity.current = null;
+    remindersAwaitConnection.current = false;
     connectivityEventRevision.current += 1;
     const startingRevision = connectivityEventRevision.current;
     let active = true;
@@ -510,6 +515,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       connectivityEventRevision.current += 1;
       const wasOffline = lastConnectivity.current === false;
       lastConnectivity.current = state.isConnected ?? null;
+      if (wasOffline && state.isConnected === true && remindersAwaitConnection.current) {
+        remindersAwaitConnection.current = false;
+        setReminderSyncRevision(revision => revision + 1);
+      }
       if (!wasOffline || state.isConnected !== true || !offlineFailurePending.current || !userId) return;
       offlineFailurePending.current = false;
       const habitsRefresh = qc.invalidateQueries(
@@ -569,7 +578,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const syncAllReminders = useCallback(
-    (enabled: boolean, requestPermission = false) => runReminderTask(async () => {
+    (enabled: boolean, askPermission: boolean | 'first-time' = false) => runReminderTask(async () => {
       if (!userId) return;
       if (!enabled) {
         await cancelAllHabitReminders();
@@ -579,22 +588,45 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       // request. This is also harmless on iOS/web and keeps explicit opt-in
       // aligned with Expo SDK 54's setup order.
       await ensureNotificationSetup();
-      const granted = requestPermission
+      let granted = askPermission === true
         ? await requestNotificationPermissions()
         : await inspectNotificationPermissions();
+      const neverAsked = !granted && askPermission !== true && await notificationPermissionNeverAsked();
+      if (neverAsked && askPermission === 'first-time') granted = await requestNotificationPermissions();
+      if (!granted && !(neverAsked && askPermission === false)) {
+        await cancelAllHabitReminders();
+        throw new Error(NOTIFICATIONS_REFUSED);
+      }
+      // The rows come before the reset: with no connection the reminders already on the phone are the best copy there is,
+      // and they stay until a reconnect can reconcile them.
+      let habits: Awaited<ReturnType<typeof fetchAllActiveHabits>>;
+      let oneTimeUpcoming: Awaited<ReturnType<typeof fetchUpcomingOneTimeHabits>>;
+      try {
+        habits = filterReminderRows(await fetchAllActiveHabits(userId), reminderAccess);
+        oneTimeUpcoming = filterReminderRows(await fetchUpcomingOneTimeHabits(userId), reminderAccess);
+      } catch (err) {
+        if (isOfflineNetworkFailure(err)) {
+          remindersAwaitConnection.current = true;
+          return;
+        }
+        await cancelAllHabitReminders();
+        throw err;
+      }
       // Reconciliation always clears stale OS IDs first. An interrupted
       // archive/delete cleanup or an older sync can otherwise leave a removed
       // definition scheduled forever, and a Retry would hide that failure.
       await cancelAllHabitReminders();
-      if (!granted) throw new Error('Notification permission is unavailable on this device.');
+      if (!granted) {
+        // Never asked, and this sync may not prompt. With nothing to remind about there is nothing to say yet.
+        if (habits.length + oneTimeUpcoming.length > 0) throw new Error(NOTIFICATIONS_NEED_PERMISSION);
+        return;
+      }
       const accountTimeZone = profile?.timeZone ?? deviceTimeZone();
       // The full reset above already removed protected reminders; once custom permission is observed denied they are
       // simply not re-armed. Basic reminders are unaffected.
-      const habits = filterReminderRows(await fetchAllActiveHabits(userId), reminderAccess);
       await Promise.all(habits.map(h => scheduleHabitReminders(h.id, h, accountTimeZone)));
       // Re-arm upcoming one-time quests, including future dates. The full
       // reset would otherwise erase their existing one-shot reminders.
-      const oneTimeUpcoming = filterReminderRows(await fetchUpcomingOneTimeHabits(userId), reminderAccess);
       await Promise.all(
         oneTimeUpcoming.map(h =>
           scheduleOneTimeReminder(h.id, h, accountTimeZone)
@@ -638,7 +670,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       preferenceReadFailed.current = false;
       readingPreference = false;
       if (enabled !== notificationsEnabled) setNotificationsEnabledState(enabled);
-      await syncAllReminders(enabled, false);
+      await syncAllReminders(enabled, true);
       if (reminderOperation.current === operation) setReminderWarning(null);
     } catch (err) {
       if (reminderOperation.current === operation) {
@@ -666,7 +698,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         }
       }
     })();
-  }, [userId, notificationsEnabled, notificationPreferenceLoaded, syncAllReminders, accountDayRevision]);
+  }, [userId, notificationsEnabled, notificationPreferenceLoaded, syncAllReminders, accountDayRevision, reminderSyncRevision]);
 
   const setNotificationsEnabled = useCallback((enabled: boolean) => {
     const operation = ++preferenceOperation.current;
@@ -981,7 +1013,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           setReminderWarning(`Quest saved, but reminders could not be updated: ${formatError(err)}`);
         }
       };
-      void syncAllReminders(true).catch(reminderFailure);
+      void syncAllReminders(true, 'first-time').catch(reminderFailure);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [userId, qc, notificationsEnabled, syncAllReminders]

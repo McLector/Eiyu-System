@@ -4,6 +4,7 @@ jest.mock('expo-notifications', () => ({
   SchedulableTriggerInputTypes: { CALENDAR: 'calendar', WEEKLY: 'weekly', DATE: 'date' },
   setNotificationHandler: jest.fn(),
   setNotificationChannelAsync: jest.fn().mockResolvedValue(null),
+  PermissionStatus: { UNDETERMINED: 'undetermined', DENIED: 'denied', GRANTED: 'granted' },
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
@@ -16,7 +17,7 @@ jest.mock('react-native', () => {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { inspectNotificationPermissions, requestNotificationPermissions, cancelHabitReminders } from '../notifications';
+import { inspectNotificationPermissions, notificationPermissionNeverAsked, requestNotificationPermissions, cancelHabitReminders } from '../notifications';
 
 const mockNotifications = Notifications as any;
 
@@ -54,6 +55,18 @@ describe('lifecycle reminder boundaries', () => {
 
     await expect(inspectNotificationPermissions()).resolves.toBe(expected);
     expect(mockNotifications.getPermissionsAsync).toHaveBeenCalledTimes(1);
+    expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['undetermined', { status: 'undetermined', granted: false, canAskAgain: true }, true],
+    ['denied but askable', { status: 'denied', granted: false, canAskAgain: true }, false],
+    ['denied for good', { status: 'denied', granted: false, canAskAgain: false }, false],
+    ['granted', { status: 'granted', granted: true, canAskAgain: true }, false],
+  ])('treats %s correctly when asking whether the person was ever asked', async (_state, result, expected) => {
+    mockNotifications.getPermissionsAsync.mockResolvedValue(result);
+
+    await expect(notificationPermissionNeverAsked()).resolves.toBe(expected);
     expect(mockNotifications.requestPermissionsAsync).not.toHaveBeenCalled();
   });
 });

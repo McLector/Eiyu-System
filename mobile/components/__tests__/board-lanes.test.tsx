@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, userEvent, waitFor } from '@testing-library/react-native';
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Linking } from 'react-native';
 import type { Quest, UserProfile } from '@eiyu/shared';
 import { initialUser } from '@eiyu/shared';
 
@@ -623,5 +623,36 @@ describe('Board expired-change notice', () => {
     setup();
     await board();
     expect(screen.queryByText(/expired after 30 days/)).toBeNull();
+  });
+});
+
+describe('mobile BoardScreen reminder notice', () => {
+  beforeEach(setup);
+  afterEach(() => { jest.restoreAllMocks(); });
+  const PERMISSION = 'Reminders could not be updated: Eiyu does not have permission to send notifications on this phone. Allow it in phone settings, or turn reminders off in Settings.';
+
+  it('offers phone settings when only the phone can fix it', async () => {
+    const open = jest.spyOn(Linking, 'openSettings').mockResolvedValue();
+    mockStoreValue.reminderWarning = PERMISSION;
+    const user = userEvent.setup();
+    await board();
+    await user.press(screen.getByRole('button', { name: 'Open phone settings' }));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Retry reminders' })).toBeOnTheScreen();
+  });
+
+  it('does not crash when the phone refuses to open its settings', async () => {
+    jest.spyOn(Linking, 'openSettings').mockRejectedValue(new Error('no settings'));
+    mockStoreValue.reminderWarning = PERMISSION;
+    const user = userEvent.setup();
+    await board();
+    await user.press(screen.getByRole('button', { name: 'Open phone settings' }));
+    expect(screen.getByRole('button', { name: 'Open phone settings' })).toBeOnTheScreen();
+  });
+
+  it('leaves phone settings out for other reminder failures', async () => {
+    mockStoreValue.reminderWarning = 'Quest archived, but reminders could not be updated: nope';
+    await board();
+    expect(screen.queryByRole('button', { name: 'Open phone settings' })).toBeNull();
   });
 });

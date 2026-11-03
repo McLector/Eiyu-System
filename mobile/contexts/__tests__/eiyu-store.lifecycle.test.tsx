@@ -34,6 +34,7 @@ const mockNative = {
   cancelHabitReminders: jest.fn(),
   ensureNotificationSetup: jest.fn(),
   inspectNotificationPermissions: jest.fn(),
+  notificationPermissionNeverAsked: jest.fn(),
   notifyRecoveryQuestGenerated: jest.fn(),
   requestNotificationPermissions: jest.fn(),
   scheduleHabitReminders: jest.fn(),
@@ -137,6 +138,7 @@ beforeEach(async () => {
   mockNative.cancelHabitReminders.mockResolvedValue(undefined);
   mockNative.ensureNotificationSetup.mockResolvedValue(undefined);
   mockNative.inspectNotificationPermissions.mockResolvedValue(true);
+  mockNative.notificationPermissionNeverAsked.mockResolvedValue(false);
   mockNative.notifyRecoveryQuestGenerated.mockResolvedValue(undefined);
   mockNative.requestNotificationPermissions.mockResolvedValue(true);
   mockNative.scheduleHabitReminders.mockResolvedValue(undefined);
@@ -226,7 +228,7 @@ describe('mobile lifecycle reminder permission policy', () => {
     let archive!: Promise<void>;
     await act(async () => { archive = currentStore!.archiveQuest('habit-1'); });
     expect(mockShared.archiveHabit).toHaveBeenCalledWith('habit-1', revisionOf(), basicTarget('habit-1'));
-    expect(mockNative.cancelAllHabitReminders).toHaveBeenCalledTimes(1);
+    expect(mockNative.cancelAllHabitReminders).not.toHaveBeenCalled();
 
     await act(async () => { releaseFetch(); await archive; });
     expect(mockNative.scheduleHabitReminders).toHaveBeenCalled();
@@ -516,5 +518,153 @@ describe('invalidateForNewDay', () => {
     await done;
     expect(order.indexOf('start:backlog')).toBeGreaterThan(order.indexOf('end:habits'));
     expect(order.some(entry => entry.includes('weeklyQuest'))).toBe(false); // the Weekly Quest is gone from mobile
+  });
+});
+
+describe('asking for notification permission', () => {
+  const NEW_QUEST = { mode: 'custom' as const, values: {
+    name: 'Read', easyVersion: 'Read one page', stat: 'WIS' as const, difficulty: 'Easy' as const, time: '08:00', days: [1, 2, 3, 4, 5], questType: 'habit' as const,
+  } };
+  const neverAsked = () => {
+    mockNative.inspectNotificationPermissions.mockResolvedValue(false);
+    mockNative.notificationPermissionNeverAsked.mockResolvedValue(true);
+  };
+  const refused = () => {
+    mockNative.inspectNotificationPermissions.mockResolvedValue(false);
+    mockNative.notificationPermissionNeverAsked.mockResolvedValue(false);
+  };
+  const synced = () => waitFor(() => expect(mockNative.inspectNotificationPermissions).toHaveBeenCalled());
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+
+  it('says nothing to a new account with no quests, and does not prompt', async () => {
+    neverAsked();
+    mockShared.fetchAllActiveHabits.mockResolvedValue([]);
+    await mountStore();
+    await synced();
+    await settle();
+    expect(currentStore?.reminderWarning).toBeNull();
+    expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
+  });
+
+  it('does not prompt on launch when quests exist, and offers Retry to ask', async () => {
+    neverAsked();
+    await mountStore();
+    await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/needs permission.*Retry/i));
+    expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
+    expect(mockNative.scheduleHabitReminders).not.toHaveBeenCalled();
+  });
+
+  it('asks when the person taps Retry, then schedules and clears the banner', async () => {
+    neverAsked();
+    await mountStore();
+    await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/needs permission/i));
+    await act(async () => { await currentStore!.retryReminders(); });
+    expect(mockNative.requestNotificationPermissions).toHaveBeenCalledTimes(1);
+    expect(mockNative.scheduleHabitReminders).toHaveBeenCalled();
+    expect(currentStore?.reminderWarning).toBeNull();
+  });
+
+  it('points at phone settings when the person says no at the prompt', async () => {
+    neverAsked();
+    mockNative.requestNotificationPermissions.mockResolvedValue(false);
+    await mountStore();
+    await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/needs permission/i));
+    await act(async () => { await currentStore!.retryReminders(); });
+    expect(currentStore?.reminderWarning).toMatch(/permission.*phone settings/i);
+    expect(mockNative.scheduleHabitReminders).not.toHaveBeenCalled();
+  });
+
+  it('asks when the first quest is saved, because that is what sets a reminder', async () => {
+    neverAsked();
+    mockShared.fetchAllActiveHabits.mockResolvedValue([]);
+    await mountStore();
+    await synced();
+    await settle();
+    mockShared.fetchAllActiveHabits.mockResolvedValue([{ id: 'habit-1', name: 'Read', time: '08:00', days: [1] }]);
+    await act(async () => { await currentStore!.saveHabit(NEW_QUEST); });
+    await waitFor(() => expect(mockNative.requestNotificationPermissions).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockNative.scheduleHabitReminders).toHaveBeenCalled());
+    expect(currentStore?.reminderWarning).toBeNull();
+  });
+
+  it('does not ask again on save once the person has said no', async () => {
+    refused();
+    await mountStore();
+    await synced();
+    await act(async () => { await currentStore!.saveHabit(NEW_QUEST); });
+    await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/quest saved, but.*permission/i));
+    expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
+  });
+
+  it('does not prompt when a quest is restored, even if never asked', async () => {
+    neverAsked();
+    await mountStore();
+    await synced();
+    await act(async () => { await currentStore!.restoreQuest('habit-1'); });
+    await settle();
+    expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
+  });
+
+  it('still says what to do when notifications were refused earlier', async () => {
+    refused();
+    await mountStore();
+    await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/permission.*phone settings/i));
+    expect(currentStore?.reminderWarning).not.toMatch(/Error/);
+  });
+});
+
+describe('reminders with no connection', () => {
+  const down = new TypeError('Network request failed');
+  const settle = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  const offlineStart = async () => {
+    mockShared.fetchAllActiveHabits.mockRejectedValue(down);
+    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false, isInternetReachable: false });
+    await mountStore();
+    await waitFor(() => expect(mockShared.fetchAllActiveHabits).toHaveBeenCalled());
+    await settle();
+  };
+
+  it('keeps the reminders already on the phone', async () => {
+    await offlineStart();
+    expect(mockNative.cancelAllHabitReminders).not.toHaveBeenCalled();
+  });
+
+  it('shows no banner, because nothing is wrong that the person can act on', async () => {
+    await offlineStart();
+    expect(currentStore?.reminderWarning).toBeNull();
+  });
+
+  it('brings reminders up to date when the connection comes back', async () => {
+    await offlineStart();
+    mockShared.fetchAllActiveHabits.mockResolvedValue([{ id: 'habit-1', name: 'Read', time: '08:00', days: [1] }]);
+    await act(async () => { await mockNetwork.listener?.({ isConnected: true }); });
+    await waitFor(() => expect(mockNative.scheduleHabitReminders).toHaveBeenCalled());
+    expect(mockNative.cancelAllHabitReminders).toHaveBeenCalledTimes(1);
+    expect(currentStore?.reminderWarning).toBeNull();
+  });
+
+  it('does not sync again on reconnect when nothing was skipped', async () => {
+    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false, isInternetReachable: false });
+    await mountStore();
+    await waitFor(() => expect(mockNative.scheduleHabitReminders).toHaveBeenCalled());
+    await settle();
+    const fetches = mockShared.fetchAllActiveHabits.mock.calls.length;
+    await act(async () => { await mockNetwork.listener?.({ isConnected: true }); });
+    await settle();
+    expect(mockShared.fetchAllActiveHabits).toHaveBeenCalledTimes(fetches);
+  });
+
+  it('stays quiet when a quest restored offline cannot refresh reminders', async () => {
+    await offlineStart();
+    await act(async () => { await currentStore!.restoreQuest('habit-1'); });
+    await settle();
+    expect(currentStore?.reminderWarning).toBeNull();
+  });
+
+  it('still clears and reports a failure that is not about the connection', async () => {
+    mockShared.fetchAllActiveHabits.mockRejectedValue(new Error('server said no'));
+    await mountStore();
+    await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/could not be updated.*server said no/i));
+    expect(mockNative.cancelAllHabitReminders).toHaveBeenCalledTimes(1);
   });
 });
