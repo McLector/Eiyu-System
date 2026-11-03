@@ -1,11 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import PagerView from 'react-native-pager-view';
 import { GYM_COPY, type GymExercise } from '@eiyu/shared';
 
 import { ChevronIcon, EditIcon, MoreIcon, TrashIcon } from '@/components/eiyu/icons';
+import { FitnessPrompt } from '@/components/gym/fitness-prompt';
 import { ExerciseMedia } from '@/components/gym/exercise-media';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
@@ -21,8 +23,8 @@ function Tile({ label, value }: { label: string; value: string }) {
   const t = useTokens();
   return (
     <View style={[styles.tile, { borderColor: t['glass-border'] }]} accessible accessibilityLabel={`${label} ${value}`}>
-      <Text style={[styles.tileLabel, { color: t['muted-flat'], fontFamily: fonts.display }]}>{label}</Text>
-      <Text style={[styles.tileValue, { color: t.text, fontFamily: fonts.mono }]}>{value}</Text>
+      <AppText style={[styles.tileLabel, { color: t['muted-flat'], fontFamily: fonts.display }]}>{label}</AppText>
+      <AppText style={[styles.tileValue, { color: t.text, fontFamily: fonts.mono }]}>{value}</AppText>
     </View>
   );
 }
@@ -58,6 +60,8 @@ export default function GymExerciseCardScreen() {
     );
   }
 
+  /** Editing is a Gym change: without permission the notice opens instead and nothing is pushed. */
+  const openEditor = (target: Parameters<typeof router.push>[0]) => { if (gym.requireFitness()) router.push(target); };
   const go = (to: number) => {
     if (to < 0 || to >= exercises.length) return;
     setCurrentId(exercises[to].id);
@@ -79,8 +83,8 @@ export default function GymExerciseCardScreen() {
           <ChevronIcon direction="left" size={20} color={t['muted-flat']} />
         </Pressable>
         <View style={styles.headText}>
-          <Text numberOfLines={1} style={[styles.routine, { color: t['muted-flat'], fontFamily: fonts.display }]}>{routine?.name}</Text>
-          <Text accessibilityLiveRegion="polite" style={[styles.counter, { color: t.text, fontFamily: fonts.mono }]}>{`${index + 1} / ${exercises.length}`}</Text>
+          <AppText numberOfLines={1} style={[styles.routine, { color: t['muted-flat'], fontFamily: fonts.display }]}>{routine?.name}</AppText>
+          <AppText accessibilityLiveRegion="polite" style={[styles.counter, { color: t.text, fontFamily: fonts.mono }]}>{`${index + 1} / ${exercises.length}`}</AppText>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -108,12 +112,12 @@ export default function GymExerciseCardScreen() {
           return (
             <View key={exercise.id} testID={`gym-card-${exercise.id}`} style={styles.page}>
               <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.card}>
-                <Text accessibilityRole="header" style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{exercise.name}</Text>
-                <ExerciseMedia exercise={exercise} canEdit={!gym.pending && !gym.uncertain} onEdit={() => router.push({ pathname: '/gym-exercise-editor', params: { routineId: exercise.routine_id, id: exercise.id } })} active={exercise.id === current.id} />
+                <AppText accessibilityRole="header" style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{exercise.name}</AppText>
+                <ExerciseMedia exercise={exercise} canEdit={!gym.pending && !gym.uncertain} onEdit={() => openEditor({ pathname: '/gym-exercise-editor', params: { routineId: exercise.routine_id, id: exercise.id } })} active={exercise.id === current.id} />
                 {exercise.notes ? (
                   <View accessible accessibilityLabel={`Notes for ${exercise.name}`} style={styles.notes}>
-                    <Text style={[styles.notesLabel, { color: t['muted-flat'], fontFamily: fonts.display }]}>NOTES</Text>
-                    <Text style={[styles.notesText, { color: t.text, fontFamily: fonts.body }]}>{exercise.notes}</Text>
+                    <AppText style={[styles.notesLabel, { color: t['muted-flat'], fontFamily: fonts.display }]}>NOTES</AppText>
+                    <AppText style={[styles.notesText, { color: t.text, fontFamily: fonts.body }]}>{exercise.notes}</AppText>
                   </View>
                 ) : null}
                 <View style={styles.tiles}>
@@ -123,7 +127,7 @@ export default function GymExerciseCardScreen() {
                   <Tile label="Previous" value={previous === null ? '—' : `${previous} ${unit}`} />
                 </View>
                 <View style={styles.current}>
-                  <Text style={[styles.currentLabel, { color: t['muted-flat'], fontFamily: fonts.display }]}>CURRENT WEIGHT</Text>
+                  <AppText style={[styles.currentLabel, { color: t['muted-flat'], fontFamily: fonts.display }]}>CURRENT WEIGHT</AppText>
                   <View testID={`gym-weight-row-${exercise.id}`} style={styles.weightRow}>
                     <WeightInput exercise={exercise} unit={unit} value={draft} locked={locked} readOnly={gym.pending} onChange={value => gym.setDraft(exercise.id, value)} />
                     <Button testID={`gym-log-${exercise.id}`} variant="primary" label="LOG WEIGHT" accessibilityLabel="LOG WEIGHT" disabled={!canLog} busy={gym.pending} onPress={() => void gym.logWeight(exercise)} style={styles.logButton} />
@@ -136,8 +140,9 @@ export default function GymExerciseCardScreen() {
       </PagerView>
 
       <View style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: 8 }]}>
-        {gym.error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{gym.error}</Text> : null}
-        {gym.notice ? <Text accessibilityLiveRegion="polite" style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{gym.notice}</Text> : null}
+        <FitnessPrompt />
+        {gym.error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{gym.error}</AppText> : null}
+        {gym.notice ? <AppText accessibilityLiveRegion="polite" style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{gym.notice}</AppText> : null}
         {gym.uncertain ? <Button variant="secondary" label={GYM_COPY.confirmSave} busy={gym.pending} onPress={() => void gym.retryUncertain()} /> : null}
         <View style={styles.nav}>
           <Button variant="secondary" label="Prev" accessibilityLabel="Previous exercise" disabled={index === 0} onPress={() => go(index - 1)} style={styles.navButton} />
@@ -151,7 +156,7 @@ export default function GymExerciseCardScreen() {
         actions={menuActions}
         onClose={() => setMenu(false)}
         onSelect={key => {
-          if (key === 'edit') router.push({ pathname: '/gym-exercise-editor', params: { routineId: current.routine_id, id: current.id } });
+          if (key === 'edit') openEditor({ pathname: '/gym-exercise-editor', params: { routineId: current.routine_id, id: current.id } });
           else if (key === 'up') void gym.moveExercise(current, -1);
           else if (key === 'down') void gym.moveExercise(current, 1);
           else if (key === 'remove') setConfirmRemove(true);
@@ -194,7 +199,7 @@ function WeightInput({ exercise, unit, value, locked, readOnly, onChange }: { ex
         placeholderTextColor={t['dim-flat']}
         style={[styles.weight, { color: t.text, borderColor: t['glass-border'], backgroundColor: t.track, fontFamily: fonts.mono }, locked && styles.dim]}
       />
-      <Text accessibilityElementsHidden importantForAccessibility="no" style={[styles.unit, { color: t['muted-flat'], fontFamily: fonts.display }]}>{unit}</Text>
+      <AppText accessibilityElementsHidden importantForAccessibility="no" style={[styles.unit, { color: t['muted-flat'], fontFamily: fonts.display }]}>{unit}</AppText>
     </>
   );
 }

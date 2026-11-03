@@ -37,6 +37,7 @@ function setup(over: Record<string, unknown> = {}, exercises = [exercise('e1', 0
     logged: (id: string, recency: 1 | 2) => weights[id]?.[recency] ?? null,
     draft: (id: string) => drafts[id] ?? String(weights[id]?.[1] ?? ''),
     setDraft: jest.fn((id: string, value: string) => { drafts[id] = value; }),
+    requireFitness: jest.fn(() => true), fitnessPrompt: false, setFitnessPrompt: jest.fn(), tracker: null, userId: 'u', acceptTracker: jest.fn(), refreshTracker: jest.fn(),
     logWeight: jest.fn().mockResolvedValue(undefined), retryUncertain: jest.fn(),
     moveExercise: jest.fn().mockResolvedValue(undefined), removeExercise: jest.fn().mockResolvedValue(true),
     ...over,
@@ -184,6 +185,16 @@ describe('Gym exercise card', () => {
       await press(user, 'Exercise actions for Lift e1');
       await user.press(screen.getByRole('menuitem', { name: 'Edit exercise' }));
       expect(mockRouter.push).toHaveBeenCalledWith({ pathname: '/gym-exercise-editor', params: { routineId: 'r1', id: 'e1' } });
+    });
+
+    it('does not open the editor from the menu or the media without permission', async () => {
+      setup({ requireFitness: jest.fn(() => false) });
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseCardScreen />);
+      await press(user, 'Exercise actions for Lift e1');
+      await user.press(screen.getByRole('menuitem', { name: 'Edit exercise' }));
+      expect(mockGym.requireFitness).toHaveBeenCalled();
+      expect(mockRouter.push).not.toHaveBeenCalled();
     });
 
     it('moves the exercise, and disables the move that has nowhere to go', async () => {

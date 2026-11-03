@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, screen, userEvent } from '@testing-library/react-native';
-import { UncertainSaveError, type GymRoutine } from '@eiyu/shared';
+import { NO_TARGETS, UncertainSaveError, type GymRoutine } from '@eiyu/shared';
+import { revisionOf } from '@/test-support/tracker-fixtures';
 
 import RoutineEditorScreen from '../../app/gym-routine-editor';
 import { renderWithTheme } from '../ui/test-theme';
@@ -42,7 +43,10 @@ function setup(id?: string, routines: GymRoutine[] = [routine()]) {
   mockParams = id ? { id } : {};
   mockBeforeRemove = null;
   mockShared.saveGymRoutine.mockReset().mockResolvedValue('saved-id');
-  mockGym = { userId: 'u', routines, loading: false, refreshAfterSave: jest.fn().mockResolvedValue(undefined), retryLoad: jest.fn() };
+  mockGym = {
+    userId: 'u', routines, loading: false, refreshAfterSave: jest.fn().mockResolvedValue(undefined), retryLoad: jest.fn(),
+    fitnessRevision: jest.fn(() => ({ revision: revisionOf('u') })), refreshTracker: jest.fn().mockResolvedValue(undefined), setFitnessPrompt: jest.fn(),
+  };
 }
 const NAME = () => screen.getByLabelText('Routine name');
 async function leave() {
@@ -61,8 +65,8 @@ describe('Gym routine editor', () => {
     await fireEvent.changeText(NAME(), '  Chest and Tris ');
     await user.press(screen.getByRole('radio', { name: 'lb' }));
     await user.press(screen.getByRole('button', { name: 'SAVE ROUTINE' }));
-    const [userId, name, unit, id, creationId] = mockShared.saveGymRoutine.mock.calls[0];
-    expect([userId, name, unit, id]).toEqual(['u', '  Chest and Tris ', 'lb', undefined]);
+    const [userId, name, unit, expected, targets, id, creationId] = mockShared.saveGymRoutine.mock.calls[0];
+    expect([userId, name, unit, expected, targets, id]).toEqual(['u', '  Chest and Tris ', 'lb', revisionOf('u'), NO_TARGETS, undefined]);
     expect(creationId).toMatch(UUID);
     expect(mockGym.refreshAfterSave).toHaveBeenCalledWith('Routine', 'saved-id');
     expect(mockRouter.back).toHaveBeenCalled();
@@ -86,7 +90,7 @@ describe('Gym routine editor', () => {
     expect(screen.getByRole('radio', { name: 'kg' })).toBeChecked();
     await fireEvent.changeText(NAME(), 'Pull');
     await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
-    expect(mockShared.saveGymRoutine.mock.calls[0].slice(0, 4)).toEqual(['u', 'Pull', 'kg', 'r1']);
+    expect(mockShared.saveGymRoutine.mock.calls[0].slice(0, 6)).toEqual(['u', 'Pull', 'kg', revisionOf('u'), NO_TARGETS, 'r1']);
   });
 
   it('says so when the routine no longer exists', async () => {
@@ -105,7 +109,7 @@ describe('Gym routine editor', () => {
     expect(screen.getByText(/name too long/)).toBeOnTheScreen();
     expect(mockRouter.back).not.toHaveBeenCalled();
     await user.press(screen.getByRole('button', { name: 'SAVE ROUTINE' }));
-    expect(mockShared.saveGymRoutine.mock.calls[1][4]).toBe(mockShared.saveGymRoutine.mock.calls[0][4]);
+    expect(mockShared.saveGymRoutine.mock.calls[1][6]).toBe(mockShared.saveGymRoutine.mock.calls[0][6]);
     expect(mockRouter.back).toHaveBeenCalled();
   });
 
@@ -119,8 +123,49 @@ describe('Gym routine editor', () => {
     expect(screen.getByRole('button', { name: 'Confirm save result' })).toBeOnTheScreen();
     expect(NAME()).toHaveProp('editable', false);
     await user.press(screen.getByRole('button', { name: 'Confirm save result' }));
-    expect(mockShared.saveGymRoutine.mock.calls[1][4]).toBe(mockShared.saveGymRoutine.mock.calls[0][4]);
+    expect(mockShared.saveGymRoutine.mock.calls[1][6]).toBe(mockShared.saveGymRoutine.mock.calls[0][6]);
     expect(mockRouter.back).toHaveBeenCalled();
+  });
+
+  describe('fitness permission', () => {
+    const stale = () => Object.assign(new Error('stale'), { code: 'ET003' });
+    it('sends nothing on a known denial, keeps the draft and says why', async () => {
+      setup();
+      mockGym.fitnessRevision.mockReturnValue({ denied: 'Gym changes need Gym tracking permission. Your history stays readable.' });
+      const user = userEvent.setup();
+      await renderWithTheme(<RoutineEditorScreen />);
+      await fireEvent.changeText(NAME(), 'Legs');
+      await user.press(screen.getByRole('button', { name: 'SAVE ROUTINE' }));
+      expect(mockShared.saveGymRoutine).not.toHaveBeenCalled();
+      expect(screen.getByText(/Gym tracking permission/)).toBeOnTheScreen();
+      expect(NAME()).toHaveDisplayValue('Legs');
+      expect(mockRouter.back).not.toHaveBeenCalled();
+    });
+
+    it('on a stale refusal shows the reason, refreshes access and does not replay', async () => {
+      setup();
+      const user = userEvent.setup();
+      await renderWithTheme(<RoutineEditorScreen />);
+      await fireEvent.changeText(NAME(), 'Legs');
+      mockShared.saveGymRoutine.mockRejectedValueOnce(stale());
+      await user.press(screen.getByRole('button', { name: 'SAVE ROUTINE' }));
+      expect(screen.getByText(/permissions or this record changed/i)).toBeOnTheScreen();
+      expect(mockGym.refreshTracker).toHaveBeenCalled();
+      expect(mockShared.saveGymRoutine).toHaveBeenCalledTimes(1);
+      expect(mockRouter.back).not.toHaveBeenCalled();
+    });
+
+    it('keeps the captured revision across an uncertain retry', async () => {
+      setup();
+      const user = userEvent.setup();
+      await renderWithTheme(<RoutineEditorScreen />);
+      await fireEvent.changeText(NAME(), 'Legs');
+      mockShared.saveGymRoutine.mockRejectedValueOnce(new UncertainSaveError());
+      await user.press(screen.getByRole('button', { name: 'SAVE ROUTINE' }));
+      mockGym.fitnessRevision.mockReturnValue({ revision: { ...revisionOf('u'), consentVersion: 9 } });
+      await user.press(screen.getByRole('button', { name: 'Confirm save result' }));
+      expect(mockShared.saveGymRoutine.mock.calls[1][3]).toEqual(revisionOf('u'));
+    });
   });
 
   describe('leaving', () => {

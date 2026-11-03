@@ -1,7 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { formatError, GYM_COPY, newRequestId, normalizeEditableQuestName, saveGymRoutine, UncertainSaveError, type GymUnit } from '@eiyu/shared';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
+import { formatError, GYM_COPY, newRequestId, normalizeEditableQuestName, NO_TARGETS, saveGymRoutine, UncertainSaveError, type GymUnit, type TrackerRevision } from '@eiyu/shared';
 
 import { EditorFrame } from '@/components/gym/editor-frame';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Field } from '@/components/ui/field';
 import { StateBlock } from '@/components/ui/state-block';
 import { fonts } from '@/constants/eiyu-theme';
 import { useGym } from '@/contexts/gym-store';
+import { isAccessChange, safeTrackerErrorKind, trackerErrorMessage } from '@/contexts/tracker-access';
 import { useTokens } from '@/contexts/theme-store';
 import { hapticSuccess } from '@/lib/haptics';
 
@@ -32,6 +34,8 @@ export default function GymRoutineEditorScreen() {
   const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const committed = useRef(false);
+  /** The permission revision the first attempt captured: an unconfirmed attempt is retried with it, never a fresh one. */
+  const attempt = useRef<TrackerRevision | null>(null);
   /** Made once, so a retry of an unconfirmed create cannot make a second routine. */
   const [creationId] = useState(newRequestId);
   const busy = saving || uncertain;
@@ -41,10 +45,18 @@ export default function GymRoutineEditorScreen() {
 
   const save = async () => {
     if (problem || saving) return;
+    // Taken before anything is sent or awaited. Without Gym permission nothing leaves the screen and the draft stays.
+    let expected = attempt.current;
+    if (!expected) {
+      const captured = gym.fitnessRevision();
+      if ('denied' in captured) { setError(captured.denied); return; }
+      expected = captured.revision;
+      attempt.current = expected;
+    }
     setSaving(true);
     setError(null);
     try {
-      const savedId = await saveGymRoutine(gym.userId!, name, unit, routine?.id, creationId);
+      const savedId = await saveGymRoutine(gym.userId!, name, unit, expected, NO_TARGETS, routine?.id, creationId);
       setUncertain(false);
       hapticSuccess();
       committed.current = true;
@@ -52,7 +64,10 @@ export default function GymRoutineEditorScreen() {
       await gym.refreshAfterSave('Routine', savedId);
     } catch (err) {
       setUncertain(err instanceof UncertainSaveError);
-      setError(formatError(err));
+      if (!(err instanceof UncertainSaveError)) attempt.current = null;
+      // A refused or stale save is never replayed: access is read again and the person decides.
+      if (isAccessChange(safeTrackerErrorKind(err))) void gym.refreshTracker();
+      setError(trackerErrorMessage(err) ?? formatError(err));
     } finally {
       setSaving(false);
     }
@@ -100,7 +115,7 @@ export default function GymRoutineEditorScreen() {
         errorTestID="gym-routine-name-error"
       />
       <View>
-        <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>WEIGHT UNIT</Text>
+        <AppText style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>WEIGHT UNIT</AppText>
         <View accessibilityRole="radiogroup" accessibilityLabel="Weight unit" style={styles.row}>
           {UNITS.map(u => <Chip key={u} label={u} selected={unit === u} disabled={busy} onPress={() => setUnit(u)} />)}
         </View>

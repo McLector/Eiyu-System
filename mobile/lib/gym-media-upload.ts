@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { checkGymMediaSize, gymMediaMime, uploadGymMediaBody, validateGymMediaBytes, type GymMediaMime } from '@eiyu/shared';
+import { checkGymMediaSize, gymMediaMime, uploadGymMediaBody, validateGymMediaBytes, type GymMediaMime, type TrackerRevision } from '@eiyu/shared';
 
 export interface PickedGymMedia { uri: string; mime: GymMediaMime; name: string }
 
@@ -19,9 +19,10 @@ export async function pickGymMedia(): Promise<PickedGymMedia | null> {
 
 /**
  * Read the picked file into memory (an ArrayBuffer, which the storage client sends as the raw body; a Blob built from a
- * file uri is unreliable in React Native), apply the shared checks, then upload it to this user's folder.
+ * file uri is unreliable in React Native), apply the shared checks, then upload it under the revision the caller captured
+ * before any await. A refused upload is never proof that bytes were or were not stored.
  */
-export async function uploadPickedGymMedia(userId: string, routineId: string, media: PickedGymMedia) {
+export async function uploadPickedGymMedia(userId: string, routineId: string, media: PickedGymMedia, expected: TrackerRevision) {
   let bytes: ArrayBuffer;
   try {
     const response = await fetch(media.uri);
@@ -31,5 +32,5 @@ export async function uploadPickedGymMedia(userId: string, routineId: string, me
     throw new Error('The selected file could not be read. Pick it again.');
   }
   const mime = validateGymMediaBytes(bytes, media.mime);
-  return uploadGymMediaBody(userId, routineId, bytes, mime);
+  return uploadGymMediaBody(userId, routineId, bytes, mime, expected);
 }

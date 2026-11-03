@@ -17,6 +17,8 @@ import {
   logGymWeight,
   moveGymExercises,
   newRequestId,
+  NO_TARGETS,
+  copyTrackerRevision,
   removeGymExercise,
   UncertainSaveError,
   type GymData,
@@ -24,9 +26,12 @@ import {
   type GymRecentWeight,
   type GymRoutine,
   type GymUnit,
+  type TrackerAccess,
+  type TrackerRevision,
 } from '@eiyu/shared';
 
 import { useAuth } from '@/contexts/auth-store';
+import { refreshTrackerAfterFailure, trackerErrorMessage, trackerKey, TRACKER_MESSAGES, useAccountAudience, useTrackerAccess, type AccountAudience } from '@/contexts/tracker-access';
 
 const EMPTY: GymData = { routines: [], exercises: [] };
 
@@ -76,6 +81,25 @@ interface GymStore {
   /** After an editor saved something: reload and say so. */
   refreshAfterSave: (what: string, select?: string, warning?: string) => Promise<void>;
   setNotice: (message: string | null) => void;
+
+  /** The signed-in owner's loaded tracker capability; null until it is read (every Gym write is refused meanwhile). */
+  tracker: TrackerAccess | null;
+  /** Gym writes are open only with Gym permission on an unpaused account. History is always readable. */
+  canWriteFitness: boolean;
+  /** True once the capability read settled (success or failure), so a notice is not shown while it is still loading. */
+  trackerSettled: boolean;
+  /** Take a server-confirmed capability for the current owner only; it closes the permission prompt. */
+  acceptTracker: (access: TrackerAccess) => void;
+  refreshTracker: () => Promise<void>;
+  /** The Gym permission notice is open (set when a write was asked for without permission). */
+  fitnessPrompt: boolean;
+  setFitnessPrompt: (open: boolean) => void;
+  /** Declared age band for the Gym notice; undefined (adult wording) until known or when unknown. */
+  audience: AccountAudience | undefined;
+  /** For a screen that opens an editor: true when Gym writes are open, otherwise it opens the permission notice. */
+  requireFitness: () => boolean;
+  /** For an editor's save: a copy of the current revision, or null (and the message to show) when writes are not open. */
+  fitnessRevision: () => { revision: TrackerRevision } | { denied: string };
 }
 
 const GymContext = createContext<GymStore | null>(null);
@@ -99,6 +123,14 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
   const [uncertain, setUncertain] = useState(false);
   const retryTask = useRef<(() => Promise<void>) | null>(null);
   const inFlight = useRef(false);
+
+  const trackerQuery = useTrackerAccess(userId);
+  const tracker = trackerQuery.data && trackerQuery.data.revision.userId === userId ? trackerQuery.data : null;
+  const canWriteFitness = !!tracker && tracker.canWriteBasic && tracker.canWriteFitness;
+  const trackerRef = useRef<TrackerAccess | null>(null);
+  trackerRef.current = tracker;
+  const [fitnessPrompt, setFitnessPrompt] = useState(false);
+  const audience = useAccountAudience(userId, fitnessPrompt);
 
   const routines = useMemo(() => data.routines.filter(r => !r.deleted_at && (showArchived || !r.archived)), [data.routines, showArchived]);
   const routine = routines.find(r => r.id === selected) ?? routines[0];
@@ -142,10 +174,35 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
     } catch (err) {
       setUncertain(err instanceof UncertainSaveError);
       retryTask.current = err instanceof UncertainSaveError ? task : null;
-      setError(formatError(err));
+      setError(trackerErrorMessage(err) ?? formatError(err));
+      // A refused or stale write never replays: the capability is read again and the person decides.
+      refreshTrackerAfterFailure(qc, userId, err);
       return false;
     } finally { inFlight.current = false; setPending(false); }
-  }, [refresh]);
+  }, [refresh, qc, userId]);
+
+  /** A copy of the revision for one write, taken now. Without Gym permission it opens the notice and returns null. */
+  const gate = (): TrackerRevision | null => {
+    const access = trackerRef.current;
+    if (!access || !access.canWriteBasic || !access.canWriteFitness) { setFitnessPrompt(true); return null; }
+    return copyTrackerRevision(access.revision);
+  };
+  const requireFitness = (): boolean => gate() !== null;
+  const fitnessRevision = (): { revision: TrackerRevision } | { denied: string } => {
+    const access = trackerRef.current;
+    if (!access) return { denied: 'Tracker access is unavailable. Try again in a moment.' };
+    if (!access.canWriteBasic) return { denied: TRACKER_MESSAGES.paused };
+    if (!access.canWriteFitness) return { denied: TRACKER_MESSAGES.fitness };
+    return { revision: copyTrackerRevision(access.revision) };
+  };
+  const acceptTracker = useCallback((access: TrackerAccess) => {
+    if (!userId || access.revision.userId !== userId) return;
+    qc.setQueryData(trackerKey(userId), access);
+    setFitnessPrompt(false);
+  }, [qc, userId]);
+  const refreshTracker = useCallback(async () => {
+    if (userId) await qc.invalidateQueries({ queryKey: trackerKey(userId) });
+  }, [qc, userId]);
 
   const resetDrafts = useCallback(() => setWeights({}), []);
   const forgetDraft = (id: string) => setWeights(previous => Object.fromEntries(Object.entries(previous).filter(([key]) => key !== id)));
@@ -156,8 +213,10 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
     if (weight === null || weight === logged(exercise.id, 1)) return;
     // Made once per attempt: an unconfirmed attempt is retried by running this same task, so the id is reused.
     const logId = newRequestId();
+    const expected = gate();
+    if (!expected) return;
     await run(async () => {
-      await logGymWeight(logId, exercise.id, weight);
+      await logGymWeight(logId, exercise.id, weight, expected, NO_TARGETS);
       qc.setQueryData<GymRecentWeight[]>(recentKey, rows => {
         const newest = rows?.find(entry => entry.exercise_id === exercise.id && entry.recency === 1);
         return [
@@ -189,20 +248,26 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
     },
     archiveRoutine: async () => {
       if (!routine) return;
-      await run(async () => { await archiveGymRoutine(routine.id, !routine.archived); resetDrafts(); });
+      const expected = gate();
+      if (!expected) return;
+      await run(async () => { await archiveGymRoutine(routine.id, !routine.archived, expected, NO_TARGETS); resetDrafts(); });
     },
     deleteRoutine: async () => {
       if (!routine) return;
+      const expected = gate();
+      if (!expected) return;
       // An unseen draft left by a tab on an older client is discarded with the routine, never blocking the delete.
       await run(async () => {
-        await deleteGymRoutine(routine.id, true);
+        await deleteGymRoutine(routine.id, expected, NO_TARGETS, true);
         resetDrafts();
         await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted')));
       });
     },
-    removeExercise: exercise => {
+    removeExercise: async exercise => {
+      const expected = gate();
+      if (!expected) return false;
       return run(async () => {
-        await removeGymExercise(exercise.id);
+        await removeGymExercise(exercise.id, expected, NO_TARGETS);
         await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed')));
       });
     },
@@ -212,13 +277,17 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
       const at = ids.indexOf(exercise.id);
       if (at < 0 || at + delta < 0 || at + delta >= ids.length) return;
       [ids[at], ids[at + delta]] = [ids[at + delta], ids[at]];
-      await run(async () => { await moveGymExercises(routine, ids); });
+      const expected = gate();
+      if (!expected) return;
+      await run(async () => { await moveGymExercises(routine, ids, expected, NO_TARGETS); });
     },
     refreshAfterSave: async (what, select, warning) => {
       if (select) setSelected(select);
       try { await refresh(); setNotice(warning ?? `${what} saved.`); } catch (err) { setNotice(gymSavedRefreshFailed(`${what} saved`, err)); }
     },
     setNotice,
+    tracker, canWriteFitness, trackerSettled: !trackerQuery.isPending, acceptTracker, refreshTracker,
+    fitnessPrompt, setFitnessPrompt, audience, requireFitness, fitnessRevision,
   };
   return <GymContext.Provider value={store}>{children}</GymContext.Provider>;
 }

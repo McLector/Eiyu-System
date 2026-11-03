@@ -2,11 +2,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { UncertainSaveError, type GymExercise, type GymRoutine } from '@eiyu/shared';
 import { Text } from 'react-native';
+import { noGrant, resetTrackerMocks, createTrackerMocks, revisionOf, trackerAccess } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const mockTracker = createTrackerMocks();
 const mockShared = {
+  ...mockTracker,
   fetchGym: jest.fn(),
+  fetchAccountAge: jest.fn(),
   fetchRecentGymWeights: jest.fn(),
   logGymWeight: jest.fn(),
   moveGymExercises: jest.fn(),
@@ -34,18 +38,20 @@ function Probe() {
   gym = useGym();
   return <Text>{gym.loading ? 'loading' : 'ready'}</Text>;
 }
-async function mount(data = { routines: [routine()], exercises: [exercise('e1', 0), exercise('e2', 1)] }, weights = [recent('e1', 60, 1), recent('e1', 55, 2)]) {
+async function mount(data = { routines: [routine()], exercises: [exercise('e1', 0), exercise('e2', 1)] }, weights = [recent('e1', 60, 1), recent('e1', 55, 2)], waitForAccess = true) {
   mockShared.fetchGym.mockResolvedValue(data);
   mockShared.fetchRecentGymWeights.mockResolvedValue(weights);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const screen = await render(<QueryClientProvider client={client}><GymProvider><Probe /></GymProvider></QueryClientProvider>);
   await waitFor(() => expect(screen.getByText('ready')).toBeOnTheScreen());
   if (data.routines.some(r => !r.deleted_at)) await waitFor(() => expect(gym!.logged('e1', 1)).not.toBeNull());
+  if (waitForAccess) await waitFor(() => expect(gym!.tracker).toBeTruthy());
   return client;
 }
 
 beforeEach(() => {
   jest.resetAllMocks();
+  resetTrackerMocks(mockTracker, 'user-1');
   mockShared.listGymMediaCleanup.mockResolvedValue([]);
   // The server's answer after a log: the typed weight is the newest, the old Current becomes Previous.
   mockShared.logGymWeight.mockImplementation(async (_id: string, _exercise: string, weight: number) => {
@@ -88,9 +94,10 @@ describe('gym store: logging a weight', () => {
     await act(async () => gym!.setDraft('e1', '62.5'));
     expect(gym!.dirty).toBe(true);
     await act(async () => { await gym!.logWeight(gym!.exercises[0]); });
-    const [logId, exerciseId, weight] = mockShared.logGymWeight.mock.calls[0];
+    const [logId, exerciseId, weight, expected, targets] = mockShared.logGymWeight.mock.calls[0];
     expect(logId).toMatch(UUID);
-    expect([exerciseId, weight]).toEqual(['e1', 62.5]);
+    expect([exerciseId, weight, expected, targets]).toEqual(['e1', 62.5, revisionOf('user-1'), []]);
+    expect(expected).not.toBe(gym!.tracker!.revision);
     expect(gym!.logged('e1', 1)).toBe(62.5);
     expect(gym!.logged('e1', 2)).toBe(60);
     expect(gym!.dirty).toBe(false);
@@ -155,7 +162,7 @@ describe('gym store: exercises and routines', () => {
   it('moves an exercise by sending the whole new order, and ignores a move off either end', async () => {
     await mount();
     await act(async () => { await gym!.moveExercise(gym!.exercises[0], 1); });
-    expect(mockShared.moveGymExercises).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), ['e2', 'e1']);
+    expect(mockShared.moveGymExercises).toHaveBeenCalledWith(expect.objectContaining({ id: 'r1' }), ['e2', 'e1'], revisionOf('user-1'), []);
     mockShared.moveGymExercises.mockClear();
     await act(async () => { await gym!.moveExercise(gym!.exercises[0], -1); });
     await act(async () => { await gym!.moveExercise(gym!.exercises[1], 1); });
@@ -165,9 +172,9 @@ describe('gym store: exercises and routines', () => {
   it('archives and restores the routine, and deletes it discarding a draft', async () => {
     await mount();
     await act(async () => { await gym!.archiveRoutine(); });
-    expect(mockShared.archiveGymRoutine).toHaveBeenCalledWith('r1', true);
+    expect(mockShared.archiveGymRoutine).toHaveBeenCalledWith('r1', true, revisionOf('user-1'), []);
     await act(async () => { await gym!.deleteRoutine(); });
-    expect(mockShared.deleteGymRoutine).toHaveBeenCalledWith('r1', true);
+    expect(mockShared.deleteGymRoutine).toHaveBeenCalledWith('r1', revisionOf('user-1'), [], true);
   });
 
   it('removes an exercise and then runs media cleanup', async () => {
@@ -176,7 +183,7 @@ describe('gym store: exercises and routines', () => {
     let removed: boolean | undefined;
     await act(async () => { removed = await gym!.removeExercise(gym!.exercises[0]); });
     expect(removed).toBe(true);
-    expect(mockShared.removeGymExercise).toHaveBeenCalledWith('e1');
+    expect(mockShared.removeGymExercise).toHaveBeenCalledWith('e1', revisionOf('user-1'), []);
     expect(mockShared.deleteGymMedia).toHaveBeenCalledWith('user-1/r1/a.gif');
     expect(mockShared.acknowledgeGymMediaCleanup).toHaveBeenCalledWith('user-1/r1/a.gif');
   });
@@ -206,5 +213,123 @@ describe('gym store: exercises and routines', () => {
     await act(async () => { await gym!.retryUncertain(); });
     expect(mockShared.archiveGymRoutine).toHaveBeenCalledTimes(2);
     expect(gym!.uncertain).toBe(false);
+  });
+});
+
+describe('gym store: fitness permission', () => {
+  const stale = () => Object.assign(new Error('stale'), { code: 'ET003' });
+  const writes = () => [mockShared.logGymWeight, mockShared.archiveGymRoutine, mockShared.deleteGymRoutine, mockShared.removeGymExercise, mockShared.moveGymExercises];
+
+  it('reads history and makes no write call on mount, without permission', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
+    await mount();
+    expect(gym!.routines.map(r => r.id)).toEqual(['r1']);
+    expect(gym!.canWriteFitness).toBe(false);
+    for (const fn of writes()) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('does not log, archive, delete, remove or move without permission: it asks instead', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
+    await mount();
+    await act(async () => gym!.setDraft('e1', '70'));
+    await act(async () => { await gym!.logWeight(gym!.exercises[0]); });
+    expect(gym!.fitnessPrompt).toBe(true);
+    await act(async () => { await gym!.archiveRoutine(); });
+    await act(async () => { await gym!.deleteRoutine(); });
+    await act(async () => { await gym!.removeExercise(gym!.exercises[0]); });
+    await act(async () => { await gym!.moveExercise(gym!.exercises[0], 1); });
+    for (const fn of writes()) expect(fn).not.toHaveBeenCalled();
+    expect(gym!.draft('e1')).toBe('70');
+  });
+
+  it('treats a paused account like a missing permission', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', trackerAccess({ canWriteBasic: false, canWriteFitness: false }, 'user-1'));
+    await mount();
+    expect(gym!.canWriteFitness).toBe(false);
+    await act(async () => { await gym!.archiveRoutine(); });
+    expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
+  });
+
+  it('never adopts another account capability', async () => {
+    mockShared.fetchTrackerAccess.mockResolvedValue(trackerAccess({}, 'owner-b'));
+    await mount(undefined, undefined, false);
+    await act(async () => { await gym!.archiveRoutine(); });
+    expect(gym!.tracker).toBeNull();
+    expect(gym!.canWriteFitness).toBe(false);
+    expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
+  });
+
+  it('refuses while access cannot be read', async () => {
+    mockShared.fetchTrackerAccess.mockRejectedValue(new Error('down'));
+    await mount(undefined, undefined, false);
+    await act(async () => { await gym!.archiveRoutine(); });
+    expect(gym!.canWriteFitness).toBe(false);
+    expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
+  });
+
+  it('takes a server-confirmed grant for this owner only, and closes the prompt', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
+    await mount();
+    await act(async () => { await gym!.archiveRoutine(); });
+    expect(gym!.fitnessPrompt).toBe(true);
+    await act(async () => gym!.acceptTracker(trackerAccess({}, 'owner-b')));
+    expect(gym!.canWriteFitness).toBe(false);
+    await act(async () => gym!.acceptTracker(trackerAccess({}, 'user-1')));
+    expect(gym!.canWriteFitness).toBe(true);
+    expect(gym!.fitnessPrompt).toBe(false);
+    expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
+  });
+
+  it('keeps one revision across an uncertain retry even when access changed meanwhile', async () => {
+    await mount();
+    mockShared.archiveGymRoutine.mockRejectedValueOnce(new UncertainSaveError());
+    await act(async () => { await gym!.archiveRoutine(); });
+    await act(async () => gym!.acceptTracker({ ...trackerAccess({}, 'user-1'), revision: { ...revisionOf('user-1'), consentVersion: 9 } }));
+    await act(async () => { await gym!.retryUncertain(); });
+    expect(mockShared.archiveGymRoutine.mock.calls[1][2]).toEqual(revisionOf('user-1'));
+  });
+
+  it('on a stale refusal shows the reason, re-reads access and does not retry', async () => {
+    await mount();
+    const before = mockShared.fetchTrackerAccess.mock.calls.length;
+    mockShared.logGymWeight.mockRejectedValueOnce(stale());
+    await act(async () => gym!.setDraft('e1', '70'));
+    await act(async () => { await gym!.logWeight(gym!.exercises[0]); });
+    expect(gym!.error).toMatch(/permissions or this record changed/i);
+    expect(gym!.uncertain).toBe(false);
+    await waitFor(() => expect(mockShared.fetchTrackerAccess.mock.calls.length).toBeGreaterThan(before));
+    expect(mockShared.logGymWeight).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('gym store: age band for the Gym notice', () => {
+  const age = (over: Record<string, unknown> = {}) => ({ userId: 'user-1', birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: true, version: 1, ...over });
+
+  it('reads nothing until the Gym notice opens, then gives teen for a teen', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
+    mockShared.fetchAccountAge.mockResolvedValue(age({ birthDate: '2012-01-01', adultDeclared: false }));
+    await mount();
+    expect(mockShared.fetchAccountAge).not.toHaveBeenCalled();
+    expect(gym!.audience).toBeUndefined();
+    await act(async () => gym!.setFitnessPrompt(true));
+    await waitFor(() => expect(gym!.audience).toBe('teen'));
+  });
+
+  it.each([['adult', age(), 'adult'], ['unknown', age({ birthDate: null }), undefined]])('gives %s', async (_name, answer, expected) => {
+    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
+    mockShared.fetchAccountAge.mockResolvedValue(answer);
+    await mount();
+    await act(async () => gym!.setFitnessPrompt(true));
+    await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
+    await waitFor(() => expect(gym!.audience).toBe(expected));
+  });
+
+  it('stays unknown when the read fails', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
+    mockShared.fetchAccountAge.mockRejectedValue(new Error('down'));
+    await mount();
+    await act(async () => gym!.setFitnessPrompt(true));
+    await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
+    expect(gym!.audience).toBeUndefined();
   });
 });

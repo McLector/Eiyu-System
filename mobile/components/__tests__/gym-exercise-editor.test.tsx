@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, screen, userEvent } from '@testing-library/react-native';
-import { UncertainSaveError, type GymExercise, type GymRoutine } from '@eiyu/shared';
+import { NO_TARGETS, UncertainSaveError, type GymExercise, type GymRoutine } from '@eiyu/shared';
+import { revisionOf } from '@/test-support/tracker-fixtures';
 
 import ExerciseEditorScreen from '../../app/gym-exercise-editor';
 import { renderWithTheme } from '../ui/test-theme';
@@ -57,7 +58,8 @@ function setup(id?: string, exercises: GymExercise[] = [exercise(), exercise({ i
   mockShared.deleteGymMedia.mockReset().mockResolvedValue(undefined);
   mockMedia.pickGymMedia.mockReset();
   mockMedia.uploadPickedGymMedia.mockReset().mockResolvedValue({ path: 'u/r1/new.gif', mime: 'image/gif' });
-  mockGym = { userId: 'u', routine: routine(), exercises, refreshAfterSave: jest.fn().mockResolvedValue(undefined), retryLoad: jest.fn() };
+  mockGym = { userId: 'u', routine: routine(), exercises, refreshAfterSave: jest.fn().mockResolvedValue(undefined), retryLoad: jest.fn(),
+    fitnessRevision: jest.fn(() => ({ revision: revisionOf('u') })), refreshTracker: jest.fn().mockResolvedValue(undefined) };
 }
 const NAME = () => screen.getByLabelText('Exercise name');
 const save = (user: ReturnType<typeof userEvent.setup>, label = 'SAVE EXERCISE') => user.press(screen.getByRole('button', { name: label }));
@@ -180,7 +182,8 @@ describe('Gym exercise editor', () => {
       expect(screen.getByLabelText('Selected demonstration')).toHaveProp('source', { uri: 'file:///c/a.gif' });
       await fill();
       await save(user);
-      expect(mockMedia.uploadPickedGymMedia).toHaveBeenCalledWith('u', 'r1', expect.objectContaining({ uri: 'file:///c/a.gif' }));
+      expect(mockMedia.uploadPickedGymMedia).toHaveBeenCalledWith('u', 'r1', expect.objectContaining({ uri: 'file:///c/a.gif' }), revisionOf('u'));
+      expect(mockShared.saveGymExercise.mock.calls[0].slice(1)).toEqual([revisionOf('u'), NO_TARGETS]);
       expect(mockShared.saveGymExercise.mock.calls[0][0]).toMatchObject({ media_path: 'u/r1/new.gif', media_mime: 'image/gif' });
     });
 
@@ -252,6 +255,55 @@ describe('Gym exercise editor', () => {
       expect(mockShared.saveGymExercise.mock.calls[1][0].id).toBe(mockShared.saveGymExercise.mock.calls[0][0].id);
       expect(mockShared.saveGymExercise.mock.calls[1][0].media_path).toBe('u/r1/new.gif');
       expect(mockRouter.back).toHaveBeenCalled();
+    });
+
+    it('sends nothing and uploads nothing on a known denial, and keeps the picked file', async () => {
+      setup();
+      mockGym.fitnessRevision.mockReturnValue({ denied: 'Gym changes need Gym tracking permission. Your history stays readable.' });
+      mockMedia.pickGymMedia.mockResolvedValueOnce({ uri: 'file:///c/a.gif', mime: 'image/gif', name: 'a.gif' });
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseEditorScreen />);
+      await user.press(screen.getByRole('button', { name: 'Choose GIF or MP4' }));
+      await fill();
+      await save(user);
+      expect(mockMedia.uploadPickedGymMedia).not.toHaveBeenCalled();
+      expect(mockShared.saveGymExercise).not.toHaveBeenCalled();
+      expect(screen.getByText(/Gym tracking permission/)).toBeOnTheScreen();
+      expect(screen.getByText('a.gif')).toBeOnTheScreen();
+      expect(NAME()).toHaveDisplayValue('Squat');
+    });
+
+    it('after a stale refusal re-reads access, uploads again under the new revision and never calls the held file erased', async () => {
+      setup();
+      mockMedia.pickGymMedia.mockResolvedValueOnce({ uri: 'file:///c/a.gif', mime: 'image/gif', name: 'a.gif' });
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseEditorScreen />);
+      await user.press(screen.getByRole('button', { name: 'Choose GIF or MP4' }));
+      await fill();
+      mockShared.saveGymExercise.mockRejectedValueOnce(Object.assign(new Error('stale'), { code: 'ET003' }));
+      await save(user);
+      expect(screen.getByText(/permissions or this record changed/i)).toBeOnTheScreen();
+      expect(screen.queryByText(/erased|deleted|removed/i)).toBeNull();
+      expect(mockGym.refreshTracker).toHaveBeenCalled();
+      expect(mockShared.saveGymExercise).toHaveBeenCalledTimes(1);
+      const newer = { ...revisionOf('u'), consentVersion: 2 };
+      mockGym.fitnessRevision.mockReturnValue({ revision: newer });
+      await save(user);
+      expect(mockMedia.uploadPickedGymMedia).toHaveBeenCalledTimes(2);
+      expect(mockMedia.uploadPickedGymMedia.mock.calls[1][3]).toEqual(newer);
+      expect(mockShared.saveGymExercise.mock.calls[1][1]).toEqual(newer);
+    });
+
+    it('keeps one captured revision across an uncertain retry', async () => {
+      setup();
+      const user = userEvent.setup();
+      await renderWithTheme(<ExerciseEditorScreen />);
+      await fill();
+      mockShared.saveGymExercise.mockRejectedValueOnce(new UncertainSaveError());
+      await save(user);
+      mockGym.fitnessRevision.mockReturnValue({ revision: { ...revisionOf('u'), consentVersion: 9 } });
+      await user.press(screen.getByRole('button', { name: 'Confirm save result' }));
+      expect(mockShared.saveGymExercise.mock.calls[1][1]).toEqual(revisionOf('u'));
     });
 
     it('shows an upload failure and stays open', async () => {

@@ -3,6 +3,7 @@ jest.doMock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'), ...m
 const picker = jest.requireMock('expo-image-picker') as { launchImageLibraryAsync: jest.Mock };
 const { pickGymMedia, uploadPickedGymMedia } = require('../gym-media-upload') as typeof import('../gym-media-upload');
 
+const REV = { userId: 'u', ageVersion: 1, consentVersion: 2, authorityVersion: 3 };
 const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1, 0, 1, 0, 0, 0]);
 const asset = (over: Record<string, unknown> = {}) => ({ uri: 'file:///cache/a.gif', mimeType: 'image/gif', fileSize: 42, fileName: 'a.gif', ...over });
 const realFetch = globalThis.fetch;
@@ -40,24 +41,24 @@ describe('uploadPickedGymMedia', () => {
   it('reads the file into memory, checks it and uploads the bytes to the user folder', async () => {
     globalThis.fetch = jest.fn(async () => ({ ok: true, arrayBuffer: async () => GIF.buffer })) as unknown as typeof fetch;
     mockShared.uploadGymMediaBody.mockResolvedValueOnce({ path: 'u/r/id.gif', mime: 'image/gif' });
-    await expect(uploadPickedGymMedia('u', 'r', picked)).resolves.toEqual({ path: 'u/r/id.gif', mime: 'image/gif' });
+    await expect(uploadPickedGymMedia('u', 'r', picked, REV)).resolves.toEqual({ path: 'u/r/id.gif', mime: 'image/gif' });
     expect(globalThis.fetch).toHaveBeenCalledWith('file:///cache/a.gif');
-    expect(mockShared.uploadGymMediaBody).toHaveBeenCalledWith('u', 'r', GIF.buffer, 'image/gif');
+    expect(mockShared.uploadGymMediaBody).toHaveBeenCalledWith('u', 'r', GIF.buffer, 'image/gif', REV);
   });
   it('refuses bytes that are not what the type says, without uploading', async () => {
     globalThis.fetch = jest.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array(12).buffer })) as unknown as typeof fetch;
-    await expect(uploadPickedGymMedia('u', 'r', picked)).rejects.toThrow('do not match');
+    await expect(uploadPickedGymMedia('u', 'r', picked, REV)).rejects.toThrow('do not match');
     expect(mockShared.uploadGymMediaBody).not.toHaveBeenCalled();
   });
   it('says so when the file cannot be read', async () => {
     globalThis.fetch = jest.fn(async () => { throw new Error('ENOENT'); }) as unknown as typeof fetch;
-    await expect(uploadPickedGymMedia('u', 'r', picked)).rejects.toThrow('could not be read');
+    await expect(uploadPickedGymMedia('u', 'r', picked, REV)).rejects.toThrow('could not be read');
     globalThis.fetch = jest.fn(async () => ({ ok: false })) as unknown as typeof fetch;
-    await expect(uploadPickedGymMedia('u', 'r', picked)).rejects.toThrow('could not be read');
+    await expect(uploadPickedGymMedia('u', 'r', picked, REV)).rejects.toThrow('could not be read');
   });
   it('passes an upload failure on', async () => {
     globalThis.fetch = jest.fn(async () => ({ ok: true, arrayBuffer: async () => GIF.buffer })) as unknown as typeof fetch;
     mockShared.uploadGymMediaBody.mockRejectedValueOnce(new Error('Payload too large'));
-    await expect(uploadPickedGymMedia('u', 'r', picked)).rejects.toThrow('Payload too large');
+    await expect(uploadPickedGymMedia('u', 'r', picked, REV)).rejects.toThrow('Payload too large');
   });
 });

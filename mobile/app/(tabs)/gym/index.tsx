@@ -1,9 +1,11 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { GYM_COPY } from '@eiyu/shared';
 
 import { ArchiveIcon, ChevronIcon, EditIcon, ListIcon, MoreIcon, PlusIcon, RestoreIcon, TrashIcon } from '@/components/eiyu/icons';
+import { FitnessPrompt } from '@/components/gym/fitness-prompt';
 import { RoutinePickerSheet } from '@/components/gym/routine-picker-sheet';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
@@ -27,6 +29,9 @@ export default function GymScreen() {
   /** What the user asked for while a typed weight was unsaved, waiting for their answer. */
   const [switchTo, setSwitchTo] = useState<{ routineId: string } | { archived: boolean } | null>(null);
   const locked = gym.pending || gym.uncertain;
+
+  /** Opening an editor is a Gym change: without permission the notice opens instead and nothing is pushed. */
+  const open = (target: Parameters<typeof router.push>[0]) => { if (gym.requireFitness()) router.push(target); };
 
   const pick = (id: string) => {
     if (id === routine?.id) return;
@@ -57,7 +62,7 @@ export default function GymScreen() {
   return (
     <View style={[styles.root, { backgroundColor: t['page-flat'] }]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>GYM PROGRESS</Text>
+        <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>GYM PROGRESS</AppText>
 
         {routine ? (
           <View style={styles.head}>
@@ -68,8 +73,8 @@ export default function GymScreen() {
               disabled={locked}
               onPress={() => setPicker(true)}
               style={[styles.chip, { borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }, locked && styles.dim]}>
-              <Text numberOfLines={1} style={[styles.chipName, { color: t['accent-text'], fontFamily: fonts.display }]}>{routine.name}</Text>
-              <Text style={[styles.chipUnit, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{unit}</Text>
+              <AppText numberOfLines={1} style={[styles.chipName, { color: t['accent-text'], fontFamily: fonts.display }]}>{routine.name}</AppText>
+              <AppText style={[styles.chipUnit, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{unit}</AppText>
               <ChevronIcon direction="down" size={16} color={t['accent-text']} />
             </Pressable>
             <Pressable
@@ -84,10 +89,11 @@ export default function GymScreen() {
           </View>
         ) : null}
 
+        <FitnessPrompt />
         {gym.refreshError ? <StateBlock kind="error" retryLabel="Retry refresh" onRetry={gym.retryLoad}>{GYM_COPY.refreshFailed}</StateBlock> : null}
         {gym.recentError ? <StateBlock kind="error" retryLabel="Retry weights" onRetry={gym.retryRecent}>The System couldn&apos;t read your logged weights.</StateBlock> : null}
-        {gym.error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{gym.error}</Text> : null}
-        {gym.notice ? <Text accessibilityLiveRegion="polite" style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{gym.notice}</Text> : null}
+        {gym.error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{gym.error}</AppText> : null}
+        {gym.notice ? <AppText accessibilityLiveRegion="polite" style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{gym.notice}</AppText> : null}
         {gym.uncertain || gym.cleanupPending ? (
           <View style={styles.recover}>
             {gym.uncertain ? <Button variant="secondary" label={GYM_COPY.confirmSave} busy={gym.pending} onPress={() => void gym.retryUncertain()} /> : null}
@@ -99,7 +105,7 @@ export default function GymScreen() {
           <>
             <StateBlock kind="empty">{GYM_COPY.noRoutine}</StateBlock>
             <View style={styles.centered}>
-              <Button variant="primary" label="NEW ROUTINE" icon={<PlusIcon size={18} color={t['on-accent']} />} onPress={() => router.push('/gym-routine-editor')} />
+              <Button variant="primary" label="NEW ROUTINE" icon={<PlusIcon size={18} color={t['on-accent']} />} onPress={() => open('/gym-routine-editor')} />
               {/* An archived routine, or the history of a deleted one, must stay reachable with nothing showing. */}
               <Chip kind="checkbox" label="Include archived" selected={gym.showArchived} onPress={() => includeArchived(!gym.showArchived)} />
               <Button variant="quiet" label="Workout history" onPress={() => router.push('/gym/history')} />
@@ -116,9 +122,9 @@ export default function GymScreen() {
               accessibilityLabel={`${index + 1}. ${exercise.name}, ${exercise.sets} sets of ${exercise.reps}`}
               onPress={() => router.push({ pathname: '/gym/[id]', params: { id: exercise.id } })}
               style={[styles.row, { borderBottomColor: t['divider-flat'] }]}>
-              <Text style={[styles.index, { color: t['dim-flat'], fontFamily: fonts.mono }]}>{index + 1}</Text>
-              <Text numberOfLines={2} style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{exercise.name}</Text>
-              <Text style={[styles.sets, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{`${exercise.sets} × ${exercise.reps}`}</Text>
+              <AppText style={[styles.index, { color: t['dim-flat'], fontFamily: fonts.mono }]}>{index + 1}</AppText>
+              <AppText numberOfLines={2} style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{exercise.name}</AppText>
+              <AppText style={[styles.sets, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{`${exercise.sets} × ${exercise.reps}`}</AppText>
             </Pressable>
           ))
         )}
@@ -132,7 +138,7 @@ export default function GymScreen() {
             label="ADD EXERCISE"
             disabled={locked || routine.archived}
             icon={<PlusIcon size={18} color={t['accent-text']} />}
-            onPress={() => router.push({ pathname: '/gym-exercise-editor', params: { routineId: routine.id } })}
+            onPress={() => open({ pathname: '/gym-exercise-editor', params: { routineId: routine.id } })}
           />
         </View>
       ) : null}
@@ -144,7 +150,7 @@ export default function GymScreen() {
         showArchived={gym.showArchived}
         onToggleArchived={includeArchived}
         onSelect={pick}
-        onNew={() => router.push('/gym-routine-editor')}
+        onNew={() => open('/gym-routine-editor')}
         onClose={() => setPicker(false)}
       />
       <ActionSheet
@@ -154,7 +160,7 @@ export default function GymScreen() {
         onClose={() => setMenu(false)}
         onSelect={key => {
           if (!routine) return;
-          if (key === 'edit') router.push({ pathname: '/gym-routine-editor', params: { id: routine.id } });
+          if (key === 'edit') open({ pathname: '/gym-routine-editor', params: { id: routine.id } });
           else if (key === 'history') router.push('/gym/history');
           else if (key === 'archive') void gym.archiveRoutine();
           else if (key === 'delete') setConfirmDelete(true);

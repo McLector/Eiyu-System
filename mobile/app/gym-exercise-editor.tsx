@@ -1,16 +1,19 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import {
   deleteGymMedia,
   formatError,
   GYM_COPY,
   newRequestId,
   normalizeGymExercise,
+  NO_TARGETS,
   parseGymRir,
   saveGymExercise,
   UncertainSaveError,
   type GymMediaMime,
+  type TrackerRevision,
 } from '@eiyu/shared';
 
 import { UploadIcon } from '@/components/eiyu/icons';
@@ -22,6 +25,7 @@ import { Field } from '@/components/ui/field';
 import { StateBlock } from '@/components/ui/state-block';
 import { fonts } from '@/constants/eiyu-theme';
 import { useGym } from '@/contexts/gym-store';
+import { isAccessChange, safeTrackerErrorKind, trackerErrorMessage } from '@/contexts/tracker-access';
 import { useTokens } from '@/contexts/theme-store';
 import { pickGymMedia, uploadPickedGymMedia, type PickedGymMedia } from '@/lib/gym-media-upload';
 import { hapticSuccess } from '@/lib/haptics';
@@ -52,6 +56,8 @@ export default function GymExerciseEditorScreen() {
   const [creationId] = useState(() => exercise?.id ?? newRequestId());
   /** The file already uploaded for this save, kept so a retry does not upload it again. */
   const uploaded = useRef<{ path: string; mime: GymMediaMime } | null>(null);
+  /** The revision the first attempt captured; an unconfirmed attempt is retried with it, and the upload path carries it. */
+  const attempt = useRef<TrackerRevision | null>(null);
   const busy = saving || uncertain;
   const dirty = JSON.stringify(form) !== JSON.stringify(initial) || picked !== null || removeMedia;
   const field = (key: keyof typeof initial, value: string) => setForm(prev => ({ ...prev, [key]: value }));
@@ -71,6 +77,14 @@ export default function GymExerciseEditorScreen() {
 
   const save = async () => {
     if (saving) return;
+    // Taken before anything is uploaded, sent or awaited. Without Gym permission nothing leaves the screen.
+    let expected = attempt.current;
+    if (!expected) {
+      const captured = gym.fitnessRevision();
+      if ('denied' in captured) { setError(captured.denied); return; }
+      expected = captured.revision;
+      attempt.current = expected;
+    }
     setSaving(true);
     setError(null);
     let held = false;
@@ -81,14 +95,14 @@ export default function GymExerciseEditorScreen() {
       let path = removeMedia ? null : exercise?.media_path ?? null;
       let mime = removeMedia ? null : exercise?.media_mime ?? null;
       if (picked) {
-        const media = uploaded.current ?? await uploadPickedGymMedia(gym.userId!, routineId!, picked);
+        const media = uploaded.current ?? await uploadPickedGymMedia(gym.userId!, routineId!, picked, expected);
         uploaded.current = media;
         held = true;
         path = media.path;
         mime = media.mime;
       }
       const nextPosition = Math.max(-1, ...gym.exercises.map(e => e.position)) + 1;
-      await saveGymExercise({ ...normalized, id: creationId, user_id: gym.userId!, routine_id: routineId!, position: exercise?.position ?? nextPosition, media_path: path, media_mime: mime });
+      await saveGymExercise({ ...normalized, id: creationId, user_id: gym.userId!, routine_id: routineId!, position: exercise?.position ?? nextPosition, media_path: path, media_mime: mime }, expected, NO_TARGETS);
       landed = true;
       let warning: string | undefined;
       if (exercise?.media_path && exercise.media_path !== path) {
@@ -101,7 +115,16 @@ export default function GymExerciseEditorScreen() {
       await (warning ? gym.refreshAfterSave('Exercise', undefined, warning) : gym.refreshAfterSave('Exercise'));
     } catch (err) {
       setUncertain(err instanceof UncertainSaveError);
-      setError(held && !landed ? `${formatError(err)} ${GYM_COPY.uploadHeld}` : formatError(err));
+      const accessChanged = isAccessChange(safeTrackerErrorKind(err));
+      if (!(err instanceof UncertainSaveError)) attempt.current = null;
+      if (accessChanged) {
+        // The held file's path names the old revision, so the next save uploads again under the new one. The held
+        // file is not claimed to be erased: it stays with the attachment cleanup.
+        uploaded.current = null;
+        void gym.refreshTracker();
+      }
+      const reason = trackerErrorMessage(err) ?? formatError(err);
+      setError(held && !landed ? `${reason} ${GYM_COPY.uploadHeld}` : reason);
     } finally {
       setSaving(false);
     }
@@ -131,10 +154,10 @@ export default function GymExerciseEditorScreen() {
       error={error}
       footer={<Button testID="gym-exercise-save" variant="primary" label={label} accessibilityLabel={saving ? 'Saving' : label} disabled={!hasName} busy={saving} onPress={() => void save()} />}>
       <View style={styles.media}>
-        <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>DEMONSTRATION (OPTIONAL)</Text>
+        <AppText style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>DEMONSTRATION (OPTIONAL)</AppText>
         {picked ? (
           <>
-            <Text style={[styles.fileName, { color: t.text, fontFamily: fonts.mono }]}>{picked.name}</Text>
+            <AppText style={[styles.fileName, { color: t.text, fontFamily: fonts.mono }]}>{picked.name}</AppText>
             <MediaView url={picked.uri} mime={picked.mime} label="Selected demonstration" />
             <Button variant="quiet" label="Remove selected file" disabled={busy} onPress={() => { setPicked(null); uploaded.current = null; }} />
           </>
@@ -147,8 +170,8 @@ export default function GymExerciseEditorScreen() {
           onPress={() => void choose()}
           style={[styles.drop, { borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }, busy && styles.dim]}>
           <UploadIcon size={24} color={t['accent-text']} />
-          <Text style={[styles.dropTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{picked ? 'Choose another file' : 'Add a demo video or GIF'}</Text>
-          <Text style={[styles.dropHint, { color: t['muted-flat'], fontFamily: fonts.body }]}>Optional · GIF or MP4, up to 20 MiB. You can replay it from the exercise card any time.</Text>
+          <AppText style={[styles.dropTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{picked ? 'Choose another file' : 'Add a demo video or GIF'}</AppText>
+          <AppText style={[styles.dropHint, { color: t['muted-flat'], fontFamily: fonts.body }]}>Optional · GIF or MP4, up to 20 MiB. You can replay it from the exercise card any time.</AppText>
         </Pressable>
         {exercise?.media_path ? (
           <View style={styles.row}>

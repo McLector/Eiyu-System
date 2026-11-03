@@ -1,9 +1,10 @@
 import { screen, userEvent, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
-import type { GymExercise, GymRoutine } from '@eiyu/shared';
+import { TRACKER_PURPOSE_NOTICES, type GymExercise, type GymRoutine } from '@eiyu/shared';
 
 import GymScreen from '../../app/(tabs)/gym/index';
 import { renderWithTheme } from '../ui/test-theme';
+import { trackerAccess } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -32,6 +33,7 @@ function setup(over: Record<string, unknown> = {}) {
     routines: [r], routine: r, selectRoutine: jest.fn(), showArchived: false, setShowArchived: jest.fn(),
     exercises: [exercise('e1', 0), exercise('e2', 1)], unit: 'kg', dirty: false, resetDrafts: jest.fn(),
     pending: false, error: null, notice: null, uncertain: false, cleanupPending: false, clearError: jest.fn(),
+    requireFitness: jest.fn(() => true), fitnessPrompt: false, setFitnessPrompt: jest.fn(), tracker: null, userId: 'u', acceptTracker: jest.fn(), refreshTracker: jest.fn(),
     retryUncertain: jest.fn(), retryCleanup: jest.fn(), archiveRoutine: jest.fn().mockResolvedValue(undefined), deleteRoutine: jest.fn().mockResolvedValue(undefined),
     ...over,
   };
@@ -275,5 +277,71 @@ describe('Gym list', () => {
       await renderWithTheme(<GymScreen />);
       expect(screen.getByText('Routine saved.')).toBeOnTheScreen();
     });
+  });
+});
+
+describe('Gym list: fitness permission', () => {
+  it.each([
+    ['NEW ROUTINE from the empty state', { routine: undefined, routines: [], exercises: [] }, (user: ReturnType<typeof userEvent.setup>) => press(user, 'NEW ROUTINE')],
+    ['ADD EXERCISE', {}, (user: ReturnType<typeof userEvent.setup>) => press(user, 'ADD EXERCISE')],
+  ])('does not open an editor for %s without permission', async (_label, over, act) => {
+    setup({ ...over, requireFitness: jest.fn(() => false) });
+    await renderWithTheme(<GymScreen />);
+    await act(userEvent.setup());
+    expect(mockGym.requireFitness).toHaveBeenCalled();
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+
+  it('does not open the routine editor from the menu without permission, but history still opens', async () => {
+    setup({ requireFitness: jest.fn(() => false) });
+    const user = userEvent.setup();
+    await renderWithTheme(<GymScreen />);
+    await press(user, 'Routine actions');
+    await user.press(screen.getByRole('menuitem', { name: 'Edit routine' }));
+    expect(mockRouter.push).not.toHaveBeenCalled();
+    await press(user, 'Routine actions');
+    await user.press(screen.getByRole('menuitem', { name: 'Workout history' }));
+    expect(mockRouter.push).toHaveBeenCalledWith('/gym/history');
+  });
+
+  it('keeps the routine and exercises readable while the notice is open', async () => {
+    setup({ fitnessPrompt: true, tracker: trackerAccess({ fitnessConsent: false, canWriteFitness: false }, 'u') });
+    await renderWithTheme(<GymScreen />);
+    expect(screen.getByTestId('gym-fitness-prompt')).toBeOnTheScreen();
+    expect(screen.getAllByTestId('gym-exercise-row')).toHaveLength(2);
+  });
+
+  it('closes the notice on Not now and returns to the history without any write', async () => {
+    setup({ fitnessPrompt: true, tracker: trackerAccess({ fitnessConsent: false, canWriteFitness: false }, 'u') });
+    await renderWithTheme(<GymScreen />);
+    await press(userEvent.setup(), 'Not now');
+    expect(mockGym.setFitnessPrompt).toHaveBeenCalledWith(false);
+    expect(mockRouter.push).not.toHaveBeenCalled();
+  });
+
+  it('says access is unavailable when the capability is not loaded', async () => {
+    setup({ fitnessPrompt: true, tracker: null });
+    await renderWithTheme(<GymScreen />);
+    expect(screen.getByText(/Tracker access is unavailable/)).toBeOnTheScreen();
+  });
+});
+
+describe('Gym notice wording by age band', () => {
+  const FITNESS = TRACKER_PURPOSE_NOTICES['fitness-tracking'];
+  const open = async (audience?: 'teen' | 'adult') => {
+    setup({ fitnessPrompt: true, audience, tracker: trackerAccess({ fitnessConsent: false, canWriteFitness: false }, 'u') });
+    await renderWithTheme(<GymScreen />);
+  };
+
+  it('shows the 12-17 explanation to a teen', async () => {
+    await open('teen');
+    expect(screen.getByText(FITNESS.childBody)).toBeOnTheScreen();
+    expect(screen.queryByText(FITNESS.body)).toBeNull();
+  });
+
+  it.each([['adult', 'adult' as const], ['unknown', undefined]])('shows the adult notice for %s', async (_name, audience) => {
+    await open(audience);
+    expect(screen.getByText(FITNESS.body)).toBeOnTheScreen();
+    expect(screen.queryByText(FITNESS.childBody)).toBeNull();
   });
 });
