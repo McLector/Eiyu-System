@@ -10,18 +10,19 @@ const store = vi.hoisted(() => ({ useEiyu: vi.fn(), saveHabit: vi.fn(), archiveQ
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebQuestEditor from '../WebQuestEditor';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 
 const weekdayQuest: Quest = {
   id: 'weekday', name: 'Legacy habit', stat: 'STR', difficulty: 'Medium', easyVersion: 'One minute',
   description: null, questType: 'habit', archived: false, time: '08:00', days: [1, 3, 5], streak: 0,
-  frozen: false, completed: false, targetCount: null, progressCount: 0,
+  frozen: false, completed: false, targetCount: null, progressCount: 0, inputKind: 'custom', canWrite: true,
 };
 
 function setup(quest?: Quest) {
   store.saveHabit.mockReset().mockResolvedValue(undefined);
-  store.useEiyu.mockReturnValue({
+  store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
     user: { ...initialUser, timeZone: 'UTC', quests: quest ? [quest] : [], longQuests: [] },
     saveHabit: store.saveHabit, archiveQuest: store.archiveQuest, restoreQuest: store.restoreQuest, deleteQuest: store.deleteQuest,
   });
@@ -63,7 +64,7 @@ describe('WebQuestEditor name validation and default days', () => {
     fireEvent.change(name, { target: { value: '😀'.repeat(80) } });
     await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ name: '😀'.repeat(80) }), undefined);
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: '😀'.repeat(80) }) }), undefined);
   });
 
   it('keeps an unchanged grandfathered name while saving another field', async () => {
@@ -74,7 +75,7 @@ describe('WebQuestEditor name validation and default days', () => {
     await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'New note');
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ name: legacy.name, description: 'New note' }), 'weekday');
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: legacy.name, description: 'New note' }) }), 'weekday');
   });
 
   it('defaults new habits to every day and preserves an edited schedule', async () => {
@@ -98,7 +99,7 @@ it('creates only the requested one-time type and saved types take precedence', a
   expect(screen.queryByRole('button', { name: '1-TIME' })).not.toBeInTheDocument();
   await user.type(screen.getByRole('textbox', { name: 'Quest name' }), 'Appointment');
   await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
-  await waitFor(() => expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', targetCount: null }), undefined));
+  await waitFor(() => expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time', targetCount: null }) }), undefined));
   cleanup();
   setup(weekdayQuest);
   render(<WebQuestEditor initialType="one_time" editingQuest={weekdayQuest} onClose={vi.fn()} />);

@@ -10,12 +10,13 @@ const store = vi.hoisted(() => ({ saveLongQuest: vi.fn(), useEiyu: vi.fn() }));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebLongQuests from '../WebLongQuests';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 
 function setup(longQuests: LongQuest[] = []) {
   store.saveLongQuest.mockReset().mockResolvedValue(undefined);
-  store.useEiyu.mockReturnValue({
+  store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
     user: { ...initialUser, longQuests }, longQuestsLoading: false, longQuestsError: null,
     retryLongQuests: vi.fn(), toggleStage: vi.fn(), removeLongQuest: vi.fn(), saveLongQuest: store.saveLongQuest,
   });
@@ -39,7 +40,7 @@ describe('web Long Quest name validation', () => {
     await user.type(screen.getByPlaceholderText('Stage 2...'), 'Build');
     await user.click(screen.getByRole('button', { name: 'CREATE' }));
     await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledOnce());
-    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ name: '😀'.repeat(80) }));
+    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: '😀'.repeat(80) }) }));
   });
 
   it('does not flag the name of a fresh New Long Quest before it is typed in', async () => {
@@ -57,7 +58,7 @@ describe('web Long Quest name validation', () => {
   it('allows an unchanged over-limit legacy name during an unrelated edit', async () => {
     const legacyName = '🧭'.repeat(81);
     setup([{
-      id: 'legacy', name: legacyName, stat: 'INT', description: null, completedAt: null,
+      id: 'legacy', name: legacyName, stat: 'INT', description: null, completedAt: null, inputKind: 'custom', canWrite: true,
       stages: [{ id: 's1', name: 'Plan', done: false, description: null }, { id: 's2', name: 'Build', done: false, description: null }],
     }]);
     const user = userEvent.setup();
@@ -67,6 +68,6 @@ describe('web Long Quest name validation', () => {
     await user.click(screen.getByRole('button', { name: 'DEX' }));
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledOnce());
-    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ name: legacyName, stat: 'DEX' }), 'legacy');
+    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: legacyName, stat: 'DEX' }) }), 'legacy');
   });
 });

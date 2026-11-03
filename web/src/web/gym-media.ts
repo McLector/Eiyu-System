@@ -1,4 +1,4 @@
-import { checkGymMediaSignature, checkGymMediaSize, gymMediaMime, uploadGymMediaBody, type GymMediaMime } from '@eiyu/shared';
+import { checkGymMediaSignature, checkGymMediaSize, gymMediaMime, uploadGymMediaBody, type GymMediaMime, type TrackerRevision } from '@eiyu/shared';
 
 export { GYM_BUCKET, deleteGymMedia, signGymMedia } from '@eiyu/shared';
 
@@ -21,7 +21,8 @@ export async function validateGymMedia(file: File): Promise<GymMediaMime> {
   } finally { URL.revokeObjectURL(url); }
   return mime;
 }
-export async function uploadGymMedia(userId: string, routineId: string, file: File) {
+/** `expected` is the revision captured before this call; the object path carries it, and the call never refreshes it. */
+export async function uploadGymMedia(userId: string, routineId: string, file: File, expected: TrackerRevision) {
   const mime = await validateGymMedia(file);
-  return uploadGymMediaBody(userId, routineId, file, mime);
+  return uploadGymMediaBody(userId, routineId, file, mime, expected);
 }

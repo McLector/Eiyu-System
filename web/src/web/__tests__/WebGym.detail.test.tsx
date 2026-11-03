@@ -7,10 +7,11 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { UncertainSaveError, type GymData, type GymRecentWeight } from '@eiyu/shared';
 
+const REVISION = { userId: 'owner', ageVersion: 1, consentVersion: 1, authorityVersion: 0 };
 type Logged = { exercise_id: string; weight: number; unit: 'kg' | 'lb' };
 const mocks = vi.hoisted(() => ({ data: {} as GymData, logs: [] as Logged[], fetchGym: vi.fn(), log: vi.fn(), cleanup: vi.fn(), sign: vi.fn() }));
 vi.mock('@eiyu/shared', async importOriginal => ({
-  ...await importOriginal<object>(), fetchGym: mocks.fetchGym, logGymWeight: mocks.log, listGymMediaCleanup: mocks.cleanup,
+  ...await importOriginal<object>(), ...(await import('../../test/tracker-store-mocks')).trackerSharedMocks('owner'), fetchGym: mocks.fetchGym, logGymWeight: mocks.log, listGymMediaCleanup: mocks.cleanup,
   // The database answer: the two newest logged weights per exercise, newest first.
   fetchRecentGymWeights: async () => {
     const out: GymRecentWeight[] = [];
@@ -175,7 +176,7 @@ it('logs with the arrow button and returns focus to the weight field', async () 
   const field = await weightField();
   await user.type(field, '60');
   await user.click(logButton());
-  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 60));
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 60, REVISION, []));
   await waitFor(() => expect(field).toHaveFocus());
 });
 
@@ -186,7 +187,7 @@ it('logs a zero weight, which is a real weight', async () => {
   await waitFor(() => expect(field).toHaveValue(20));
   await retype(user, field, '0');
   await user.click(logButton());
-  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 0));
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 0, REVISION, []));
 });
 
 it('keeps the arrow disabled until the weight is a new value', async () => {
@@ -238,10 +239,10 @@ it('accepts the largest allowed weight and up to three decimals', async () => {
   const field = await weightField();
   await retype(user, field, '1000000');
   await user.click(logButton());
-  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 1000000));
+  await waitFor(() => expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 1000000, REVISION, []));
   await retype(user, field, '2.125');
   await user.click(logButton());
-  await waitFor(() => expect(mocks.log).toHaveBeenLastCalledWith(expect.any(String), 'bench', 2.125));
+  await waitFor(() => expect(mocks.log).toHaveBeenLastCalledWith(expect.any(String), 'bench', 2.125, REVISION, []));
 });
 
 it('keeps a failed log editable and says why', async () => {
@@ -269,7 +270,7 @@ it('retries an uncertain log with the same log id so it cannot be recorded twice
   await user.click(confirm);
   await waitFor(() => expect(mocks.log).toHaveBeenCalledTimes(2));
   expect(mocks.log.mock.calls[1][0]).toBe(mocks.log.mock.calls[0][0]);
-  expect(mocks.log.mock.calls[1].slice(1)).toEqual(['bench', 60]);
+  expect(mocks.log.mock.calls[1].slice(1)).toEqual(['bench', 60, REVISION, []]);
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Confirm save result' })).toBeNull());
 });
 

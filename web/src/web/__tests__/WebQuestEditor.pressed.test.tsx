@@ -8,15 +8,16 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const store = vi.hoisted(() => ({ useEiyu: vi.fn() }));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 import WebQuestEditor from '../WebQuestEditor';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 const habit: Quest = {
   id: 'habit-1', name: 'Morning walk', stat: 'STR', difficulty: 'Medium', easyVersion: 'Walk for one minute', description: null,
   questType: 'habit', archived: false, time: '08:00', days: [0, 1, 2, 3, 4, 5, 6], streak: 2, frozen: false, completed: false,
-  targetCount: null, progressCount: 0,
+  targetCount: null, progressCount: 0, inputKind: 'custom', canWrite: true,
 };
 
 beforeEach(() => {
-  store.useEiyu.mockReturnValue({
+  store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
     user: { ...initialUser, timeZone: 'UTC', quests: [habit], longQuests: [] },
     saveHabit: vi.fn(), archiveQuest: vi.fn(), deleteQuest: vi.fn(), restoreQuest: vi.fn(),
   });

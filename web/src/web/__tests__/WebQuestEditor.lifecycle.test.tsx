@@ -17,6 +17,7 @@ const store = vi.hoisted(() => ({
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebQuestEditor from '../WebQuestEditor';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 const habit: Quest = {
   id: 'habit-1',
@@ -33,11 +34,11 @@ const habit: Quest = {
   frozen: false,
   completed: false,
   targetCount: null,
-  progressCount: 0,
+  progressCount: 0, inputKind: 'custom', canWrite: true,
 };
 
 function setup(quest: Quest = habit) {
-  store.useEiyu.mockReturnValue({
+  store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
     user: { ...initialUser, timeZone: 'UTC', quests: [quest], longQuests: [] },
     saveHabit: store.saveHabit,
     archiveQuest: store.archiveQuest,

@@ -8,12 +8,13 @@ const store = vi.hoisted(() => ({ useEiyu: vi.fn() }));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import LongQuestEditorDialog from '../LongQuestEditorDialog';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 
 describe('Long Quest editor density', () => {
   it('uses two-row stage description boxes so a few stages fit without scrolling', () => {
-    store.useEiyu.mockReturnValue({ saveLongQuest: vi.fn() });
+    store.useEiyu.mockReturnValue({ tracker: trackerAccess(), saveLongQuest: vi.fn() });
     render(<LongQuestEditorDialog onClose={vi.fn()} />);
     for (const box of screen.getAllByLabelText(/Stage \d description/)) expect(box).toHaveAttribute('rows', '2');
   });

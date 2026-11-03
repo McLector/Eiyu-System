@@ -10,19 +10,20 @@ const store = vi.hoisted(() => ({ useEiyu: vi.fn(), saveHabit: vi.fn(), archiveQ
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebQuestEditor from '../WebQuestEditor';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 
 const backlogQuest: Quest = {
   id: 'b1', name: 'Try Obsidian', stat: 'INT', difficulty: 'Easy', easyVersion: null, description: 'later', questType: 'backlog',
   genre: 'tool', timeSet: false, archived: false, time: '08:00', days: [], streak: 0, frozen: false, completed: false,
-  targetCount: null, progressCount: 0,
+  targetCount: null, progressCount: 0, inputKind: 'custom', canWrite: true,
 };
 const oneTimeQuest: Quest = { ...backlogQuest, id: 'o1', name: 'Read RFC', questType: 'one_time', genre: 'article', timeSet: true, time: '09:30' };
 
 function setup(quest?: Quest) {
   store.saveHabit.mockReset().mockResolvedValue(undefined);
-  store.useEiyu.mockReturnValue({
+  store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
     user: { ...initialUser, timeZone: 'UTC', quests: quest ? [quest] : [], longQuests: [] },
     saveHabit: store.saveHabit, archiveQuest: store.archiveQuest, restoreQuest: store.restoreQuest, deleteQuest: store.deleteQuest,
   });
@@ -39,8 +40,7 @@ describe('quest editor types', () => {
     await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), ' more');
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ questType: 'backlog', days: [], scheduledDate: null, easyVersion: null, genre: 'tool', timeSet: false, description: 'later more' }),
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'backlog', days: [], scheduledDate: null, easyVersion: null, genre: 'tool', timeSet: false, description: 'later more' }) }),
       'b1',
     );
   });
@@ -53,7 +53,7 @@ describe('quest editor types', () => {
     await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', time: '09:30', timeSet: true, genre: 'article' }), 'o1');
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time', time: '09:30', timeSet: true, genre: 'article' }) }), 'o1');
   });
 
   it('keeps the stored date of an edited One-time quest, and lets it change while the quest is unfinished', async () => {
@@ -68,7 +68,7 @@ describe('quest editor types', () => {
     await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time', scheduledDate: '2026-10-10' }), 'o1');
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time', scheduledDate: '2026-10-10' }) }), 'o1');
   });
 
   it('saves a new date for an unfinished quest', async () => {
@@ -79,7 +79,7 @@ describe('quest editor types', () => {
     fireEvent.change(screen.getByLabelText('DATE'), { target: { value: '2099-02-03' } });
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2099-02-03' }), 'o1');
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ scheduledDate: '2099-02-03' }) }), 'o1');
   });
 
   it('locks the date of a finished quest, explains why, and still saves its other edits', async () => {
@@ -94,7 +94,7 @@ describe('quest editor types', () => {
     await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2026-10-10' }), 'o1');
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ scheduledDate: '2026-10-10' }) }), 'o1');
   });
 
   it('opens an undated quest with No date checked and saves it undated, never inventing today', async () => {
@@ -107,8 +107,7 @@ describe('quest editor types', () => {
     await user.type(screen.getByPlaceholderText('Add a note, reminder, or motivation...'), 'x');
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }), 'o1');
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }) }), 'o1');
   });
 
   it('gives an undated quest a date once No date is unchecked', async () => {
@@ -121,7 +120,7 @@ describe('quest editor types', () => {
     fireEvent.change(screen.getByLabelText('DATE'), { target: { value: '2099-05-06' } });
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2099-05-06' }), 'o1');
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ scheduledDate: '2099-05-06' }) }), 'o1');
   });
 
   it('creates an undated One-time quest: no date, no set time, and the time is locked', async () => {
@@ -137,8 +136,7 @@ describe('quest editor types', () => {
     expect(screen.getByLabelText('TIME')).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }), undefined);
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }) }), undefined);
   });
 
   it('lets the time be chosen again when a date comes back', async () => {
@@ -199,8 +197,7 @@ describe('quest editor types', () => {
     await user.click(within(screen.getByRole('group', { name: 'Genre' })).getByRole('button', { name: 'Docs / article' }));
     await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ questType: 'one_time', genre: 'article', timeSet: false, easyVersion: null, days: [] }),
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time', genre: 'article', timeSet: false, easyVersion: null, days: [] }) }),
       undefined,
     );
   });
@@ -216,7 +213,7 @@ describe('quest editor types', () => {
     fireEvent.change(screen.getByLabelText('TIME'), { target: { value: '10:15' } });
     await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ time: '10:15', timeSet: true, genre: null }), undefined);
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ time: '10:15', timeSet: true, genre: null }) }), undefined);
   });
 
   it('never saves a genre or an untimed flag for a habit, and still requires a penalty or a target', async () => {
@@ -227,8 +224,7 @@ describe('quest editor types', () => {
     await user.type(screen.getByPlaceholderText('e.g. Walk for 10 min instead'), 'Walk');
     await user.click(screen.getByRole('button', { name: 'CREATE QUEST' }));
     await waitFor(() => expect(store.saveHabit).toHaveBeenCalledOnce());
-    expect(store.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ questType: 'habit', easyVersion: 'Walk', genre: null, timeSet: true, scheduledDate: null }),
+    expect(store.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'habit', easyVersion: 'Walk', genre: null, timeSet: true, scheduledDate: null }) }),
       undefined,
     );
   });

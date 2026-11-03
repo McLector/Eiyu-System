@@ -3,14 +3,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { useState } from 'react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const store = vi.hoisted(() => ({ saveProfile: vi.fn(), signOut: vi.fn(), name: 'Yuki Tanaka' }));
+const store = vi.hoisted(() => ({ saveProfile: vi.fn(), signOut: vi.fn(), name: 'Yuki Tanaka', ownerId: 'owner-a' }));
+const age = vi.hoisted(() => ({ fetch: vi.fn(), save: vi.fn() }));
+const processing = vi.hoisted(() => ({fetch: vi.fn(), save: vi.fn()}));
+vi.mock('@eiyu/shared', async importOriginal => ({ ...await importOriginal<object>(), fetchAccountAge: age.fetch, setAccountBirthday: age.save,
+  fetchProcessingAccess: processing.fetch, setProcessingConsent: processing.save,
+  fetchTrackerAccess: async () => (await import('../../test/tracker-fixtures')).trackerAccess({}, store.ownerId), subscribeTrackerAccessChanges: () => () => undefined}));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: () => ({
   user: { name: store.name, userClass: 'Ranger', rank: 'C' }, saveProfile: store.saveProfile,
 }) }));
-vi.mock('../../store/session-context', () => ({ useSession: () => ({ signOut: store.signOut }) }));
+vi.mock('../../store/session-context', () => ({ useSession: () => ({ signOut: store.signOut, user: { id: store.ownerId } }) }));
 vi.mock('../WebSettings', () => ({ default: ({ onShowHistory }: { onShowHistory: () => void }) =>
   <button onClick={onShowHistory}>VIEW HISTORY</button> }));
 import ProtectedLayout from '../../ProtectedLayout';
@@ -33,12 +39,74 @@ function setup(initial = '/board', draft = false) {
     { path: '/history', element: <p>HISTORY CONTENT</p> },
     { path: '/settings', element: <SettingsPage /> },
   ] }], { initialEntries: [initial] });
-  render(<RouterProvider router={router} />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
   return router;
 }
 
-beforeEach(() => { store.saveProfile.mockReset().mockResolvedValue(undefined); store.signOut.mockReset().mockResolvedValue({ error: null }); store.name = 'Yuki Tanaka'; });
+beforeEach(() => { store.saveProfile.mockReset().mockResolvedValue(undefined); store.signOut.mockReset().mockResolvedValue({ error: null }); store.name = 'Yuki Tanaka';
+  age.fetch.mockReset().mockResolvedValue({ userId: 'owner-a', birthDate: null, pendingBirthDate: null, correctionPending: false });
+  age.save.mockReset().mockResolvedValue({ birthDate: null, pendingBirthDate: '2000-01-01', correctionPending: true });
+  store.ownerId = 'owner-a';
+  processing.fetch.mockReset().mockImplementation(async () => ({contractVersion: 1, userId: store.ownerId, ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
+    ageEligible: true, ageConsent: true, aiConsent: false, canReadDebrief: true, canGenerateDebrief: false, authorityState: 'not-required'}));
+  processing.save.mockReset();
+});
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+it('offers explicit export in Profile while preserving an unsaved display name',async()=>{
+ const user=userEvent.setup();setup('/board?account=profile');
+ await user.type(screen.getByLabelText('Display name'),' draft');
+ expect(screen.getByRole('button',{name:'Prepare data download'})).toBeEnabled();
+ expect(screen.getByLabelText('Display name')).toHaveValue('Yuki Tanaka draft');
+ expect(store.saveProfile).not.toHaveBeenCalled();
+});
+it('requires separate birthday permission before writing a legacy correction and still accepts an under12 declaration', async () => {
+  const access = {...await processing.fetch(), ageConsent: false, canReadDebrief: false};
+  processing.fetch.mockResolvedValue(access); processing.save.mockResolvedValue({...access, ageConsent: true, consentVersion: 2});
+  const user = userEvent.setup(); setup('/board?account=profile');
+  await waitFor(() => expect(screen.getByLabelText('Birthday')).toBeEnabled());
+  await user.type(screen.getByLabelText('Birthday'), '2020-01-01');
+  await user.click(screen.getByRole('button', {name: 'SAVE'})); expect(age.save).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
+  await user.click(screen.getByRole('button', {name: 'SAVE'}));
+  expect(age.save).toHaveBeenCalledWith('2020-01-01', 'owner-a');
+});
+it('lets legacy users supply a birthday and explains a pending correction', async () => {
+  const user = userEvent.setup(); setup();
+  await user.click(screen.getByRole('button', { name: /Yuki Tanaka.*rank C/i }));
+  await user.click(screen.getByRole('menuitem', { name: 'Edit details' }));
+  await waitFor(() => expect(screen.getByLabelText('Birthday')).toBeEnabled());
+  await user.type(screen.getByLabelText('Birthday'), '2000-01-01');
+  await user.click(screen.getByRole('button', { name: 'SAVE' }));
+  expect(age.save).toHaveBeenCalledWith('2000-01-01', 'owner-a');
+  expect(await screen.findByText(/Save these details to confirm the displayed birthday/)).toBeInTheDocument();
+});
+it('clears the previous owner birthday when authentication switches accounts', async () => {
+  age.fetch.mockResolvedValueOnce({ birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false });
+  const router = setup('/board?account=profile');
+  await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveValue('2000-01-01'));
+  store.ownerId = 'owner-b';
+  await router.navigate('/board?account=profile&refresh=1');
+  await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveValue(''));
+});
+
+it('explicitly accepts the displayed pending birthday without requiring a text edit', async () => {
+  age.fetch.mockResolvedValueOnce({userId:'owner-a',birthDate:'2014-01-01',pendingBirthDate:'2000-01-01',correctionPending:true});
+  age.save.mockResolvedValueOnce({birthDate:'2000-01-01',pendingBirthDate:null,correctionPending:false});
+  const user=userEvent.setup(); setup('/board?account=profile');
+  await waitFor(()=>expect(screen.getByLabelText('Birthday')).toHaveValue('2000-01-01'));
+  expect(age.save).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button',{name:'SAVE'}));
+  expect(age.save).toHaveBeenCalledWith('2000-01-01','owner-a');
+});
+
+it('does not resubmit an unchanged birthday when no correction is pending', async () => {
+  age.fetch.mockResolvedValueOnce({userId:'owner-a',birthDate:'2000-01-01',pendingBirthDate:null,correctionPending:false});
+  const user=userEvent.setup(); setup('/board?account=profile');
+  await waitFor(()=>expect(screen.getByLabelText('Birthday')).toHaveValue('2000-01-01'));
+  await user.click(screen.getByRole('button',{name:'SAVE'}));
+  expect(age.save).not.toHaveBeenCalled();
+});
 
 it('isolates the profile dialog, traps focus, and returns to its account trigger', async () => {
   const user = userEvent.setup();

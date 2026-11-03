@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
+import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
+import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
+import {DebriefConsent} from './DebriefConsent';
+import OwnerExport from './OwnerExport';
+import TrackerPermissions from './TrackerPermissions';
+import { audienceOf } from '../store/tracker';
 
 import { BoardIcon, DumbbellIcon, GearIcon, ScrollIcon, SignOutIcon, StatusIcon } from '../Icons';
 import { useSession } from '../store/session-context';
@@ -32,15 +37,43 @@ const NAV = [
 
 function initials(name: string) { return profileInitials(name); }
 
-function ProfileDialog({ onClose }: { onClose: () => void }) {
+function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: string | undefined }) {
   const { user, saveProfile } = useEiyu();
   const [displayName, setDisplayName] = useState(user.name);
   const [userClass, setUserClass] = useState(user.userClass);
+  const [birthday, setBirthday] = useState('');
+  const [originalBirthday, setOriginalBirthday] = useState('');
+  const [correctionPending, setCorrectionPending] = useState(false);
+  const [ageLoaded, setAgeLoaded] = useState(false);
+  const [audience, setAudience] = useState<'teen' | 'adult' | undefined>();
+  const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
+  const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const saving = useRef(false);
-  const dirty = displayName !== user.name || userClass !== user.userClass;
+  const dirty = displayName !== user.name || userClass !== user.userClass || birthday !== originalBirthday;
   const requestClose = useEditorGuard(dirty, pending, true);
+
+  useEffect(() => {
+    let active = true;
+    fetchProcessingAccess().then(status => {
+      if (!active) return;
+      if (status.userId !== userId) throw new Error('Permission settings are unavailable for this account.');
+      setProcessing(status);
+    }).catch(() => {if (active) setProcessingError('Permission settings are unavailable. You can still edit your name and class.');});
+    fetchAccountAge().then(status => {
+      if (!active) return;
+      const value = status.pendingBirthDate ?? status.birthDate ?? '';
+      setBirthday(value); setOriginalBirthday(value); setAgeLoaded(true);
+      setBirthdayOwner(userId);
+      setCorrectionPending(status.correctionPending);
+      setAudience(audienceOf(status) ?? undefined);
+      if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
+    }).catch(() => { if (active) setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); });
+    return () => { active = false; };
+  }, [userId]);
 
   const save = async () => {
     if (saving.current) return;
@@ -49,9 +82,26 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
       const normalized = normalizeProfileEdit({ displayName, userClass }, {
         displayName: user.name, userClass: user.userClass,
       });
+      if (birthday !== originalBirthday || correctionPending) {
+        if (!userId || processing?.userId !== userId || !processing.ageConsent) throw new Error('Review the birthday permission before saving a birthday correction.');
+        const validation = validateBirthday(birthday);
+        if (validation) throw new Error(validation);
+      }
       saving.current = true;
       setPending(true);
       await saveProfile(normalized);
+      if (birthday !== originalBirthday || correctionPending) {
+        const status = await setAccountBirthday(birthday, birthdayOwner);
+        const value = status.pendingBirthDate ?? status.birthDate ?? birthday;
+        setOriginalBirthday(value); setBirthday(value);
+        setCorrectionPending(status.correctionPending);
+        if (status.correctionPending) {
+          setProcessing(null);
+          fetchProcessingAccess().then(next => {if (next.userId === userId) setProcessing(next);}).catch(() => setProcessingError('Refresh Profile to review permission settings.'));
+          setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
+          return;
+        }
+      }
       requestClose.committed(onClose);
     } catch (err) {
       setError(formatError(err));
@@ -73,6 +123,16 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
           <input aria-label="Class" value={userClass} disabled={pending} onChange={event => setUserClass(event.target.value)} />
         </label>
         {error && <p className="phase4-error" role="alert">{error}</p>}
+        <p>{CHILD_PRIVACY_NOTICE}</p>
+        {processing && userId && <DebriefConsent userId={userId} access={processing} purpose="age-screening" onChanged={setProcessing}/>}
+        <label>Birthday
+          <input aria-label="Birthday" placeholder="YYYY-MM-DD" value={birthday} disabled={!ageLoaded || pending} onChange={event => setBirthday(event.target.value)} />
+        </label>
+        {birthdayNote && <p role="status">{birthdayNote}</p>}
+        {processing && userId && <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/>}
+        {processingError && <p role="alert">{processingError}</p>}
+        {userId && <TrackerPermissions key={userId} userId={userId} audience={audience}/>}
+        {userId && <OwnerExport key={userId} userId={userId}/>}
         <div className="phase4-dialog-actions">
           <button type="button" className="btn-secondary" onClick={() => requestClose(onClose)} disabled={pending}>CANCEL</button>
           <button type="button" className="btn-primary" onClick={() => void save()} disabled={pending}>
@@ -86,7 +146,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
 
 export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, darkMode, onToggleDark, palette, onPaletteChange }: Props) {
   const { user } = useEiyu();
-  const { signOut } = useSession();
+  const { signOut, user: accountUser } = useSession();
   const guardNavigation = useNavigationGuard();
   const navigate = useNavigate();
   const accountButton = useRef<HTMLButtonElement>(null);
@@ -192,7 +252,7 @@ export default function AccountShell({ overlay, onOpenOverlay, onCloseOverlay, d
         </div>
       </header>
       {overlay === 'archived' && <ArchivedHabits onClose={closeOverlay} />}
-      {overlay === 'profile' && <ProfileDialog onClose={closeOverlay} />}
+      {overlay === 'profile' && <ProfileDialog key={accountUser?.id} userId={accountUser?.id} onClose={closeOverlay} />}
       {overlay === 'settings' && (
         <Dialog title="SETTINGS" onClose={closeOverlay}>
           <WebSettings

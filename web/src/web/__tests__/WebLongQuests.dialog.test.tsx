@@ -11,19 +11,20 @@ const store = vi.hoisted(() => ({ saveLongQuest: vi.fn(), removeLongQuest: vi.fn
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebLongQuests from '../WebLongQuests';
+import { trackerAccess } from '../../test/tracker-fixtures';
 import { NavigationGuard } from '../../components/NavigationGuard';
 
 afterEach(cleanup);
 
 const quest = (id: string, name: string): LongQuest => ({
-  id, name, stat: 'INT', description: null, completedAt: null,
+  id, name, stat: 'INT', description: null, completedAt: null, inputKind: 'custom', canWrite: true,
   stages: [{ id: `${id}-1`, name: 'Plan', done: false, description: null }, { id: `${id}-2`, name: 'Build', done: false, description: null }],
 });
 
 function setup(longQuests: LongQuest[] = []) {
   store.saveLongQuest.mockReset().mockResolvedValue(undefined);
   store.removeLongQuest.mockReset().mockResolvedValue(undefined);
-  store.useEiyu.mockReturnValue({
+  store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
     user: { ...initialUser, longQuests }, longQuestsLoading: false, longQuestsError: null,
     retryLongQuests: vi.fn(), toggleStage: vi.fn(), removeLongQuest: store.removeLongQuest, saveLongQuest: store.saveLongQuest,
     stageRewardNotice: null, rewardReceipt: null,
@@ -115,7 +116,7 @@ describe('Long Quest edit dialog', () => {
     expect(within(dialog).getByLabelText('Quest name')).toHaveValue('Ship it');
     await user.click(within(dialog).getByRole('button', { name: 'DEX' }));
     await user.click(within(dialog).getByRole('button', { name: 'SAVE CHANGES' }));
-    await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ stat: 'DEX' }), 'lq'));
+    await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ stat: 'DEX' }) }), 'lq'));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.getByRole('button', { name: 'EDIT' })).toHaveFocus();
   });

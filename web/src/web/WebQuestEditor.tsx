@@ -1,10 +1,13 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Dialog from '../components/Dialog';
 import { useEditorGuard } from '../components/NavigationGuard';
 import {
   accountDateKey, DEFAULT_HABIT_DAYS, QUEST_GENRES, Quest, QuestGenre, QuestType, Stat, Difficulty, STATS, HabitInput,
   formatError, normalizeNameBoundaries, validateQuestName,
+  type BasicHabitInput, type HabitEditorInput,
 } from '@eiyu/shared';
+import { TRACKER_MESSAGES } from '../store/tracker';
+import { TrackerConsent } from './TrackerConsent';
 import StatChip from '../components/StatChip';
 import { useEiyu } from '../store/eiyu-store';
 import { announceArchive, getNotificationOwner } from '../components/ArchiveNotice';
@@ -25,7 +28,17 @@ const TITLES: Record<QuestType, string> = { habit: 'NEW DAILY QUEST', one_time: 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function WebQuestEditor({ editingQuest, initialType = 'habit', onClose }: Props) {
-  const { user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
+  const { user, saveHabit, archiveQuest, restoreQuest, deleteQuest, tracker, audience, acceptTracker, refreshTracker, backlog = [] } = useEiyu();
+  // The live copy carries the current kind; the prop is only the quest as it was when the editor opened.
+  const live = editingQuest ? [...(user.quests ?? []), ...backlog].find(q => q.id === editingQuest.id) ?? editingQuest : null;
+  const kind = live?.inputKind;
+  const customOpen = !!tracker?.canWriteCustom;
+  // A quest is read-only when it is unclassified, or custom without custom permission, or access is not loaded.
+  const readOnly = !!editingQuest && (!tracker || !kind || (kind === 'custom' && !customOpen));
+  const paused = !!tracker && !tracker.canWriteBasic;
+  const [mode, setMode] = useState<'basic' | 'custom'>(() => (editingQuest ? (editingQuest.inputKind === 'basic' ? 'basic' : 'custom') : customOpen ? 'custom' : 'basic'));
+  const customFields = mode === 'custom' && (customOpen || readOnly);
+  const needsCustomNotice = mode === 'custom' && !customOpen && !(readOnly && !!editingQuest);
   const [name, setName] = useState(editingQuest?.name ?? '');
   const [note, setNote] = useState(editingQuest?.description ?? '');
   const [easyVer, setEasyVer] = useState(editingQuest?.easyVersion ?? '');
@@ -48,7 +61,8 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const [saveError, setSaveError] = useState<string | null>(null);
   const lifecycleInFlight = useRef(false);
   const deleteTrigger = useRef<HTMLButtonElement>(null);
-  const snapshot = () => JSON.stringify({ name, note, easyVer, time, scheduledDate, targetCount, days, stat, difficulty, type, genre, noTime, noDate });
+  const alertRef = useRef<HTMLParagraphElement>(null);
+  const snapshot = () => JSON.stringify({ mode, name, note, easyVer, time, scheduledDate, targetCount, days, stat, difficulty, type, genre, noTime, noDate });
   const initial = useRef(snapshot());
   const closeEditor = useEditorGuard(snapshot() !== initial.current, saving);
 
@@ -61,30 +75,48 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   const [nameTouched, setNameTouched] = useState(false);
   const nameProblem = editingQuest?.name === name ? null : validateQuestName(name);
   const nameError = nameTouched ? nameProblem : null;
-  const valid = !nameProblem && (type !== 'habit' || easyVer.trim().length > 0 || !!targetCount) && targetCountValid;
+  // Basic quests carry no text: the name and the penalty are not asked for, so they cannot block the save.
+  const valid = mode === 'basic'
+    ? targetCountValid && !paused
+    : !nameProblem && (type !== 'habit' || easyVer.trim().length > 0 || !!targetCount) && targetCountValid && customOpen && !paused;
+  useEffect(() => { if (saveError) alertRef.current?.focus(); }, [saveError]);
   const showPenalty = type === 'habit' && !targetCount;
 
   const handleSave = async () => {
-    if (!valid || saving) return;
+    if (!valid || saving || readOnly) return;
     setSaving(true);
     setSaveError(null);
     try {
+      const timeValue = type === 'habit' || (type === 'one_time' && !noTimeShown) ? time : '08:00';
+      const timeSetValue = type === 'habit' ? true : type === 'one_time' ? !noTimeShown : false;
+      if (mode === 'basic') {
+        // Built from the structured fields only, so no typed text can travel with a basic save.
+        const values: BasicHabitInput = {
+          questType: type, stat, difficulty, time: timeValue, days: type === 'habit' ? days : [], timeSet: timeSetValue,
+          ...(type === 'one_time' && !noDate ? { scheduledDate } : {}),
+          ...(type === 'habit' && targetCount ? { targetCount: Number(targetCount) } : {}),
+        };
+        const editor: HabitEditorInput = { mode: 'basic', values };
+        await saveHabit(editor, editingQuest?.id);
+        closeEditor.committed(onClose);
+        return;
+      }
       const input: HabitInput = {
         name: editingQuest?.name === name ? name : normalizeNameBoundaries(name),
         easyVersion: type === 'habit' ? easyVer.trim() || null : null,
         stat,
         difficulty,
         // reminder_time is required by the database; untimed quests keep a placeholder and timeSet false.
-        time: type === 'habit' || (type === 'one_time' && !noTimeShown) ? time : '08:00',
+        time: timeValue,
         days: type === 'habit' ? days : [],
         questType: type,
         description: note.trim() || null,
         scheduledDate: type === 'one_time' && !noDate ? scheduledDate : null,
         targetCount: type === 'habit' && targetCount ? Number(targetCount) : null,
         genre: type === 'habit' ? null : genre,
-        timeSet: type === 'habit' ? true : type === 'one_time' ? !noTimeShown : false,
+        timeSet: timeSetValue,
       };
-      await saveHabit(input, editingQuest?.id);
+      await saveHabit({ mode: 'custom', values: input }, editingQuest?.id);
       closeEditor.committed(onClose);
     } catch (err) {
       setSaveError(formatError(err));
@@ -93,7 +125,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
   };
 
   const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
-    if (!editingQuest || saving || lifecycleInFlight.current) return;
+    if (!editingQuest || saving || lifecycleInFlight.current || readOnly || paused) return;
     const notificationOwner = getNotificationOwner();
     lifecycleInFlight.current = true;
     setSaving(true);
@@ -136,6 +168,36 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           </div>
         )}
 
+        {readOnly && (
+          <div role="group" aria-label="Read-only quest">
+            <p>{tracker ? TRACKER_MESSAGES.readOnly : 'Tracker access is unavailable, so this quest is read-only for now.'}</p>
+            {tracker && kind && !customOpen && <TrackerConsent userId={tracker.revision.userId} access={tracker} purpose="custom-tracker" mode="prompt" audience={audience} declineLabel="Keep read-only"
+              onDecline={() => closeEditor(onClose)} onChanged={acceptTracker} onStale={() => void refreshTracker()} />}
+          </div>
+        )}
+
+        {!readOnly && (!editingQuest || kind === 'basic') && (
+          <div role="group" aria-label="Tracking style">
+            <span className="field-label">TRACKING</span>
+            <div className="seg">
+              <button type="button" className="choice-chip" aria-pressed={mode === 'basic'} onClick={() => setMode('basic')}>Use basic tracking</button>
+              <button type="button" className="choice-chip" aria-pressed={mode === 'custom'} onClick={() => setMode('custom')}>Use custom details</button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'basic' && !readOnly && (
+          <p className="field-hint">Basic quests get a neutral name from the System, such as &quot;Quest 1&quot;. You still choose the schedule, attribute and difficulty.{editingQuest ? ' Adding custom details later cannot be undone.' : ''}</p>
+        )}
+
+        {needsCustomNotice && tracker && (
+          <TrackerConsent userId={tracker.revision.userId} access={tracker} purpose="custom-tracker" mode="prompt" audience={audience} declineLabel="Keep basic tracking"
+            onDecline={() => setMode('basic')} onChanged={acceptTracker} onStale={() => void refreshTracker()} />
+        )}
+        {needsCustomNotice && !tracker && <p role="alert">Tracker access is unavailable. Use basic tracking or try again later.</p>}
+        {paused && <p className="field-hint">{TRACKER_MESSAGES.paused}</p>}
+
+        {customFields && <fieldset disabled={readOnly} className="editor-fields">
         <div>
           {/* The error sits beside the label so showing it never adds a line to a dialog that must not scroll. */}
           <div className="field-label-row">
@@ -149,8 +211,9 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           <label className="field-label">NOTE {optional}</label>
           <textarea className="field" placeholder="Add a note, reminder, or motivation..." value={note} onChange={e => setNote(e.target.value)} rows={2} style={{ resize: 'none', lineHeight: 1.5 }} />
         </div>
+        </fieldset>}
 
-        {type !== 'habit' && (
+        {customFields && type !== 'habit' && (
           <div role="group" aria-label="Genre">
             <span className="field-label">GENRE {optional}</span>
             <div className="chip-row">
@@ -159,7 +222,7 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           </div>
         )}
 
-        {showPenalty && (
+        {customFields && showPenalty && (
           <div>
             <div className="field-label-row">
               <label className="field-label">PENALTY <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--c-dim-flat)' }}> (required for habits)</span></label>
@@ -226,9 +289,9 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
           </div>
         </div>
 
-        {saveError && !confirmDelete && <p role="alert" className="phase4-error">{saveError}</p>}
+        {saveError && !confirmDelete && <p role="alert" tabIndex={-1} ref={alertRef} className="phase4-error">{saveError}</p>}
 
-        {editingQuest && (
+        {editingQuest && !readOnly && !paused && (
           <div className="action-footer">
             {editingQuest.archived ? (
               <button type="button" onClick={() => void handleLifecycle('restore')} disabled={saving} className="btn-secondary">RESTORE QUEST</button>
@@ -240,10 +303,10 @@ export default function WebQuestEditor({ editingQuest, initialType = 'habit', on
         )}
 
         <div className="action-footer">
-          <button type="button" onClick={() => { if (!confirmDelete && !saving) closeEditor(onClose); }} disabled={confirmDelete || saving} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={() => void handleSave()} disabled={saving || !valid} className="btn-primary">
+          <button type="button" onClick={() => { if (!confirmDelete && !saving) closeEditor(onClose); }} disabled={confirmDelete || saving} className="btn-secondary">{readOnly ? 'Close' : 'Cancel'}</button>
+          {!readOnly && <button type="button" onClick={() => void handleSave()} disabled={saving || !valid} className="btn-primary">
             {saving ? 'SAVING…' : editingQuest ? 'SAVE CHANGES' : 'CREATE QUEST'}
-          </button>
+          </button>}
         </div>
 
         {editingQuest && confirmDelete && <Dialog title={`Delete ${editingQuest.name} permanently?`} onClose={() => setConfirmDelete(false)} pending={saving} initialFocus="[data-cancel-delete]">

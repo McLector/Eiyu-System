@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { GymData } from '@eiyu/shared';
 import { UncertainSaveError } from '@eiyu/shared';
 const mocks = vi.hoisted(() => ({ data: {} as GymData, logs: [] as { exercise_id: string; weight: number; unit: 'kg' | 'lb' }[], fetchGym: vi.fn(), log: vi.fn(), history: vi.fn(), saveExercise: vi.fn(), upload: vi.fn(), removeMedia: vi.fn(), sign: vi.fn(), cleanup: vi.fn() }));
-vi.mock('@eiyu/shared', async importOriginal => ({ ...await importOriginal<object>(), fetchGym: mocks.fetchGym, logGymWeight: mocks.log, saveGymExercise: mocks.saveExercise, fetchGymHistory: mocks.history, fetchRecentGymWeights: async () => { const out: unknown[] = []; for (const id of new Set(mocks.logs.map(l => l.exercise_id))) mocks.logs.filter(l => l.exercise_id === id).reverse().slice(0, 2).forEach((l, i) => out.push({ exercise_id: id, weight: l.weight, unit: l.unit, logged_at: '2026-10-01T00:00:00Z', recency: i + 1 })); return out; }, listGymMediaCleanup: mocks.cleanup }));
+vi.mock('@eiyu/shared', async importOriginal => ({ ...await importOriginal<object>(), ...(await import('../../test/tracker-store-mocks')).trackerSharedMocks('owner'), fetchGym: mocks.fetchGym, logGymWeight: mocks.log, saveGymExercise: mocks.saveExercise, fetchGymHistory: mocks.history, fetchRecentGymWeights: async () => { const out: unknown[] = []; for (const id of new Set(mocks.logs.map(l => l.exercise_id))) mocks.logs.filter(l => l.exercise_id === id).reverse().slice(0, 2).forEach((l, i) => out.push({ exercise_id: id, weight: l.weight, unit: l.unit, logged_at: '2026-10-01T00:00:00Z', recency: i + 1 })); return out; }, listGymMediaCleanup: mocks.cleanup }));
 vi.mock('../gym-media', async importOriginal => ({ ...await importOriginal<object>(), uploadGymMedia: mocks.upload, deleteGymMedia: mocks.removeMedia, signGymMedia: mocks.sign }));
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ user: { id: 'owner' } }) }));
 import WebGym from '../WebGym';
@@ -44,7 +44,7 @@ it('logs a weight, confirms it, and carries it into Previous on the next log', a
   await user.type(weight, '40');
   await user.click(screen.getByRole('button', { name: 'Log weight for Bench press' }));
   await screen.findByText('Bench press: 40 kg logged.');
-  expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 40);
+  expect(mocks.log).toHaveBeenCalledWith(expect.any(String), 'bench', 40, { userId: 'owner', ageVersion: 1, consentVersion: 1, authorityVersion: 0 }, []);
   await waitFor(() => expect(weight).toHaveValue(40));
   await user.clear(weight); await user.type(weight, '42.5');
   await user.click(screen.getByRole('button', { name: 'Log weight for Bench press' }));
@@ -98,6 +98,9 @@ it('retains one upload and freezes the payload until an uncertain exercise creat
   expect(mocks.upload).toHaveBeenCalledOnce();
   expect(mocks.saveExercise).toHaveBeenCalledTimes(2);
   expect(mocks.saveExercise.mock.calls[0][0]).toEqual(mocks.saveExercise.mock.calls[1][0]);
+  // The retry is the same request: the same captured revision and no targets.
+  expect(mocks.saveExercise.mock.calls[1].slice(1)).toEqual(mocks.saveExercise.mock.calls[0].slice(1));
+  expect(mocks.upload.mock.calls[0][3]).toEqual({ userId: 'owner', ageVersion: 1, consentVersion: 1, authorityVersion: 0 });
   expect(mocks.removeMedia).not.toHaveBeenCalled();
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
 });

@@ -11,13 +11,14 @@ const store = vi.hoisted(() => ({ useEiyu: vi.fn(), toggleStage: vi.fn(), remove
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebLongQuests from '../WebLongQuests';
+import { trackerAccess } from '../../test/tracker-fixtures';
 import { NavigationGuard } from '../../components/NavigationGuard';
 
 afterEach(cleanup);
 
 const stage = (id: string, name: string, done: boolean, description: string | null = null) => ({ id, name, done, description });
 const chain = (over: Partial<LongQuest> = {}): LongQuest => ({
-  id: 'c1', name: 'The crystal vault', stat: 'INT', description: null, completedAt: null, createdAt: '2026-09-12T08:30:00Z',
+  id: 'c1', name: 'The crystal vault', stat: 'INT', description: null, completedAt: null, createdAt: '2026-09-12T08:30:00Z', inputKind: 'custom', canWrite: true,
   stages: [stage('s1', 'Gather maps', true), stage('s2', 'Learn the cipher', false, 'Walk the dry terrain.'), stage('s3', 'Find the door', false, 'Behind the vault.')],
   ...over,
 });
@@ -25,7 +26,7 @@ const chain = (over: Partial<LongQuest> = {}): LongQuest => ({
 function setup(chains: LongQuest[]) {
   store.toggleStage.mockReset();
   store.saveLongQuest.mockReset().mockResolvedValue(undefined);
-  store.useEiyu.mockReturnValue({
+  store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
     user: { ...initialUser, timeZone: 'UTC', longQuests: chains }, stageRewardNotice: null, rewardReceipt: null,
     longQuestsLoading: false, longQuestsError: null, retryLongQuests: vi.fn(), toggleStage: store.toggleStage,
     removeLongQuest: store.removeLongQuest, saveLongQuest: store.saveLongQuest, pendingStageIds: [],
@@ -114,7 +115,7 @@ describe('the order option in the editor', () => {
     await user.type(screen.getByPlaceholderText('Stage 1...'), 'Book');
     await user.click(screen.getByRole('button', { name: 'CREATE' }));
     await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledOnce());
-    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ strictOrder: true }));
+    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ strictOrder: true }) }));
   });
 
   it('can be switched off for a new chain', async () => {
@@ -125,7 +126,7 @@ describe('the order option in the editor', () => {
     await user.type(screen.getByLabelText('Quest name'), 'Learn Rust');
     await user.type(screen.getByPlaceholderText('Stage 1...'), 'Book');
     await user.click(screen.getByRole('button', { name: 'CREATE' }));
-    await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ strictOrder: false })));
+    await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ strictOrder: false }) })));
   });
 
   it('starts from the chain: unchecked for a chain done in any order, checked otherwise', async () => {
@@ -144,7 +145,7 @@ describe('the order option in the editor', () => {
     expect(checkbox()).toBeEnabled();
     await user.click(checkbox());
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
-    await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ strictOrder: false }), 'c1'));
+    await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ strictOrder: false }) }), 'c1'));
   });
 
   it('counts a changed mode as an unsaved edit', async () => {
@@ -171,8 +172,8 @@ describe('the order option in the editor', () => {
     await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledOnce());
     const [draft, id] = store.saveLongQuest.mock.calls[0];
     expect(id).toBe('g1');
-    expect(draft).toMatchObject({ strictOrder: true });
-    expect(draft.stages.map((s: { id: string }) => s.id)).toEqual(['g-1', 'g-3']);
+    expect(draft.values).toMatchObject({ strictOrder: true });
+    expect(draft.values.stages.map((s: { id: string }) => s.id)).toEqual(['g-1', 'g-3']);
   });
 
   it('stays enabled for a chain done in any order whose done stages are already a prefix', async () => {

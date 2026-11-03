@@ -14,13 +14,14 @@ const store = vi.hoisted(() => ({
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebLongQuests from '../WebLongQuests';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 
 describe('web Long Quest stage descriptions', () => {
   beforeEach(() => {
     store.saveLongQuest.mockReset().mockResolvedValue(undefined);
-    store.useEiyu.mockReturnValue({
+    store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
       user: { ...initialUser, longQuests: [] },
       longQuestsLoading: false,
       longQuestsError: null,
@@ -44,21 +45,21 @@ describe('web Long Quest stage descriptions', () => {
     await user.click(screen.getByRole('button', { name: 'CREATE' }));
 
     await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledOnce());
-    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({
+    expect(store.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({
       stages: [
         { name: 'Plan', description: 'First line\n勇者' },
         { name: 'Build', description: '' },
       ],
-    }));
+    }) }));
   });
 
   it('renders markup-like multiline content as inert text and persists clearing it', async () => {
     const user = userEvent.setup();
-    store.useEiyu.mockReturnValue({
+    store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
       user: {
         ...initialUser,
         longQuests: [{
-          id: 'quest-1', name: 'Campaign', stat: 'INT', description: null, completed: false,
+          id: 'quest-1', name: 'Campaign', stat: 'INT', description: null, completed: false, inputKind: 'custom', canWrite: true,
           stages: [
             { id: 'stage-1', name: 'Plan', description: '<strong>literal</strong>\n勇者', done: false },
             { id: 'stage-2', name: 'Build', description: null, done: false },
@@ -85,7 +86,7 @@ describe('web Long Quest stage descriptions', () => {
     await user.click(screen.getByRole('button', { name: 'SAVE CHANGES' }));
 
     await waitFor(() => expect(store.saveLongQuest).toHaveBeenCalledOnce());
-    expect(store.saveLongQuest.mock.calls[0][0].stages[0].description).toBe('');
+    expect(store.saveLongQuest.mock.calls[0][0].values.stages[0].description).toBe('');
     expect(store.saveLongQuest.mock.calls[0][1]).toBe('quest-1');
   });
 });

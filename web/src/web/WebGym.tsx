@@ -6,7 +6,8 @@ import {
   type GymData, type GymExercise, type GymRecentWeight,
   type GymRoutine, type GymUnit,
   parseGymRir, fetchRecentGymWeights, fetchGymHistory, deleteGymRoutine, listGymMediaCleanup, acknowledgeGymMediaCleanup,
-  logGymWeight, UncertainSaveError,
+  logGymWeight, UncertainSaveError, NO_TARGETS, copyTrackerRevision,
+  type TrackerAccess, type TrackerRevision,
 } from '@eiyu/shared';
 import { GYM_COPY, gymCleanupPending, gymSavedRefreshFailed, isGymCleanupNotice } from '@eiyu/shared';
 import { useSession } from '../store/session-context';
@@ -18,12 +19,17 @@ import StateBlock from '../components/StateBlock';
 import { announceFeedback } from '../components/ArchiveNotice';
 import { useEditorGuard } from '../components/NavigationGuard';
 import { deleteGymMedia, signGymMedia, uploadGymMedia } from './gym-media';
+import { TRACKER_MESSAGES, refreshTrackerAfterFailure, trackerErrorMessage, trackerKey, useAccountAudience, useTrackerAccess } from '../store/tracker';
+import { TrackerConsent } from './TrackerConsent';
 
 const EMPTY: GymData = { routines: [], exercises: [] };
 
-function RoutineEditor({ routine, userId, onClose, onSaved }: {
-  routine?: GymRoutine; userId: string; onClose: () => void; onSaved: (id: string) => Promise<void>;
+function RoutineEditor({ routine, userId, access, onTrackerFailure, onClose, onSaved }: {
+  routine?: GymRoutine; userId: string; access: TrackerAccess; onTrackerFailure: (err: unknown) => void; onClose: () => void; onSaved: (id: string) => Promise<void>;
 }) {
+  // One revision per save attempt, kept across an uncertain retry so the retry is the same request.
+  const expectedRef = useRef<TrackerRevision | null>(null);
+  const alertRef = useRef<HTMLParagraphElement>(null);
   const [name, setName] = useState(routine?.name ?? '');
   const [unit, setUnit] = useState<GymUnit>(routine?.unit ?? 'kg');
   const [pending, setPending] = useState(false);
@@ -32,27 +38,38 @@ function RoutineEditor({ routine, userId, onClose, onSaved }: {
   const inFlight = useRef(false);
   const creationId = useRef(crypto.randomUUID());
   const closeEditor = useEditorGuard(name !== (routine?.name ?? '') || unit !== (routine?.unit ?? 'kg'), pending || uncertain);
+  useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
   return <Dialog title={routine ? 'Edit routine' : 'Create routine'} onClose={() => closeEditor(onClose)} pending={pending}>
     <form className="gym-form" onSubmit={async event => {
       event.preventDefault(); if (inFlight.current) return;
+      if (!access.canWriteFitness) { setError(TRACKER_MESSAGES.fitness); return; }
+      const expected = expectedRef.current ?? copyTrackerRevision(access.revision);
+      expectedRef.current = expected;
       inFlight.current = true; setPending(true); setError(null);
-      try { const id = await saveGymRoutine(userId, name, unit, routine?.id, creationId.current); onClose(); await onSaved(id); }
-      catch (err) { setUncertain(err instanceof UncertainSaveError); setError(formatError(err)); }
+      try { const id = await saveGymRoutine(userId, name, unit, expected, NO_TARGETS, routine?.id, creationId.current); expectedRef.current = null; onClose(); await onSaved(id); }
+      catch (err) {
+        const uncertainSave = err instanceof UncertainSaveError;
+        if (!uncertainSave) expectedRef.current = null;
+        setUncertain(uncertainSave); setError(trackerErrorMessage(err) ?? formatError(err)); onTrackerFailure(err);
+      }
       finally { inFlight.current = false; setPending(false); }
     }}>
       <label>Routine name<input className="field" required value={name} onChange={e => setName(e.target.value)} disabled={pending || uncertain} placeholder="Chest–Tricep–Shoulders" /></label>
       <label>Weight unit<select className="field" value={unit} onChange={e => setUnit(e.target.value as GymUnit)} disabled={pending || uncertain}><option value="kg">kg</option><option value="lb">lb</option></select></label>
 
-      {error && <p role="alert" className="phase4-error">{error}</p>}
+      {error && <p role="alert" tabIndex={-1} ref={alertRef} className="phase4-error">{error}</p>}
       <div className="action-footer"><button type="button" className="btn-secondary" disabled={pending || uncertain} onClick={() => closeEditor(onClose)}>Cancel</button><button className="btn-primary" disabled={pending}>{pending ? 'Saving…' : uncertain ? GYM_COPY.confirmSave : 'Save routine'}</button></div>
     </form>
   </Dialog>;
 }
 
-function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSaved }: {
-  exercise?: GymExercise; routine: GymRoutine; userId: string; nextPosition: number;
+function ExerciseEditor({ exercise, routine, userId, access, onTrackerFailure, nextPosition, onClose, onSaved }: {
+  exercise?: GymExercise; routine: GymRoutine; userId: string; access: TrackerAccess; onTrackerFailure: (err: unknown) => void; nextPosition: number;
   onClose: () => void; onSaved: (warning?: string) => Promise<void>;
 }) {
+  // The upload path and the save share this revision; it is kept across an uncertain retry.
+  const expectedRef = useRef<TrackerRevision | null>(null);
+  const alertRef = useRef<HTMLParagraphElement>(null);
   const initial = { name: exercise?.name ?? '', sets: String(exercise?.sets ?? 3), reps: exercise?.reps ?? '6-10', rest_seconds: String(exercise?.rest_seconds ?? 150), rir: exercise?.rir_max ? `${exercise.rir}-${exercise.rir_max}` : String(exercise?.rir ?? 2), notes: exercise?.notes ?? '' };
   const [form, setForm] = useState(initial);
   const [file, setFile] = useState<File | null>(null);
@@ -65,6 +82,7 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
   const [uncertain, setUncertain] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const closeEditor = useEditorGuard(JSON.stringify(form) !== JSON.stringify(initial) || !!file || removeMedia, pending || uncertain);
+  useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
   useEffect(() => { if (!file) { setPreview(null); return; } const url = URL.createObjectURL(file); setPreview(url); return () => URL.revokeObjectURL(url); }, [file]);
   const field = (key: keyof typeof initial, value: string) => setForm(prev => ({ ...prev, [key]: value }));
   const [dragging, setDragging] = useState(false);
@@ -77,6 +95,10 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
   return <Dialog title={exercise ? 'Edit exercise' : 'Add exercise'} onClose={() => closeEditor(onClose)} pending={pending}>
     <form className="gym-form" onSubmit={async event => {
       event.preventDefault(); if (inFlight.current) return;
+      // Refused before anything is validated, uploaded or sent: a draft is never transmitted on a known denial.
+      if (!access.canWriteFitness) { setError(TRACKER_MESSAGES.fitness); return; }
+      const expected = expectedRef.current ?? copyTrackerRevision(access.revision);
+      expectedRef.current = expected;
       inFlight.current = true; setPending(true); setError(null);
       let uploaded: string | null = null;
       let committed = false;
@@ -85,9 +107,10 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
         const normalized = normalizeGymExercise({ ...form, sets: Number(form.sets), rest_seconds: Number(form.rest_seconds), ...parseGymRir(form.rir) });
         let path = removeMedia ? null : exercise?.media_path ?? null;
         let mime = removeMedia ? null : exercise?.media_mime ?? null;
-        if (file) { const media = uploadedMedia.current ?? await uploadGymMedia(userId, routine.id, file); uploadedMedia.current = media; uploaded = media.path; path = media.path; mime = media.mime; }
-        await saveGymExercise({ ...normalized, id: creationId.current, user_id: userId, routine_id: routine.id, position: exercise?.position ?? nextPosition, media_path: path, media_mime: mime });
+        if (file) { const media = uploadedMedia.current ?? await uploadGymMedia(userId, routine.id, file, expected); uploadedMedia.current = media; uploaded = media.path; path = media.path; mime = media.mime; }
+        await saveGymExercise({ ...normalized, id: creationId.current, user_id: userId, routine_id: routine.id, position: exercise?.position ?? nextPosition, media_path: path, media_mime: mime }, expected, NO_TARGETS);
         committed = true;
+        expectedRef.current = null;
         let warning: string | undefined;
         if (exercise?.media_path && exercise.media_path !== path) {
           try { await deleteGymMedia(exercise.media_path); }
@@ -95,10 +118,13 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
         }
         onClose(); await onSaved(warning);
       } catch (err) {
-        setUncertain(err instanceof UncertainSaveError);
-        let message = formatError(err);
+        const uncertainSave = err instanceof UncertainSaveError;
+        if (!uncertainSave && !committed) expectedRef.current = null;
+        setUncertain(uncertainSave);
+        let message = trackerErrorMessage(err) ?? formatError(err);
         if (uploaded && !committed) message += ` ${GYM_COPY.uploadHeld}`;
         setError(message);
+        if (!committed) onTrackerFailure(err);
       } finally { inFlight.current = false; setPending(false); }
     }}>
       <label className={`gym-dropzone${dragging ? ' is-dragging' : ''}${locked ? ' is-disabled' : ''}`} data-testid="gym-dropzone"
@@ -120,7 +146,7 @@ function ExerciseEditor({ exercise, routine, userId, nextPosition, onClose, onSa
         <label>RIR<input className="field" type="text" required value={form.rir} placeholder="1-2" disabled={pending || uncertain} onChange={e => field('rir', e.target.value)} /></label>
       </div>
       <label>Notes<textarea className="field" rows={2} value={form.notes} disabled={pending || uncertain} onChange={e => field('notes', e.target.value)} /></label>
-      {error && <p role="alert" className="phase4-error">{error}</p>}
+      {error && <p role="alert" tabIndex={-1} ref={alertRef} className="phase4-error">{error}</p>}
       <div className="action-footer"><button type="button" className="btn-secondary" disabled={pending || uncertain} onClick={() => closeEditor(onClose)}>Cancel</button><button className="btn-primary" disabled={pending}>{pending ? 'Saving…' : uncertain ? GYM_COPY.confirmSave : 'Save exercise'}</button></div>
     </form>
   </Dialog>;
@@ -227,6 +253,17 @@ export default function WebGym() {
 function GymWorkspace({ userId }: { userId: string }) {
   const qc = useQueryClient();
   const key = ['gym', userId];
+  const trackerQuery = useTrackerAccess(userId);
+  const access = trackerQuery.data ?? null;
+  const canFitness = !!access?.canWriteFitness;
+  const [fitnessPrompt, setFitnessPrompt] = useState(false);
+  const audience = useAccountAudience(userId, fitnessPrompt);
+  /** The revision for one write, copied now. Without fitness permission it opens the notice and returns null. */
+  const gate = (): TrackerRevision | null => {
+    if (!access || !access.canWriteFitness) { setFitnessPrompt(true); return null; }
+    return copyTrackerRevision(access.revision);
+  };
+  const onTrackerFailure = (err: unknown) => refreshTrackerAfterFailure(qc, userId, err);
   const query = useQuery({ queryKey: key, queryFn: () => fetchGym(userId!), enabled: !!userId });
   const data = query.data ?? EMPTY;
   const [selected, setSelected] = useState<string>('');
@@ -277,7 +314,7 @@ function GymWorkspace({ userId }: { userId: string }) {
     if (inFlight.current) return;
     inFlight.current = true; setPending(true); setError(null); setNotice(null);
     try { await task(); setUncertain(false); retryTask.current = null; try { await refresh(); } catch (err) { setNotice(gymSavedRefreshFailed('Saved', err)); } }
-    catch (err) { setUncertain(err instanceof UncertainSaveError); retryTask.current = err instanceof UncertainSaveError ? task : null; setError(formatError(err)); }
+    catch (err) { setUncertain(err instanceof UncertainSaveError); retryTask.current = err instanceof UncertainSaveError ? task : null; setError(trackerErrorMessage(err) ?? formatError(err)); onTrackerFailure(err); }
     finally { inFlight.current = false; setPending(false); }
   };
   const forget = <T,>(record: Record<string, T>, id: string) => Object.fromEntries(Object.entries(record).filter(([entry]) => entry !== id));
@@ -287,9 +324,11 @@ function GymWorkspace({ userId }: { userId: string }) {
     let weight: number | null;
     try { weight = gymWeight(inputWeight(exercise.id)); } catch (err) { setError(formatError(err)); return; }
     if (weight === null || weight === logged(exercise.id, 1)) return;
+    const expected = gate();
+    if (!expected) return;
     const logId = crypto.randomUUID();
     await run(async () => {
-      await logGymWeight(logId, exercise.id, weight);
+      await logGymWeight(logId, exercise.id, weight, expected, NO_TARGETS);
       qc.setQueryData<GymRecentWeight[]>(recentKey, rows => {
         const newest = rows?.find(entry => entry.exercise_id === exercise.id && entry.recency === 1);
         return [
@@ -309,8 +348,11 @@ function GymWorkspace({ userId }: { userId: string }) {
   const previousWeight = current ? logged(current.id, 2) : null;
   const currentText = current ? inputWeight(current.id) : '';
   return <div className="gym-page">
-    <header className="gym-heading"><h1 className="page-title">Gym Progress</h1><div className="gym-actions"><button className="btn-secondary" onClick={() => setHistory(true)}>Workout history</button><button className="btn-secondary" onClick={() => setRoutineEditor('new')} disabled={pending || uncertain}>Create routine</button></div></header>
+    <header className="gym-heading"><h1 className="page-title">Gym Progress</h1><div className="gym-actions"><button className="btn-secondary" onClick={() => setHistory(true)}>Workout history</button><button className="btn-secondary" onClick={() => { if (gate()) setRoutineEditor('new'); }} disabled={pending || uncertain}>Create routine</button></div></header>
     <div className="gym-toolbar"><label>Routine<select className="field" value={routine?.id ?? ''} disabled={pending || uncertain} onChange={e => { const id = e.target.value; requestSwitch(() => { setSelected(id); setWeights({}); setInvalidWeights(new Set()); }); }}>{!routines.length && <option value="">No routines</option>}{routines.map(r => <option key={r.id} value={r.id}>{r.name}{r.archived ? ' (archived)' : ''}</option>)}</select></label><label className="gym-checkbox"><input type="checkbox" checked={showArchived} onChange={e => { const checked = e.target.checked; requestSwitch(() => { setShowArchived(checked); setWeights({}); setInvalidWeights(new Set()); }); }} />Include archived routines</label></div>
+    {!canFitness && (trackerQuery.isPending ? null : access
+      ? <div role="status" className="field-hint"><p>Gym is read-only until you allow Gym tracking. Your history stays readable.</p><button type="button" className="btn-secondary btn-compact" onClick={() => setFitnessPrompt(true)}>Review Gym tracking</button></div>
+      : <p role="status" className="field-hint">Gym tracking permission could not be read, so Gym is read-only for now. Your history stays readable.</p>)}
     {query.isError && <StateBlock kind="error" retryLabel="Retry refresh" onRetry={() => void query.refetch()}>{GYM_COPY.refreshFailed}</StateBlock>}
     {recent.isError && <StateBlock kind="error" retryLabel="Retry" onRetry={() => void recent.refetch()}>The System couldn&apos;t read your logged weights.</StateBlock>}
     {error && <p role="alert" className="phase4-error">{error}</p>}
@@ -320,14 +362,14 @@ function GymWorkspace({ userId }: { userId: string }) {
     </div>}
     {!routine ? <StateBlock kind="empty">{GYM_COPY.noRoutine}</StateBlock> : <>
       <div className="gym-routine-heading"><h2>{routine.name} <small>{unit}</small></h2><div className="gym-actions">
-        <button className="btn-secondary" disabled={pending || uncertain || routine.archived} onClick={() => setExerciseEditor('new')}>Add exercise</button>
+        <button className="btn-secondary" disabled={pending || uncertain || routine.archived} onClick={() => { if (gate()) setExerciseEditor('new'); }}>Add exercise</button>
         <ActionMenu
           label={`Routine actions for ${routine.name}`} disabled={pending || uncertain}
           items={[
-            { label: 'Edit routine', onSelect: () => setRoutineEditor('edit'), icon: <EditIcon />, tone: 'edit' },
-            { label: routine.archived ? 'Restore routine' : 'Archive routine', onSelect: () => void run(async () => { await archiveGymRoutine(routine.id, !routine.archived); setWeights({}); setInvalidWeights(new Set()); }), icon: routine.archived ? <RestoreIcon /> : <ArchiveIcon />, tone: 'warn', disabled: dirty },
+            { label: 'Edit routine', onSelect: () => { if (gate()) setRoutineEditor('edit'); }, icon: <EditIcon />, tone: 'edit' },
+            { label: routine.archived ? 'Restore routine' : 'Archive routine', onSelect: () => { const expected = gate(); if (expected) void run(async () => { await archiveGymRoutine(routine.id, !routine.archived, expected, NO_TARGETS); setWeights({}); setInvalidWeights(new Set()); }); }, icon: routine.archived ? <RestoreIcon /> : <ArchiveIcon />, tone: 'warn', disabled: dirty },
             // An unseen draft left by a tab on the previous client is discarded with the routine, never blocking the delete.
-            { label: 'Delete routine', onSelect: () => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Logged weights remain in your history.`, action: () => void run(async () => { await deleteGymRoutine(routine.id, true); setWeights({}); setInvalidWeights(new Set()); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }) }), icon: <TrashIcon />, danger: true, tone: 'danger' },
+            { label: 'Delete routine', onSelect: () => setConfirmation({ title: 'Delete routine', text: `Delete ${routine.name}? Logged weights remain in your history.`, action: () => { const expected = gate(); if (expected) void run(async () => { await deleteGymRoutine(routine.id, expected, NO_TARGETS, true); setWeights({}); setInvalidWeights(new Set()); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Routine deleted'))); }); } }), icon: <TrashIcon />, danger: true, tone: 'danger' },
           ]}
         />
       </div></div>
@@ -351,15 +393,22 @@ function GymWorkspace({ userId }: { userId: string }) {
           onWeightInput={invalid => setInvalidWeights(prev => { const next = new Set(prev); if (invalid) next.add(current.id); else next.delete(current.id); return next; })}
           onWeightChange={value => setWeights(prev => ({ ...prev, [current.id]: value }))}
           onLog={() => logWeight(current)}
-          onEdit={() => setExerciseEditor(current)}
-          onMove={delta => void run(async () => { const ids = exercises.map(e => e.id); const at = ids.indexOf(current.id); [ids[at], ids[at + delta]] = [ids[at + delta], ids[at]]; await moveGymExercises(routine, ids); })}
-          onRemove={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${current.name}? Logged weights remain in your history.`, action: () => void run(async () => { await removeGymExercise(current.id); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed'))); }) })}
+          onEdit={() => { if (gate()) setExerciseEditor(current); }}
+          onMove={delta => { const expected = gate(); if (expected) void run(async () => { const ids = exercises.map(e => e.id); const at = ids.indexOf(current.id); [ids[at], ids[at + delta]] = [ids[at + delta], ids[at]]; await moveGymExercises(routine, ids, expected, NO_TARGETS); }); }}
+          onRemove={() => setConfirmation({ title: 'Remove exercise', text: `Remove ${current.name}? Logged weights remain in your history.`, action: () => { const expected = gate(); if (expected) void run(async () => { await removeGymExercise(current.id, expected, NO_TARGETS); await cleanup().catch(err => setNotice(gymCleanupPending(err, 'Exercise removed'))); }); } })}
         />}
       </div>
       {pending && <span role="status" className="gym-saving">Saving…</span>}
     </>}
-    {routineEditor && <RoutineEditor routine={routineEditor === 'edit' ? routine : undefined} userId={userId} onClose={() => setRoutineEditor(null)} onSaved={async id => { setSelected(id); try { await refresh(); setNotice('Routine saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Routine saved', err)); } }} />}
-    {exerciseEditor && routine && <ExerciseEditor exercise={exerciseEditor === 'new' ? undefined : exerciseEditor} routine={routine} userId={userId} nextPosition={Math.max(-1, ...exercises.map(e => e.position)) + 1} onClose={() => setExerciseEditor(null)} onSaved={async warning => { try { await refresh(); setNotice(warning ?? 'Exercise saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Exercise saved', err)); } }} />}
+    {fitnessPrompt && <Dialog title="Gym tracking permission" onClose={() => setFitnessPrompt(false)}>
+      {access
+        ? <TrackerConsent userId={userId} access={access} purpose="fitness-tracking" mode="prompt" audience={audience} declineLabel="Keep history only"
+            onDecline={() => setFitnessPrompt(false)} onStale={() => void qc.invalidateQueries({ queryKey: trackerKey(userId) })}
+            onChanged={next => { qc.setQueryData(trackerKey(userId), next); setFitnessPrompt(false); }} />
+        : <><p role="alert">Gym tracking permission could not be read. Your history stays readable.</p><div className="action-footer"><button type="button" className="btn-secondary" onClick={() => setFitnessPrompt(false)}>Close</button></div></>}
+    </Dialog>}
+    {routineEditor && access && <RoutineEditor access={access} onTrackerFailure={onTrackerFailure} routine={routineEditor === 'edit' ? routine : undefined} userId={userId} onClose={() => setRoutineEditor(null)} onSaved={async id => { setSelected(id); try { await refresh(); setNotice('Routine saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Routine saved', err)); } }} />}
+    {exerciseEditor && routine && access && <ExerciseEditor access={access} onTrackerFailure={onTrackerFailure} exercise={exerciseEditor === 'new' ? undefined : exerciseEditor} routine={routine} userId={userId} nextPosition={Math.max(-1, ...exercises.map(e => e.position)) + 1} onClose={() => setExerciseEditor(null)} onSaved={async warning => { try { await refresh(); setNotice(warning ?? 'Exercise saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Exercise saved', err)); } }} />}
     {history && <WorkoutHistory userId={userId} routines={data.routines} onClose={() => setHistory(false)} />}
     {confirmation && <Dialog title={confirmation.title} onClose={() => setConfirmation(null)}><p>{confirmation.text}</p><div className="action-footer"><button className="btn-secondary" onClick={() => setConfirmation(null)}>Cancel</button><button className="btn-destructive" onClick={() => { const action = confirmation.action; setConfirmation(null); action(); }}>{confirmation.title}</button></div></Dialog>}
   </div>;

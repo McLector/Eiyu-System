@@ -9,13 +9,14 @@ const store = vi.hoisted(() => ({ useEiyu: vi.fn(), saveHabit: vi.fn() }));
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
 
 import WebQuestEditor from '../WebQuestEditor';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 
 describe('WebQuestEditor penalty field', () => {
   beforeEach(() => {
     store.saveHabit.mockReset().mockResolvedValue(undefined);
-    store.useEiyu.mockReturnValue({
+    store.useEiyu.mockReturnValue({ tracker: trackerAccess(),
       user: { ...initialUser, timeZone: 'UTC', quests: [], longQuests: [] },
       saveHabit: store.saveHabit, archiveQuest: vi.fn(), restoreQuest: vi.fn(), deleteQuest: vi.fn(),
     });
