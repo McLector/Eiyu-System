@@ -1,4 +1,5 @@
 import { DATA_REQUEST_RESPONSE, LEGAL_DOCUMENTS, PROCESSING_NOTICES, TRACKER_PURPOSE_NOTICES } from '../legal-content';
+import * as legalContent from '../legal-content';
 import { TRACKER_NOTICE_VERSIONS } from '../../data/tracker-access';
 
 describe('registration legal content', () => {
@@ -58,6 +59,12 @@ describe('registration legal content', () => {
     expect(privacy).toContain('privacy@eiyusystem.app');
     expect(privacy).toContain('Profile');
     expect(privacy).not.toMatch(/export your data as JSON|delete your account at any time from Settings/i);
+  });
+
+  it('publishes one contact address and never a personal mailbox', () => {
+    const addresses = JSON.stringify(legalContent).match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [];
+    expect(addresses.length).toBeGreaterThan(0);
+    expect([...new Set(addresses)]).toEqual(['privacy@eiyusystem.app']);
   });
 
   it('preserves the separate approved Terms of Use', () => {
