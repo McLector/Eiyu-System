@@ -1,5 +1,5 @@
 import type { Quest, TrackerAccess, TrackerTarget } from '@eiyu/shared';
-import { createWriteQueueEngine, type EnqueueRequest, type WriteQueueDeps, type WriteQueueEngine } from '../write-queue-engine';
+import { writeQueueKey, createWriteQueueEngine, type EnqueueRequest, type WriteQueueDeps, type WriteQueueEngine } from '../write-queue-engine';
 import { decodeQueue, encodeQueue, type QueueEntry } from '../write-queue';
 
 const KEY = 'eiyu.writeQueue.v1.user-1';
@@ -1111,5 +1111,46 @@ describe('held entries expire after 30 days', () => {
     const a2 = engineFor('user-1', T + 2000); await a2.engine.load();
     expect(a2.engine.getEntries().map(e => e.id)).toEqual(['stored-1']);
     expect(a2.onFailed).not.toHaveBeenCalled();
+  });
+});
+
+describe('a held copy that expires around an account switch', () => {
+  const T = Date.parse('2026-10-05T12:00:00Z');
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+  const held: QueueEntry = {
+    id: 'held-1', userId: 'user-1', kind: 'complete', habitId: 'h1', accountDate: '2026-10-05', createdAt: T, attempts: 0, status: 'failed',
+    heldForTrackerPause: true, heldAt: T, failure: { reason: 'tracker-paused', message: 'held' },
+  };
+  async function open() {
+    let now = T;
+    const onFailed = jest.fn();
+    const saved = new Map<string, string>([[writeQueueKey('user-1'), encodeQueue([held])]]);
+    const engine = createWriteQueueEngine({
+      userId: 'user-1',
+      storage: {
+        getItem: async key => saved.get(key) ?? null,
+        setItem: async (key, value) => { saved.set(key, value); },
+        removeItem: async key => { saved.delete(key); },
+      },
+      now: () => new Date(now), timeZone: () => 'UTC', isOnline: () => false,
+      checkProcessingAccess: jest.fn(), newId: () => 'x', send: jest.fn(), readQuest: jest.fn(), onApplied: jest.fn(), onFailed,
+    });
+    await engine.load();
+    return { engine, onFailed, saved, pass: () => { now = T + THIRTY_DAYS + 1; } };
+  }
+  it('gives its notice while the queue is open', async () => {
+    const t = await open();
+    t.pass();
+    t.engine.sweep();
+    expect(t.onFailed).toHaveBeenCalledTimes(1);
+    expect(t.engine.getEntries()).toEqual([]);
+  });
+  it('gives no notice and changes nothing after the queue has closed, so it cannot reach the next account', async () => {
+    const t = await open();
+    t.engine.dispose();
+    t.pass();
+    t.engine.sweep();
+    expect(t.onFailed).not.toHaveBeenCalled();
+    expect(decodeQueue(t.saved.get(writeQueueKey('user-1')), 'user-1').map(e => e.id)).toEqual(['held-1']);
   });
 });

@@ -331,6 +331,8 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
   }
 
   function sweep() {
+    // A closed queue belongs to an account that may have gone, so it must not give a notice to whoever is here now.
+    if (disposed) return;
     // Held copies leave the device after 30 days; this needs no account zone, so it runs even before the profile loads.
     const held = expireHeldEntries(entries, deps.now().getTime());
     const next = expireEntries(held.entries, deps.now(), deps.timeZone());
