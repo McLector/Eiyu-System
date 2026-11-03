@@ -4,6 +4,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
 import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
+import { trackerAccess, basicTarget, CLASSIFIED, createTrackerMocks, resetTrackerMocks, revisionOf } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -60,15 +61,18 @@ const mockRegisterListener = (listener: NetworkListener) => {
 mockNetwork.addNetworkStateListener.mockImplementation(mockRegisterListener);
 const mockCompleteHabit = jest.fn();
 
+const mockTracker = createTrackerMocks();
 jest.doMock('@eiyu/shared', () => ({
   ...jest.requireActual('@eiyu/shared'),
   ...mockShared,
+  ...mockTracker,
   completeHabit: mockCompleteHabit,
 }));
 jest.doMock('@/contexts/auth-store', () => ({
   useAuth: () => ({ session: { user: { id: 'user-1' } } }),
 }));
-jest.doMock('@/lib/notifications', () => mockNative);
+// The store filters reminder rows with the real, pure helper; native scheduling stays mocked.
+jest.doMock('@/lib/notifications', () => ({ ...mockNative, filterReminderRows: jest.requireActual('@/lib/notifications').filterReminderRows }));
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
 jest.doMock('@/lib/sound-effects-prefs', () => ({
   getSoundEffectsEnabled: jest.fn().mockResolvedValue(false),
@@ -82,7 +86,7 @@ const { useEiyu, EiyuProvider, invalidateForNewDay } = require('../eiyu-store') 
 const quest: Quest = {
   id: 'habit-1', name: 'Read', stat: 'WIS', difficulty: 'Easy', easyVersion: 'Read one page',
   description: null, questType: 'habit', archived: true, time: '08:00', days: [1, 2, 3, 4, 5],
-  streak: 0, frozen: false, completed: false, targetCount: null, progressCount: 0,
+  streak: 0, frozen: false, completed: false, targetCount: null, progressCount: 0, ...CLASSIFIED,
 };
 
 let currentStore: ReturnType<typeof useEiyu> | null = null;
@@ -104,6 +108,7 @@ async function mountStore() {
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
+  resetTrackerMocks(mockTracker);
   currentStore = null;
   mockShared.archiveHabit.mockResolvedValue(undefined);
   mockShared.completeHabitRecovery.mockResolvedValue(undefined);
@@ -160,7 +165,7 @@ describe('mobile lifecycle reminder permission policy', () => {
 
     await act(async () => { await currentStore!.restoreQuest('habit-1'); });
 
-    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1');
+    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1', revisionOf(), basicTarget('habit-1'));
     expect(mockNative.inspectNotificationPermissions).toHaveBeenCalledTimes(1);
     expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
   });
@@ -178,7 +183,7 @@ describe('mobile lifecycle reminder permission policy', () => {
 
     await act(async () => { await expect(currentStore!.restoreQuest('habit-1')).resolves.toBeUndefined(); });
 
-    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1');
+    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1', revisionOf(), basicTarget('habit-1'));
     expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
     await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/restored.*reminders/i));
   });
@@ -191,7 +196,7 @@ describe('mobile lifecycle reminder permission policy', () => {
 
     await act(async () => { await currentStore!.restoreQuest('habit-1'); });
 
-    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1');
+    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1', revisionOf(), basicTarget('habit-1'));
     expect(mockNative.inspectNotificationPermissions).not.toHaveBeenCalled();
     expect(mockNative.requestNotificationPermissions).not.toHaveBeenCalled();
   });
@@ -205,7 +210,7 @@ describe('mobile lifecycle reminder permission policy', () => {
 
     await act(async () => { await expect(currentStore!.restoreQuest('habit-1')).resolves.toBeUndefined(); });
 
-    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1');
+    expect(mockShared.restoreHabit).toHaveBeenCalledWith('habit-1', revisionOf(), basicTarget('habit-1'));
     await waitFor(() => expect(currentStore?.reminderWarning).toMatch(/restored.*scheduler unavailable/i));
   });
 
@@ -220,7 +225,7 @@ describe('mobile lifecycle reminder permission policy', () => {
 
     let archive!: Promise<void>;
     await act(async () => { archive = currentStore!.archiveQuest('habit-1'); });
-    expect(mockShared.archiveHabit).toHaveBeenCalledWith('habit-1');
+    expect(mockShared.archiveHabit).toHaveBeenCalledWith('habit-1', revisionOf(), basicTarget('habit-1'));
     expect(mockNative.cancelAllHabitReminders).toHaveBeenCalledTimes(1);
 
     await act(async () => { releaseFetch(); await archive; });
@@ -258,10 +263,10 @@ describe('mobile lifecycle reminder permission policy', () => {
     }) as any);
     let save!: Promise<void>;
     await act(async () => {
-      save = currentStore!.saveHabit({
+      save = currentStore!.saveHabit({ mode: 'custom', values: {
         name: 'Read', easyVersion: 'Read one page', stat: 'WIS', difficulty: 'Easy',
         time: '08:00', days: [1, 2, 3, 4, 5], questType: 'habit',
-      }, 'habit-1');
+      } }, 'habit-1');
       await Promise.resolve();
     });
     await waitFor(() => expect(releaseInvalidate).toBeDefined());
@@ -316,6 +321,28 @@ describe('mobile lifecycle reminder permission policy', () => {
 });
 
 describe('offline quest recovery', () => {
+  it('retains a completion the server later holds as paused (under 12) in the review flow until explicit Retry', async () => {
+    await mountStore();
+    await waitFor(() => expect(currentStore?.user.quests).toHaveLength(1));
+    await waitFor(() => expect(currentStore?.user.timeZone).toBe('UTC'));
+    await waitFor(() => expect(currentStore?.tracker).toBeTruthy());
+    // The loaded capability still allowed the tap; the fresh read made when the queue sends says the account is paused.
+    mockTracker.fetchTrackerAccess.mockImplementation(async () => trackerAccess({ canWriteBasic: false }, 'user-1'));
+    await act(async () => { currentStore!.toggleQuest('habit-1'); });
+    await waitFor(() => expect(currentStore?.failedSyncs[0]?.failure?.reason).toBe('tracker-paused'));
+    expect(currentStore?.user.quests[0].completed).toBe(false);
+    expect(mockCompleteHabit).not.toHaveBeenCalled();
+    resetTrackerMocks(mockTracker);
+    await act(async () => { await mockNetwork.listener?.({ isConnected: true }); });
+    expect(mockCompleteHabit).not.toHaveBeenCalled();
+    const id = currentStore!.failedSyncs[0].id;
+    let answer: boolean | undefined;
+    await act(async () => { answer = await currentStore!.retrySync(id); });
+    expect(answer).toBe(true);
+    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(currentStore?.syncEntries).toEqual([]));
+  });
+
   it('keeps the change and shows no raw transport error when a completion fails to send', async () => {
     await mountStore();
     await waitFor(() => expect(currentStore?.user.quests).toHaveLength(1));
@@ -359,7 +386,7 @@ describe('offline quest recovery', () => {
 const backlogQuest: Quest = {
   id: 'backlog-1', name: 'Try Zig', stat: 'INT', difficulty: 'Easy', easyVersion: null, description: null,
   questType: 'backlog', archived: false, time: '00:00', days: [], streak: 0, frozen: false, completed: false,
-  targetCount: null, progressCount: 0, timeSet: false, genre: 'tool',
+  targetCount: null, progressCount: 0, timeSet: false, genre: 'tool', ...CLASSIFIED,
 };
 
 describe('Backlog and moving quests between lanes', () => {
@@ -393,7 +420,7 @@ describe('Backlog and moving quests between lanes', () => {
     const boardCalls = mockShared.fetchTodayHabits.mock.calls.length;
     const backlogCalls = mockShared.fetchBacklogQuests.mock.calls.length;
     await act(async () => { await currentStore!.moveToOneTime('backlog-1'); });
-    expect(mockShared.moveBacklogToOneTime).toHaveBeenCalledWith('backlog-1');
+    expect(mockShared.moveBacklogToOneTime).toHaveBeenCalledWith('backlog-1', revisionOf(), basicTarget('backlog-1'));
     expect(mockShared.fetchTodayHabits.mock.calls.length).toBeGreaterThan(boardCalls);
     expect(mockShared.fetchBacklogQuests.mock.calls.length).toBeGreaterThan(backlogCalls);
   });
@@ -403,7 +430,7 @@ describe('Backlog and moving quests between lanes', () => {
     await waitFor(() => expect(currentStore!.user.quests.length).toBeGreaterThan(0));
     const boardCalls = mockShared.fetchTodayHabits.mock.calls.length;
     await act(async () => { await currentStore!.moveToBacklog('habit-1'); });
-    expect(mockShared.moveOneTimeToBacklog).toHaveBeenCalledWith('habit-1');
+    expect(mockShared.moveOneTimeToBacklog).toHaveBeenCalledWith('habit-1', revisionOf(), basicTarget('habit-1'));
     expect(mockShared.fetchTodayHabits.mock.calls.length).toBeGreaterThan(boardCalls);
   });
 
@@ -432,12 +459,14 @@ describe('Backlog and moving quests between lanes', () => {
   it('lets a different quest move while another is still in flight', async () => {
     let finish!: () => void;
     mockShared.moveOneTimeToBacklog.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    mockShared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
     await mountStore();
     await waitFor(() => expect(currentStore!.user.quests.length).toBeGreaterThan(0));
+    await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
     let slow!: Promise<void>;
     await act(async () => { slow = currentStore!.moveToBacklog('habit-1'); });
     await act(async () => { await currentStore!.moveToOneTime('backlog-1'); });
-    expect(mockShared.moveBacklogToOneTime).toHaveBeenCalledWith('backlog-1');
+    expect(mockShared.moveBacklogToOneTime).toHaveBeenCalledWith('backlog-1', revisionOf(), basicTarget('backlog-1'));
     await act(async () => { finish(); await slow; });
   });
 
@@ -451,7 +480,7 @@ describe('Backlog and moving quests between lanes', () => {
       await waitFor(() => expect(currentStore!.backlog).toHaveLength(1));
       mockShared.fetchBacklogQuests.mockResolvedValue([]);
       await act(async () => { await currentStore!.deleteQuest('backlog-1'); });
-      expect(mockShared.deleteHabit).toHaveBeenCalledWith('backlog-1');
+      expect(mockShared.deleteHabit).toHaveBeenCalledWith('backlog-1', revisionOf(), basicTarget('backlog-1'));
       await waitFor(() => expect(currentStore!.backlog).toEqual([]));
     } finally {
       notifyManager.setScheduler(callback => { setTimeout(callback, 0); });

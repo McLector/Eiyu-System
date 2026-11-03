@@ -29,7 +29,7 @@ const { default: QuestEditorScreen } = require('../../app/quest-editor') as type
 const existingQuest: Quest = {
   id: 'weekday', name: 'Legacy name', stat: 'INT', difficulty: 'Medium', easyVersion: 'One minute',
   description: null, questType: 'habit', archived: false, time: '08:00', days: [1, 3, 5], streak: 0,
-  frozen: false, completed: false, targetCount: null, progressCount: 0,
+  frozen: false, completed: false, targetCount: null, progressCount: 0, inputKind: 'custom', canWrite: true,
 };
 
 function setup(quest?: Quest, questType?: 'habit' | 'one_time' | 'backlog') {
@@ -72,7 +72,7 @@ describe('mobile QuestEditor validation and form layout', () => {
     await user.clear(screen.getByPlaceholderText('Leave blank for a normal habit'));
     await user.type(screen.getByPlaceholderText('Leave blank for a normal habit'), '2');
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ targetCount: 2 }), undefined);
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ targetCount: 2 }) }), undefined);
     await waitFor(() => expect(mockRouterBack).toHaveBeenCalledTimes(1));
   });
 
@@ -89,7 +89,7 @@ describe('mobile QuestEditor validation and form layout', () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Quest name'), 'Submit report');
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time' }), undefined);
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time' }) }), undefined);
     await waitFor(() => expect(mockRouterBack).toHaveBeenCalledTimes(1));
   });
 
@@ -103,7 +103,7 @@ describe('mobile QuestEditor validation and form layout', () => {
     expect(screen.getByRole('button', { name: 'CREATE QUEST' })).toBeDisabled();
     await fireEvent.changeText(screen.getByLabelText('Quest name'), '😀'.repeat(80));
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ name: '😀'.repeat(80) }), undefined);
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: '😀'.repeat(80) }) }), undefined);
     await waitFor(() => expect(mockRouterBack).toHaveBeenCalledTimes(1));
   });
 
@@ -114,7 +114,7 @@ describe('mobile QuestEditor validation and form layout', () => {
     value.saveHabit.mockRejectedValueOnce(new Error('Save failed'));
     await renderWithTheme(<QuestEditorScreen />);
     await userEvent.setup().press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ name: legacyName }), 'weekday');
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: legacyName }) }), 'weekday');
     expect(await screen.findByText('Save failed')).toBeOnTheScreen();
   });
 

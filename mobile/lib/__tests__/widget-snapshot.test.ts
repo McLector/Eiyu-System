@@ -43,6 +43,30 @@ function build(quests: Quest[], entries: QueueEntry[] = [], overrides: Partial<P
   });
 }
 
+describe('custom text when custom permission is denied', () => {
+  const quests = [
+    quest({ id: 'b1', name: 'Basic one', inputKind: 'basic', canWrite: true }),
+    quest({ id: 'c1', name: 'Secret custom', inputKind: 'custom', canWrite: false }),
+    quest({ id: 'u1', name: 'Legacy unclassified' }),
+  ];
+
+  it('keeps every row by default, so unknown capability changes nothing', () => {
+    expect(build(quests).rows.map(r => r.name).sort()).toEqual(['Basic one', 'Legacy unclassified', 'Secret custom']);
+  });
+
+  it('leaves custom and unclassified quests out entirely, with their names, counts and tags', () => {
+    const snapshot = build(quests, [entry({ habitId: 'c1' })], { customTextAllowed: false });
+    expect(snapshot.rows.map(r => r.name)).toEqual(['Basic one']);
+    expect(snapshot.total).toBe(1);
+    expect(snapshot.waiting).toBe(0);
+    expect(encodeSnapshot(snapshot)).not.toMatch(/Secret custom|Legacy unclassified/);
+  });
+
+  it('keeps every row when custom text is allowed explicitly', () => {
+    expect(build(quests, [], { customTextAllowed: true }).rows).toHaveLength(3);
+  });
+});
+
 describe('widget key', () => {
   it('is versioned so a future shape can change without reading old data', () => {
     expect(WIDGET_KEY).toBe('eiyu.widget.v1');

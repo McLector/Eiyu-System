@@ -149,6 +149,36 @@ describe('useWidgetSnapshot writes', () => {
   });
 });
 
+describe('useWidgetSnapshot custom permission', () => {
+  const board = [
+    quest({ id: 'b1', name: 'Basic one', inputKind: 'basic', canWrite: true }),
+    quest({ id: 'c1', name: 'Secret custom', inputKind: 'custom', canWrite: false }),
+  ];
+
+  it('writes no custom text once custom permission is observed denied', async () => {
+    await renderHook(() => useWidgetSnapshot(input({ cachedQuests: board, canWriteCustom: false })));
+    await settle();
+    const raw = await AsyncStorage.getItem(WIDGET_KEY);
+    expect(raw).toContain('Basic one');
+    expect(raw).not.toContain('Secret custom');
+  });
+
+  it('writes the whole board while permission is unknown', async () => {
+    await renderHook(() => useWidgetSnapshot(input({ cachedQuests: board, canWriteCustom: null })));
+    await settle();
+    expect(await AsyncStorage.getItem(WIDGET_KEY)).toContain('Secret custom');
+  });
+
+  it('replaces a stored snapshot that had custom text when a denial is observed', async () => {
+    const { rerender } = await renderHook((props: WidgetSnapshotInput) => useWidgetSnapshot(props), { initialProps: input({ cachedQuests: board, canWriteCustom: true }) });
+    await settle();
+    expect(await AsyncStorage.getItem(WIDGET_KEY)).toContain('Secret custom');
+    await rerender(input({ cachedQuests: board, canWriteCustom: false }));
+    await settle();
+    expect(await AsyncStorage.getItem(WIDGET_KEY)).not.toContain('Secret custom');
+  });
+});
+
 describe('useWidgetSnapshot write gates', () => {
   async function seed(): Promise<string> {
     await renderHook(() => useWidgetSnapshot(input({ cachedQuests: [quest({ name: 'Seeded' })] })));

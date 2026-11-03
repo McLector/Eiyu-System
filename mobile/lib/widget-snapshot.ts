@@ -102,6 +102,11 @@ export interface BuildInput {
   now: number;
   /** The writing app's own deep link scheme. */
   scheme?: string;
+  /**
+   * False once custom permission is observed denied: custom and unclassified quests (their names are protected text) are
+   * then left out of the snapshot entirely, with their counts and sync tags. Omitted means nothing was observed.
+   */
+  customTextAllowed?: boolean;
 }
 
 /** The account-zone day of the moment a board was fetched, never the phone's own zone. */
@@ -138,14 +143,17 @@ function readSync(entries: readonly QueueEntry[], dataDate: string): { tags: Map
 }
 
 export function buildWidgetSnapshot(input: BuildInput): ReadySnapshot {
-  const board = applyOverlay(input.cachedQuests, input.entries, input.dataDate);
+  const visible = input.customTextAllowed === false ? input.cachedQuests.filter(quest => quest.inputKind === 'basic') : input.cachedQuests;
+  const visibleIds = new Set(visible.map(quest => quest.id));
+  const entries = input.customTextAllowed === false ? input.entries.filter(entry => visibleIds.has(entry.habitId)) : input.entries;
+  const board = applyOverlay(visible, entries, input.dataDate);
   const sections = partitionBoardQuests(board, input.dataDate);
   const { completed, total } = boardTodayProgress(sections, input.dataDate);
   // Today plus undated only (D4): an open upcoming one-time quest stays off the widget, a finished one stays on it.
   const onWidget = (quest: Quest) => quest.completed || oneTimeTiming(quest, input.dataDate) !== 'upcoming';
   const unique = [...new Map([...sections.dailyQuests, ...sections.oneTimeQuests].filter(onWidget).map(quest => [quest.id, quest])).values()];
   const ordered = [...unique.filter(quest => !quest.completed), ...unique.filter(quest => quest.completed)];
-  const { tags, waiting } = readSync(input.entries, input.dataDate);
+  const { tags, waiting } = readSync(entries, input.dataDate);
 
   const rows = ordered.slice(0, MAX_ROWS).map((quest): WidgetRow => {
     const row: WidgetRow = { name: shorten(quest.name), done: quest.completed };

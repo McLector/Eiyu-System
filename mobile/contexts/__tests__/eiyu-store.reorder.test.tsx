@@ -4,6 +4,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type LongQuest, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
 import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
+import { basicTarget, CLASSIFIED, createTrackerMocks, resetTrackerMocks, revisionOf } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -62,15 +63,18 @@ const mockRegisterListener = (listener: NetworkListener) => {
 mockNetwork.addNetworkStateListener.mockImplementation(mockRegisterListener);
 const mockCompleteHabit = jest.fn();
 
+const mockTracker = createTrackerMocks();
 jest.doMock('@eiyu/shared', () => ({
   ...jest.requireActual('@eiyu/shared'),
   ...mockShared,
+  ...mockTracker,
   completeHabit: mockCompleteHabit,
 }));
 jest.doMock('@/contexts/auth-store', () => ({
   useAuth: () => ({ session: { user: { id: 'user-1' } } }),
 }));
-jest.doMock('@/lib/notifications', () => mockNative);
+// The store filters reminder rows with the real, pure helper; native scheduling stays mocked.
+jest.doMock('@/lib/notifications', () => ({ ...mockNative, filterReminderRows: jest.requireActual('@/lib/notifications').filterReminderRows }));
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
 jest.doMock('@/lib/sound-effects-prefs', () => ({
   getSoundEffectsEnabled: jest.fn().mockResolvedValue(false),
@@ -86,10 +90,10 @@ const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../
 const quest = (id: string, position: number, questType: Quest['questType'] = 'backlog'): Quest => ({
   id, name: id, stat: 'WIS', difficulty: 'Easy', easyVersion: null, description: null, questType, archived: false,
   time: '08:00', days: [], streak: 0, frozen: false, completed: false, targetCount: null, progressCount: 0, position,
-  dailyEligible: true,
+  dailyEligible: true, ...CLASSIFIED,
 });
 const chain = (id: string, position: number): LongQuest => ({
-  id, name: id, stat: 'INT', description: null, completedAt: null, position,
+  id, name: id, stat: 'INT', description: null, completedAt: null, position, ...CLASSIFIED,
   stages: [{ id: `${id}-s`, name: 's', done: false, description: null }],
 });
 
@@ -112,6 +116,7 @@ async function mountStore() {
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
+  resetTrackerMocks(mockTracker);
   currentStore = null;
   mockShared.archiveHabit.mockResolvedValue(undefined);
   mockShared.completeHabitRecovery.mockResolvedValue(undefined);
@@ -175,7 +180,7 @@ describe('mobile reorderQuests', () => {
     let done!: Promise<void>;
     await act(async () => { done = currentStore!.reorderQuests('backlog', ['b3', 'b1']); });
     await waitFor(() => expect(backlogIds()).toEqual(['b3', 'b2', 'b1']));
-    expect(mockShared.reorderQuests).toHaveBeenCalledWith('backlog', ['b3', 'b1']);
+    expect(mockShared.reorderQuests).toHaveBeenCalledWith('backlog', ['b3', 'b1'], revisionOf(), [...basicTarget('b3'), ...basicTarget('b1')]);
     await act(async () => { release(); await done; });
     await waitFor(() => expect(mockShared.fetchBacklogQuests.mock.calls.length).toBeGreaterThan(reads));
   });
@@ -233,7 +238,7 @@ describe('mobile reorderChains', () => {
     mockShared.reorderLongQuests.mockImplementationOnce(() => new Promise<void>(() => {}));
     await act(async () => { void currentStore!.reorderChains(['c3', 'c1']); });
     await waitFor(() => expect(currentStore?.user.longQuests.map(q => q.id)).toEqual(['c3', 'c2', 'c1']));
-    expect(mockShared.reorderLongQuests).toHaveBeenCalledWith(['c3', 'c1']);
+    expect(mockShared.reorderLongQuests).toHaveBeenCalledWith(['c3', 'c1'], revisionOf(), [...basicTarget('c3', 'chain'), ...basicTarget('c1', 'chain')]);
   });
 
   it('reads the chains again and publishes the failure when the server refuses', async () => {

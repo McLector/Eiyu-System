@@ -18,15 +18,16 @@ import {
   PanResponder,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { fonts } from '@/constants/eiyu-theme';
 import { useAuth } from '@/contexts/auth-store';
 import { useEiyu } from '@/contexts/eiyu-store';
 import { useAppTheme, useTokens } from '@/contexts/theme-store';
-import { AI_SUGGESTIONS_STORAGE_KEY, completeHabit } from '@eiyu/shared';
+import { AI_SUGGESTIONS_STORAGE_KEY, completeHabit, copyTrackerRevision, newRequestId, TRACKER_ACCESS_MESSAGE } from '@eiyu/shared';
+import type { TrackerAccess } from '@eiyu/shared';
 import { accountDateKey } from '@eiyu/shared';
 import { createHabit, HabitInput } from '@eiyu/shared';
 import { supabase } from '@/lib/supabase';
@@ -89,6 +90,31 @@ function seedOneTimeInput(): HabitInput {
   };
 }
 
+/**
+ * Dev only: a custom quest created and completed for one day. Both writes go through the tracker gateway, so without custom
+ * permission (or with another account's capability) nothing is sent. The revision is copied once, before any await.
+ */
+export async function seedCompletedQuest(params: {
+  userId: string;
+  tracker: TrackerAccess | null;
+  input: HabitInput;
+  kind: CompletionKind;
+  todayKey: string;
+  timeZone: string;
+}): Promise<string> {
+  const { userId, tracker, input, kind, todayKey, timeZone } = params;
+  if (!tracker || tracker.revision.userId !== userId) throw new Error(TRACKER_ACCESS_MESSAGE);
+  if (!tracker.canWriteBasic) throw new Error('Tracker changes are paused for this account.');
+  if (!tracker.canWriteCustom) throw new Error('Seeding a custom quest needs custom tracker permission. Grant it in Profile first.');
+  const expected = copyTrackerRevision(tracker.revision);
+  const creationId = newRequestId();
+  const habitId = await createHabit(userId, { mode: 'custom', values: input }, expected, creationId);
+  // Backdate through complete_habit rather than inserting rows directly: the RPC awards the matching XP in the same
+  // transaction, so seeded history and the stat bars agree instead of drifting apart.
+  await completeHabit(userId, habitId, input.stat, kind, expected, [{ kind: 'habit', id: habitId, inputKind: 'custom' }], todayKey, timeZone);
+  return habitId;
+}
+
 interface Tool {
   label: string;
   run: () => void | Promise<void>;
@@ -100,7 +126,7 @@ export function DevBall() {
 }
 
 function DevBallInner() {
-  const { user, saveHabit, toggleQuest, notificationsEnabled } = useEiyu();
+  const { user, saveHabit, toggleQuest, notificationsEnabled, tracker } = useEiyu();
   const { darkMode, setMode } = useAppTheme();
   const t = useTokens();
   const { session } = useAuth();
@@ -166,8 +192,8 @@ function DevBallInner() {
   ).current;
 
   const tools: Tool[] = [
-    { label: 'Seed habit quest', run: () => saveHabit(seedHabitInput()) },
-    { label: 'Seed 1-TIME quest', run: () => saveHabit(seedOneTimeInput()) },
+    { label: 'Seed habit quest', run: () => saveHabit({ mode: 'custom', values: seedHabitInput() }) },
+    { label: 'Seed 1-TIME quest', run: () => saveHabit({ mode: 'custom', values: seedOneTimeInput() }) },
     {
       label: 'Complete all today',
       run: () => user.quests.filter(q => !q.completed).forEach(q => toggleQuest(q.id)),
@@ -181,13 +207,9 @@ function DevBallInner() {
       run: async () => {
         if (!userId) throw new Error('Not signed in.');
         const input = seedHabitInput();
-        const habitId = await createHabit(userId, input);
-        // Backdate through complete_habit rather than inserting rows directly:
-        // the RPC awards the matching XP in the same transaction, so seeded
-        // history and the stat bars agree instead of drifting apart.
         const todayKey = accountDateKey(new Date(), user.timeZone);
         const kind: CompletionKind = Math.random() < 0.75 ? 'full' : 'easy';
-        await completeHabit(userId, habitId, input.stat, kind, todayKey, user.timeZone);
+        await seedCompletedQuest({ userId, tracker, input, kind, todayKey, timeZone: user.timeZone });
         await qc.invalidateQueries();
         Alert.alert(
           'Seeded',
@@ -285,7 +307,7 @@ function DevBallInner() {
           borderColor: t['accent-border'],
         },
       ]}>
-      <Text style={[styles.ballGlyph, { color: t.accent, fontFamily: fonts.display }]}>D</Text>
+      <AppText style={[styles.ballGlyph, { color: t.accent, fontFamily: fonts.display }]}>D</AppText>
     </View>
   );
 
@@ -298,7 +320,7 @@ function DevBallInner() {
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowMenu(false)} />
           <View style={[styles.card, { backgroundColor: t.modal, borderColor: t['glass-border'] }]}
             onStartShouldSetResponder={() => true}>
-            <Text style={[styles.title, { color: t.accent, fontFamily: fonts.display }]}>DEV TOOLS</Text>
+            <AppText style={[styles.title, { color: t.accent, fontFamily: fonts.display }]}>DEV TOOLS</AppText>
             {tools.map(tool => (
               <Pressable
                 key={tool.label}
@@ -311,11 +333,11 @@ function DevBallInner() {
                 }}
                 style={[styles.toolRow, { borderColor: t['glass-border'] }]}
                 accessibilityRole="button">
-                <Text style={[styles.toolLabel, { color: t.text, fontFamily: fonts.body }]}>{tool.label}</Text>
+                <AppText style={[styles.toolLabel, { color: t.text, fontFamily: fonts.body }]}>{tool.label}</AppText>
               </Pressable>
             ))}
             <Pressable onPress={() => setShowMenu(false)} style={[styles.closeRow, { borderColor: t['accent-border'] }]}>
-              <Text style={[styles.toolLabel, { color: t.accent, fontFamily: fonts.display }]}>CLOSE</Text>
+              <AppText style={[styles.toolLabel, { color: t.accent, fontFamily: fonts.display }]}>CLOSE</AppText>
             </Pressable>
           </View>
         </View>

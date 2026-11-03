@@ -4,6 +4,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, type Quest } from '@eiyu/shared';
 import { Text } from 'react-native';
 import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
+import { CLASSIFIED, createTrackerMocks, resetTrackerMocks } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,6 +18,7 @@ const mockShared = {
   fetchLongQuests: jest.fn(),
   fetchProfile: jest.fn(),
   fetchStats: jest.fn(),
+  fetchAccountAge: jest.fn(),
   fetchTodayHabits: jest.fn(),
   fetchTodayOneTimeHabits: jest.fn(),
   fetchUpcomingOneTimeHabits: jest.fn(),
@@ -40,13 +42,16 @@ const mockSoundPreference = { getSoundEffectsEnabled: jest.fn(), setSoundEffects
 const mockAudioPlayer = { seekTo: jest.fn(), play: jest.fn(), volume: 1 };
 const mockNetwork = { getNetworkStateAsync: jest.fn(), addNetworkStateListener: jest.fn() };
 
+const mockTracker = createTrackerMocks();
 jest.doMock('@eiyu/shared', () => ({
   ...jest.requireActual('@eiyu/shared'),
   ...mockShared,
+  ...mockTracker,
   completeHabit: mockCompleteHabit,
 }));
 jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user: { id: 'user-1' } } }) }));
-jest.doMock('@/lib/notifications', () => mockNative);
+// The store filters reminder rows with the real, pure helper; native scheduling stays mocked.
+jest.doMock('@/lib/notifications', () => ({ ...mockNative, filterReminderRows: jest.requireActual('@/lib/notifications').filterReminderRows }));
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
 jest.doMock('@/lib/sound-effects-prefs', () => mockSoundPreference);
 installExpoNetworkMock(mockNetwork);
@@ -56,7 +61,7 @@ const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../
 const quest: Quest = {
   id: 'habit-1', name: 'Read', stat: 'WIS', difficulty: 'Easy', easyVersion: 'Read one page',
   description: null, questType: 'habit', archived: false, time: '08:00', days: [1, 2, 3, 4, 5],
-  streak: 0, frozen: false, completed: false, targetCount: null, progressCount: 0,
+  streak: 0, frozen: false, completed: false, targetCount: null, progressCount: 0, ...CLASSIFIED,
 };
 
 let currentStore: ReturnType<typeof useEiyu> | null = null;
@@ -78,6 +83,7 @@ async function mountStore() {
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
+  resetTrackerMocks(mockTracker);
   currentStore = null;
   mockShared.archiveHabit.mockResolvedValue(undefined);
   mockShared.completeHabitRecovery.mockResolvedValue(undefined);
@@ -88,6 +94,7 @@ beforeEach(async () => {
   mockShared.fetchLongQuests.mockResolvedValue([]);
   mockShared.fetchProfile.mockResolvedValue({ displayName: 'Test', userClass: 'Ranger', timeZone: 'UTC' });
   mockShared.fetchStats.mockResolvedValue(initialUser.stats);
+  mockShared.fetchAccountAge.mockResolvedValue({ userId: 'user-1', trackerWritesPaused: false });
   mockShared.fetchTodayHabits.mockResolvedValue([quest]);
   mockShared.fetchTodayOneTimeHabits.mockResolvedValue([]);
   mockShared.fetchUpcomingOneTimeHabits.mockResolvedValue([]);

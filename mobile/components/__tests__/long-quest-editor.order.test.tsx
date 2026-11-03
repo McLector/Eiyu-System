@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import type { LongQuest } from '@eiyu/shared';
 
 import LongQuestEditorScreen from '../../app/long-quest-editor';
+import { trackerAccess } from '../../test-support/tracker-fixtures';
 import { renderWithTheme } from '../ui/test-theme';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -33,7 +34,7 @@ jest.mock('react-native-keyboard-controller', () => {
 
 const stage = (id: string, name: string, done = false) => ({ id, name, done, description: null });
 const quest = (over: Partial<LongQuest> = {}): LongQuest => ({
-  id: 'quest-1', name: 'Campaign', stat: 'WIS', description: null, completedAt: null, createdAt: '2026-10-01T00:00:00Z',
+  id: 'quest-1', name: 'Campaign', stat: 'WIS', description: null, completedAt: null, createdAt: '2026-10-01T00:00:00Z', inputKind: 'custom', canWrite: true,
   stages: [stage('stage-1', 'Research', true), stage('stage-2', 'Execute')], ...over,
 });
 const gapped = () => quest({ strictOrder: false, stages: [stage('g-1', 'First', true), stage('g-2', 'Second'), stage('g-3', 'Third', true)] });
@@ -41,7 +42,7 @@ const gapped = () => quest({ strictOrder: false, stages: [stage('g-1', 'First', 
 function setup(quests: LongQuest[] = [], id?: string) {
   mockParams = id ? { id } : {};
   mockBeforeRemove = null;
-  mockStore = { user: { longQuests: quests }, saveLongQuest: jest.fn().mockResolvedValue(undefined), forgetLongQuestSave: jest.fn(), retryLongQuests: jest.fn() };
+  mockStore = { user: { longQuests: quests }, tracker: trackerAccess(), acceptTracker: jest.fn(), refreshTracker: jest.fn(), saveLongQuest: jest.fn().mockResolvedValue(undefined), forgetLongQuestSave: jest.fn(), retryLongQuests: jest.fn() };
 }
 const ORDER = 'Stages in order';
 const chip = () => screen.getByRole('checkbox', { name: ORDER });
@@ -58,7 +59,7 @@ describe('long quest editor: the order option', () => {
     await fireEvent.changeText(screen.getByPlaceholderText('Stage 1'), 'Plan');
     await fireEvent.press(screen.getByText('CREATE LONG QUEST'));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledTimes(1));
-    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ strictOrder: true }), undefined);
+    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ strictOrder: true }) }), undefined);
   });
 
   it('can be turned off for a new chain', async () => {
@@ -69,7 +70,7 @@ describe('long quest editor: the order option', () => {
     await fireEvent.changeText(screen.getByPlaceholderText('e.g. Ship a Side Project'), 'Launch');
     await fireEvent.changeText(screen.getByPlaceholderText('Stage 1'), 'Plan');
     await fireEvent.press(screen.getByText('CREATE LONG QUEST'));
-    await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ strictOrder: false }), undefined));
+    await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ strictOrder: false }) }), undefined));
   });
 
   it.each([[false, false], [true, true], [undefined, true]])('starts from the chain: strictOrder %s shows checked=%s', async (strictOrder, checked) => {
@@ -93,7 +94,7 @@ describe('long quest editor: the order option', () => {
     await fireEvent.press(chip());
     await fireEvent.press(screen.getByText('SAVE CHANGES'));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledTimes(1));
-    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ strictOrder: false }), 'quest-1');
+    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ strictOrder: false }) }), 'quest-1');
   });
 
   it('counts a changed mode as an unsaved edit', async () => {
@@ -123,7 +124,7 @@ describe('long quest editor: the order option', () => {
     await fireEvent.press(chip());
     await fireEvent.press(screen.getByText('SAVE CHANGES'));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledTimes(1));
-    const [draft, id] = mockStore.saveLongQuest.mock.calls[0];
+    const [{ values: draft }, id] = mockStore.saveLongQuest.mock.calls[0];
     expect(id).toBe('quest-1');
     expect(draft.strictOrder).toBe(true);
     expect(draft.stages.map((s: { id: string }) => s.id)).toEqual(['g-1', 'g-3']);

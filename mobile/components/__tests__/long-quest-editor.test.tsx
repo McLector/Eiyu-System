@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { NAVIGATION_GUARD_COPY, UncertainSaveError, type LongQuest } from '@eiyu/shared';
 
 import LongQuestEditorScreen from '../../app/long-quest-editor';
+import { trackerAccess } from '../../test-support/tracker-fixtures';
 import { renderWithTheme } from '../ui/test-theme';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,7 +36,7 @@ jest.mock('react-native-keyboard-controller', () => {
 
 const stage = (id: string, name: string, done = false, description: string | null = null) => ({ id, name, done, description });
 const existing = (over: Partial<LongQuest> = {}): LongQuest => ({
-  id: 'quest-1', name: 'Campaign', stat: 'WIS', description: null, completedAt: null, createdAt: '2026-10-01T00:00:00Z',
+  id: 'quest-1', name: 'Campaign', stat: 'WIS', description: null, completedAt: null, createdAt: '2026-10-01T00:00:00Z', inputKind: 'custom', canWrite: true,
   stages: [stage('stage-1', 'Research', false, 'Existing\nnotes'), stage('stage-2', 'Execute')],
   ...over,
 });
@@ -45,6 +46,9 @@ function setup(quests: LongQuest[] = [], id?: string, over: Record<string, unkno
   mockBeforeRemove = null;
   mockStore = {
     user: { longQuests: quests },
+    tracker: trackerAccess(),
+    acceptTracker: jest.fn(),
+    refreshTracker: jest.fn(),
     saveLongQuest: jest.fn().mockResolvedValue(undefined),
     forgetLongQuestSave: jest.fn(),
     retryLongQuests: jest.fn(),
@@ -79,7 +83,7 @@ describe('long quest editor: stage descriptions', () => {
     await fireEvent.press(screen.getByText('CREATE LONG QUEST'));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledTimes(1));
     expect(mockStore.saveLongQuest).toHaveBeenCalledWith(
-      expect.objectContaining({ stages: [{ id: null, name: 'Plan', description: 'First line\n勇者' }, { id: null, name: 'Build', description: null }] }),
+      expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ stages: [{ id: null, name: 'Plan', description: 'First line\n勇者' }, { id: null, name: 'Build', description: null }]  }) }),
       undefined
     );
   });
@@ -92,7 +96,7 @@ describe('long quest editor: stage descriptions', () => {
     await fireEvent.changeText(description, '');
     await fireEvent.press(screen.getByText('SAVE CHANGES'));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledTimes(1));
-    expect(mockStore.saveLongQuest.mock.calls[0][0].stages[0]).toEqual({ id: 'stage-1', name: 'Research', description: '' });
+    expect(mockStore.saveLongQuest.mock.calls[0][0].values.stages[0]).toEqual({ id: 'stage-1', name: 'Research', description: '' });
     expect(mockStore.saveLongQuest.mock.calls[0][1]).toBe('quest-1');
   });
 });
@@ -123,7 +127,7 @@ describe('long quest editor: name validation', () => {
     await fillNew(name);
     await fireEvent.press(screen.getByText('CREATE LONG QUEST'));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledTimes(1));
-    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ name }), undefined);
+    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name }) }), undefined);
   });
 
   it('allows an unchanged grandfathered name when an unrelated field changes', async () => {
@@ -133,7 +137,7 @@ describe('long quest editor: name validation', () => {
     await fireEvent.changeText(screen.getByPlaceholderText('Context, why it matters…'), 'Keep this project moving');
     await fireEvent.press(screen.getByText('SAVE CHANGES'));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledTimes(1));
-    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ name: legacyName, description: 'Keep this project moving' }), 'legacy');
+    expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: legacyName, description: 'Keep this project moving' }) }), 'legacy');
   });
 });
 
@@ -163,7 +167,7 @@ describe('long quest editor: form', () => {
     expect(screen.getByRole('radio', { name: 'INT' })).not.toBeChecked();
     await fillNew();
     await fireEvent.press(screen.getByText('CREATE LONG QUEST'));
-    await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ stat: 'STR' }), undefined));
+    await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ stat: 'STR' }) }), undefined));
   });
 
   it('needs at least one named stage, ignores blank stages, and has no upper limit on stages', async () => {
@@ -179,7 +183,7 @@ describe('long quest editor: form', () => {
     expect(screen.getByPlaceholderText('Stage 11')).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole('button', { name: 'CREATE LONG QUEST' }));
     await waitFor(() => expect(mockStore.saveLongQuest).toHaveBeenCalled());
-    expect(mockStore.saveLongQuest.mock.calls[0][0].stages).toEqual([{ id: null, name: 'Plan', description: null }]);
+    expect(mockStore.saveLongQuest.mock.calls[0][0].values.stages).toEqual([{ id: null, name: 'Plan', description: null }]);
   });
 
   it('removes a stage, but never the last one', async () => {

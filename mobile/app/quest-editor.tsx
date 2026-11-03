@@ -1,23 +1,26 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   accountDateKey, DEFAULT_HABIT_DAYS, formatError, normalizeNameBoundaries, QUEST_GENRES, STATS,
   validateQuestName,
-  type Difficulty, type HabitInput, type Quest, type QuestGenre, type QuestType, type Stat,
+  type BasicHabitInput, type Difficulty, type HabitEditorInput, type HabitInput, type Quest, type QuestGenre, type QuestType, type Stat,
 } from '@eiyu/shared';
 
 import { DeleteQuestModal } from '@/components/board/delete-quest-modal';
 import { PlusIcon } from '@/components/eiyu/icons';
+import { TrackerConsent } from '@/components/status/tracker-consent';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
 import { Field } from '@/components/ui/field';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
+import { TRACKER_MESSAGES } from '@/contexts/tracker-access';
 import { useTokens } from '@/contexts/theme-store';
 import { publishBoardReturnIntent } from '@/lib/board-return-intent';
 import { hapticLight, hapticSuccess } from '@/lib/haptics';
@@ -76,7 +79,7 @@ function formatDateShort(key: string): string {
 
 function FieldLabel({ children }: { children: string }) {
   const t = useTokens();
-  return <Text style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>{children}</Text>;
+  return <AppText style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>{children}</AppText>;
 }
 
 /** A tappable field that opens the system date or time dialog. */
@@ -90,7 +93,7 @@ function PickerTrigger({ label, value, onPress, disabled }: { label: string; val
       disabled={disabled}
       onPress={onPress}
       style={[styles.trigger, { backgroundColor: t.track, borderColor: t['glass-border'] }, disabled && styles.disabled]}>
-      <Text style={{ color: t.text, fontFamily: fonts.body, fontSize: 15 }}>{value}</Text>
+      <AppText style={{ color: t.text, fontFamily: fonts.body, fontSize: 15 }}>{value}</AppText>
     </Pressable>
   );
 }
@@ -99,14 +102,24 @@ export default function QuestEditorScreen() {
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { user, saveHabit, archiveQuest, restoreQuest, deleteQuest } = useEiyu();
+  const { user, saveHabit, archiveQuest, restoreQuest, deleteQuest, tracker, audience, acceptTracker, refreshTracker, backlog = [] } = useEiyu();
   const { id, type: typeParam, returnLane } = useLocalSearchParams<{ id?: string; type?: string; returnLane?: string }>();
-  const liveQuest = id ? user.quests.find(q => q.id === id) ?? null : null;
+  const liveQuest = id ? [...user.quests, ...backlog].find(q => q.id === id) ?? null : null;
   // A quest that leaves live data mid-delete keeps the editor in edit mode instead of flipping to "new".
   const editQuestRef = useRef<Quest | null>(liveQuest);
   if (liveQuest) editQuestRef.current = liveQuest;
   const quest = liveQuest ?? editQuestRef.current;
   const isEditing = Boolean(id);
+
+  // The live copy carries the current kind. A quest is read-only when it is unclassified, or custom without custom
+  // permission, or access has not loaded; nothing about it can then be saved, archived or deleted from here.
+  const kind = quest?.inputKind;
+  const customOpen = !!tracker?.canWriteCustom;
+  const readOnly = isEditing && (!tracker || !kind || (kind === 'custom' && !customOpen));
+  const paused = !!tracker && !tracker.canWriteBasic;
+  const [mode, setMode] = useState<'basic' | 'custom'>(() => (isEditing ? (quest?.inputKind === 'basic' ? 'basic' : 'custom') : customOpen ? 'custom' : 'basic'));
+  const customFields = mode === 'custom' && (customOpen || readOnly);
+  const needsCustomNotice = mode === 'custom' && !customOpen && !readOnly;
 
   // The type is chosen when a quest is created and never changed in the editor: after that only the server's move
   // functions change it.
@@ -142,7 +155,7 @@ export default function QuestEditorScreen() {
   const isOneTime = type === 'one_time';
   const noTimeShown = noTime || noDate;
 
-  const snapshot = () => JSON.stringify({ name, note, easyVersion, time, noTime, noDate, scheduledDate, targetCount, days, stat, difficulty, type, genre });
+  const snapshot = () => JSON.stringify({ mode, name, note, easyVersion, time, noTime, noDate, scheduledDate, targetCount, days, stat, difficulty, type, genre });
   const [initialSnapshot] = useState(snapshot);
   const dirty = snapshot() !== initialSnapshot;
 
@@ -169,7 +182,10 @@ export default function QuestEditorScreen() {
   const nameError = nameTouched ? nameProblem : null;
   const targetCountError = targetCount && Number(targetCount) < 2 ? 'Target count must be at least 2.' : null;
   const penaltyMissing = isHabit && !targetCount && !easyVersion.trim();
-  const valid = !nameProblem && !targetCountError && !penaltyMissing;
+  // Basic quests carry no text: the name and the penalty are not asked for, so they cannot block the save.
+  const valid = mode === 'basic'
+    ? !targetCountError && !!tracker && !paused
+    : !nameProblem && !targetCountError && !penaltyMissing && customOpen && !paused;
 
   const finish = () => {
     committed.current = true;
@@ -177,27 +193,41 @@ export default function QuestEditorScreen() {
   };
 
   const handleSave = async () => {
-    if (!valid || submitting) return;
-    const input: HabitInput = {
-      name: quest?.name === name ? name : normalizeNameBoundaries(name),
-      easyVersion: isHabit ? easyVersion.trim() || null : null,
-      description: note.trim() || null,
-      questType: type,
-      time: isHabit || (isOneTime && !noTimeShown) ? time : PLACEHOLDER_TIME,
-      days: isHabit ? days : [],
-      stat,
-      difficulty,
-      scheduledDate: isOneTime && !noDate ? scheduledDate : null,
-      targetCount: isHabit && targetCount ? Number(targetCount) : null,
-      genre: isHabit ? null : genre,
-      timeSet: isHabit ? true : isOneTime ? !noTimeShown : false,
-    };
+    if (!valid || submitting || readOnly) return;
+    const timeValue = isHabit || (isOneTime && !noTimeShown) ? time : PLACEHOLDER_TIME;
+    const timeSetValue = isHabit ? true : isOneTime ? !noTimeShown : false;
+    let editor: HabitEditorInput;
+    if (mode === 'basic') {
+      // Built from the structured fields only, so no typed text can travel with a basic save.
+      const values: BasicHabitInput = {
+        questType: type, stat, difficulty, time: timeValue, days: isHabit ? days : [], timeSet: timeSetValue,
+        ...(isOneTime && !noDate ? { scheduledDate } : {}),
+        ...(isHabit && targetCount ? { targetCount: Number(targetCount) } : {}),
+      };
+      editor = { mode: 'basic', values };
+    } else {
+      const input: HabitInput = {
+        name: quest?.name === name ? name : normalizeNameBoundaries(name),
+        easyVersion: isHabit ? easyVersion.trim() || null : null,
+        description: note.trim() || null,
+        questType: type,
+        time: timeValue,
+        days: isHabit ? days : [],
+        stat,
+        difficulty,
+        scheduledDate: isOneTime && !noDate ? scheduledDate : null,
+        targetCount: isHabit && targetCount ? Number(targetCount) : null,
+        genre: isHabit ? null : genre,
+        timeSet: timeSetValue,
+      };
+      editor = { mode: 'custom', values: input };
+    }
     setSubmitting(true);
     setSaving(true);
     pendingRef.current = true;
     setError(null);
     try {
-      await saveHabit(input, id);
+      await saveHabit(editor, id);
       if (!id && isOneTime && returnLane === 'one-time') publishBoardReturnIntent('one-time');
       if (!id && type === 'backlog' && returnLane === 'backlog') publishBoardReturnIntent('backlog');
       hapticSuccess();
@@ -212,7 +242,7 @@ export default function QuestEditorScreen() {
   };
 
   const handleLifecycle = async (operation: 'archive' | 'restore' | 'delete') => {
-    if (!id || submitting || lifecycleInFlight.current) return;
+    if (!id || submitting || lifecycleInFlight.current || readOnly || paused) return;
     lifecycleInFlight.current = true;
     pendingRef.current = true;
     setSubmitting(true);
@@ -237,9 +267,9 @@ export default function QuestEditorScreen() {
   return (
     <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t['page-flat'] }]}>
       <View style={[styles.header, { paddingTop: insets.top, borderBottomColor: t['divider-flat'] }]}>
-        <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>
+        <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>
           {isEditing ? 'EDIT QUEST' : TITLES[type]}
-        </Text>
+        </AppText>
         <Pressable
           testID="quest-editor-close"
           accessibilityRole="button"
@@ -264,34 +294,79 @@ export default function QuestEditorScreen() {
             </View>
           ) : null}
 
-          <Field
-            label="Quest name"
-            placeholder="e.g. Code for 2 hours"
-            value={name}
-            onChangeText={value => { setName(value); setNameTouched(true); }}
-            onBlur={() => setNameTouched(true)}
-            error={nameError ?? undefined}
-            errorTestID="quest-name-error"
-          />
-
-          <Field
-            label="Note"
-            placeholder="Context, links, why it matters…"
-            value={note}
-            onChangeText={setNote}
-            multiline
-          />
-
-          {isHabit && !targetCount ? (
-            <View style={styles.group}>
-              <Field
-                label="Penalty"
-                placeholder="e.g. Code for 20 minutes"
-                value={easyVersion}
-                onChangeText={setEasyVersion}
-                hint={penaltyMissing ? 'Add a penalty, or set a target count of at least 2.' : 'Required unless a target count is set.'}
-              />
+          {readOnly ? (
+            <View accessibilityLabel="Read-only quest" style={styles.group}>
+              <AppText style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>
+                {tracker ? TRACKER_MESSAGES.readOnly : 'Tracker access is unavailable, so this quest is read-only for now.'}
+              </AppText>
+              {tracker && kind && !customOpen ? (
+                <TrackerConsent userId={tracker.revision.userId} access={tracker} purpose="custom-tracker" mode="prompt" audience={audience} declineLabel="Keep read-only"
+                  onDecline={close} onChanged={acceptTracker} onStale={() => void refreshTracker()} />
+              ) : null}
             </View>
+          ) : null}
+
+          {!readOnly && (!isEditing || kind === 'basic') ? (
+            <View accessibilityLabel="Tracking style">
+              <FieldLabel>TRACKING</FieldLabel>
+              <View style={styles.row}>
+                <Chip label="Use basic tracking" selected={mode === 'basic'} onPress={() => setMode('basic')} />
+                <Chip label="Use custom details" selected={mode === 'custom'} onPress={() => setMode('custom')} />
+              </View>
+            </View>
+          ) : null}
+
+          {mode === 'basic' && !readOnly ? (
+            <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>
+              Basic quests get a neutral name from the System, such as &quot;Quest 1&quot;. You still choose the schedule, attribute and difficulty.
+              {isEditing ? ' Adding custom details later cannot be undone.' : ''}
+            </AppText>
+          ) : null}
+
+          {needsCustomNotice && tracker ? (
+            <TrackerConsent userId={tracker.revision.userId} access={tracker} purpose="custom-tracker" mode="prompt" audience={audience} declineLabel="Keep basic tracking"
+              onDecline={() => setMode('basic')} onChanged={acceptTracker} onStale={() => void refreshTracker()} />
+          ) : null}
+          {needsCustomNotice && !tracker ? (
+            <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>Tracker access is unavailable. Use basic tracking or try again later.</AppText>
+          ) : null}
+          {paused ? <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>{TRACKER_MESSAGES.paused}</AppText> : null}
+
+          {customFields ? (
+            <>
+              <Field
+                label="Quest name"
+                placeholder="e.g. Code for 2 hours"
+                value={name}
+                editable={!readOnly}
+                onChangeText={value => { setName(value); setNameTouched(true); }}
+                onBlur={() => setNameTouched(true)}
+                error={nameError ?? undefined}
+                errorTestID="quest-name-error"
+              />
+
+              <Field
+                label="Note"
+                placeholder="Context, links, why it matters…"
+                value={note}
+                editable={!readOnly}
+                onChangeText={setNote}
+                multiline
+              />
+
+              {isHabit && !targetCount ? (
+                <View style={styles.group}>
+                  <Field
+                    label="Penalty"
+                    placeholder="e.g. Code for 20 minutes"
+                    value={easyVersion}
+                    editable={!readOnly}
+                    onChangeText={setEasyVersion}
+                    hint={penaltyMissing ? 'Add a penalty, or set a target count of at least 2.' : 'Required unless a target count is set.'}
+                  />
+                </View>
+              ) : null}
+            </>
           ) : null}
 
           {isHabit ? (
@@ -315,8 +390,8 @@ export default function QuestEditorScreen() {
               </View>
               {dateLocked ? (
                 <>
-                  <Text style={[styles.lockedDate, { color: t.text, fontFamily: fonts.body }]}>{formatDateShort(scheduledDate)}</Text>
-                  <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>The date is fixed once the quest is finished.</Text>
+                  <AppText style={[styles.lockedDate, { color: t.text, fontFamily: fonts.body }]}>{formatDateShort(scheduledDate)}</AppText>
+                  <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>The date is fixed once the quest is finished.</AppText>
                 </>
               ) : (
                 <>
@@ -382,7 +457,7 @@ export default function QuestEditorScreen() {
             </View>
           ) : null}
 
-          {!isHabit ? (
+          {customFields && !isHabit ? (
             <View>
               <FieldLabel>GENRE</FieldLabel>
               <View style={styles.row}>
@@ -410,9 +485,9 @@ export default function QuestEditorScreen() {
       </View>
 
       <View testID="quest-editor-footer" style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: Math.max(12, insets.bottom) }]}>
-        {error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+        {error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
         <View testID="quest-editor-actions" style={styles.actions}>
-          {isEditing && quest ? (
+          {isEditing && quest && !readOnly && !paused ? (
             <>
               <Button
                 testID={quest.archived ? 'quest-restore' : 'quest-archive'}
@@ -432,7 +507,7 @@ export default function QuestEditorScreen() {
               />
             </>
           ) : null}
-          <Button
+          {readOnly ? null : <Button
             testID="quest-save"
             variant="primary"
             label={saving ? 'SAVING…' : isEditing ? 'SAVE CHANGES' : 'CREATE QUEST'}
@@ -441,7 +516,7 @@ export default function QuestEditorScreen() {
             busy={saving}
             onPress={() => void handleSave()}
             style={styles.save}
-          />
+          />}
         </View>
       </View>
 

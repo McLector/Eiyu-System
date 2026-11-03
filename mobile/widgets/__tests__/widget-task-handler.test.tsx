@@ -59,6 +59,19 @@ describe('widget task handler', () => {
     expect(texts).toContain('Read');
   });
 
+  it.each<Action>(['WIDGET_ADDED', 'WIDGET_UPDATE', 'WIDGET_RESIZED', 'WIDGET_CLICK', 'WIDGET_DELETED'])('has no write path: %s never reaches the network', async action => {
+    const net = jest.fn();
+    const original = globalThis.fetch;
+    globalThis.fetch = net as unknown as typeof fetch;
+    try {
+      await AsyncStorage.setItem(WIDGET_KEY, encodeSnapshot(snapshot()));
+      await widgetTaskHandler(props(action, { clickAction: 'COMPLETE_HABIT', clickActionData: { habitId: 'a' } } as Partial<WidgetTaskHandlerProps>));
+      expect(net).not.toHaveBeenCalled();
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it('asks to set up when nothing is stored', async () => {
     const call = props('WIDGET_ADDED');
     await widgetTaskHandler(call);

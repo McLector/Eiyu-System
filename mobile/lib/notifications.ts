@@ -16,8 +16,17 @@ const SUPPORTED = Platform.OS !== 'web';
 const CHANNEL_ID = 'eiyu-quest-reminders';
 const NOTIFICATION_IDS_KEY = 'eiyu:notification-ids';
 
+/** What a reminder title falls back to when no name is supplied: a protected name is never reconstructed from a cache. */
+export const NEUTRAL_REMINDER_TITLE = 'Quest reminder';
+
+/** Said after protected reminders were canceled: only future ones were. Copies the OS already delivered are not recalled. */
+export const DELIVERED_REMINDER_NOTICE =
+  'Reminders already delivered to this device stay there until you clear them. Only future reminders were canceled.';
+
+const titleOf = (name: string | null | undefined) => name?.trim() || NEUTRAL_REMINDER_TITLE;
+
 export interface ReminderSchedule {
-  name: string;
+  name: string | null | undefined;
   time: string;
   days: number[];
 }
@@ -162,7 +171,7 @@ export async function scheduleHabitReminders(
             })();
         return Notifications.scheduleNotificationAsync({
           content: {
-            title: input.name,
+            title: titleOf(input.name),
             body: 'Time for your quest — tap to open Eiyu System.',
             sound: true,
             data: { lane: 'daily' },
@@ -190,7 +199,7 @@ export async function scheduleHabitReminders(
  */
 export async function scheduleOneTimeReminder(
   habitId: string,
-  input: { name: string; time: string; date: string },
+  input: { name: string | null | undefined; time: string; date: string },
   timeZone: string
 ) {
   if (!SUPPORTED) return;
@@ -207,7 +216,7 @@ export async function scheduleOneTimeReminder(
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: input.name,
+        title: titleOf(input.name),
         body: '1-Time quest reminder — tap to open Eiyu System.',
         sound: true,
         data: { lane: 'one-time' },
@@ -224,6 +233,50 @@ export async function scheduleOneTimeReminder(
   });
 }
 
+export interface ReminderRow { id: string; inputKind?: 'basic' | 'custom' }
+export interface ReminderOwnerAccess { canWriteBasic: boolean; canWriteCustom: boolean }
+
+/**
+ * The rows that may be (re)armed. Once custom permission is observed denied, a custom or unclassified row (whose title is
+ * protected text) is left out; basic rows are unaffected. A capability that is not known is not a denial.
+ */
+export function filterReminderRows<T extends ReminderRow>(rows: readonly T[], access: ReminderOwnerAccess | null | undefined): T[] {
+  if (!access || access.canWriteCustom) return [...rows];
+  return rows.filter(row => row.inputKind === 'basic');
+}
+
+/**
+ * Cancel the scheduled reminders Eiyu itself recorded for these quests, and nothing else: not every scheduled
+ * notification, no OS permission or channel, no delivered copy. A failed cancel keeps its id so a retry can finish.
+ */
+export async function cancelRemindersForHabits(habitIds: readonly string[]): Promise<number> {
+  if (!SUPPORTED) return 0;
+  return serializeMapOp(async () => {
+    const map = await readIdMap();
+    let canceled = 0;
+    let failure: unknown;
+    for (const habitId of habitIds) {
+      const ids = map[habitId];
+      if (!ids?.length) continue;
+      const results = await Promise.allSettled(ids.map(id => Notifications.cancelScheduledNotificationAsync(id)));
+      const kept = ids.filter((_, i) => results[i].status === 'rejected');
+      canceled += ids.length - kept.length;
+      if (kept.length) { map[habitId] = kept; failure ??= (results.find(r => r.status === 'rejected') as PromiseRejectedResult).reason; }
+      else delete map[habitId];
+    }
+    await writeIdMap(map);
+    if (failure) throw failure;
+    return canceled;
+  });
+}
+
+/** After an observed custom denial: cancel the scheduled reminders of the protected rows only. Returns how many were canceled. */
+export async function cancelProtectedReminders(rows: readonly ReminderRow[], access: ReminderOwnerAccess | null | undefined): Promise<number> {
+  if (!access || access.canWriteCustom) return 0;
+  const protectedIds = rows.filter(row => row.inputKind !== 'basic').map(row => row.id);
+  return protectedIds.length ? cancelRemindersForHabits(protectedIds) : 0;
+}
+
 export async function cancelAllHabitReminders() {
   if (!SUPPORTED) return;
   await Notifications.cancelAllScheduledNotificationsAsync();
@@ -231,12 +284,13 @@ export async function cancelAllHabitReminders() {
 }
 
 /** R-41/R-15: fired immediately when a habit's streak newly freezes — neutral wording, no shame language. */
-export async function notifyRecoveryQuestGenerated(habitName: string) {
+export async function notifyRecoveryQuestGenerated(habitName: string | null | undefined) {
   if (!SUPPORTED) return;
+  const label = habitName?.trim() ? `"${habitName.trim()}"` : 'A quest';
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Recovery Quest available',
-      body: `"${habitName}" has a one-day recovery window — complete the penalty to keep your streak.`,
+      body: `${label} has a one-day recovery window — complete the penalty to keep your streak.`,
       sound: true,
     },
     trigger: null, // fire immediately

@@ -15,7 +15,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
+import { defaultShouldDehydrateQuery, QueryClient, useQuery, useQueryClient, type Query } from '@tanstack/react-query';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import * as Network from 'expo-network';
 import {
@@ -29,7 +29,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { DEFAULT_PALETTE, initialUser } from '@eiyu/shared';
+import { DEFAULT_PALETTE, initialUser, TRACKER_ACCESS_MESSAGE } from '@eiyu/shared';
 import { useAuth } from '@/contexts/auth-store';
 import { ThemeContext } from '@/contexts/theme-store';
 import { completeHabit, completeHabitRecovery, undoCompletion, incrementHabitProgress } from '@eiyu/shared';
@@ -45,7 +45,6 @@ import {
   fetchBacklogQuests,
   fetchUpcomingOneTimeHabits,
   fetchTodayHabits,
-  HabitInput,
   hasManualOrder,
   moveBacklogToOneTime,
   moveOneTimeToBacklog,
@@ -64,6 +63,7 @@ import {
   cancelAllHabitReminders,
   ensureNotificationSetup,
   inspectNotificationPermissions,
+  filterReminderRows,
   notifyRecoveryQuestGenerated,
   requestNotificationPermissions,
   scheduleOneTimeReminder,
@@ -73,17 +73,39 @@ import {
   deleteLongQuest,
   fetchLongQuests,
   reorderLongQuests,
-  LongQuestInput,
   saveAtomicLongQuest,
   setStageDoneWithReceipt,
   stageNotice,
   type RewardReceipt,
 } from '@eiyu/shared';
+import {
+  copyTrackerRevision,
+  prepareDay,
+  type ChainEditorInput,
+  type HabitEditorInput,
+  type TrackerAccess,
+  type TrackerTargetSnapshot,
+} from '@eiyu/shared';
+import {
+  TRACKER_MESSAGES,
+  readTrackerAccess,
+  refreshTrackerAfterFailure,
+  safeTrackerErrorKind,
+  snapshotOf,
+  trackerErrorMessage,
+  trackerKey,
+  useAccountAudience,
+  useTrackerAccess,
+  writeDenial,
+  type AccountAudience,
+  type TrackedRecord,
+} from '@/contexts/tracker-access';
 import { newRequestId } from '@/lib/request-id';
 import { useWriteQueue } from '@/lib/use-write-queue';
 import { useWidgetSnapshot } from '@/lib/use-widget-snapshot';
 import {
   applyOverlay,
+  FAILURE_MESSAGES,
   isOfflineNetworkFailure,
   syncStateByHabit,
   waitingCount,
@@ -110,6 +132,15 @@ export const queryClient = new QueryClient({
 });
 
 export const persister = createAsyncStoragePersister({ storage: AsyncStorage });
+
+/**
+ * What the persisted cache may hold. The tracker capability decides what may be written, so a stored copy could restore a
+ * grant the person has since withdrawn: it is read from the server on every start and never saved to the device. The same
+ * goes for the age band, which comes from a birthday.
+ */
+export function shouldPersistQuery(query: Query): boolean {
+  return query.queryKey[0] !== 'tracker' && query.queryKey[0] !== 'account-age' && defaultShouldDehydrateQuery(query);
+}
 
 const habitsTodayKey = (userId?: string) => ['habits', 'today', userId ?? null] as const;
 const longQuestsKey = (userId?: string) => ['longQuests', userId ?? null] as const;
@@ -157,7 +188,7 @@ interface EiyuStore {
   /** Writes the server refused or that could not land, until dismissed. */
   failedSyncs: QueueEntry[];
   /** Puts a failed write back in line (not one whose day passed). */
-  retrySync: (id: string) => void;
+  retrySync: (id: string) => Promise<boolean>;
   /** Drops a failed write and refreshes the board to server truth. */
   dismissSync: (id: string) => void;
   /** Full completion if not yet done, undo if already done (R-05, R-07). */
@@ -166,7 +197,15 @@ interface EiyuStore {
   adjustProgress: (id: string, delta: number) => void;
   /** R-13: ask the server to resolve the authoritative open recovery window. */
   completeRecovery: (id: string) => void;
-  saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
+  saveHabit: (input: HabitEditorInput, existingId?: string) => Promise<void>;
+  /** The signed-in owner's loaded tracker capability; null until it is read (every tracker write is refused meanwhile). */
+  tracker: TrackerAccess | null;
+  /** Declared age band for the optional-notice prompts; undefined (adult wording) until known or when unknown. */
+  audience: AccountAudience | undefined;
+  /** Take a server-confirmed capability (after a grant or withdrawal) for the current owner only. */
+  acceptTracker: (access: TrackerAccess) => void;
+  /** Re-read the capability, for example after a stale or refused write. */
+  refreshTracker: () => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
   restoreQuest: (id: string) => Promise<void>;
   deleteQuest: (id: string) => Promise<void>;
@@ -184,6 +223,12 @@ interface EiyuStore {
   reorderQuests: (lane: QuestType, ids: string[]) => Promise<void>;
   /** The same for the Chain list. */
   reorderChains: (ids: string[]) => Promise<void>;
+  /**
+   * Set once a change held for a processing pause expired after 30 days and was removed from this device (it is no longer in the
+   * queue, so the review sheet cannot list it). Plain wording; it never names the quest.
+   */
+  expiredHoldNotice: string | null;
+  dismissExpiredHoldNotice: () => void;
   /** Non-blocking device reminder warning after a successful DB mutation. */
   reminderWarning: string | null;
   /** Retry reminder reconciliation without opening an OS permission prompt. */
@@ -201,7 +246,7 @@ interface EiyuStore {
   /** Re-fetch Long Quests after a load failure. */
   retryLongQuests: () => Promise<void>;
   /** R-32: create or edit a Long Quest with ordered stages. */
-  saveLongQuest: (input: LongQuestInput, existingId?: string) => Promise<void>;
+  saveLongQuest: (input: ChainEditorInput, existingId?: string) => Promise<void>;
   /** Drop the remembered ids of an unconfirmed save so the next attempt starts fresh (after the user discards it). */
   forgetLongQuestSave: () => void;
   removeLongQuest: (id: string) => Promise<void>;
@@ -229,6 +274,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const [retryingLongQuests, setRetryingLongQuests] = useState(false);
   const [lqActionError, setLqActionError] = useState<string | null>(null);
   const [stageRewardNotice, setStageRewardNotice] = useState<string | null>(null);
+  const [expiredHoldNotice, setExpiredHoldNotice] = useState<string | null>(null);
   const [rewardReceipt, setRewardReceipt] = useState<RewardReceipt | null>(null);
   const [pendingStageIds, setPendingStageIds] = useState<string[]>([]);
   const rewardRequests = useRef(new Map<string, string>());
@@ -251,6 +297,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const deletedHabitIds = useRef(new Set<string>());
   const explicitPermissionRequest = useRef(false);
   const activeUserId = useRef(userId);
+  const creationIds = useRef(new Map<string, string>());
+  // Deletes whose answer was never seen: a later 42501 for the same id means the first attempt did land.
+  const attemptedDeletes = useRef(new Set<string>());
   const offlineFailurePending = useRef(false);
   const lastConnectivity = useRef<boolean | null>(null);
   const connectivityEventRevision = useRef(0);
@@ -282,9 +331,35 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, []);
 
+  const trackerQuery = useTrackerAccess(userId);
+  const tracker = trackerQuery.data && trackerQuery.data.revision.userId === userId ? trackerQuery.data : null;
+  const trackerRef = useRef<TrackerAccess | null>(null);
+  trackerRef.current = tracker;
+  // Only an account that can still be asked for an optional purpose can see a prompt, so only it reads the age band.
+  const audience = useAccountAudience(userId, !!tracker && !(tracker.customConsent && tracker.fitnessConsent));
+  // Reminders and the widget only need the two permission bits; keying on them avoids a resync on every access refetch.
+  const reminderCanWriteBasic = tracker ? tracker.canWriteBasic : null;
+  const reminderCanWriteCustom = tracker ? tracker.canWriteCustom : null;
+  const reminderAccess = useMemo(
+    () => reminderCanWriteBasic === null || reminderCanWriteCustom === null
+      ? null
+      : { canWriteBasic: reminderCanWriteBasic, canWriteCustom: reminderCanWriteCustom },
+    [reminderCanWriteBasic, reminderCanWriteCustom]
+  );
+
+  // Preparation comes first and is never required for reading: a failed or paused preparation still shows history.
+  const prepareBoard = useCallback(async (owner: string) => {
+    try {
+      const access = await qc.fetchQuery({ queryKey: trackerKey(owner), queryFn: () => readTrackerAccess(owner), staleTime: 0 });
+      if (!access.canWriteBasic || access.revision.userId !== owner) return;
+      const result = await prepareDay(copyTrackerRevision(access.revision));
+      if (result.accessChanged) await qc.invalidateQueries({ queryKey: trackerKey(owner) });
+    } catch { /* Preparation is optional for reading; the board read below does not depend on it. */ }
+  }, [qc]);
+
   const habitsQuery = useQuery({
     queryKey: habitsTodayKey(userId),
-    queryFn: () => trackOfflineFailure(() => fetchTodayHabits(userId!)),
+    queryFn: () => trackOfflineFailure(async () => { await prepareBoard(userId!); return fetchTodayHabits(userId!); }),
     enabled: !!userId,
   });
   // Read Backlog only after the board read: that read runs the server rollover that can add quests to Backlog.
@@ -363,6 +438,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     activeUserId.current = userId;
     deletedHabitIds.current.clear();
     lifecycleRequests.current.clear();
+    creationIds.current.clear();
+    attemptedDeletes.current.clear();
     setReminderWarning(null);
   }, [qc, userId]);
 
@@ -426,10 +503,12 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     }
     if (notificationsEnabled) {
       newlyFrozen.forEach(h => {
-        notifyRecoveryQuestGenerated(h.name).catch(() => {});
+        // Once custom permission is observed denied, a protected quest's own text stays off the lock screen.
+        const hideName = reminderAccess !== null && !reminderAccess.canWriteCustom && h.inputKind !== 'basic';
+        notifyRecoveryQuestGenerated(hideName ? null : h.name).catch(() => {});
       });
     }
-  }, [habitsQuery.data, notificationsEnabled]);
+  }, [habitsQuery.data, notificationsEnabled, reminderAccess]);
 
   const runReminderTask = useCallback(<T,>(task: () => Promise<T>): Promise<T> => {
     const queued = reminderTaskQueue.current.then(task, task);
@@ -457,18 +536,20 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       await cancelAllHabitReminders();
       if (!granted) throw new Error('Notification permission is unavailable on this device.');
       const accountTimeZone = profile?.timeZone ?? deviceTimeZone();
-      const habits = await fetchAllActiveHabits(userId);
+      // The full reset above already removed protected reminders; once custom permission is observed denied they are
+      // simply not re-armed. Basic reminders are unaffected.
+      const habits = filterReminderRows(await fetchAllActiveHabits(userId), reminderAccess);
       await Promise.all(habits.map(h => scheduleHabitReminders(h.id, h, accountTimeZone)));
       // Re-arm upcoming one-time quests, including future dates. The full
       // reset would otherwise erase their existing one-shot reminders.
-      const oneTimeUpcoming = await fetchUpcomingOneTimeHabits(userId);
+      const oneTimeUpcoming = filterReminderRows(await fetchUpcomingOneTimeHabits(userId), reminderAccess);
       await Promise.all(
         oneTimeUpcoming.map(h =>
           scheduleOneTimeReminder(h.id, h, accountTimeZone)
         )
       );
     }),
-    [userId, profile?.timeZone, runReminderTask]
+    [userId, profile?.timeZone, runReminderTask, reminderAccess]
   );
 
   useEffect(() => {
@@ -573,18 +654,24 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const sendQueuedWrite = useCallback(
     async (entry: QueueEntry): Promise<unknown> => {
       if (!userId) return undefined;
+      // The revision and targets were captured when the person acted. A queued write never fetches a newer grant, and an
+      // entry that lacks them is not sent (the queue holds it for review, so this is a second line of defence).
+      const expected = entry.trackerRevision;
+      const targets = entry.trackerTargets;
+      if (!expected || !targets || expected.userId !== userId) throw new Error(TRACKER_ACCESS_MESSAGE);
       const stat = qc.getQueryData<Quest[]>(habitsTodayKey(userId))?.find(q => q.id === entry.habitId)?.stat ?? 'STR';
       switch (entry.kind) {
         case 'complete':
-          await completeHabit(userId, entry.habitId, stat, 'full', entry.accountDate, accountTimeZone);
+          // A duplicate completion (22023) is left to the queue, which settles it once as already recorded.
+          await completeHabit(userId, entry.habitId, stat, 'full', expected, targets, entry.accountDate, accountTimeZone);
           return undefined;
         case 'undo':
-          await undoCompletion(userId, entry.habitId, stat, accountTimeZone, entry.accountDate);
+          await undoCompletion(userId, entry.habitId, stat, expected, targets, accountTimeZone, entry.accountDate);
           return undefined;
         case 'progress':
-          return incrementHabitProgress(entry.habitId, entry.accountDate, entry.delta ?? 0);
+          return incrementHabitProgress(entry.habitId, entry.accountDate, entry.delta ?? 0, expected, targets);
         case 'recovery':
-          return completeHabitRecovery(entry.habitId);
+          return completeHabitRecovery(entry.habitId, expected, targets);
       }
     },
     [userId, qc, accountTimeZone]
@@ -636,9 +723,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   );
 
   const reportFailedWrite = useCallback(
-    () => {
+    (entry: QueueEntry) => {
       // The Board's not-saved notice reports the reason; here the board just returns to what the server holds.
       if (userId) void qc.invalidateQueries({ queryKey: habitsTodayKey(userId) });
+      // An expired hold has left the queue, so that notice cannot list it: say it once here, without the quest name.
+      if (entry.failure?.reason === 'hold-expired') setExpiredHoldNotice(FAILURE_MESSAGES['hold-expired']);
     },
     [userId, qc]
   );
@@ -680,6 +769,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     entries: syncEntries,
     palette: theme?.palette ?? DEFAULT_PALETTE,
     mode: theme?.mode ?? 'dark',
+    canWriteCustom: reminderCanWriteCustom,
   });
 
   // The account day ended, or the account zone just became known: judge which writes can still land, then send them.
@@ -690,13 +780,77 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     void flushWrites();
   }, [accountDayRevision, accountZoneKnown, profile?.timeZone, sweepWrites, flushWrites]);
 
+  const questsRef = useRef<Quest[]>([]);
+  const backlogRef = useRef<Quest[]>([]);
+  const longQuestsRef = useRef<LongQuest[]>([]);
+  questsRef.current = quests;
+  backlogRef.current = backlog;
+  longQuestsRef.current = longQuests;
+  const findQuest = (id: string) => questsRef.current.find(q => q.id === id) ?? backlogRef.current.find(q => q.id === id);
+
+  /**
+   * Decide a write before anything is sent. Copies the revision and builds the target snapshots synchronously from the
+   * loaded view models, so a later refresh cannot retarget the request. A known denial throws and nothing is sent.
+   */
+  const authorize = (kind: 'habit' | 'chain', records: readonly (TrackedRecord & { id: string })[], extra?: (access: TrackerAccess) => string | null) => {
+    const access = trackerRef.current;
+    const denial = writeDenial(access, records) ?? (access ? extra?.(access) ?? null : null);
+    if (denial || !access) throw new Error(denial ?? TRACKER_MESSAGES.paused);
+    const seen = new Set<string>();
+    const targets: TrackerTargetSnapshot[] = [];
+    for (const record of records) if (!seen.has(record.id)) { seen.add(record.id); targets.push(snapshotOf(kind, record)); }
+    return { access, expected: copyTrackerRevision(access.revision), targets };
+  };
+  const NOT_LOADED = 'That item is not loaded any more. Reload and try again.';
+  const habitsOrThrow = (ids: string[]) => ids.map(id => findQuest(id) ?? (() => { throw new Error(NOT_LOADED); })());
+  const chainsOrThrow = (ids: string[]) => ids.map(id => longQuestsRef.current.find(q => q.id === id) ?? (() => { throw new Error(NOT_LOADED); })());
+
+  /** After a refused or stale write: re-read access and the lists (never replay), and word the error for people. */
+  const afterRefusal = (err: unknown): Error => {
+    refreshTrackerAfterFailure(qc, userId, err);
+    if (safeTrackerErrorKind(err) === 'access-changed') {
+      void qc.invalidateQueries({ queryKey: ['habits'] });
+      void qc.invalidateQueries({ queryKey: ['backlog'] });
+      void qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
+    }
+    const message = trackerErrorMessage(err);
+    return message ? new Error(message) : err instanceof Error ? err : new Error(formatError(err));
+  };
+  const acceptTracker = useCallback((access: TrackerAccess) => {
+    if (!userId || access.revision.userId !== userId) return;
+    qc.setQueryData(trackerKey(userId), access);
+    // Each record's kind and writability depend on the permission, so the lists are read again.
+    void qc.invalidateQueries({ queryKey: ['habits'] });
+    void qc.invalidateQueries({ queryKey: ['backlog'] });
+    void qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
+  }, [qc, userId]);
+  const refreshTracker = useCallback(async () => {
+    if (userId) await qc.invalidateQueries({ queryKey: trackerKey(userId) });
+  }, [qc, userId]);
+
+  /**
+   * Hands one progress write to the queue with the capability and the record's kind as the person saw them. A known
+   * denial is decided here and by the queue; neither stores the label or the action. Returns whether it was accepted.
+   */
+  const enqueueTracked = (request: { kind: 'complete' | 'undo' | 'progress' | 'recovery'; habitId: string; delta?: number; base?: number; label: string }, quest: Quest): boolean => {
+    let gate: ReturnType<typeof authorize>;
+    try { gate = authorize('habit', [quest]); } catch (err) { setQuestActionError(formatError(err)); return false; }
+    const accepted = enqueueWrite({ ...request, trackerAccess: gate.access, trackerTargets: gate.targets });
+    if (!accepted) {
+      setQuestActionError(TRACKER_MESSAGES.readOnly);
+      void refreshTracker();
+      return false;
+    }
+    return true;
+  };
+
   const toggleQuest = useCallback(
     (id: string) => {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId || !accountZoneKnown) return;
-      enqueueWrite({ kind: quest.completed ? 'undo' : 'complete', habitId: id, label: quest.name });
-      void flushWrites();
+      if (enqueueTracked({ kind: quest.completed ? 'undo' : 'complete', habitId: id, label: quest.name }, quest)) void flushWrites();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [quests, userId, accountZoneKnown, enqueueWrite, flushWrites]
   );
 
@@ -708,9 +862,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const base = quest.progressCount;
       const next = Math.max(0, Math.min(quest.targetCount, base + delta));
       if (next === base) return;
-      enqueueWrite({ kind: 'progress', habitId: id, delta: next - base, base, label: quest.name });
-      void flushWrites();
+      if (enqueueTracked({ kind: 'progress', habitId: id, delta: next - base, base, label: quest.name }, quest)) void flushWrites();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [quests, userId, accountZoneKnown, enqueueWrite, flushWrites]
   );
 
@@ -718,13 +872,16 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId || !accountZoneKnown || !quest.frozen) return;
-      enqueueWrite({ kind: 'recovery', habitId: id, label: quest.name });
-      await flushWrites();
+      if (enqueueTracked({ kind: 'recovery', habitId: id, label: quest.name }, quest)) await flushWrites();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [quests, userId, accountZoneKnown, enqueueWrite, flushWrites]
   );
 
-  const retrySync = useCallback((id: string) => { retryWrite(id); }, [retryWrite]);
+  const dismissExpiredHoldNotice = useCallback(() => setExpiredHoldNotice(null), []);
+  // The notice belongs to the account that held the change.
+  useEffect(() => { setExpiredHoldNotice(null); }, [userId]);
+  const retrySync = useCallback((id: string): Promise<boolean> => retryWrite(id), [retryWrite]);
   const dismissSync = useCallback(
     (id: string) => {
       if (dismissWrite(id) && userId) void qc.invalidateQueries({ queryKey: habitsTodayKey(userId) });
@@ -733,17 +890,33 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   );
 
   const saveHabit = useCallback(
-    async (input: HabitInput, existingId?: string) => {
+    async (input: HabitEditorInput, existingId?: string) => {
       if (!userId) return;
       if (existingId && deletedHabitIds.current.has(existingId)) {
         throw new Error('This quest was deleted. Close this editor and reload the board.');
       }
-      if (existingId) {
-        await updateHabit(existingId, input, quests.find(quest => quest.id === existingId)?.name);
-      } else {
-        await createHabit(userId, input);
+      const existing = existingId ? findQuest(existingId) : undefined;
+      if (existingId && !existing) throw new Error(NOT_LOADED);
+      // Decided and captured before any await; nothing is sent on a known denial.
+      const { expected, targets } = authorize('habit', existing ? [existing] : [], access => {
+        if (input.mode === 'custom' && !access.canWriteCustom) return TRACKER_MESSAGES.purpose;
+        if (input.mode === 'basic' && existing?.inputKind === 'custom') return 'A quest with custom details cannot go back to basic tracking.';
+        return null;
+      });
+      // One creation id is kept across an uncertain retry so the server never makes two quests from one tap.
+      const creationId = existing ? undefined : creationIds.current.get('habit') ?? newRequestId();
+      if (creationId) creationIds.current.set('habit', creationId);
+      try {
+        if (existing && existingId) await updateHabit(existingId, input, expected, targets, existing.name);
+        else await createHabit(userId, input, expected, creationId!);
+        creationIds.current.delete('habit');
+      } catch (err) {
+        // A confirmed refusal means nothing was created, so the next attempt starts with a fresh id.
+        if (safeTrackerErrorKind(err)) creationIds.current.delete('habit');
+        throw afterRefusal(err);
       }
       await qc.invalidateQueries({ queryKey: ['habits'] });
+      await qc.invalidateQueries({ queryKey: ['backlog'] });
       setQuestActionError(null);
       if (!notificationsEnabled) return;
       const reminderOperationId = ++reminderOperation.current;
@@ -755,7 +928,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       };
       void syncAllReminders(true).catch(reminderFailure);
     },
-    [userId, qc, quests, notificationsEnabled, syncAllReminders]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [userId, qc, notificationsEnabled, syncAllReminders]
   );
 
   const runLifecycle = useCallback(
@@ -767,12 +941,22 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         const reminderOperationId = ++reminderOperation.current;
         setReminderWarning(null);
         try {
-          if (operation === 'archive') await archiveHabit(id);
-          if (operation === 'restore') await restoreHabit(id);
-          if (operation === 'delete') await deleteHabit(id);
+          const { expected, targets } = authorize('habit', habitsOrThrow([id]));
+          if (operation === 'archive') await archiveHabit(id, expected, targets);
+          if (operation === 'restore') await restoreHabit(id, expected, targets);
+          if (operation === 'delete') {
+            try { await deleteHabit(id, expected, targets); } catch (err) {
+              const kind = safeTrackerErrorKind(err);
+              // Delete is not idempotent: 42501 after our own unanswered attempt means it already landed.
+              if (kind === 'denied' && attemptedDeletes.current.has(id)) attemptedDeletes.current.delete(id);
+              else { if (!kind) attemptedDeletes.current.add(id); throw err; }
+            }
+            attemptedDeletes.current.delete(id);
+          }
         } catch (err) {
-          setQuestActionError(formatTrackedQuestActionError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setQuestActionError(trackerErrorMessage(err) ? shown.message : formatTrackedQuestActionError(err));
+          throw shown;
         }
 
         if (operation === 'delete') {
@@ -806,6 +990,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       );
       return request;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [notificationsEnabled, qc, syncAllReminders, formatTrackedQuestActionError]
   );
 
@@ -822,11 +1007,13 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         const reminderOperationId = ++reminderOperation.current;
         setReminderWarning(null);
         try {
-          if (direction === 'to-one-time') await moveBacklogToOneTime(id);
-          else await moveOneTimeToBacklog(id);
+          const { expected, targets } = authorize('habit', habitsOrThrow([id]));
+          if (direction === 'to-one-time') await moveBacklogToOneTime(id, expected, targets);
+          else await moveOneTimeToBacklog(id, expected, targets);
         } catch (err) {
-          setQuestActionError(formatTrackedQuestActionError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setQuestActionError(trackerErrorMessage(err) ? shown.message : formatTrackedQuestActionError(err));
+          throw shown;
         }
 
         await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
@@ -849,6 +1036,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       );
       return request;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [notificationsEnabled, qc, syncAllReminders, formatTrackedQuestActionError]
   );
   const moveToOneTime = useCallback((id: string) => runMove(id, 'to-one-time'), [runMove]);
@@ -866,6 +1054,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const reorderQuests = useCallback(
     (lane: QuestType, ids: string[]): Promise<void> => {
       if (!userId) return Promise.resolve();
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('habit', habitsOrThrow(ids)); } catch (err) { setQuestActionError(formatError(err)); return Promise.reject(err); }
+      const { expected, targets } = gate;
       if (lane === 'backlog') {
         qc.setQueryData<Quest[]>(backlogKey(userId), rows => (rows ? applyManualOrder(rows, ids) : rows));
       } else {
@@ -878,36 +1069,43 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       }
       return inTurn(`quests:${lane}`, async () => {
         try {
-          await reorderQuestsRequest(lane, ids);
+          await reorderQuestsRequest(lane, ids, expected, targets);
           setQuestActionError(null);
         } catch (err) {
-          setQuestActionError(formatTrackedQuestActionError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setQuestActionError(trackerErrorMessage(err) ? shown.message : formatTrackedQuestActionError(err));
+          throw shown;
         } finally {
           // The server's numbering replaces the optimistic one; after a refusal this is what puts the old order back.
           await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
         }
       });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [qc, userId, inTurn, formatTrackedQuestActionError]
   );
 
   const reorderChains = useCallback(
     (ids: string[]): Promise<void> => {
       if (!userId) return Promise.resolve();
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('chain', chainsOrThrow(ids)); } catch (err) { setLqActionError(formatError(err)); return Promise.reject(err); }
+      const { expected, targets } = gate;
       qc.setQueryData<LongQuest[]>(longQuestsKey(userId), rows => (rows ? applyManualOrder(rows, ids) : rows));
       return inTurn('chains', async () => {
         try {
-          await reorderLongQuests(ids);
+          await reorderLongQuests(ids, expected, targets);
           setLqActionError(null);
         } catch (err) {
-          setLqActionError(formatError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setLqActionError(formatError(shown));
+          throw shown;
         } finally {
           await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
         }
       });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [qc, userId, inTurn]
   );
 
@@ -939,6 +1137,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const lq = longQuests.find(q => q.id === lqId);
       const stage = lq?.stages.find(s => s.id === stageId);
       if (!stage || !userId || stageRequests.current.has(lqId)) return;
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('chain', [lq!]); } catch (err) { setLqActionError(formatError(err)); return; }
+      const { expected, targets } = gate;
       stageRequests.current.add(lqId);
       const nextDone = !stage.done;
       const key = longQuestsKey(userId);
@@ -948,7 +1149,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const requestId = rewardRequests.current.get(operation) ?? newRequestId();
       rewardRequests.current.set(operation, requestId);
       try {
-        const receipt = await setStageDoneWithReceipt(stageId, nextDone, requestId);
+        const receipt = await setStageDoneWithReceipt(stageId, nextDone, requestId, expected, targets);
         rewardRequests.current.delete(operation);
         qc.setQueryData<LongQuest[]>(key, lqs =>
           lqs?.map(q => q.id === lqId ? { ...q, stages: q.stages.map(s => (s.id === stageId ? { ...s, done: receipt.done } : s)) } : q)
@@ -958,8 +1159,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setRewardReceipt(receipt.replayed ? null : receipt);
         setStageRewardNotice(stageNotice(receipt.replayed ? 'replayed' : receipt.changed ? (nextDone ? 'completed' : 'undone') : 'unchanged'));
       } catch (err) {
+        const shown = afterRefusal(err);
         if (activeUserId.current === userId) {
-          setLqActionError(formatError(err));
+          setLqActionError(formatError(shown));
           setStageRewardNotice(null);
         }
       } finally {
@@ -969,6 +1171,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setPendingStageIds(ids => ids.filter(id => id !== stageId));
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [longQuests, userId, qc]
   );
 
@@ -978,28 +1181,44 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const saveLongQuest = useCallback(
-    async (input: LongQuestInput, existingId?: string) => {
+    async (input: ChainEditorInput, existingId?: string) => {
       if (!userId) return;
+      const existing = existingId ? longQuestsRef.current.find(q => q.id === existingId) : undefined;
+      if (existingId && !existing) throw new Error(NOT_LOADED);
+      const { expected, targets } = authorize('chain', existing ? [existing] : [], access => {
+        if (input.mode === 'custom' && !access.canWriteCustom) return TRACKER_MESSAGES.purpose;
+        if (input.mode === 'basic' && existing?.inputKind === 'custom') return 'A chain with custom details cannot go back to basic tracking.';
+        return null;
+      });
       // A retry after an unconfirmed save must reuse the quest id and request id; they are dropped only on success.
       const operation = existingId ?? 'new';
       const stable = definitionRequests.current.get(operation) ?? { id: existingId ?? newRequestId(), request: newRequestId() };
       definitionRequests.current.set(operation, stable);
-      await saveAtomicLongQuest(stable.id, stable.request, input, !existingId, longQuests.find(q => q.id === existingId)?.name);
+      try {
+        await saveAtomicLongQuest(stable.id, stable.request, input, !existingId, expected, targets, existing?.name);
+      } catch (err) {
+        // A confirmed tracker refusal means nothing was saved, so the next attempt starts with fresh ids.
+        if (safeTrackerErrorKind(err)) definitionRequests.current.delete(operation);
+        throw afterRefusal(err);
+      }
       definitionRequests.current.delete(operation);
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
-    [userId, qc, longQuests]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [userId, qc]
   );
 
   const forgetLongQuestSave = useCallback(() => { definitionRequests.current.clear(); }, []);
 
   const removeLongQuest = useCallback(
     async (id: string) => {
-      await deleteLongQuest(id);
+      const { expected, targets } = authorize('chain', chainsOrThrow([id]));
+      try { await deleteLongQuest(id, expected, targets); } catch (err) { throw afterRefusal(err); }
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [userId, qc]
   );
 
@@ -1052,6 +1271,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       adjustProgress,
       completeRecovery,
       saveHabit,
+      tracker,
+      audience,
+      acceptTracker,
+      refreshTracker,
       archiveQuest,
       restoreQuest,
       deleteQuest,
@@ -1062,6 +1285,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       reorderQuests,
       reorderChains,
       reminderWarning,
+      expiredHoldNotice,
+      dismissExpiredHoldNotice,
       retryReminders,
       toggleStage,
       pendingStageIds,
@@ -1102,6 +1327,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       adjustProgress,
       completeRecovery,
       saveHabit,
+      tracker,
+      audience,
+      acceptTracker,
+      refreshTracker,
       archiveQuest,
       restoreQuest,
       deleteQuest,
@@ -1112,6 +1341,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       reorderQuests,
       reorderChains,
       reminderWarning,
+      expiredHoldNotice,
+      dismissExpiredHoldNotice,
       retryReminders,
       toggleStage,
       pendingStageIds,

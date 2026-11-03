@@ -3,6 +3,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react-native';
 import { initialUser, UncertainSaveError, type LongQuest } from '@eiyu/shared';
 import { Text } from 'react-native';
 import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
+import { basicTarget, CLASSIFIED, createTrackerMocks, resetTrackerMocks, revisionOf } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -33,9 +34,11 @@ const mockSoundPreference = { getSoundEffectsEnabled: jest.fn(), setSoundEffects
 const mockAudioPlayer = { seekTo: jest.fn(), play: jest.fn(), volume: 1 };
 const mockNetwork = { getNetworkStateAsync: jest.fn(), addNetworkStateListener: jest.fn() };
 
-jest.doMock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'), ...mockShared }));
+const mockTracker = createTrackerMocks();
+jest.doMock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'), ...mockShared, ...mockTracker }));
 jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user: { id: 'user-1' } } }) }));
-jest.doMock('@/lib/notifications', () => mockNative);
+// The store filters reminder rows with the real, pure helper; native scheduling stays mocked.
+jest.doMock('@/lib/notifications', () => ({ ...mockNative, filterReminderRows: jest.requireActual('@/lib/notifications').filterReminderRows }));
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
 jest.doMock('@/lib/sound-effects-prefs', () => mockSoundPreference);
 installExpoNetworkMock(mockNetwork);
@@ -45,7 +48,7 @@ const { useEiyu, EiyuProvider } = require('../eiyu-store') as typeof import('../
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const chain = (): LongQuest => ({
-  id: 'lq-1', name: 'Launch', stat: 'INT', description: null, completedAt: null, createdAt: '2026-10-01T00:00:00Z',
+  id: 'lq-1', name: 'Launch', stat: 'INT', description: null, completedAt: null, createdAt: '2026-10-01T00:00:00Z', ...CLASSIFIED,
   stages: [
     { id: 's1', name: 'Plan', done: false, description: null },
     { id: 's2', name: 'Build', done: false, description: null },
@@ -57,7 +60,7 @@ const receipt = (over: Record<string, unknown> = {}) => ({
   totals: [{ stat: 'INT', before: 0, after: 20, delta: 20 }],
   ...over,
 });
-const draft = { name: 'Launch', stat: 'INT' as const, description: 'why', stages: [{ id: null, name: 'Plan', description: null }] };
+const draft = { mode: 'custom' as const, values: { name: 'Launch', stat: 'INT' as const, description: 'why', stages: [{ id: null, name: 'Plan', description: null }] } };
 
 let currentStore: ReturnType<typeof useEiyu> | null = null;
 let activeClient: QueryClient | null = null;
@@ -74,6 +77,7 @@ async function mountStore() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  resetTrackerMocks(mockTracker);
   currentStore = null;
   mockShared.fetchAllActiveHabits.mockResolvedValue([]);
   mockShared.fetchBacklogQuests.mockResolvedValue([]);
@@ -104,7 +108,7 @@ describe('completing a stage', () => {
     await mountStore();
     await act(async () => { currentStore!.toggleStage('lq-1', 's1'); });
     await waitFor(() => expect(currentStore?.rewardReceipt).toMatchObject({ id: 'r1' }));
-    expect(mockShared.setStageDoneWithReceipt).toHaveBeenCalledWith('s1', true, expect.stringMatching(UUID));
+    expect(mockShared.setStageDoneWithReceipt).toHaveBeenCalledWith('s1', true, expect.stringMatching(UUID), revisionOf(), basicTarget('lq-1', 'chain'));
     expect(currentStore?.stageRewardNotice).toBe('Stage completed.');
     expect(currentStore?.longQuestsError).toBeNull();
   });
@@ -123,7 +127,7 @@ describe('completing a stage', () => {
     await mountStore();
     await act(async () => { currentStore!.toggleStage('lq-1', 's1'); });
     await waitFor(() => expect(currentStore?.stageRewardNotice).toBe('Stage undone.'));
-    expect(mockShared.setStageDoneWithReceipt).toHaveBeenCalledWith('s1', false, expect.any(String));
+    expect(mockShared.setStageDoneWithReceipt).toHaveBeenCalledWith('s1', false, expect.any(String), revisionOf(), basicTarget('lq-1', 'chain'));
     mockShared.setStageDoneWithReceipt.mockResolvedValue(receipt({ done: false, changed: false }));
     await act(async () => { currentStore!.toggleStage('lq-1', 's1'); });
     await waitFor(() => expect(currentStore?.stageRewardNotice).toBe('Stage already saved.'));
@@ -189,7 +193,7 @@ describe('saving a long quest', () => {
   it('creates with a fresh id and request id, create=true and no original name', async () => {
     await mountStore();
     await act(async () => { await currentStore!.saveLongQuest(draft); });
-    const [id, requestId, input, create, original] = mockShared.saveAtomicLongQuest.mock.calls[0];
+    const [id, requestId, input, create, , , original] = mockShared.saveAtomicLongQuest.mock.calls[0];
     expect(id).toMatch(UUID);
     expect(requestId).toMatch(UUID);
     expect(requestId).not.toBe(id);
@@ -201,7 +205,7 @@ describe('saving a long quest', () => {
   it('edits the existing id with create=false and the saved name for the grandfather check', async () => {
     await mountStore();
     await act(async () => { await currentStore!.saveLongQuest(draft, 'lq-1'); });
-    const [id, , , create, original] = mockShared.saveAtomicLongQuest.mock.calls[0];
+    const [id, , , create, , , original] = mockShared.saveAtomicLongQuest.mock.calls[0];
     expect([id, create, original]).toEqual(['lq-1', false, 'Launch']);
   });
 

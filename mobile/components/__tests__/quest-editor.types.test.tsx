@@ -91,7 +91,7 @@ describe('QuestEditor quest types', () => {
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
 
     expect(value.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ questType: 'backlog', timeSet: false, days: [], scheduledDate: null, genre: 'tool', easyVersion: null, targetCount: null }),
+      expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'backlog', timeSet: false, days: [], scheduledDate: null, genre: 'tool', easyVersion: null, targetCount: null }) }),
       undefined,
     );
   });
@@ -106,7 +106,7 @@ describe('QuestEditor quest types', () => {
     await user.press(screen.getByRole('radio', { name: 'Docs / article' }));
     expect(screen.getByRole('radio', { name: 'Docs / article' })).not.toBeChecked();
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ genre: null }), undefined);
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ genre: null }) }), undefined);
   });
 
   it('has no genre for a habit', async () => {
@@ -123,7 +123,7 @@ describe('QuestEditor quest types', () => {
     expect(screen.getByRole('button', { name: 'Choose reminder time' })).toBeDisabled();
     await user.type(screen.getByLabelText('Quest name'), 'Submit report');
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
-    expect(value.saveHabit).toHaveBeenLastCalledWith(expect.objectContaining({ timeSet: false, time: '08:00' }), undefined);
+    expect(value.saveHabit).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ timeSet: false, time: '08:00' }) }), undefined);
   });
 
   it('saves a set time once No set time is switched off', async () => {
@@ -134,7 +134,7 @@ describe('QuestEditor quest types', () => {
     await user.press(screen.getByRole('checkbox', { name: 'No set time' }));
     expect(screen.getByRole('button', { name: 'Choose reminder time' })).toBeEnabled();
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ timeSet: true }), undefined);
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ timeSet: true }) }), undefined);
   });
 
   it('sends the Board back to the Backlog lane after a Backlog create, and not after an edit', async () => {
@@ -168,7 +168,7 @@ describe('QuestEditor quest types', () => {
     await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
 
     expect(value.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ scheduledDate: '2026-12-25', timeSet: true, time: '14:30', questType: 'one_time' }),
+      expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ scheduledDate: '2026-12-25', timeSet: true, time: '14:30', questType: 'one_time' }) }),
       'ot',
     );
   });
@@ -183,7 +183,7 @@ describe('QuestEditor quest types', () => {
     expect(screen.queryByRole('checkbox', { name: 'No date' })).toBeNull();
     await user.type(screen.getByLabelText('Quest name'), '!');
     await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: '2026-12-25' }), 'ot');
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ scheduledDate: '2026-12-25' }) }), 'ot');
   });
 
   it('opens an undated quest with No date checked and saves it undated, never inventing today', async () => {
@@ -195,7 +195,7 @@ describe('QuestEditor quest types', () => {
     await user.type(screen.getByLabelText('Quest name'), '!');
     await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
     expect(value.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ scheduledDate: null, timeSet: false, time: '08:00', questType: 'one_time' }),
+      expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ scheduledDate: null, timeSet: false, time: '08:00', questType: 'one_time' }) }),
       'ot',
     );
   });
@@ -215,7 +215,7 @@ describe('QuestEditor quest types', () => {
     expect(screen.getByRole('button', { name: 'Choose reminder time' })).toBeDisabled();
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
     expect(value.saveHabit).toHaveBeenCalledWith(
-      expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }),
+      expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time', scheduledDate: null, timeSet: false, time: '08:00' }) }),
       undefined,
     );
   });
@@ -248,7 +248,7 @@ describe('QuestEditor quest types', () => {
     expect(screen.getByRole('radio', { name: 'Tool' })).toBeChecked();
     await user.type(screen.getByLabelText('Quest name'), '!');
     await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ genre: 'tool', timeSet: false, days: [] }), 'bl');
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ genre: 'tool', timeSet: false, days: [] }) }), 'bl');
   });
 
   it('never sends a genre for a habit', async () => {
@@ -257,7 +257,7 @@ describe('QuestEditor quest types', () => {
     await renderWithTheme(<QuestEditorScreen />);
     await user.type(screen.getByLabelText('Quest name'), '!');
     await user.press(screen.getByRole('button', { name: 'SAVE CHANGES' }));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ genre: null, timeSet: true }), 'habit-1');
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ genre: null, timeSet: true }) }), 'habit-1');
   });
 });
 

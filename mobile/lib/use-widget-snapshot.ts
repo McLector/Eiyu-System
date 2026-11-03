@@ -34,6 +34,8 @@ export interface WidgetSnapshotInput {
   entries: readonly QueueEntry[];
   palette: Palette;
   mode: ThemeMode;
+  /** The owner's observed custom permission: false hides protected quests' text, null or omitted means not known. */
+  canWriteCustom?: boolean | null;
 }
 
 /** What to store now, or null when the app does not yet know enough to say anything (the last good snapshot stays). */
@@ -56,6 +58,7 @@ function snapshotFor(input: WidgetSnapshotInput): WidgetSnapshot | null {
     mode: input.mode,
     now: input.dataUpdatedAt,
     scheme: currentAppScheme(),
+    customTextAllowed: input.canWriteCustom !== false,
   });
 }
 
@@ -73,10 +76,10 @@ async function redrawWidget(): Promise<void> {
  * known, so a cold start can never replace a good snapshot with an empty one.
  */
 export function useWidgetSnapshot(input: WidgetSnapshotInput): void {
-  const { authLoading, userId, accountTimeZone, cachedQuests, dataUpdatedAt, entries, palette, mode } = input;
+  const { authLoading, userId, accountTimeZone, cachedQuests, dataUpdatedAt, entries, palette, mode, canWriteCustom } = input;
   const snapshot = useMemo(
-    () => snapshotFor({ authLoading, userId, accountTimeZone, cachedQuests, dataUpdatedAt, entries, palette, mode }),
-    [authLoading, userId, accountTimeZone, cachedQuests, dataUpdatedAt, entries, palette, mode],
+    () => snapshotFor({ authLoading, userId, accountTimeZone, cachedQuests, dataUpdatedAt, entries, palette, mode, canWriteCustom }),
+    [authLoading, userId, accountTimeZone, cachedQuests, dataUpdatedAt, entries, palette, mode, canWriteCustom],
   );
   const lastWritten = useRef<string | null>(null);
   const writes = useRef<Promise<void>>(Promise.resolve());

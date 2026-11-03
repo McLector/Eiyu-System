@@ -141,7 +141,7 @@ describe('mobile QuestEditor lifecycle controls', () => {
     await user.press(screen.getByRole('button', { name: 'CREATE QUEST' }));
 
     await waitFor(() => expect(mockRouter.back).toHaveBeenCalledTimes(1));
-    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ questType: 'one_time' }), undefined);
+    expect(value.saveHabit).toHaveBeenCalledWith(expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ questType: 'one_time' }) }), undefined);
     expect(consumeBoardReturnIntent()).toBe('one-time');
   });
 
