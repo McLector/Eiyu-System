@@ -35,3 +35,16 @@ The operator gate fails closed. Every operator RPC calls it first, and a failed 
 ## Not checked by the reviewer
 
 Live database state, pg_cron itself, whether the 054/058 write guards allow retention deletes outside a user context, GoTrue MFA rules, web and mobile test bodies, and the legal copy.
+
+## Outcome (2026-11-03)
+
+| # | Result | Commit |
+| --- | --- | --- |
+| M1, M2, M3, L7, L11 | Fixed in migration 062, with test 049. Applied to the local stack only. | backlog commits |
+| M4, L10 | Runbook steps, not enforced in code. | |
+| M5 | Kept on purpose and documented. | |
+| L6 | Fixed. The console resets when the account changes. | `3fc6fcc` |
+| L8 | Fixed. The console can resume a paused purpose. | `c8996e1` |
+| L9 | Fixed. A failed decision reloads the queue and says the request no longer applies. | `645e8ea` |
+| L12 | Date display fixed. The queue limit and the stale `removed` row are accepted at this scale. | `645e8ea` |
+| L13, L14 | Accepted. | |

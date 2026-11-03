@@ -34,3 +34,25 @@ Shared access parsing and target reads are strict and owner-bound. `invokeTracke
 ## Not checked by the reviewer
 
 `ReviewRequest`, the mobile long-quest editor and gym screens in depth, the widget task handler, notification taps, sign-out cache clearing, and native Android behaviour of `fontScale`.
+
+## Outcome (2026-11-03)
+
+| # | Result | Commit |
+| --- | --- | --- |
+| C1 | Fixed. A 22023 settles only if the completion row is really there. | `b8cba72` |
+| C2 | Fixed. A web grant or withdrawal reloads the quest lists. | `c3c6464` |
+| C3 | Fixed with a per-account marker of the last confirmed access, used only to decide whether to queue. It holds custom access too, because every existing or named quest is custom. | `c883def` |
+| C4 | Fixed. App and runtime version 1.3.0. | `51ee47d` |
+| C5 | Still a release gate. | |
+| C6 | Fixed with C8. A refused write now re-reads access for the current account. | `f7e7a14` |
+| C7 | The notice now shows after a custom withdrawal. Unknown access stays allowed for reminders and the widget, per design line 81 ("after observed withdrawal"). | `1aa1852` |
+| C8 | Fixed. A delete settles only if an earlier attempt got no answer and the reply says the target is gone. | `f7e7a14` |
+| C9 | Fixed. | `4943982` |
+| C10 | Fixed for loading and offline: neither notice shows, a grant waits, withdrawal stays open. A failed read still shows the adult wording with the grant open, accepted because the server decides what the account may do. | `8cd795e` |
+| C11 | Open, to reconsider after the owner's own testing. | |
+| C12 | Input and guard fixed. The `InsideAppText` leak through inline Views is accepted. | `969299a` |
+| C13 | Removed the wipe from the dev menu. | `19ef2d6` |
+
+**Found while fixing C10, not by the reviewer:** web Profile gave its permissions and data export sections the same key, so a re-render could leave a stale copy on screen. Fixed in `514c7ec`.
+
+These results rest on unit and component tests. The native behaviour of C3, C4, C7 and C12 still needs the APK, the emulator batch and the Oppo.

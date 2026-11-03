@@ -121,3 +121,18 @@ The run stopped on 2026-10-24 when a session limit hit. Nothing changed in the r
 - SQL regressions after 062: 036 (52), 039 (148), 043 (11), 013 (103), 037 (14), races 009 (39), 030 (14), 041 (22) all pass. The full SQL suite has not been rerun since 062.
 
 **Owner decision 2026-11-03:** `docs/plans/**` may be committed to the public repo, knowing it describes the live project and unfixed weaknesses. This replaces the default exclusion above for planning docs only. Numbered handoffs, `.superpowers`, `skill-observations`, memory and artifacts stay out. Secrets, personal emails and tokens are still scanned for and never committed. Work is now on branch `feat/s02-consent-admin`.
+
+## Update 2026-11-03, pushed
+
+- **Public contact:** `privacy@eiyusystem.app` replaces the owner's personal address everywhere, including in the unpushed history. It cannot receive mail yet, which is a release gate in the release facts.
+- **Pushed:** `feat/s02-consent-admin` at `51b9321`, GitHub CI green. `main` is untouched. The local CI mirror passed first.
+- **Client side of 062 is done:** Resume, the stale-decision message and queue reload (L9), the account-switch fix (L6) and Manila dates (L12), in three local commits after `51b9321`. Only targeted tests and type checks have run on them so far.
+- **C3 design changed.** Basic-only is not enough, because every existing and named quest is custom (`053:178`, design line 40), so it would not restore the taps C3 is about. The stored marker also carries the last observed `canWriteCustom`. It is used only when queuing a tap and only while the live read has no data. It never enters the query cache or other writes. This fits design line 79: cached grants are not proof and the server decides, which the queue's check before sending already enforces.
+
+**Next, in order:** C3, then C1, C2, C4, C6, C8, C9, C10, C12, C13; C7 alongside C3. Then the CI mirror and push, the full SQL suite and Edge tests, the APK, the emulator and the Oppo.
+
+## Update 2026-11-03, review fixes finished
+
+Every client review finding now has a result, recorded under "Outcome" in `2026-11-03-s02-review-clients.md` and `2026-11-03-s02-review-admin.md`. C11 stays open for the owner's testing, and C5 stays a release gate.
+
+**Next, in order:** CI mirror and push, full SQL suite with races and Edge tests, APK at runtime 1.3.0 against the local stack, emulator batch, then the Oppo with the owner.
