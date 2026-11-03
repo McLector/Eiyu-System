@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import {
-  REVIEW_PURPOSES, decideReview, isPauseAccount, listRetention, listReviewRequests, pausePurpose,
+  OperatorError, REVIEW_PURPOSES, decideReview, isPauseAccount, listRetention, listReviewRequests, pausePurpose, resumePurpose,
   type ReviewDecision, type ReviewPurpose, type ReviewRequestRow, type RetentionRow,
 } from '@eiyu/shared';
 
@@ -16,7 +16,15 @@ function day(value: string): string {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-type Pending = { kind: 'decide'; row: ReviewRequestRow; decision: ReviewDecision } | { kind: 'pause'; account: string; purpose: ReviewPurpose };
+type Pending = { kind: 'decide'; row: ReviewRequestRow; decision: ReviewDecision } | { kind: 'pause' | 'resume'; account: string; purpose: ReviewPurpose };
+
+function failureMessage(kind: Pending['kind'], error: unknown): string {
+  if (kind === 'decide') return 'Could not record that decision. Nothing was changed.';
+  if (kind === 'pause') return 'Could not pause that purpose. Nothing was changed.';
+  return error instanceof OperatorError && error.kind === 'not-needed'
+    ? 'That purpose is not paused for that account. Nothing was changed.'
+    : 'Could not resume that purpose. Nothing was changed.';
+}
 
 /** Operator console. Shows only email, age band, purpose, note and dates. The server re-checks operator and MFA on every call. */
 export default function AdminConsole({ userId }: { userId: string }) {
@@ -54,27 +62,30 @@ export default function AdminConsole({ userId }: { userId: string }) {
         await decideReview(action.row.id, action.decision, userId);
         setPending(null);
         await loadQueue();
-      } else {
+      } else if (action.kind === 'pause') {
         await pausePurpose(action.account, action.purpose, 'dispute', userId);
         setPending(null); setAccountId('');
         setNotice(`${PURPOSE_LABEL[action.purpose]} paused for that account.`);
+      } else {
+        await resumePurpose(action.account, action.purpose, userId);
+        setPending(null); setAccountId('');
+        setNotice(`${PURPOSE_LABEL[action.purpose]} resumed for that account.`);
       }
-    } catch {
+    } catch (error) {
       setPending(null);
-      setActionError(action.kind === 'decide' ? 'Could not record that decision. Nothing was changed.' : 'Could not pause that purpose. Nothing was changed.');
+      setActionError(failureMessage(action.kind, error));
     } finally { setWorking(false); }
   };
 
-  const askPause = (event: FormEvent) => {
-    event.preventDefault();
+  const askAccountAction = (kind: 'pause' | 'resume') => {
     setNotice(null); setActionError(null);
     const account = accountId.trim();
     if (!isPauseAccount(account)) { setFormError('Enter an email address or account id.'); return; }
     setFormError(null);
-    setPending({ kind: 'pause', account, purpose });
+    setPending({ kind, account, purpose });
   };
 
-  const verb = pending?.kind === 'decide' ? (pending.decision === 'approved' ? 'approve' : 'deny') : 'pause';
+  const verb = pending?.kind === 'decide' ? (pending.decision === 'approved' ? 'approve' : 'deny') : pending?.kind;
 
   return <main style={{ maxWidth: 960, margin: '0 auto', padding: 24, display: 'grid', gap: 24 }}>
     <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -106,7 +117,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
 
     <section aria-labelledby="admin-pause" style={{ display: 'grid', gap: 12 }}>
       <h2 id="admin-pause">Dispute pause</h2>
-      <form onSubmit={askPause} style={{ display: 'grid', gap: 12 }}>
+      <form onSubmit={(event: FormEvent) => { event.preventDefault(); askAccountAction('pause'); }} style={{ display: 'grid', gap: 12 }}>
         <label style={{ display: 'grid', gap: 4 }}>
           Account email or id
           <input value={accountId} onChange={event => setAccountId(event.target.value)} autoComplete="off" spellCheck={false} />
@@ -118,7 +129,10 @@ export default function AdminConsole({ userId }: { userId: string }) {
           </select>
         </label>
         {formError && <p role="alert" tabIndex={-1} ref={formAlert}>{formError}</p>}
-        <button type="submit" className="btn-primary">Pause purpose</button>
+        <div className="action-footer">
+          <button type="button" className="btn-secondary" onClick={() => askAccountAction('resume')}>Resume purpose</button>
+          <button type="submit" className="btn-primary">Pause purpose</button>
+        </div>
       </form>
     </section>
 
@@ -136,12 +150,14 @@ export default function AdminConsole({ userId }: { userId: string }) {
       </div>}
     </section>
 
-    {pending && <Dialog title={pending.kind === 'decide' ? 'CONFIRM DECISION' : 'CONFIRM PAUSE'} onClose={() => { if (!working) setPending(null); }} pending={working}>
+    {pending && <Dialog title={pending.kind === 'decide' ? 'CONFIRM DECISION' : pending.kind === 'pause' ? 'CONFIRM PAUSE' : 'CONFIRM RESUME'} onClose={() => { if (!working) setPending(null); }} pending={working}>
       <div style={{ display: 'grid', gap: 12 }}>
         <p>
           {pending.kind === 'decide'
             ? `${pending.decision === 'approved' ? 'Approve' : 'Deny'} ${PURPOSE_LABEL[pending.row.purpose]} for ${pending.row.email}?`
-            : `Pause ${PURPOSE_LABEL[pending.purpose]} for ${pending.account}? It stays paused until you record a decision.`}
+            : pending.kind === 'pause'
+              ? `Pause ${PURPOSE_LABEL[pending.purpose]} for ${pending.account}? It stays paused until you resume it.`
+              : `Resume ${PURPOSE_LABEL[pending.purpose]} for ${pending.account}? An adult account returns to normal. A teen account can ask for a new review.`}
         </p>
         <div className="action-footer">
           <button type="button" className="btn-secondary" disabled={working} onClick={() => setPending(null)}>Cancel</button>

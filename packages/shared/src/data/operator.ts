@@ -160,6 +160,16 @@ export async function pausePurpose(account: string, purpose: ReviewPurpose, reas
     : {p_user_id: null, p_email: value, p_purpose: purpose, p_reason_code: reason});
 }
 
+/** Lifts a pause, naming the account the same way. The server refuses a purpose that is not paused. */
+export async function resumePurpose(account: string, purpose: ReviewPurpose, owner: string): Promise<void> {
+  if (!isPauseAccount(account)) bad();
+  checkPurpose(purpose);
+  const value = account.trim();
+  await call(owner, 'operator_resume_purpose', UUID.test(value)
+    ? {p_user_id: value, p_purpose: purpose}
+    : {p_user_id: null, p_email: value, p_purpose: purpose});
+}
+
 export async function listRetention(owner: string): Promise<RetentionRow[]> {
   const data = await call(owner, 'operator_list_retention');
   if (!Array.isArray(data)) return bad();

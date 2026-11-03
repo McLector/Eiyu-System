@@ -5,16 +5,18 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  list: vi.fn(), decide: vi.fn(), pause: vi.fn(), retention: vi.fn(), signOut: vi.fn(),
+  list: vi.fn(), decide: vi.fn(), pause: vi.fn(), resume: vi.fn(), retention: vi.fn(), signOut: vi.fn(),
 }));
 vi.mock('@eiyu/shared', async importOriginal => ({
   ...await importOriginal<typeof import('@eiyu/shared')>(),
   listReviewRequests: (...a: unknown[]) => mocks.list(...a),
   decideReview: (...a: unknown[]) => mocks.decide(...a),
   pausePurpose: (...a: unknown[]) => mocks.pause(...a),
+  resumePurpose: (...a: unknown[]) => mocks.resume(...a),
   listRetention: (...a: unknown[]) => mocks.retention(...a),
 }));
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ signOut: mocks.signOut, user: { id: 'owner-a', email: 'admin@example.com' } }) }));
+import { OperatorError } from '@eiyu/shared';
 import AdminConsole from '../AdminConsole';
 
 afterEach(cleanup);
@@ -25,7 +27,7 @@ const ret = { email: 'gone@example.com', purpose: 'fitness-tracking', withdrawnA
 beforeEach(() => {
   Object.values(mocks).forEach(fn => fn.mockReset());
   mocks.list.mockResolvedValue([row]); mocks.retention.mockResolvedValue([ret]);
-  mocks.decide.mockResolvedValue(undefined); mocks.pause.mockResolvedValue(undefined); mocks.signOut.mockResolvedValue({ error: null });
+  mocks.decide.mockResolvedValue(undefined); mocks.pause.mockResolvedValue(undefined); mocks.resume.mockResolvedValue(undefined); mocks.signOut.mockResolvedValue({ error: null });
 });
 
 describe('review queue', () => {
@@ -136,6 +138,71 @@ describe('dispute pause', () => {
     await user.click(screen.getByRole('button', { name: 'Pause purpose' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm pause' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(/could not pause/i);
+  });
+});
+
+describe('resuming a paused purpose', () => {
+  async function ask(user: ReturnType<typeof userEvent.setup>, account: string) {
+    await user.type(await screen.findByLabelText(/account email or id/i), account);
+    await user.selectOptions(screen.getByLabelText(/purpose/i), 'weekly-debrief');
+    await user.click(screen.getByRole('button', { name: 'Resume purpose' }));
+  }
+  it('resumes only after a confirmation that names the account and what happens next', async () => {
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await ask(user, ' teen@example.com ');
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent(/teen@example.com/);
+    expect(dialog).toHaveTextContent(/new review/i);
+    expect(mocks.resume).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm resume' }));
+    await waitFor(() => expect(mocks.resume).toHaveBeenCalledWith('teen@example.com', 'weekly-debrief', 'owner-a'));
+    expect(await screen.findByRole('status')).toHaveTextContent(/resumed/i);
+    expect(screen.getByLabelText(/account email or id/i)).toHaveValue('');
+    expect(mocks.pause).not.toHaveBeenCalled();
+  });
+  it('does nothing if cancelled', async () => {
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await ask(user, USER);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    expect(mocks.resume).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/account email or id/i)).toHaveValue(USER);
+  });
+  it('rejects anything that is neither an email nor an id before any confirmation', async () => {
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await ask(user, 'not an account');
+    expect(await screen.findByRole('alert')).toHaveFocus();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.resume).not.toHaveBeenCalled();
+  });
+  it('says when the purpose was not paused', async () => {
+    mocks.resume.mockRejectedValue(new OperatorError('not-needed', 'x'));
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await ask(user, USER);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm resume' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/not paused/i);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+  it('shows a safe, focused error for any other failure', async () => {
+    mocks.resume.mockRejectedValue(new Error('server detail'));
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await ask(user, USER);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirm resume' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveFocus();
+    expect(alert).toHaveTextContent(/could not resume/i);
+    expect(alert).not.toHaveTextContent(/server detail/);
+  });
+  it('tells the operator how a pause ends', async () => {
+    const user = userEvent.setup();
+    render(<AdminConsole userId="owner-a" />);
+    await user.type(await screen.findByLabelText(/account email or id/i), USER);
+    await user.click(screen.getByRole('button', { name: 'Pause purpose' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(/until you resume it/i);
   });
 });
 

@@ -505,6 +505,10 @@ export interface Database {
         Args: { p_request_id: string; p_decision: string };
         Returns: Json;
       };
+      operator_resume_purpose: {
+        Args: { p_user_id: string | null; p_purpose: string; p_email?: string | null };
+        Returns: Json;
+      };
       operator_pause_purpose: {
         Args: { p_user_id: string | null; p_purpose: string; p_reason_code: string; p_email?: string | null };
         Returns: Json;

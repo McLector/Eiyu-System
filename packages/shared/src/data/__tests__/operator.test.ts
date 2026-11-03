@@ -5,7 +5,7 @@ jest.mock('../../supabase/client', () => ({
 }));
 import {
   OPERATOR_MESSAGE, OperatorError, REVIEW_NOTE_MAX, cancelAuthorityReview, decideReview, fetchOperatorStatus,
-  fetchMyReviewRequests, fetchRetentionNotice, listRetention, listReviewRequests, pausePurpose, requestAuthorityReview,
+  fetchMyReviewRequests, fetchRetentionNotice, listRetention, listReviewRequests, pausePurpose, requestAuthorityReview, resumePurpose,
 } from '../operator';
 import {OWNER_A, OWNER_B, trackerRpcDouble} from '../../test-support/tracker-rpc';
 
@@ -209,6 +209,32 @@ describe('operator calls', () => {
     expect(err).toBeInstanceOf(OperatorError);
     expect(err.kind).toBe('denied');
     expect(err.message).not.toMatch(/example|unavailable/i);
+  });
+  it('resumes a purpose by id or by email, naming the account exactly one way', async () => {
+    reply({purpose: 'weekly-debrief', state: 'pending'});
+    await resumePurpose(USER, 'weekly-debrief', OWNER_A);
+    expect(rpc).toHaveBeenCalledWith('operator_resume_purpose', {p_user_id: USER, p_purpose: 'weekly-debrief'});
+    rpc.mockClear();
+    await resumePurpose('  Teen@Example.com ', 'fitness-tracking', OWNER_A);
+    expect(rpc).toHaveBeenCalledWith('operator_resume_purpose', {p_user_id: null, p_email: 'Teen@Example.com', p_purpose: 'fitness-tracking'});
+  });
+  it.each(['', '   ', 'not an account', 'a@'])('refuses %j as an account to resume before calling the server', async account => {
+    reply({ok: true});
+    await expect(resumePurpose(account, 'custom-tracker', OWNER_A)).rejects.toThrow(OPERATOR_MESSAGE);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it('refuses an unknown purpose to resume and a foreign session before calling the server', async () => {
+    reply({ok: true});
+    await expect(resumePurpose(USER, 'nope' as never, OWNER_A)).rejects.toThrow(OPERATOR_MESSAGE);
+    await expect(resumePurpose(USER, 'custom-tracker', OWNER_B)).rejects.toThrow(OPERATOR_MESSAGE);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+  it('reports a purpose that is not paused without echoing the server text', async () => {
+    reply(null, {code: 'ER003', message: 'server detail for a@example.com'});
+    const err = await resumePurpose(USER, 'custom-tracker', OWNER_A).catch(e => e);
+    expect(err).toBeInstanceOf(OperatorError);
+    expect(err.kind).toBe('not-needed');
+    expect(err.message).not.toContain('a@example.com');
   });
   it('lists retention rows and rejects bad shapes', async () => {
     reply([{...retention, content: 'x'}]);
