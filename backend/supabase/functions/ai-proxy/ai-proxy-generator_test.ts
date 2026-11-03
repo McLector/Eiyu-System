@@ -1,5 +1,9 @@
 import { createGeminiGenerator } from './ai-proxy-generator.ts';
-import { createAiProxyHandler } from './ai-proxy-core.ts';
+import { createAiProxyHandler as realProxyHandler } from './ai-proxy-core.ts';
+import type { AiProxyDependencies } from './ai-proxy-core.ts';
+import { withCanonicalWeekInput } from './test-helpers/admission.ts';
+const createAiProxyHandler = (dependencies: AiProxyDependencies) => realProxyHandler(withCanonicalWeekInput(dependencies));
+import {admittedFixtureData} from './test-helpers/admission.ts';
 import type { AiAction, AiPayload, AiRequestContext, ProviderAttemptReservation } from './ai-proxy-core.ts';
 import { DEFAULT_AI_REQUEST_TIMEOUT_MS } from './ai-proxy-core.ts';
 import { DEFAULT_PROVIDER_ATTEMPT_TIMEOUT_MS, MAX_ATTEMPTS_PER_MODEL, MAX_PROVIDER_ATTEMPTS } from './ai-proxy-generator.ts';
@@ -319,7 +323,7 @@ Deno.test('handler preflight configuration failure happens before quota reservat
   const handler = createAiProxyHandler({
     preflight: () => { throw new Error('missing provider key'); },
     createUserClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'verified-user' } }, error: null }) } }),
-    createServiceClient: () => ({ rpc: async () => { quotaCalls++; return { data: { allowed: true, attemptNumber: 1 }, error: null }; } }),
+    createServiceClient: () => ({ rpc: async () => { quotaCalls++; return { data: { allowed: true, ageVersion: 1, attemptNumber: 1 }, error: null }; } }),
     generate: async () => { providerCalls++; return { suggestions: ['one', 'two', 'three'] }; },
   });
   const response = await handler(new Request('https://local.test/ai', {
@@ -349,8 +353,9 @@ Deno.test('the real generator uses the handler reservation gate and a denied ret
       createServiceClient: () => ({
         rpc: async (name, args) => {
           rpcCalls.push({ name, args });
-          if (name === 'ai_begin_request') return { data: { allowed: true, attemptNumber: 1 }, error: null };
-          return denyRetry ? { data: false, error: null } : { data: true, error: null };
+          if (name === 'ai_admit_execution') return { data: admittedFixtureData({ allowed: true, ageVersion: 1, attemptNumber: 1 },args), error: null };
+          if(name==='ai_authorize_execution_attempt'&&args.p_attempt_number===2&&denyRetry)return{data:null,error:{code:'EQ001'}};
+          return {data:true,error:null};
         },
       }),
       generate: generator,
@@ -362,9 +367,9 @@ Deno.test('the real generator uses the handler reservation gate and a denied ret
     const expectedProviderCalls = denyRetry ? 1 : 2;
     assert(response.status === (denyRetry ? 429 : 200), 'reservation denial is distinct from successful generation');
     assert(providerCalls === expectedProviderCalls, 'provider fetches must stop before a denied retry');
-    assert(rpcCalls[0]?.name === 'ai_begin_request' && rpcCalls[0]?.args.p_user_id === 'verified-user', 'the logical reservation uses only the verified identity');
-    assert(rpcCalls.filter(call => call.name === 'ai_begin_request').length === 1, 'all retries share one logical request reservation');
-    assert(rpcCalls.filter(call => call.name === 'ai_reserve_next_attempt').length === (denyRetry ? 1 : 1), 'the retry slot is requested exactly once');
+    assert(rpcCalls[0]?.name === 'ai_admit_execution' && rpcCalls[0]?.args.p_user_id === 'verified-user', 'admission uses only the verified identity');
+    assert(rpcCalls.filter(call => call.name === 'ai_admit_execution').length === 1, 'all retries share one logical admission');
+    assert(rpcCalls.filter(call => call.name === 'ai_authorize_execution_attempt').length === 2, 'first and retry authorizations are each requested once');
     if (!denyRetry) {
       const body = await response.json();
       assert(JSON.stringify(body) === JSON.stringify({ suggestions: ['walk briefly', 'read one page', 'stretch lightly'] }), 'integrated output keeps the existing success body');
@@ -379,7 +384,7 @@ Deno.test('the handler deadline includes slow authentication and quota calls', a
   const handler = createAiProxyHandler({
     totalRequestTimeoutMs: 15,
     createUserClient: () => ({ auth: { getUser: never } }),
-    createServiceClient: () => ({ rpc: async () => { quotaCalls++; return { data: { allowed: true, attemptNumber: 1 }, error: null }; } }),
+    createServiceClient: () => ({ rpc: async () => { quotaCalls++; return { data: { allowed: true, ageVersion: 1, attemptNumber: 1 }, error: null }; } }),
     generate: async () => { generationCalls++; return { suggestions: [] }; },
   });
   const started = Date.now();

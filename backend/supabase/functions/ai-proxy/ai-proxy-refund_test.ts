@@ -1,4 +1,5 @@
-import { createAiProxyHandler } from './ai-proxy-core.ts';
+import {admittedFixtureData} from './test-helpers/admission.ts';
+import {createInstrumentedTestHandler as createAiProxyHandler} from './test-helpers/admission.ts';
 import type { AiProxyDependencies } from './ai-proxy-core.ts';
 
 type RpcResponse = { data: unknown; error: unknown };
@@ -21,10 +22,16 @@ function setup(options: {
     auth: { getUser: async () => ({ data: { user: { id: 'verified-user' } }, error: null }) },
     rpc: async (name: string, args: Record<string, unknown>): Promise<RpcResponse> => {
       calls.push({ name, args });
-      if (name === 'ai_begin_request') {
-        return options.begin ?? { data: { allowed: true, requestClass: 'suggestion', attemptNumber: 1 }, error: null };
+      if (name === 'ai_admit_execution') {
+        const result=options.begin ?? { data: { allowed: true, ageVersion: 1, requestClass: 'suggestion', attemptNumber: 1 }, error: null };
+        return {...result,data:admittedFixtureData(result.data,args)};
       }
-      if (name === 'ai_reserve_next_attempt') return options.nextAttempt ?? { data: true, error: null };
+      if (name === 'ai_authorize_execution_attempt') {
+        if(args.p_attempt_number===1)return {data:true,error:null};
+        return options.nextAttempt?.data===false?{data:null,error:{code:'EQ001'}}:options.nextAttempt??{data:true,error:null};
+      }
+      if (name === 'ai_settle_execution') return {data:true,error:null};
+      if (name === 'ai_prepare_execution_result') return { data: true, error: null };
       if (name === 'ai_release_request') return options.release ? await options.release() : { data: true, error: null };
       return { data: null, error: new Error(`unexpected RPC ${name}`) };
     },

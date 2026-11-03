@@ -1,13 +1,8 @@
-// Supabase Edge Function (Deno runtime) — the only place the Gemini API key
-// is read. Provider requests are quota-gated and bounded before any response
-// is returned to the client.
+// Supabase Edge Function: direct Groq-only weekly review by default.
+// Provider requests are quota-gated and bounded before any response is returned.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { createAiProxyHandler } from './ai-proxy-core.ts';
-import { createFailoverGenerator, createGeminiGenerator } from './ai-proxy-generator.ts';
-import { parseProviders } from './ai-proxy-providers.ts';
-
-const DEFAULT_PRIMARY_MODEL = 'gemini-3.6-flash';
+import { createConfiguredAiHandler } from './ai-proxy-route.ts';
 
 // Native mobile requests never send an Origin header, so this list only gates
 // browser fetch() calls. Authorization and RLS remain the security boundary.
@@ -48,35 +43,8 @@ function requestBoundFetch(signal: AbortSignal): typeof fetch {
 
 const readEnv = (name: string) => Deno.env.get(name);
 
-// AI_PROVIDERS (an ordered JSON list, keys in their own secrets) turns on multi-provider failover. Without it the
-// original single-provider Gemini behaviour and its GEMINI_* settings are unchanged.
-const configuredProviders = parseProviders(readEnv);
-
-const generate = configuredProviders
-  ? createFailoverGenerator({
-    providers: configuredProviders,
-    getKey: keyEnv => Deno.env.get(keyEnv),
-  })
-  : createGeminiGenerator({
-    apiKey: () => requiredEnvironmentVariable('GEMINI_API_KEY'),
-    primaryModel: Deno.env.get('GEMINI_PRIMARY_MODEL')?.trim() || DEFAULT_PRIMARY_MODEL,
-    fallbackModel: Deno.env.get('GEMINI_FALLBACK_MODEL')?.trim() || undefined,
-    // Stage one deploys this same fail-closed quota gate with retries disabled.
-    // Enable only after SQL 030 is verified and fallback access is confirmed.
-    retryEnabled: Deno.env.get('AI_RETRY_ENABLED') === 'true',
-  });
-
-const handler = createAiProxyHandler({
-  preflight: () => {
-    if (!configuredProviders) {
-      requiredEnvironmentVariable('GEMINI_API_KEY');
-      return;
-    }
-    // Fail closed (before any quota is spent) only when no listed provider has a key.
-    if (!configuredProviders.some(provider => (Deno.env.get(provider.keyEnv) ?? '').trim() !== '')) {
-      throw new Error('no AI provider has an API key configured');
-    }
-  },
+// Missing, stale or unapproved routing configuration denies AI before quota is spent.
+const handler = createConfiguredAiHandler({
   createUserClient: (authorization, signal) => createClient(
     requiredEnvironmentVariable('SUPABASE_URL'),
     requiredEnvironmentVariable('SUPABASE_ANON_KEY'),
@@ -87,16 +55,19 @@ const handler = createAiProxyHandler({
       },
     },
   ),
-  createServiceClient: signal => createClient(
-    requiredEnvironmentVariable('SUPABASE_URL'),
-    requiredEnvironmentVariable('SUPABASE_SERVICE_ROLE_KEY'),
-    {
-      auth: { persistSession: false, autoRefreshToken: false },
-      global: { fetch: requestBoundFetch(signal) },
-    },
-  ),
+  createServiceClient: signal => {
+    const client = createClient(
+      requiredEnvironmentVariable('SUPABASE_URL'),
+      requiredEnvironmentVariable('SUPABASE_SERVICE_ROLE_KEY'),
+      {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { fetch: requestBoundFetch(signal) },
+      },
+    );
+    // Supabase returns a thenable builder; the core's asynchronous RPC boundary expects a Promise.
+    return { rpc: async (name, args) => await client.rpc(name, args) };
+  },
   corsHeaders,
-  generate,
-});
+}, readEnv);
 
 Deno.serve(handler);

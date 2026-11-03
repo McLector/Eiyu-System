@@ -1,4 +1,5 @@
-import { createAiProxyHandler } from './ai-proxy-core.ts';
+import {admittedFixtureData} from './test-helpers/admission.ts';
+import {createInstrumentedTestHandler as createAiProxyHandler} from './test-helpers/admission.ts';
 import './ai-proxy-generator_test.ts';
 import './ai-proxy-providers_test.ts';
 import './ai-proxy-failover_test.ts';
@@ -14,6 +15,7 @@ function fakeClient(options: {
   userId?: string | null;
   begin?: RpcResponse;
   nextAttempt?: RpcResponse;
+  completion?: RpcResponse;
   onRpc?: (name: string, args: Record<string, unknown>) => void;
 } = {}): FakeClient {
   return {
@@ -22,14 +24,84 @@ function fakeClient(options: {
     },
     rpc: async (name, args) => {
       options.onRpc?.(name, args);
-      if (name === 'ai_begin_request') return options.begin ?? { data: { allowed: true, requestClass: 'suggestion', attemptNumber: 1 }, error: null };
-      if (name === 'ai_reserve_next_attempt') return options.nextAttempt ?? { data: true, error: null };
+      if (name === 'ai_admit_execution') {
+        const result=options.begin ?? { data: { allowed: true, ageVersion: 1, requestClass: 'suggestion', attemptNumber: 1 }, error: null };
+        return {...result,data:admittedFixtureData(result.data,args)};
+      }
+      if (name === 'ai_authorize_execution_attempt') {
+        if(args.p_attempt_number===1)return {data:true,error:null};
+        return options.nextAttempt?.data===false?{data:null,error:{code:'EQ001'}}:options.nextAttempt??{data:true,error:null};
+      }
+      if (name === 'ai_settle_execution') return {data:true,error:null};
+      if (name === 'ai_prepare_execution_result') return options.completion?.data===false?{data:null,error:{code:'EP002'}}:options.completion ?? { data: true, error: null };
+      if (name === 'ai_release_request') return { data: true, error: null };
       return { data: null, error: new Error(`unexpected RPC ${name}`) };
     },
   };
 }
 
 const authHeaders = { Authorization: 'Bearer disposable-test-token' };
+
+Deno.test('mailbox denial returns 403 before weekly provider traffic', async () => {
+ let generated=false;const client=fakeClient({begin:{data:null,error:{code:'EM001'}}});
+ const handler=createAiProxyHandler({createUserClient:()=>client,createServiceClient:()=>client,generate:async()=>{generated=true;return {summary:'private'};}});
+ const r=await handler(new Request('https://local.test/ai',{method:'POST',headers:authHeaders,body:JSON.stringify({action: 'weekly-summary', processingAccess: {contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},weekStart:'2026-10-05'})}));
+ if(r.status!==403||generated||!(await r.text()).includes('Verify your email'))throw Error('mailbox denial must precede spend');
+});
+Deno.test('old backend without mailbox contract denies weekly traffic', async () => {
+ let generated=false;const client=fakeClient();
+ const handler=createAiProxyHandler({createUserClient:()=>client,createServiceClient:()=>client,generate:async()=>{generated=true;return {summary:'private'};}});
+ const r=await handler(new Request('https://local.test/ai',{method:'POST',headers:authHeaders,body:JSON.stringify({action: 'weekly-summary', processingAccess: {contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},weekStart:'2026-10-05'})}));
+ if(r.status!==503||generated)throw Error('missing mailbox revision must fail closed');
+});
+Deno.test('a mailbox-bound weekly request succeeds only after the final check', async () => {
+ const client=fakeClient({begin:{data:{allowed:true,attemptNumber:1,ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},error:null}});
+ const handler=createAiProxyHandler({createUserClient:()=>client,createServiceClient:()=>client,generate:async()=>({summary:'Allowed debrief'})});
+ const r=await handler(new Request('https://local.test/ai',{method:'POST',headers:authHeaders,body:JSON.stringify({action: 'weekly-summary', processingAccess: {contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},weekStart:'2026-10-05'})}));
+ if(r.status!==200||(await r.json()).summary!=='Allowed debrief')throw Error('verified adult weekly output required');
+});
+Deno.test('mailbox loss during weekly generation discards the result and refunds', async () => {
+ let refunds=0;const client=fakeClient({begin:{data:{allowed:true,attemptNumber:1,ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},error:null},completion:{data:false,error:null},onRpc:name=>{if(name==='ai_release_request')refunds++;}});
+ const handler=createAiProxyHandler({createUserClient:()=>client,createServiceClient:()=>client,generate:async()=>({summary:'Late private debrief'})});
+ const r=await handler(new Request('https://local.test/ai',{method:'POST',headers:authHeaders,body:JSON.stringify({action: 'weekly-summary', processingAccess: {contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},weekStart:'2026-10-05'})}));
+ if(r.status!==403||refunds!==1||(await r.text()).includes('Late private debrief'))throw Error('late mailbox result must be discarded and refunded');
+});
+Deno.test('mailbox denial on a weekly retry stops the attempt and refunds', async () => {
+ let refunds=0;const client=fakeClient({begin:{data:{allowed:true,attemptNumber:1,ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},error:null},nextAttempt:{data:null,error:{code:'EM001'}},onRpc:name=>{if(name==='ai_release_request')refunds++;}});
+ const handler=createAiProxyHandler({createUserClient:()=>client,createServiceClient:()=>client,generate:async(_action,_body,reserve)=>{if(!await reserve(2))throw Error('denied');return {summary:'Bypass'};}});
+ const r=await handler(new Request('https://local.test/ai',{method:'POST',headers:authHeaders,body:JSON.stringify({action: 'weekly-summary', processingAccess: {contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},weekStart:'2026-10-05'})}));
+ if(r.status!==403||refunds!==1||!(await r.text()).includes('Verify your email'))throw Error('retry denial must refund without another model attempt');
+});
+
+Deno.test('server adult eligibility denial returns 403 without provider traffic', async () => {
+  let generated = false;
+  const client = fakeClient({ begin: { data: null, error: { code: 'EA001' } } });
+  const handler = createAiProxyHandler({ createUserClient: () => client, createServiceClient: () => client,
+    generate: async () => { generated = true; return { stages: ['one'] }; } });
+  const response = await handler(new Request('https://local.test/ai', { method: 'POST', headers: authHeaders,
+    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT' }) }));
+  if (response.status !== 403 || generated) throw new Error('age denial must return 403 before a model request');
+});
+Deno.test('a birthday restriction during generation discards the response and refunds', async () => {
+  let refunds = 0;
+  const client = fakeClient({ completion: { data: false, error: null }, onRpc: name => { if (name === 'ai_release_request') refunds++; } });
+  const handler = createAiProxyHandler({ createUserClient: () => client, createServiceClient: () => client,
+    generate: async () => ({ stages: ['Do not release'] }) });
+  const response = await handler(new Request('https://local.test/ai', { method: 'POST', headers: authHeaders,
+    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT' }) }));
+  if (response.status !== 403 || refunds !== 1 || JSON.stringify(await response.json()).includes('Do not release')) {
+    throw new Error('a final fresh age check must discard the output and refund the logical request');
+  }
+});
+Deno.test('an older quota backend without the age contract fails closed before generation', async () => {
+  let generated = false;
+  const client = fakeClient({ begin: { data: { allowed: true, attemptNumber: 1 }, error: null } });
+  const handler = createAiProxyHandler({ createUserClient: () => client, createServiceClient: () => client,
+    generate: async () => { generated = true; return { stages: ['one'] }; } });
+  const response = await handler(new Request('https://local.test/ai', { method: 'POST', headers: authHeaders,
+    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT' }) }));
+  if (response.status !== 503 || generated) throw new Error('missing age contract must fail closed');
+});
 
 Deno.test('invalid AI payloads reserve no logical or provider quota', async () => {
   let rpcCount = 0;
@@ -62,12 +134,12 @@ Deno.test('verified identity, not a caller-supplied user id, begins one logical 
     body: JSON.stringify({ action: 'easy-versions', habitName: 'Read', stat: 'INT', userId: 'forged-user', requestClass: 'regeneration' }),
   }));
   const body = await response.json();
-  const begin = observed.find(call => call.name === 'ai_begin_request');
+  const begin = observed.find(call => call.name === 'ai_admit_execution');
   if (response.status !== 200 || body.suggestions?.length !== 3 || !begin || begin.args.p_user_id !== 'verified-user') {
     throw new Error('expected successful output and the authenticated user id in the quota RPC');
   }
-  if (observed.some(call => call.name !== 'ai_begin_request')) {
-    throw new Error('the first provider slot must not be charged a second time');
+  if (observed.map(call=>call.name).join(',') !== 'ai_admit_execution,ai_authorize_execution_attempt,ai_settle_execution,ai_prepare_execution_result') {
+    throw new Error('one admission, first dispatch authorization, settlement and final check are required; SQL tests separately pin no duplicate quota charge');
   }
 });
 
@@ -120,8 +192,8 @@ Deno.test('each retry reserves its own provider attempt before fetch', async () 
   await handler(new Request('https://local.test/ai', {
     method: 'POST', headers: authHeaders, body: JSON.stringify({ action: 'easy-versions', habitName: 'Read' }),
   }));
-  if (providerCalls !== 2 || observed.join(',') !== 'ai_begin_request,ai_reserve_next_attempt') {
-    throw new Error(`expected one begin plus one retry reservation before two provider calls; got ${observed.join(',')}`);
+  if (providerCalls !== 2 || observed.join(',') !== 'ai_admit_execution,ai_authorize_execution_attempt,ai_authorize_execution_attempt,ai_settle_execution,ai_prepare_execution_result') {
+    throw new Error(`expected admission plus first/retry dispatch permissions and local settlement; got ${observed.join(',')}`);
   }
 });
 
@@ -226,9 +298,9 @@ Deno.test('the default clock works on a runtime whose timers reject a foreign `t
 Deno.test('exhaustedProviders from the begin RPC reach the generator as plain strings; a missing field means none', async () => {
   const seen: Array<string[] | undefined> = [];
   for (const begin of [
-    { allowed: true, requestClass: 'suggestion', attemptNumber: 1, exhaustedProviders: ['groq', 7, null, 'cerebras'] },
-    { allowed: true, requestClass: 'suggestion', attemptNumber: 1 },
-    { allowed: true, requestClass: 'suggestion', attemptNumber: 1, exhaustedProviders: 'groq' },
+    { allowed: true, ageVersion: 1, requestClass: 'suggestion', attemptNumber: 1, exhaustedProviders: ['groq', 7, null, 'cerebras'] },
+    { allowed: true, ageVersion: 1, requestClass: 'suggestion', attemptNumber: 1 },
+    { allowed: true, ageVersion: 1, requestClass: 'suggestion', attemptNumber: 1, exhaustedProviders: 'groq' },
   ]) {
     const client = fakeClient({ begin: { data: begin, error: null } });
     const handler = createAiProxyHandler({

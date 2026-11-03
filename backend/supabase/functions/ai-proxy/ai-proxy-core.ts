@@ -1,8 +1,22 @@
+import {executionDenial, parseExecutionTicket} from './ai-proxy-admission.ts';
+import type {ExecutionTicket} from './ai-proxy-admission.ts';
+
 export type AiAction = 'easy-versions' | 'stage-breakdown' | 'weekly-summary';
 export type AiPayload = Record<string, unknown> & { action: AiAction };
 export type ProviderAttemptReservation = (attemptNumber: number) => Promise<boolean>;
 
 export const DEFAULT_AI_REQUEST_TIMEOUT_MS = 16_000;
+const PROCESSING_ACCESS_CHANGED = 'Weekly debrief access changed. Review your permissions, email verification and birthday in Profile.';
+const processingRevisionKeys = ['ageVersion', 'mailboxVersion', 'consentVersion', 'authorityVersion'] as const;
+
+function capturedProcessingAccess(body: unknown): Record<typeof processingRevisionKeys[number], number> | null {
+  if (!isPlainObject(body) || !isPlainObject(body.processingAccess) || body.processingAccess.contractVersion !== 1) return null;
+  const value = body.processingAccess;
+  if (processingRevisionKeys.some(key => !Number.isSafeInteger(value[key])
+    || (value[key] as number) < (key === 'authorityVersion' ? 0 : 1))) return null;
+  return {ageVersion: value.ageVersion as number, mailboxVersion: value.mailboxVersion as number,
+    consentVersion: value.consentVersion as number, authorityVersion: value.authorityVersion as number};
+}
 
 export type AiRequestContext = {
   signal: AbortSignal;
@@ -32,6 +46,7 @@ export type AiProxyDependencies = {
   createUserClient: (authorization: string, signal: AbortSignal) => UserClient;
   createServiceClient: (signal: AbortSignal) => RpcClient;
   preflight?: () => void;
+  allowedActions?: readonly AiAction[];
   generate: (
     action: AiAction,
     payload: AiPayload,
@@ -161,32 +176,35 @@ function normalizedPayload(body: unknown): AiPayload | null {
       return { action: 'stage-breakdown', questName, stat: typeof body.stat === 'string' ? body.stat : '' };
     }
     case 'weekly-summary': {
-      if (!isIsoDate(body.weekStart) || !Array.isArray(body.habits) || body.habits.length > 100 || !isPlainObject(body.statTotals)) {
-        return null;
-      }
-      const habits = body.habits;
-      if (!habits.every(item => isPlainObject(item)
-        && typeof item.name === 'string'
-        && typeof item.stat === 'string'
-        && Number.isInteger(item.fullCount) && Number(item.fullCount) >= 0
-        && Number.isInteger(item.easyCount) && Number(item.easyCount) >= 0)) return null;
-      if (Object.values(body.statTotals).some(value => !Number.isInteger(value) || Number(value) < 0)) return null;
-      const payload = {
-        action: 'weekly-summary' as const,
-        weekStart: body.weekStart,
-        habits,
-        statTotals: body.statTotals,
-      };
-      if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > MAX_WEEKLY_INPUT_BYTES) return null;
-      return payload;
+      // A metadata-only command: tracker text and totals come from the server, never the body.
+      if (!isIsoDate(body.weekStart) || Object.keys(body).some(key => !['action', 'weekStart', 'processingAccess'].includes(key))) return null;
+      return { action: 'weekly-summary' as const, weekStart: body.weekStart };
     }
     default:
       return null;
   }
 }
 
+const TRACKER_PERMISSION_REQUIRED = 'Your custom quests need permission before they can be used in a weekly debrief. Review it in Profile.';
+const STATS_KEYS = ['STR', 'INT', 'DEX', 'WIS', 'CHA'];
+
+// Server-built weekly evidence. Anything unexpected is unavailable, never repaired or truncated.
+function canonicalWeekInput(value: unknown): { habits: Record<string, unknown>[]; statTotals: Record<string, number> } | 'invalid' | null {
+  if (!isPlainObject(value) || Object.keys(value).length !== 2 || !Array.isArray(value.habits) || !isPlainObject(value.statTotals)) return null;
+  const totals = value.statTotals;
+  if (Object.keys(totals).length !== STATS_KEYS.length || STATS_KEYS.some(key => !Number.isSafeInteger(totals[key]) || (totals[key] as number) < 0)) return null;
+  if (!value.habits.every(item => isPlainObject(item) && Object.keys(item).length === 4
+    && typeof item.name === 'string' && typeof item.stat === 'string' && STATS_KEYS.includes(item.stat)
+    && Number.isSafeInteger(item.fullCount) && Number(item.fullCount) >= 0
+    && Number.isSafeInteger(item.easyCount) && Number(item.easyCount) >= 0)) return null;
+  const input = { habits: value.habits as Record<string, unknown>[], statTotals: totals as Record<string, number> };
+  if (input.habits.length > 100 || new TextEncoder().encode(JSON.stringify({ action: 'weekly-summary', weekStart: '0000-00-00', ...input })).byteLength > MAX_WEEKLY_INPUT_BYTES) return 'invalid';
+  return input;
+}
+
 function quotaDeniedReason(value: unknown): string | null {
   return isPlainObject(value) && value.allowed === false && typeof value.reason === 'string'
+    && ['user_limit', 'project_limit', 'reservation_required'].includes(value.reason)
     ? value.reason
     : null;
 }
@@ -255,15 +273,35 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
 
   // Best effort, on its own short deadline: by the time a timed-out or cancelled request refunds, the request budget's
   // signal has already fired. A failure here is logged and never changes the answer the user gets.
-  const releaseRequest = async (requestId: string): Promise<void> => {
+  const releaseRequest = async (requestId: string, cleanupStopAt = Infinity): Promise<void> => {
+    const remaining = Math.min(REFUND_TIMEOUT_MS, cleanupStopAt - clock.now());
+    if (remaining <= 0) return;
     const controller = new AbortController();
-    const timer = clock.setTimeout(() => controller.abort(new Error('refund deadline exceeded')), REFUND_TIMEOUT_MS);
+    const timer = clock.setTimeout(() => controller.abort(new Error('refund deadline exceeded')), remaining);
     try {
       const client = dependencies.createServiceClient(controller.signal);
       const { error } = await awaitAbortable(client.rpc('ai_release_request', { p_request_id: requestId }), controller.signal);
       if (error) console.warn('ai-proxy: could not refund a failed request');
     } catch {
       console.warn('ai-proxy: could not refund a failed request');
+    } finally {
+      clock.clearTimeout(timer);
+    }
+  };
+
+  const settleExecution = async (ticket: ExecutionTicket, outcome: 'completed' | 'stopped-before-dispatch' | 'unresolved', cleanupStopAt: number): Promise<boolean> => {
+    const remaining = Math.min(REFUND_TIMEOUT_MS, cleanupStopAt - clock.now());
+    if (remaining <= 0) return false;
+    const controller = new AbortController();
+    const timer = clock.setTimeout(() => controller.abort(new Error('settlement deadline exceeded')), remaining);
+    try {
+      const client = dependencies.createServiceClient(controller.signal);
+      const {data,error} = await awaitAbortable(client.rpc('ai_settle_execution', {
+        p_execution_id: ticket.executionId, p_epoch: ticket.epoch, p_outcome: outcome,
+      }), controller.signal);
+      return !error && data === true;
+    } catch {
+      return false;
     } finally {
       clock.clearTimeout(timer);
     }
@@ -300,7 +338,15 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
         return json({ error: 'Request body must be valid JSON.' }, 400, cors);
       }
       const payload = normalizedPayload(body);
-      if (!payload) return json({ error: 'Request payload is invalid.' }, 400, cors);
+      if (!payload || (dependencies.allowedActions && !dependencies.allowedActions.includes(payload.action))) {
+        return json({ error: 'Request payload is invalid.' }, 400, cors);
+      }
+      // Authorization metadata is parsed separately; normalized prompt input
+      // contains only the existing weekly evidence fields.
+      const capturedProcessing = payload.action === 'weekly-summary' ? capturedProcessingAccess(body) : null;
+      if (payload.action === 'weekly-summary' && !capturedProcessing) {
+        return json({error: 'Refresh your debrief permissions before trying again.'}, 400, cors);
+      }
 
       const stoppedBeforeQuota = abortedResponse(budget, cors);
       if (stoppedBeforeQuota) return stoppedBeforeQuota;
@@ -311,6 +357,9 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
       }
 
       const requestId = (dependencies.requestId ?? (() => crypto.randomUUID()))();
+      const executionId = crypto.randomUUID();
+      // Independent cleanup remains at most3s per operation, bounded overall by main deadline+3s.
+      const cleanupStopAt = budget.context.deadlineAt + REFUND_TIMEOUT_MS;
       let quotaClient: RpcClient;
       try {
         quotaClient = dependencies.createServiceClient(budget.signal);
@@ -318,15 +367,57 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
         return unavailableResponse(cors);
       }
 
+      let generationPayload: AiPayload = payload;
+      if (payload.action === 'weekly-summary' && capturedProcessing) {
+        let inputData: unknown, inputError: unknown;
+        try {
+          ({ data: inputData, error: inputError } = await awaitAbortable(quotaClient.rpc('ai_tracker_week_input', {
+            p_user_id: user.id,
+            p_week_start: payload.weekStart,
+            p_expected: { userId: user.id, ...capturedProcessing },
+          }), budget.signal));
+        } catch {
+          const stopped = abortedResponse(budget, cors);
+          if (stopped) return stopped;
+          return unavailableResponse(cors);
+        }
+        if (inputError) {
+          const code = isPlainObject(inputError) ? inputError.code : null;
+          if (code === 'ET002') return json({ error: TRACKER_PERMISSION_REQUIRED }, 403, cors);
+          if (code === 'EP001' || code === 'EP002') return json({ error: PROCESSING_ACCESS_CHANGED }, 403, cors);
+          if (code === 'EM001') return json({ error: 'Verify your email to access your weekly debrief.' }, 403, cors);
+          if (code === 'EA001') return json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors);
+          if (code === '22023') return json({ error: 'Request payload is invalid.' }, 400, cors);
+          return unavailableResponse(cors);
+        }
+        const input = canonicalWeekInput(inputData);
+        if (input === 'invalid') return json({ error: 'Request payload is invalid.' }, 400, cors);
+        if (!input) return unavailableResponse(cors);
+        generationPayload = { action: 'weekly-summary', weekStart: payload.weekStart, habits: input.habits, statTotals: input.statTotals };
+      }
+
       let begin: unknown;
       try {
-        const { data, error } = await awaitAbortable(quotaClient.rpc('ai_begin_request', {
+        const { data, error } = await awaitAbortable(quotaClient.rpc('ai_admit_execution', {
           p_user_id: user.id,
           p_action: payload.action,
           p_request_id: requestId,
           p_week_start: payload.action === 'weekly-summary' ? payload.weekStart : null,
+          p_execution_id: executionId,
+          p_contract_version: 1,
         }), budget.signal);
-        if (error) return unavailableResponse(cors);
+        if (error) {
+          if (isPlainObject(error) && (error.code === 'EP001' || error.code === 'EP002')) {
+            return json({error: PROCESSING_ACCESS_CHANGED}, 403, cors);
+          }
+          if (isPlainObject(error) && error.code === 'EM001') {
+            return json({ error: 'Verify your email to access your weekly debrief.' }, 403, cors);
+          }
+          if (isPlainObject(error) && error.code === 'EA001') {
+            return json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors);
+          }
+          return unavailableResponse(cors);
+        }
         begin = data;
       } catch {
         const stopped = abortedResponse(budget, cors);
@@ -336,29 +427,57 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
 
       const denial = quotaDeniedReason(begin);
       if (denial) return json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors);
-      if (!isPlainObject(begin) || begin.allowed !== true || begin.attemptNumber !== 1) {
+      if (!isPlainObject(begin) || begin.allowed !== true || begin.attemptNumber !== 1) return unavailableResponse(cors);
+      const ticket = parseExecutionTicket(begin, {requestId, executionId});
+      if (!ticket) {
+        // A possibly committed but unacknowledged admission is not safe to dispatch or settle.
+        await releaseRequest(requestId, cleanupStopAt);
         return unavailableResponse(cors);
       }
+      const stopBeforeDispatch = async (response: Response): Promise<Response> => {
+        const [settled] = await Promise.all([
+          settleExecution(ticket, 'stopped-before-dispatch', cleanupStopAt), releaseRequest(requestId, cleanupStopAt),
+        ]);
+        return settled ? response : unavailableResponse(cors);
+      };
+      if (!Number.isSafeInteger(begin.ageVersion) || (begin.ageVersion as number) < 1 ||
+        (payload.action === 'weekly-summary' && (!Number.isSafeInteger(begin.mailboxVersion) || (begin.mailboxVersion as number) < 1
+          || !Number.isSafeInteger(begin.consentVersion) || (begin.consentVersion as number) < 1
+          || !Number.isSafeInteger(begin.authorityVersion) || (begin.authorityVersion as number) < 0))) {
+        // The older backend already accepted and charged this request; no output can be released safely.
+        return await stopBeforeDispatch(unavailableResponse(cors));
+      }
+      if (capturedProcessing && processingRevisionKeys.some(key => begin[key] !== capturedProcessing[key])) {
+        return await stopBeforeDispatch(json({error: PROCESSING_ACCESS_CHANGED}, 403, cors));
+      }
 
-      let reservationFailure: 'quota' | 'unavailable' | null = null;
-      const reservedAttempts = new Set<number>([1]);
+      let reservationFailure: 'quota' | 'unavailable' | 'age' | 'mailbox' | 'processing' | null = null;
+      const reservedAttempts = new Set<number>();
+      let authorizationUncertain = false;
       const reserveProviderAttempt: ProviderAttemptReservation = async attemptNumber => {
         if (budget.signal.aborted) return false;
-        if (reservedAttempts.has(attemptNumber)) return true;
+        if (reservedAttempts.has(attemptNumber)) {
+          reservationFailure = 'unavailable';
+          return false;
+        }
         if (attemptNumber !== reservedAttempts.size + 1 || attemptNumber > 4) return false;
         try {
-          const { data, error } = await awaitAbortable(quotaClient.rpc('ai_reserve_next_attempt', {
-            p_request_id: requestId,
+          authorizationUncertain = true;
+          const { data, error } = await awaitAbortable(quotaClient.rpc('ai_authorize_execution_attempt', {
+            p_execution_id: ticket.executionId, p_epoch: ticket.epoch,
             p_attempt_number: attemptNumber,
           }), budget.signal);
           if (error) {
-            reservationFailure = 'unavailable';
+            reservationFailure = executionDenial(error);
+            if (reservationFailure !== 'unavailable' || (isPlainObject(error) && error.code === 'ED001')) authorizationUncertain = false;
             return false;
           }
           if (data !== true) {
-            reservationFailure = 'quota';
+            if (data === false) authorizationUncertain = false;
+            reservationFailure = 'unavailable';
             return false;
           }
+          authorizationUncertain = false;
           reservedAttempts.add(attemptNumber);
           return true;
         } catch {
@@ -387,12 +506,16 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
         }
       };
       const generationContext: AiRequestContext = { ...budget.context, exhaustedProviders, markProviderExhausted };
+      let generationResolved = false;
 
       // The user is charged when the request begins. A request that ends without a result or a 429 gives that attempt back.
       const outcome = async (): Promise<{ response: Response; refund: boolean }> => {
         try {
           const result = await awaitAbortable(
-            dependencies.generate(payload.action, payload, reserveProviderAttempt, generationContext),
+            dependencies.generate(generationPayload.action, generationPayload, reserveProviderAttempt, generationContext).then(value => {
+              generationResolved = true;
+              return value;
+            }),
             budget.signal,
           );
           const stopped = abortedResponse(budget, cors);
@@ -401,21 +524,64 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
             return { response: json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors), refund: false };
           }
           if (reservationFailure === 'unavailable') return { response: unavailableResponse(cors), refund: true };
+          if (reservationFailure === 'processing') return {response: json({error: PROCESSING_ACCESS_CHANGED}, 403, cors), refund: true};
+          if (reservationFailure === 'mailbox') return { response: json({ error: 'Verify your email to access your weekly debrief.' }, 403, cors), refund: true };
+          if (reservationFailure === 'age') return { response: json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors), refund: true };
           return { response: json(result, 200, cors), refund: false };
         } catch (error) {
           const stopped = abortedResponse(budget, cors);
           if (stopped) return { response: stopped, refund: true };
+          if (reservationFailure === 'mailbox') return { response: json({ error: 'Verify your email to access your weekly debrief.' }, 403, cors), refund: true };
+          if (reservationFailure === 'processing') return {response: json({error: PROCESSING_ACCESS_CHANGED}, 403, cors), refund: true};
           if (reservationFailure === 'quota') {
             return { response: json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors), refund: false };
           }
+          if (reservationFailure === 'age') return { response: json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors), refund: true };
           if (reservationFailure === 'unavailable') return { response: unavailableResponse(cors), refund: true };
+          if (error instanceof Error && (error as Error & { kind?: string }).kind === 'limited') {
+            const interval = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
+            const retryAfter = typeof interval === 'number' && Number.isFinite(interval) && interval >= 1 && interval <= 86400
+              ? Math.ceil(interval) : 60;
+            return { response: json({ error: 'The free AI capacity is temporarily used up. Please try again later.' }, 503, cors, retryAfter), refund: true };
+          }
           if (isExhaustedGenerationError(error)) return { response: capacityResponse(cors), refund: true };
           if (isBusyGenerationError(error)) return { response: busyResponse(cors), refund: true };
           return { response: json({ error: 'The AI request failed. Please try again.' }, 503, cors), refund: true };
         }
       };
       const { response, refund } = await outcome();
-      if (refund) await releaseRequest(requestId);
+      const settlement = authorizationUncertain ? 'unresolved' : generationResolved ? 'completed' : reservedAttempts.size === 0 ? 'stopped-before-dispatch' : 'unresolved';
+      const [settled] = await Promise.all([
+        settleExecution(ticket, settlement, cleanupStopAt),
+        refund ? releaseRequest(requestId, cleanupStopAt) : Promise.resolve(),
+      ]);
+      if (!settled) {
+        if (!refund) await releaseRequest(requestId, cleanupStopAt);
+        return unavailableResponse(cors);
+      }
+      if (response.status === 200) {
+        let finalResponse: Response | null = abortedResponse(budget, cors);
+        if (!finalResponse) {
+          try {
+            const {data,error} = await awaitAbortable(quotaClient.rpc('ai_prepare_execution_result', {
+              p_execution_id: ticket.executionId, p_epoch: ticket.epoch, p_age_version: begin.ageVersion,
+            }), budget.signal);
+            if (error) {
+              const reason = executionDenial(error);
+              finalResponse = reason === 'processing' || reason === 'age'
+                ? json({error: PROCESSING_ACCESS_CHANGED}, 403, cors)
+                : reason === 'mailbox' ? json({error: 'Verify your email to access your weekly debrief.'}, 403, cors)
+                : unavailableResponse(cors);
+            } else if (data !== true) finalResponse = unavailableResponse(cors);
+          } catch {
+            finalResponse = abortedResponse(budget, cors) ?? unavailableResponse(cors);
+          }
+        }
+        if (finalResponse) {
+          await releaseRequest(requestId, cleanupStopAt);
+          return finalResponse;
+        }
+      }
       return response;
     } finally {
       budget.dispose();

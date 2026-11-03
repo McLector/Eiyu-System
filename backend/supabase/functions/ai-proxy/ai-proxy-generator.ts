@@ -31,12 +31,14 @@ export type GeminiGeneratorOptions = {
 };
 
 export class GeminiProviderError extends Error {
-  readonly kind: 'busy' | 'error' | 'exhausted';
+  readonly kind: 'busy' | 'error' | 'exhausted' | 'limited';
+  readonly retryAfterSeconds?: number;
 
-  constructor(message = 'The AI provider could not complete the request.', kind: 'busy' | 'error' | 'exhausted' = 'error') {
+  constructor(message = 'The AI provider could not complete the request.', kind: 'busy' | 'error' | 'exhausted' | 'limited' = 'error', retryAfterSeconds?: number) {
     super(message);
     this.name = 'GeminiProviderError';
     this.kind = kind;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -377,12 +379,14 @@ export function createGeminiGenerator(options: GeminiGeneratorOptions) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Multi-provider failover (slice 6). Used when the AI_PROVIDERS secret lists providers; otherwise index.ts keeps the
-// single-provider generator above. Same bounds as there: 4 attempts, 3 s each, every attempt reserved before its fetch.
+// Generic bounded generator retained for legacy tests. Production injects one approved Groq provider through
+// ai-proxy-route.ts. Four total attempts maximum, 3 s each; every attempt is reserved before its fetch.
 // ---------------------------------------------------------------------------------------------------------------
 
 export type FailoverGeneratorOptions = {
   providers: Provider[];
+  /** Return any provider 429 immediately; do not retry or infer a daily reset. */
+  returnRateLimits?: boolean;
   getKey: (keyEnv: string) => string | undefined;
   fetch?: Fetcher;
   setTimeout?: typeof globalThis.setTimeout;
@@ -463,7 +467,10 @@ export function createFailoverGenerator(options: FailoverGeneratorOptions) {
     const isExhausted = (provider: Provider) =>
       databaseExhausted.has(provider.name) || (localExhausted.get(provider.name) ?? 0) > wallClock();
     let queue = usable.filter(provider => !isExhausted(provider));
-    if (!queue.length) throw new GeminiProviderError('Every AI provider is out of quota for today.', 'exhausted');
+    if (!queue.length) {
+      if (options.returnRateLimits) throw new GeminiProviderError('Free AI capacity is temporarily unavailable.', 'limited', 60);
+      throw new GeminiProviderError('Every AI provider is out of quota for today.', 'exhausted');
+    }
 
     const attemptOnce = async (provider: Provider, attempt: number, outcome: { status?: number }): Promise<Record<string, unknown>> => {
       const apiKey = (options.getKey(provider.keyEnv) ?? '').trim();
@@ -492,7 +499,7 @@ export function createFailoverGenerator(options: FailoverGeneratorOptions) {
         let response: Response;
         try {
           response = await awaitSignal(
-            fetcher(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body), signal: combined.signal }),
+            fetcher(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(request.body), signal: combined.signal, redirect: 'error' }),
             combined.signal,
           );
         } catch {
@@ -500,6 +507,13 @@ export function createFailoverGenerator(options: FailoverGeneratorOptions) {
           throw new GeminiTransientError();
         }
         outcome.status = response.status;
+        if (response.status === 429 && options.returnRateLimits) {
+          // Headers are sufficient: never read a slow or failed body before stopping a rate-limited call.
+          void response.body?.cancel().catch(() => {});
+          const interval = Number(response.headers.get('retry-after'));
+          const retryAfter = Number.isFinite(interval) && interval >= 1 && interval <= 86400 ? Math.ceil(interval) : 60;
+          throw new GeminiProviderError('Free AI capacity is temporarily unavailable.', 'limited', retryAfter);
+        }
         let responseText: string;
         try {
           responseText = await awaitSignal(response.text(), combined.signal);
