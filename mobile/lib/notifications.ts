@@ -19,10 +19,6 @@ const NOTIFICATION_IDS_KEY = 'eiyu:notification-ids';
 /** What a reminder title falls back to when no name is supplied: a protected name is never reconstructed from a cache. */
 export const NEUTRAL_REMINDER_TITLE = 'Quest reminder';
 
-/** Said after protected reminders were canceled: only future ones were. Copies the OS already delivered are not recalled. */
-export const DELIVERED_REMINDER_NOTICE =
-  'Reminders already delivered to this device stay there until you clear them. Only future reminders were canceled.';
-
 const titleOf = (name: string | null | undefined) => name?.trim() || NEUTRAL_REMINDER_TITLE;
 
 export interface ReminderSchedule {

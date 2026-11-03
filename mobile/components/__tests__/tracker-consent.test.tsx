@@ -1,5 +1,5 @@
 import {act, screen, userEvent, waitFor} from '@testing-library/react-native';
-import {TRACKER_PURPOSE_NOTICES, type TrackerAccess} from '@eiyu/shared';
+import {DELIVERED_REMINDER_NOTICE, TRACKER_PURPOSE_NOTICES, type TrackerAccess} from '@eiyu/shared';
 import {renderWithTheme, TestThemeProvider} from '../ui/test-theme';
 import {TrackerConsent} from '../status/tracker-consent';
 import {noGrant, trackerAccess} from '../../test-support/tracker-fixtures';
@@ -131,6 +131,47 @@ describe('TrackerConsent in an editor prompt', () => {
     await user.press(screen.getByRole('button', {name: custom.label}));
     await waitFor(() => expect(changed).toHaveBeenCalledWith(next));
     expect(mockSave).toHaveBeenCalledWith('custom-tracker', true, custom.version, access.revision);
+  });
+});
+
+describe('TrackerConsent after withdrawing', () => {
+  const withdrawn = (access: TrackerAccess): TrackerAccess => ({
+    ...access, customConsent: false, canWriteCustom: false, fitnessConsent: false, canWriteFitness: false,
+    revision: {...access.revision, consentVersion: access.revision.consentVersion + 1},
+  });
+  it('says reminders already delivered stay on the device once custom permission is withdrawn', async () => {
+    const access = trackerAccess();
+    mockSave.mockResolvedValue(withdrawn(access));
+    const user = userEvent.setup();
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={access} purpose="custom-tracker"/>);
+    expect(screen.queryByText(DELIVERED_REMINDER_NOTICE)).not.toBeOnTheScreen();
+    await user.press(screen.getByRole('checkbox', {name: custom.label}));
+    expect(await screen.findByText(DELIVERED_REMINDER_NOTICE)).toBeOnTheScreen();
+  });
+  it('does not say so when the withdrawal failed', async () => {
+    mockSave.mockRejectedValue(new Error('offline'));
+    const user = userEvent.setup();
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={trackerAccess()} purpose="custom-tracker"/>);
+    await user.press(screen.getByRole('checkbox', {name: custom.label}));
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole('checkbox', {name: custom.label})).toBeEnabled());
+    expect(screen.queryByText(DELIVERED_REMINDER_NOTICE)).not.toBeOnTheScreen();
+  });
+  it('does not say so for a grant, or for fitness, which has no reminders', async () => {
+    const access = noGrant();
+    mockSave.mockResolvedValue(granted(access, 'custom-tracker'));
+    const user = userEvent.setup();
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={access} purpose="custom-tracker"/>);
+    await user.press(screen.getByRole('checkbox', {name: custom.label}));
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    expect(screen.queryByText(DELIVERED_REMINDER_NOTICE)).not.toBeOnTheScreen();
+    await act(async () => { await screen.unmount(); });
+    const had = trackerAccess();
+    mockSave.mockReset().mockResolvedValue(withdrawn(had));
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={had} purpose="fitness-tracking"/>);
+    await user.press(screen.getByRole('checkbox', {name: fitness.label}));
+    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    expect(screen.queryByText(DELIVERED_REMINDER_NOTICE)).not.toBeOnTheScreen();
   });
 });
 

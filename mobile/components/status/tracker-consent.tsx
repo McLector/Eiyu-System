@@ -2,7 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import {
-  TRACKER_PURPOSE_NOTICES, copyTrackerRevision, formatError, setTrackerConsent,
+  DELIVERED_REMINDER_NOTICE, TRACKER_PURPOSE_NOTICES, copyTrackerRevision, formatError, setTrackerConsent,
   type TrackerAccess, type TrackerPurpose,
 } from '@eiyu/shared';
 import {ReviewRequest} from '@/components/status/review-request';
@@ -34,13 +34,14 @@ export function TrackerConsent({userId, access, purpose, mode = 'profile', onCha
   const t = useTokens();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [remindersNote, setRemindersNote] = useState(false);
   const operation = useRef(0);
   const latest = useRef({userId, access, purpose, onChanged, onStale});
   latest.current = {userId, access, purpose, onChanged, onStale};
 
   useEffect(() => {
     const counter = operation;
-    counter.current++; setBusy(false); setError(null);
+    counter.current++; setBusy(false); setError(null); setRemindersNote(false);
     return () => { counter.current++; };
   }, [userId, purpose]);
 
@@ -67,10 +68,14 @@ export function TrackerConsent({userId, access, purpose, mode = 'profile', onCha
     const revision = ++operation.current;
     const current = () => operation.current === revision && latest.current.userId === userId
       && latest.current.access.revision.userId === userId && latest.current.purpose === purpose;
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setRemindersNote(false);
     try {
       const result = await setTrackerConsent(purpose, !granted, notice.version, captured);
-      if (current() && result.revision.userId === userId) latest.current.onChanged?.(result);
+      if (current() && result.revision.userId === userId) {
+        latest.current.onChanged?.(result);
+        // Only custom quests have reminders with their own details, and Android cannot recall what it already delivered.
+        if (granted && purpose === 'custom-tracker') setRemindersNote(true);
+      }
     } catch (err) {
       if (current()) {
         setError(trackerErrorMessage(err) ?? formatError(err));
@@ -84,6 +89,7 @@ export function TrackerConsent({userId, access, purpose, mode = 'profile', onCha
     {authority === 'pending' && !granted ? <ReviewRequest userId={userId} purpose={purpose}/> : null}
     {paused && !granted && !authorityBlocked ?<AppText selectable style={body}>{TRACKER_MESSAGES.paused}</AppText> : null}
     {busy ? <AppText style={body}>Saving permission…</AppText> : null}
+    {remindersNote ? <AppText selectable style={body}>{DELIVERED_REMINDER_NOTICE}</AppText> : null}
     {error ? <AppText accessibilityRole="alert" style={[body, {color: t.danger}]}>{error}</AppText> : null}
   </>;
 

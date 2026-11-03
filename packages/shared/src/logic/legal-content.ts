@@ -46,6 +46,8 @@ export const DATA_REQUEST_RESPONSE = [
   'AI: our AI provider does not keep the text we send for training. We do not control any separate usage record it keeps, and we cannot remove reviews already shown to you elsewhere.',
   'If anything here is wrong, or you want something corrected, reply to this message. We will never ask for your password, a code or an ID.',
 ].join('\n\n');
+/** Said after custom permission is withdrawn: only future reminders were canceled. Copies the OS already delivered are not recalled. */
+export const DELIVERED_REMINDER_NOTICE = 'Reminders already delivered to this device stay there until you clear them. Only future reminders were canceled.';
 export const PROCESSING_AUTHORITY_REVIEW = 'This permission needs review. Contact privacy@eiyusystem.app. Do not send IDs, documents or private quest details. Email confirmation alone does not prove a guardian’s authority.';
 
 export interface LegalSection {

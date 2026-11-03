@@ -15,12 +15,12 @@ jest.mock('expo-notifications', () => ({
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DELIVERED_REMINDER_NOTICE } from '@eiyu/shared';
 import * as Notifications from 'expo-notifications';
 
 import {
   cancelProtectedReminders,
   cancelRemindersForHabits,
-  DELIVERED_REMINDER_NOTICE,
   filterReminderRows,
   notifyRecoveryQuestGenerated,
   scheduleHabitReminders,
