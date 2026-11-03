@@ -455,8 +455,8 @@ describe('tracker consent in the queue model', () => {
     expect(classifyError('complete', { code: 'ET001', message: 'x' })).toEqual(expect.objectContaining({ type: 'failed', reason: 'tracker-paused' }));
   });
 
-  it('counts a duplicate completion (22023) as already recorded, but only for complete', () => {
-    expect(classifyError('complete', { code: '22023', message: 'Invalid tracker input.' })).toEqual({ type: 'applied' });
+  it('never counts a 22023 as already recorded, because completeHabit has already settled a real duplicate', () => {
+    expect(classifyError('complete', { code: '22023', message: 'Invalid tracker input.' }).type).not.toBe('applied');
     expect(classifyError('undo', { code: '22023', message: 'Invalid tracker input.' }).type).not.toBe('applied');
     expect(classifyError('progress', { code: '22023', message: 'Invalid tracker input.' }).type).not.toBe('applied');
   });

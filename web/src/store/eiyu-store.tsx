@@ -346,10 +346,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       } else {
         return runCompletion(
           id,
-          // A duplicate completion for the day (22023) means it is already recorded: settle, never add a second row.
-          () => completeHabit(userId, id, quest.stat, 'full', expected, targets, undefined, profile?.timeZone).catch(err => {
-            if (safeTrackerErrorKind(err) !== 'invalid-input') throw err;
-          }),
+          () => completeHabit(userId, id, quest.stat, 'full', expected, targets, undefined, profile?.timeZone),
           true
         );
       }

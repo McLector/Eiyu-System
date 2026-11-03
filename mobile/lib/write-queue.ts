@@ -186,8 +186,8 @@ export function classifyError(kind: QueueKind | 'delete', error: unknown, priorA
   if (code === '42501' && /tracker target unavailable/i.test(message)) {
     return kind === 'delete' && priorAttempt ? { type: 'applied' } : failed('not-on-board');
   }
-  // The write boundary reports a duplicate completion for the same habit and day as 22023: already recorded.
-  if (kind === 'complete' && (code === '23505' || code === '22023')) return { type: 'applied' };
+  // A duplicate reported as 22023 is settled by completeHabit, which checks the row. Any 22023 that reaches here is a real failure.
+  if (kind === 'complete' && code === '23505') return { type: 'applied' };
   if (/authentication required|jwt expired|invalid jwt/i.test(message) || code === 'PGRST301') return { type: 'auth' };
   if (/current account date/i.test(message)) return failed('day-passed');
   if (kind === 'recovery' && /expired|no recovery window/i.test(message)) return failed('recovery-closed');

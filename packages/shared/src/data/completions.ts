@@ -1,3 +1,4 @@
+import { supabase } from '../supabase/client';
 import type { TrackerRevision, TrackerTargetSnapshot } from './tracker-access';
 import { invokeTrackerWrite, trackerErrorKind } from './tracker-writes';
 import { accountDateKey, deviceTimeZone } from '../logic/date-utils';
@@ -6,6 +7,13 @@ import { Stat } from '../types/eiyu';
 
 function todayKey(timeZone: string) {
   return accountDateKey(new Date(), timeZone);
+}
+
+async function isCompletionRecorded(owner: string, habitId: string, date: string): Promise<boolean> {
+  const { data, error } = await supabase.from('habit_completions').select('habit_id')
+    .eq('user_id', owner).eq('habit_id', habitId).eq('completed_on', date).maybeSingle();
+  if (error) throw error;
+  return !!data;
 }
 
 /**
@@ -33,13 +41,14 @@ export async function completeHabit(
   void stat;
 
   const date = completedOn ?? todayKey(timeZone);
-  // Checked here so the only 22023 left to explain is the server's duplicate-completion refusal.
+  // Checked here so a 22023 cannot come from this request's own date or kind.
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (kind !== 'full' && kind !== 'easy')) throw new Error('This completion could not be prepared.');
   try {
     await invokeTrackerWrite<unknown>('complete_habit', { p_habit_id: habitId, p_completed_on: date, p_kind: kind }, expected, targets);
   } catch (error) {
-    // A second completion for the same habit and day is refused as 22023: it is already recorded, never a second row.
-    if (trackerErrorKind(error) === 'invalid-input') return;
+    // The gateway reports a second completion as 22023, but also any other constraint failure, so only the row itself
+    // can show that this one is already recorded. If it is not there, the tap really failed.
+    if (trackerErrorKind(error) === 'invalid-input' && await isCompletionRecorded(expected.userId, habitId, date)) return;
     throw error;
   }
 }

@@ -10,6 +10,7 @@ import { trackerRpcDouble } from '../../test-support/tracker-rpc';
 jest.mock('../../supabase/client', () => ({
   supabase: {
     rpc: jest.fn(),
+    from: jest.fn(),
     auth: { getSession: jest.fn() },
   },
 }));
@@ -18,6 +19,18 @@ const OWNER = 'da230000-0000-4000-8000-000000000001';
 const REVISION = { userId: OWNER, ageVersion: 1, consentVersion: 2, authorityVersion: 3 };
 const HABIT = { kind: 'habit' as const, id: 'da230000-0000-4000-8000-0000000000a1', inputKind: 'basic' as const };
 const rpc = supabase.rpc as jest.Mock;
+const from = supabase.from as jest.Mock;
+const filters: [string, unknown][] = [];
+/** What reading the completion row back answers. */
+function completionRead(data: unknown, error: unknown = null) {
+  filters.length = 0;
+  const builder = {
+    select: () => builder,
+    eq: (column: string, value: unknown) => { filters.push([column, value]); return builder; },
+    maybeSingle: async () => ({ data, error }),
+  };
+  from.mockReset().mockReturnValue(builder);
+}
 
 /** The gateway answers with `data`; everything it is asked is recorded on the mock. */
 function gateway(data: unknown = null, error: unknown = null) {
@@ -61,11 +74,35 @@ describe('completeHabit', () => {
     await expect(completeHabit('user-1', HABIT.id, 'STR', 'full', REVISION, [HABIT], '2026-08-28')).rejects.toBe(failure);
   });
 
-  it('treats a duplicate completion (22023) for a well-formed request as already recorded', async () => {
+  it('settles a 22023 only when this completion is really recorded, for this account, habit and day', async () => {
     const duplicate = Object.assign(new Error('Invalid tracker input.'), { code: '22023' });
     gateway(null, duplicate);
+    completionRead({ habit_id: HABIT.id });
     await expect(completeHabit('user-1', HABIT.id, 'STR', 'full', REVISION, [HABIT], '2026-08-28')).resolves.toBeUndefined();
     expect(rpc).toHaveBeenCalledTimes(1);
+    expect(from).toHaveBeenCalledWith('habit_completions');
+    expect(filters).toEqual(expect.arrayContaining([['user_id', OWNER], ['habit_id', HABIT.id], ['completed_on', '2026-08-28']]));
+  });
+
+  it('keeps a 22023 as a failure when no completion was recorded, because the gateway uses it for any bad data', async () => {
+    const failure = Object.assign(new Error('Invalid tracker input.'), { code: '22023' });
+    gateway(null, failure);
+    completionRead(null);
+    await expect(completeHabit('user-1', HABIT.id, 'STR', 'full', REVISION, [HABIT], '2026-08-28')).rejects.toBe(failure);
+  });
+
+  it('never counts a 22023 as recorded when the check itself fails', async () => {
+    gateway(null, Object.assign(new Error('Invalid tracker input.'), { code: '22023' }));
+    const offline = { message: 'TypeError: Network request failed' };
+    completionRead(null, offline);
+    await expect(completeHabit('user-1', HABIT.id, 'STR', 'full', REVISION, [HABIT], '2026-08-28')).rejects.toBe(offline);
+  });
+
+  it('does not read anything back after any other refusal', async () => {
+    gateway(null, Object.assign(new Error('refused'), { code: 'ET003' }));
+    completionRead({ habit_id: HABIT.id });
+    await expect(completeHabit('user-1', HABIT.id, 'STR', 'full', REVISION, [HABIT], '2026-08-28')).rejects.toThrow('refused');
+    expect(from).not.toHaveBeenCalled();
   });
 
   it('does not hide 22023 for a malformed request, and does not hide other refusals', async () => {

@@ -871,13 +871,13 @@ describe('flush and tracker permission', () => {
     expect(t.calls).toEqual(['complete:h1']);
   });
 
-  it('treats a duplicate completion (22023) as already recorded, exactly once', async () => {
-    const t = setup({ send: jest.fn(async () => { throw { code: '22023', message: 'Completion already recorded.' }; }) });
+  it('shows a completion refused with 22023 as not saved, instead of quietly losing it', async () => {
+    const t = setup({ send: jest.fn(async () => { throw { code: '22023', message: 'Invalid tracker input.' }; }) });
     await t.engine.load();
     t.engine.enqueue({ kind: 'complete', habitId: 'h1' });
     await t.engine.flush();
-    expect(t.engine.getEntries()).toEqual([]);
-    expect(t.deps.onApplied).toHaveBeenCalledTimes(1);
+    expect(t.engine.getEntries()).toEqual([expect.objectContaining({ status: 'failed' })]);
+    expect(t.deps.onApplied).not.toHaveBeenCalled();
     expect(t.deps.send).toHaveBeenCalledTimes(1);
   });
 

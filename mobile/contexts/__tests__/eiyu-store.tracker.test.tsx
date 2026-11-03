@@ -292,9 +292,9 @@ describe('queued progress work', () => {
     expect(mockShared.completeHabit).not.toHaveBeenCalled();
   });
 
-  it('lets a duplicate completion reach the queue, which settles it once', async () => {
+  it('lets a refused completion reach the queue, which decides what it means', async () => {
     await mount();
-    const error = Object.assign(new Error('duplicate'), { code: '22023' });
+    const error = Object.assign(new Error('refused'), { code: '22023' });
     mockShared.completeHabit.mockRejectedValue(error);
     const entry = { id: 'e3', userId: 'owner-a', kind: 'complete', habitId: 'b1', accountDate: '2026-10-24', trackerRevision: rev(), trackerTargets: snap('b1', 'basic') };
     await expect(mockQueue.options!.send(entry)).rejects.toBe(error);

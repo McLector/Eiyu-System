@@ -262,14 +262,13 @@ describe('a stale save', () => {
 
 
 describe('late server facts', () => {
-  it('treats a duplicate completion (22023) as already recorded, with no error', async () => {
+  it('reports a completion refused with 22023, because completeHabit has already settled a real duplicate', async () => {
     await mount();
     shared.kind.mockReturnValue('invalid-input');
-    shared.completeHabit.mockRejectedValue(Object.assign(new Error('duplicate'), { code: '22023' }));
+    shared.completeHabit.mockRejectedValue(Object.assign(new Error('bad data'), { code: '22023' }));
     let done: boolean | undefined;
     await act(async () => { done = await store!.toggleQuest('b1'); });
-    expect(done).toBe(true);
-    expect(store!.questsError).toBeNull();
+    expect(done).toBe(false);
     expect(shared.completeHabit).toHaveBeenCalledTimes(1);
   });
 
