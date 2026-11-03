@@ -3,19 +3,47 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(37);
+select plan(38);
+
+-- Tracker writes go through public.apply_tracker_write (S02 contract). The
+-- fixture roots are legacy rows without provenance, i.e. custom roots.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+create function pg_temp.hw(op text, habit uuid, extra jsonb default '{}')
+returns jsonb language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_habit_id', habit) || extra,
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', habit, 'inputKind', 'custom'))
+  );
+$$;
+create function pg_temp.sd(stage uuid, done boolean) returns jsonb
+language sql set search_path = '' as $$
+  select pg_temp.gw(
+    'set_long_quest_stage_done_receipt',
+    jsonb_build_object('p_stage_id', stage, 'p_done', done, 'p_request_id', gen_random_uuid()),
+    jsonb_build_array(jsonb_build_object('kind', 'chain',
+      'id', (select s.long_quest_id from public.long_quest_stages s where s.id = stage), 'inputKind', 'custom'))
+  );
+$$;
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
   (
     '88888888-8888-4888-8888-888888885001',
     'phase8-user@example.invalid',
-    '{"display_name":"Phase 8 User","time_zone":"Asia/Manila"}'::jsonb
+    '{"display_name":"Phase 8 User","time_zone":"Asia/Manila","birth_date":"2000-01-01"}'::jsonb
   ),
   (
     '99999999-9999-4999-8999-999999995002',
     'phase8-other@example.invalid',
-    '{"display_name":"Phase 8 Other","time_zone":"UTC"}'::jsonb
+    '{"display_name":"Phase 8 Other","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb
   );
 
 set local role authenticated;
@@ -28,6 +56,7 @@ select is(
   'fresh registration persists the account product-day timezone'
 );
 
+reset role;
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, created_at
 )
@@ -41,7 +70,9 @@ values (
   '{1,3,5}',
   '2026-09-07T01:00:00+00'
 );
+set local role authenticated;
 
+reset role;
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, quest_type, scheduled_date
 )
@@ -56,6 +87,23 @@ values (
   'one_time',
   (statement_timestamp() at time zone 'Asia/Manila')::date
 );
+set local role authenticated;
+
+-- Legacy fixture roots need the owner's custom-tracker grant; reads no longer
+-- materialize occurrences, so prepare the day explicitly.
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+-- Model a grant that predates these backdated legacy schedules; 059 treats days
+-- before any custom-tracker grant as paused (legacy rollout), which is not what
+-- this test is about. The session role is restored afterwards.
+select set_config('eiyu.test_prior_role', current_setting('role'), true);
+reset role;
+update private.processing_consent_events set changed_at = '2000-01-01 00:00:00+00'
+ where user_id = auth.uid() and purpose = 'custom-tracker';
+select set_config('role', current_setting('eiyu.test_prior_role'), true);
+select pg_temp.gw('prepare-day', '{}');
 
 select is(
   (select easy_version from public.habits where id = '88888888-8888-4888-8888-888888886001'),
@@ -81,7 +129,7 @@ select results_eq(
 );
 select lives_ok(
   format(
-    $$select public.complete_habit('88888888-8888-4888-8888-888888886002', %L, 'full')$$,
+    $$select pg_temp.hw('complete_habit', '88888888-8888-4888-8888-888888886002', jsonb_build_object('p_completed_on', %L, 'p_kind', 'full'))$$,
     (statement_timestamp() at time zone 'Asia/Manila')::date
   ),
   'the one-time quest completes independently'
@@ -102,6 +150,7 @@ select is(
   'one-time completion preserves the existing full-completion reward'
 );
 
+reset role;
 insert into public.long_quests (id, user_id, name, stat)
 values (
   '88888888-8888-4888-8888-888888886003',
@@ -109,6 +158,8 @@ values (
   'Three-stage journey',
   'WIS'
 );
+set local role authenticated;
+reset role;
 insert into public.long_quest_stages (
   id, long_quest_id, user_id, name, description, position
 )
@@ -137,6 +188,7 @@ values
     null,
     2
   );
+set local role authenticated;
 
 select results_eq(
   $$
@@ -149,28 +201,37 @@ select results_eq(
   'optional stage descriptions round-trip in stable order'
 );
 select throws_ok(
-  $$select public.set_long_quest_stage_done('88888888-8888-4888-8888-888888887002', true)$$,
+  $$select pg_temp.sd('88888888-8888-4888-8888-888888887002', true)$$,
   'P0001',
   'Complete earlier stages first.',
   'the public transition rejects skipping Stage 1'
 );
 select throws_ok(
   $$update public.long_quest_stages set done = true where id = '88888888-8888-4888-8888-888888887003'$$,
+  '42501',
+  'permission denied for table long_quest_stages',
+  'clients can no longer write stage progress directly'
+);
+-- The sequence trigger still guards the table itself; exercise it as the owner.
+reset role;
+select throws_ok(
+  $$update public.long_quest_stages set done = true where id = '88888888-8888-4888-8888-888888887003'$$,
   'P0001',
   'Complete earlier stages first.',
   'a direct table write cannot skip to Stage 3'
 );
+set local role authenticated;
 select is(
   (select done from public.long_quest_stages where id = '88888888-8888-4888-8888-888888887003'),
   false,
   'the rejected direct write leaves Stage 3 unchanged'
 );
 select lives_ok(
-  $$select public.set_long_quest_stage_done('88888888-8888-4888-8888-888888887001', true)$$,
+  $$select pg_temp.sd('88888888-8888-4888-8888-888888887001', true)$$,
   'Stage 1 completes'
 );
 select lives_ok(
-  $$select public.set_long_quest_stage_done('88888888-8888-4888-8888-888888887002', true)$$,
+  $$select pg_temp.sd('88888888-8888-4888-8888-888888887002', true)$$,
   'Stage 2 unlocks and completes'
 );
 select is(
@@ -179,7 +240,7 @@ select is(
   'the long quest stays incomplete until its final stage'
 );
 select lives_ok(
-  $$select public.set_long_quest_stage_done('88888888-8888-4888-8888-888888887003', true)$$,
+  $$select pg_temp.sd('88888888-8888-4888-8888-888888887003', true)$$,
   'Stage 3 unlocks and completes'
 );
 select is(
@@ -194,7 +255,7 @@ select ok(
 create temp table phase8_completion_marker as
 select completed_at from public.long_quests where id = '88888888-8888-4888-8888-888888886003';
 select lives_ok(
-  $$select public.set_long_quest_stage_done('88888888-8888-4888-8888-888888887003', true)$$,
+  $$select pg_temp.sd('88888888-8888-4888-8888-888888887003', true)$$,
   'repeating final completion is idempotent'
 );
 select is(
@@ -205,6 +266,7 @@ select is(
 
 -- Date-relative fixtures exercise recovery through authoritative time without
 -- assuming which calendar date the suite runs on.
+reset role;
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, days, created_at)
 values
   (
@@ -227,9 +289,10 @@ values
     array[extract(dow from ((statement_timestamp() at time zone 'Asia/Manila')::date - 2))::smallint],
     ((((statement_timestamp() at time zone 'Asia/Manila')::date - 2)::timestamp + interval '12 hours') at time zone 'Asia/Manila')
   );
+set local role authenticated;
 
 select lives_ok(
-  $$select public.reconcile_habit_recoveries()$$,
+  $$select pg_temp.gw('prepare-day', '{}')$$,
   'resume reconciliation processes elapsed occurrences chronologically'
 );
 select is(
@@ -245,7 +308,7 @@ select is_empty(
   'off-day recovery does not become a normal Daily Quest'
 );
 select is(
-  public.complete_habit_recovery('88888888-8888-4888-8888-888888886004')->>'status',
+  pg_temp.hw('complete_habit_recovery', '88888888-8888-4888-8888-888888886004')->>'status',
   'recovered',
   'recovery succeeds inside the one-day authoritative window'
 );
@@ -282,9 +345,9 @@ select is(
   'a second account cannot read the first account long quest'
 );
 select throws_ok(
-  $$select public.set_long_quest_stage_done('88888888-8888-4888-8888-888888887003', true)$$,
-  'P0001',
-  'Long Quest stage not found for calling user.',
+  $$select pg_temp.sd('88888888-8888-4888-8888-888888887003', true)$$,
+  '42501',
+  'Tracker target unavailable.',
   'a second account cannot mutate the first account stage'
 );
 
@@ -305,7 +368,7 @@ select is(
   'one-time and recovery completions remain distinct after switching accounts'
 );
 select lives_ok(
-  $$select public.reconcile_habit_recoveries()$$,
+  $$select pg_temp.gw('prepare-day', '{}')$$,
   'repeating resume reconciliation is idempotent'
 );
 select is(

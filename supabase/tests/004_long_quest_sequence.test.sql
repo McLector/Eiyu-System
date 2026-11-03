@@ -3,7 +3,28 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(33);
+select plan(34);
+
+-- Tracker writes go through public.apply_tracker_write (S02 contract). The
+-- fixture chains are legacy rows without provenance, i.e. custom roots.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+-- Stage transition through the gateway (receipt variant, fresh request ID).
+create function pg_temp.sd(stage uuid, done boolean) returns jsonb
+language sql set search_path = '' as $$
+  select pg_temp.gw(
+    'set_long_quest_stage_done_receipt',
+    jsonb_build_object('p_stage_id', stage, 'p_done', done, 'p_request_id', gen_random_uuid()),
+    jsonb_build_array(jsonb_build_object('kind', 'chain',
+      'id', (select s.long_quest_id from public.long_quest_stages s where s.id = stage), 'inputKind', 'custom'))
+  );
+$$;
 
 select has_function('public', 'set_long_quest_stage_done', array['uuid', 'boolean'], 'authoritative stage transition RPC exists');
 select has_function('public', 'normalize_long_quest_stage_sequences', array[]::text[], 'legacy sequence normalization function exists');
@@ -11,8 +32,8 @@ select has_column('public', 'long_quests', 'completed_at', 'long quests persist 
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
-  ('11111111-1111-4111-8111-111111115001', 'phase5-user-1@example.invalid', '{"display_name":"Phase 5 User 1"}'::jsonb),
-  ('22222222-2222-4222-8222-222222225002', 'phase5-user-2@example.invalid', '{"display_name":"Phase 5 User 2"}'::jsonb);
+  ('11111111-1111-4111-8111-111111115001', 'phase5-user-1@example.invalid', '{"display_name":"Phase 5 User 1","birth_date":"2000-01-01"}'::jsonb),
+  ('22222222-2222-4222-8222-222222225002', 'phase5-user-2@example.invalid', '{"display_name":"Phase 5 User 2","birth_date":"2000-01-01"}'::jsonb);
 
 insert into public.long_quests (id, user_id, name, stat)
 values
@@ -35,33 +56,37 @@ values
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111115001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
 
 select throws_ok(
-  $$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7002', true)$$,
+  $$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7002', true)$$,
   'P0001', 'Complete earlier stages first.', 'Stage 2 cannot skip Stage 1'
 );
 select throws_ok(
-  $$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$,
+  $$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$,
   'P0001', 'Complete earlier stages first.', 'Stage 3 cannot skip its predecessors'
 );
 select is((select done from public.long_quest_stages where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7002'), false, 'rejected skip leaves Stage 2 unchanged');
 
-select lives_ok($$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001', true)$$, 'Stage 1 is initially completable');
+select lives_ok($$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001', true)$$, 'Stage 1 is initially completable');
 select is((select done from public.long_quest_stages where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001'), true, 'Stage 1 persists complete');
-select lives_ok($$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001', true)$$, 'repeating the same completion is idempotent');
-select lives_ok($$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7002', true)$$, 'Stage 2 unlocks after Stage 1');
+select lives_ok($$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001', true)$$, 'repeating the same completion is idempotent');
+select lives_ok($$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7002', true)$$, 'Stage 2 unlocks after Stage 1');
 select throws_ok(
-  $$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001', false)$$,
+  $$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001', false)$$,
   'P0001', 'Undo later stages first.', 'a completed predecessor cannot be undone before its successor'
 );
 select is((select done from public.long_quest_stages where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7001'), true, 'rejected unsafe undo leaves Stage 1 complete');
-select lives_ok($$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$, 'Stage 3 unlocks after Stage 2');
+select lives_ok($$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$, 'Stage 3 unlocks after Stage 2');
 select is((select count(*) from public.long_quest_stages where long_quest_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001' and done), 3::bigint, 'all three stages persist complete');
 select ok((select completed_at is not null from public.long_quests where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001'), 'quest receives a completion marker only after every stage is done');
 
 create temp table phase5_completion_marker as
 select completed_at from public.long_quests where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001';
-select lives_ok($$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$, 'repeating final completion is idempotent');
+select lives_ok($$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$, 'repeating final completion is idempotent');
 select is(
   (select completed_at from public.long_quests where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001'),
   (select completed_at from phase5_completion_marker),
@@ -74,21 +99,25 @@ select is(
 );
 
 select throws_ok(
-  $$select public.set_long_quest_stage_done('cccccccc-cccc-4ccc-8ccc-cccccccc7001', true)$$,
-  'P0001', 'Long Quest stage not found for calling user.', 'another user cannot complete a stage'
+  $$select pg_temp.sd('cccccccc-cccc-4ccc-8ccc-cccccccc7001', true)$$,
+  '42501', 'Tracker target unavailable.', 'another user cannot complete a stage'
 );
 
 select throws_ok(
   $$update public.long_quest_stages set done = true where id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeee7002'$$,
+  '42501', 'permission denied for table long_quest_stages', 'clients can no longer write stage progress directly'
+);
+-- The sequence trigger still guards the table itself; exercise it as the owner.
+reset role;
+select throws_ok(
+  $$update public.long_quest_stages set done = true where id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeee7002'$$,
   'P0001', 'Complete earlier stages first.', 'a direct table write cannot bypass sequence enforcement after its predecessor is made incomplete'
 );
+set local role authenticated;
 select is((select done from public.long_quest_stages where id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeee7002'), false, 'rejected direct write leaves progress unchanged');
 
 select throws_ok(
-  $$select public.reconcile_long_quest_stages(
-    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb6002',
-    '[{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb7002","name":"Not done second","description":null},{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb7001","name":"Done first","description":null}]'::jsonb
-  )$$,
+  $$select pg_temp.gw('chain-save', '{"p_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb6002","p_request_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb9001","p_create":false,"p_mode":"custom","p_input":{"name":"Reorder quest","stat":"INT","stages":[{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb7002","name":"Not done second","description":null},{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb7001","name":"Done first","description":null}]}}', '[{"kind":"chain","id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbb6002","inputKind":"custom"}]')$$,
   'P0001', 'Long Quest stages must form a completed prefix.', 'reordering cannot place an incomplete stage before a completed stage'
 );
 select results_eq(
@@ -97,14 +126,14 @@ select results_eq(
   'failed reorder rolls the stage order back'
 );
 
-select lives_ok($$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', false)$$, 'the latest completed stage can be undone');
+select lives_ok($$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', false)$$, 'the latest completed stage can be undone');
 select is((select count(*) from public.long_quest_stages where long_quest_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001' and not done), 1::bigint, 'undo leaves the quest currently incomplete');
 select is(
   (select completed_at from public.long_quests where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001'),
   (select completed_at from phase5_completion_marker),
   'undo preserves the immutable first-completion marker'
 );
-select lives_ok($$select public.set_long_quest_stage_done('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$, 'the final stage can be completed again after an undo');
+select lives_ok($$select pg_temp.sd('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa7003', true)$$, 'the final stage can be completed again after an undo');
 select is(
   (select completed_at from public.long_quests where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaa6001'),
   (select completed_at from phase5_completion_marker),
@@ -130,7 +159,7 @@ select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111115001
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select ok(not has_function_privilege('public.normalize_long_quest_stage_sequences()', 'execute'), 'clients cannot invoke the migration-only normalization helper');
 select lives_ok(
-  $$delete from public.long_quests where id = 'dddddddd-dddd-4ddd-8ddd-dddddddd6004'$$,
+  $$select pg_temp.gw('chain-delete', '{"p_id":"dddddddd-dddd-4ddd-8ddd-dddddddd6004"}', '[{"kind":"chain","id":"dddddddd-dddd-4ddd-8ddd-dddddddd6004","inputKind":"custom"}]')$$,
   'deleting a completed Long Quest cascades its stages without sequence-order failures'
 );
 

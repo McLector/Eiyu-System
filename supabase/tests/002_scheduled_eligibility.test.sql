@@ -3,6 +3,17 @@ begin;
 set local search_path = public, extensions;
 select plan(31);
 
+-- Tracker writes go through public.apply_tracker_write (S02 contract). This
+-- helper supplies the current revision; callers pass the expected targets.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+
 select has_column('public', 'profiles', 'time_zone', 'profiles persist an account IANA timezone');
 select has_table('public', 'habit_schedule_versions', 'schedule history is persisted');
 select has_table('public', 'habit_occurrences', 'eligible occurrences are persisted');
@@ -19,7 +30,7 @@ insert into auth.users (id, email, raw_user_meta_data)
 values (
   '33333333-3333-4333-8333-333333333333',
   'phase1-user@example.invalid',
-  '{"display_name":"Phase 1 User","time_zone":"Asia/Manila"}'::jsonb
+  '{"display_name":"Phase 1 User","time_zone":"Asia/Manila","birth_date":"2000-01-01"}'::jsonb
 );
 
 set local role authenticated;
@@ -39,6 +50,9 @@ select throws_ok(
   'invalid timezone identifiers are rejected'
 );
 
+-- Direct writes by authenticated are denied; fixtures are inserted as the
+-- table owner. The schedule_start_on trigger under test still fires.
+reset role;
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, created_at, schedule_start_on
 )
@@ -53,6 +67,21 @@ values (
   '2026-09-07T01:00:00+00',
   '2000-01-01'
 );
+set local role authenticated;
+
+-- Legacy fixture habits have no provenance, so they are custom roots and need
+-- the owner's explicit custom-tracker grant.
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+-- Model a grant that predates these backdated legacy schedules; 059 treats days
+-- before any custom-tracker grant as paused (legacy rollout), which is not what
+-- this test is about.
+reset role;
+update private.processing_consent_events set changed_at = '2000-01-01 00:00:00+00'
+ where user_id = auth.uid() and purpose = 'custom-tracker';
+set local role authenticated;
 
 select is(
   (select schedule_start_on from public.habits where id = 'abababab-abab-4bab-8bab-abababababab'),
@@ -60,10 +89,12 @@ select is(
   'a client cannot backdate a new habit schedule_start_on'
 );
 
+reset role;
 select lives_ok(
   $$update public.habits set schedule_start_on = '1999-01-01' where id = 'abababab-abab-4bab-8bab-abababababab'$$,
   'legacy habit updates that send schedule_start_on remain compatible'
 );
+set local role authenticated;
 
 select is(
   (select schedule_start_on from public.habits where id = 'abababab-abab-4bab-8bab-abababababab'),
@@ -71,10 +102,14 @@ select is(
   'a client cannot rewrite an established schedule start'
 );
 
+-- The gateway prepares only the current day, so historical materialization is
+-- driven through the retained reconciliation routine as fixture setup.
+reset role;
 select lives_ok(
   $$select public.ensure_habit_occurrences('2026-09-11')$$,
   'reconciliation creates eligible occurrences'
 );
+set local role authenticated;
 
 select results_eq(
   $$
@@ -87,10 +122,12 @@ select results_eq(
   'Monday/Wednesday/Friday occurrences exist and all off-days are absent'
 );
 
+reset role;
 select lives_ok(
   $$select public.ensure_habit_occurrences('2026-09-11')$$,
   'repeating reconciliation is idempotent'
 );
+set local role authenticated;
 
 select is(
   (select count(*) from public.habit_occurrences where habit_id = 'abababab-abab-4bab-8bab-abababababab'),
@@ -110,14 +147,14 @@ select is_empty(
 );
 
 select throws_ok(
-  $$select public.complete_habit('abababab-abab-4bab-8bab-abababababab', '2026-09-10', 'full')$$,
+  $$select pg_temp.gw('complete_habit', '{"p_habit_id":"abababab-abab-4bab-8bab-abababababab","p_completed_on":"2026-09-10","p_kind":"full"}', '[{"kind":"habit","id":"abababab-abab-4bab-8bab-abababababab","inputKind":"custom"}]')$$,
   'P0001',
   'normal completion date must be the current account date',
   'an off-day direct RPC completion is rejected'
 );
 
 select throws_ok(
-  $$select public.complete_habit('abababab-abab-4bab-8bab-abababababab', '2099-01-01', 'full')$$,
+  $$select pg_temp.gw('complete_habit', '{"p_habit_id":"abababab-abab-4bab-8bab-abababababab","p_completed_on":"2099-01-01","p_kind":"full"}', '[{"kind":"habit","id":"abababab-abab-4bab-8bab-abababababab","inputKind":"custom"}]')$$,
   'P0001',
   'normal completion date must be the current account date',
   'a future direct completion is rejected using authoritative server time'
@@ -126,6 +163,7 @@ select throws_ok(
 -- Keep the current-day assertion independent of the calendar date on which
 -- the suite runs. The fixed M/W/F fixture above continues to verify exact
 -- historical occurrence keys.
+reset role;
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, created_at
 )
@@ -139,12 +177,14 @@ values (
   '{0,1,2,3,4,5,6}',
   statement_timestamp() - interval '1 day'
 );
+set local role authenticated;
 
-select public.ensure_habit_occurrences((statement_timestamp() at time zone 'Asia/Manila')::date);
+-- Reads no longer materialize occurrences; prepare the day explicitly.
+select pg_temp.gw('prepare-day', '{}');
 
 select lives_ok(
   format(
-    $$select public.complete_habit('abababab-abab-4bab-8bab-abababababac', %L, 'full')$$,
+    $$select pg_temp.gw('complete_habit', jsonb_build_object('p_habit_id','abababab-abab-4bab-8bab-abababababac','p_completed_on',%L,'p_kind','full'), '[{"kind":"habit","id":"abababab-abab-4bab-8bab-abababababac","inputKind":"custom"}]')$$,
     (statement_timestamp() at time zone 'Asia/Manila')::date
   ),
   'a scheduled current-day completion remains valid'
@@ -163,7 +203,7 @@ select is(
 );
 
 select lives_ok(
-  $$update public.habits set days = '{2,4}' where id = 'abababab-abab-4bab-8bab-abababababab'$$,
+  $$select pg_temp.gw('habit-save', '{"p_id":"abababab-abab-4bab-8bab-abababababab","p_create":false,"p_mode":"custom","p_input":{"name":"MWF habit","easyVersion":"One minute","stat":"STR","difficulty":"Medium","time":"08:00","days":[2,4]}}', '[{"kind":"habit","id":"abababab-abab-4bab-8bab-abababababab","inputKind":"custom"}]')$$,
   'a schedule edit succeeds without rewriting prior occurrences'
 );
 

@@ -6,12 +6,31 @@ set local statement_timeout = '30s';
 
 select plan(37);
 
+-- Tracker writes go through public.apply_tracker_write (S02 contract). The
+-- fixture roots are legacy rows without provenance, i.e. custom roots.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+create function pg_temp.hw(op text, habit uuid, extra jsonb default '{}')
+returns jsonb language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_habit_id', habit) || extra,
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', habit, 'inputKind', 'custom'))
+  );
+$$;
+
 -- All fixtures are synthetic and roll back with this test. The trigger paths
 -- below verify that internal SECURITY DEFINER callers still work after the
 -- exposed helper grants are removed by migration 029.
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('c0de0000-0000-4000-8000-000000000001', 'security-owner@example.invalid', '{"display_name":"Security Owner","time_zone":"UTC"}'::jsonb),
-  ('c0de0000-0000-4000-8000-000000000002', 'security-other@example.invalid', '{"display_name":"Security Other","time_zone":"UTC"}'::jsonb);
+  ('c0de0000-0000-4000-8000-000000000001', 'security-owner@example.invalid', '{"display_name":"Security Owner","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
+  ('c0de0000-0000-4000-8000-000000000002', 'security-other@example.invalid', '{"display_name":"Security Other","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
 
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, schedule_start_on
@@ -119,6 +138,12 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', 'c0de0000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 
+-- Legacy fixture habits are custom roots and need the owner's explicit grant.
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+
 select throws_ok(
   $$update public.stats set xp = 5000 where user_id = auth.uid() and stat = 'STR'$$,
   '42501', 'permission denied for table stats',
@@ -139,31 +164,31 @@ select lives_ok($$select public.set_account_time_zone('UTC')$$, 'supported timez
 select lives_ok($$select public.initialize_account_time_zone('UTC')$$, 'timezone initialization still calls the private validator');
 
 select lives_ok(
-  $$select public.complete_habit('c0de0000-0000-4000-8000-000000000011', current_date, 'full')$$,
+  $$select pg_temp.hw('complete_habit', 'c0de0000-0000-4000-8000-000000000011', jsonb_build_object('p_completed_on', current_date, 'p_kind', 'full'))$$,
   'server-owned full completion still awards XP after helper grants are revoked'
 );
 select is((select xp from public.stats where user_id = auth.uid() and stat = 'STR'), 20, 'full completion awards exactly 20 XP');
-select lives_ok($$select public.undo_habit_completion('c0de0000-0000-4000-8000-000000000011', current_date)$$, 'server-owned undo still reverses XP');
+select lives_ok($$select pg_temp.hw('undo_habit_completion', 'c0de0000-0000-4000-8000-000000000011', jsonb_build_object('p_completed_on', current_date))$$, 'server-owned undo still reverses XP');
 select is((select xp from public.stats where user_id = auth.uid() and stat = 'STR'), 0, 'undo reverses the exact full award');
 select lives_ok(
-  $$select public.complete_habit('c0de0000-0000-4000-8000-000000000011', current_date, 'easy')$$,
+  $$select pg_temp.hw('complete_habit', 'c0de0000-0000-4000-8000-000000000011', jsonb_build_object('p_completed_on', current_date, 'p_kind', 'easy'))$$,
   'server-owned easy completion still works'
 );
 select is((select xp from public.stats where user_id = auth.uid() and stat = 'STR'), 4, 'easy completion awards exactly 4 XP');
-select lives_ok($$select public.undo_habit_completion('c0de0000-0000-4000-8000-000000000011', current_date)$$, 'easy completion can be undone');
+select lives_ok($$select pg_temp.hw('undo_habit_completion', 'c0de0000-0000-4000-8000-000000000011', jsonb_build_object('p_completed_on', current_date))$$, 'easy completion can be undone');
 select is((select xp from public.stats where user_id = auth.uid() and stat = 'STR'), 0, 'easy undo reverses the exact award');
 select throws_ok(
-  $$select public.complete_habit('c0de0000-0000-4000-8000-000000000021', current_date, 'full')$$,
-  'P0001', 'habit c0de0000-0000-4000-8000-000000000021 not found for calling user',
+  $$select pg_temp.hw('complete_habit', 'c0de0000-0000-4000-8000-000000000021', jsonb_build_object('p_completed_on', current_date, 'p_kind', 'full'))$$,
+  '42501', 'Tracker target unavailable.',
   'completion remains isolated from another account'
 );
-select is((public.complete_habit_recovery('c0de0000-0000-4000-8000-000000000012')->>'status'), 'recovered', 'recovery completion remains callable and successful');
+select is((pg_temp.hw('complete_habit_recovery', 'c0de0000-0000-4000-8000-000000000012')->>'status'), 'recovered', 'recovery completion remains callable and successful');
 select is((select xp from public.stats where user_id = auth.uid() and stat = 'WIS'), 4, 'recovery completion awards its normal 4 XP exactly once');
 select is((select count(*) from public.habit_completions where habit_id = 'c0de0000-0000-4000-8000-000000000012' and completed_on = current_date - 1 and kind = 'easy'), 1::bigint, 'recovery preserves one server-owned easy completion');
 
-select lives_ok($$update public.habits set archived = true where id = 'c0de0000-0000-4000-8000-000000000011'$$, 'archive trigger still records lifecycle state internally');
+select lives_ok($$select pg_temp.hw('archive_habit', 'c0de0000-0000-4000-8000-000000000011')$$, 'archive trigger still records lifecycle state internally');
 select is((select count(*) from public.habit_archive_intervals where habit_id = 'c0de0000-0000-4000-8000-000000000011' and restored_on is null), 1::bigint, 'archive trigger creates one open interval');
-select lives_ok($$update public.habits set archived = false where id = 'c0de0000-0000-4000-8000-000000000011'$$, 'restore trigger still closes lifecycle state internally');
+select lives_ok($$select pg_temp.hw('restore_habit', 'c0de0000-0000-4000-8000-000000000011')$$, 'restore trigger still closes lifecycle state internally');
 select is((select restored_on from public.habit_archive_intervals where habit_id = 'c0de0000-0000-4000-8000-000000000011'), current_date, 'restore interval records the account day');
 
 select * from finish();

@@ -3,6 +3,25 @@ begin;
 set local search_path = public, extensions;
 select plan(57);
 
+-- Tracker writes go through public.apply_tracker_write (S02 contract). The
+-- fixture habits are legacy rows without provenance, i.e. custom roots.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+create function pg_temp.hw(op text, habit uuid, extra jsonb default '{}')
+returns jsonb language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_habit_id', habit) || extra,
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', habit, 'inputKind', 'custom'))
+  );
+$$;
+
 select has_table('public', 'habit_recovery_windows', 'recovery windows are persisted');
 select has_column('public', 'habit_occurrences', 'time_zone', 'occurrences pin their original timezone');
 select has_column('public', 'habit_occurrences', 'day_ends_at', 'occurrences pin their absolute end instant');
@@ -15,14 +34,26 @@ select has_function('public', 'complete_habit_recovery', array['uuid'], 'authori
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
-  ('44444444-4444-4444-8444-444444444444', 'phase2-a@example.invalid', '{"display_name":"Phase 2 A","time_zone":"UTC"}'::jsonb),
-  ('55555555-5555-4555-8555-555555555555', 'phase2-b@example.invalid', '{"display_name":"Phase 2 B","time_zone":"UTC"}'::jsonb);
+  ('44444444-4444-4444-8444-444444444444', 'phase2-a@example.invalid', '{"display_name":"Phase 2 A","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
+  ('55555555-5555-4555-8555-555555555555', 'phase2-b@example.invalid', '{"display_name":"Phase 2 B","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '44444444-4444-4444-8444-444444444444', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+-- Model a grant that predates these backdated legacy schedules; 059 treats days
+-- before any custom-tracker grant as paused (legacy rollout), which is not what
+-- this test is about.
+reset role;
+update private.processing_consent_events set changed_at = '2000-01-01 00:00:00+00'
+ where user_id = auth.uid() and purpose = 'custom-tracker';
+set local role authenticated;
 
 -- Off-day recovery: this habit is scheduled only yesterday, never today.
+reset role;
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, days, created_at)
 values (
   'a1000000-0000-4000-8000-000000000001',
@@ -31,9 +62,10 @@ values (
   array[extract(dow from ((statement_timestamp() at time zone 'UTC')::date - 1))::smallint],
   ((((statement_timestamp() at time zone 'UTC')::date - 1)::timestamp + interval '12 hours') at time zone 'UTC')
 );
+set local role authenticated;
 
 select lives_ok(
-  $$select public.reconcile_habit_recoveries()$$,
+  $$select pg_temp.gw('prepare-day', '{}')$$,
   'reconciliation opens a window after an eligible incomplete day ends'
 );
 select is(
@@ -71,7 +103,7 @@ select results_eq(
   'the off-day recovery remains available through the recovery query'
 );
 select is(
-  public.complete_habit_recovery('a1000000-0000-4000-8000-000000000001')->>'status',
+  pg_temp.hw('complete_habit_recovery', 'a1000000-0000-4000-8000-000000000001')->>'status',
   'recovered',
   'recovery succeeds before the authoritative deadline'
 );
@@ -91,7 +123,7 @@ select is(
   'successful recovery restores and advances the preserved streak'
 );
 select is(
-  public.complete_habit_recovery('a1000000-0000-4000-8000-000000000001')->>'status',
+  pg_temp.hw('complete_habit_recovery', 'a1000000-0000-4000-8000-000000000001')->>'status',
   'already_recovered',
   'duplicate recovery is idempotent'
 );
@@ -101,7 +133,7 @@ select is(
   'duplicate recovery cannot duplicate XP'
 );
 select throws_ok(
-  $$select public.undo_habit_completion('a1000000-0000-4000-8000-000000000001', (statement_timestamp() at time zone 'UTC')::date - 1)$$,
+  $$select pg_temp.hw('undo_habit_completion', 'a1000000-0000-4000-8000-000000000001', jsonb_build_object('p_completed_on', (statement_timestamp() at time zone 'UTC')::date - 1))$$,
   'P0001',
   'normal completion date must be the current account date',
   'the public undo operation cannot remove a server-owned recovery completion'
@@ -113,6 +145,7 @@ select is(
 );
 
 -- Same-day normal completion first, then recovery.
+reset role;
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, days, created_at)
 values (
   'a2000000-0000-4000-8000-000000000002',
@@ -120,21 +153,24 @@ values (
   'Daily normal first', 'One minute', 'INT', 'Medium', '{0,1,2,3,4,5,6}',
   ((((statement_timestamp() at time zone 'UTC')::date - 2)::timestamp + interval '12 hours') at time zone 'UTC')
 );
+set local role authenticated;
 set local role postgres;
 insert into public.habit_completions (user_id, habit_id, completed_on, kind, xp_awarded)
 values ('44444444-4444-4444-8444-444444444444', 'a2000000-0000-4000-8000-000000000002', (statement_timestamp() at time zone 'UTC')::date - 2, 'full', 20);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '44444444-4444-4444-8444-444444444444', true);
-select is((public.reconcile_habit_recoveries()->>'open_count')::integer, 1, 'the daily habit opens one recovery window');
+select pg_temp.gw('prepare-day', '{}');
+select is((select count(*)::integer from public.habit_recovery_windows where user_id = '44444444-4444-4444-8444-444444444444' and status = 'open'), 1, 'the daily habit opens one recovery window');
 select lives_ok(
-  $$select public.complete_habit('a2000000-0000-4000-8000-000000000002', (statement_timestamp() at time zone 'UTC')::date, 'full')$$,
+  $$select pg_temp.hw('complete_habit', 'a2000000-0000-4000-8000-000000000002', jsonb_build_object('p_completed_on', (statement_timestamp() at time zone 'UTC')::date, 'p_kind', 'full'))$$,
   'today normal completion remains independent while yesterday is frozen'
 );
-select is(public.complete_habit_recovery('a2000000-0000-4000-8000-000000000002')->>'status', 'recovered', 'recovery can follow today normal completion');
+select is(pg_temp.hw('complete_habit_recovery', 'a2000000-0000-4000-8000-000000000002')->>'status', 'recovered', 'recovery can follow today normal completion');
 select is((select count(*) from public.habit_completions where habit_id = 'a2000000-0000-4000-8000-000000000002'), 3::bigint, 'normal-first order preserves prior, recovered, and today completion rows');
 select is((select xp from public.stats where user_id = '44444444-4444-4444-8444-444444444444' and stat = 'INT'), 24, 'normal-first order awards each applicable effect once');
 
 -- Recovery first, then same-day normal completion.
+reset role;
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, days, created_at)
 values (
   'a3000000-0000-4000-8000-000000000003',
@@ -142,21 +178,24 @@ values (
   'Daily recovery first', 'One minute', 'DEX', 'Medium', '{0,1,2,3,4,5,6}',
   ((((statement_timestamp() at time zone 'UTC')::date - 2)::timestamp + interval '12 hours') at time zone 'UTC')
 );
+set local role authenticated;
 set local role postgres;
 insert into public.habit_completions (user_id, habit_id, completed_on, kind, xp_awarded)
 values ('44444444-4444-4444-8444-444444444444', 'a3000000-0000-4000-8000-000000000003', (statement_timestamp() at time zone 'UTC')::date - 2, 'full', 20);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '44444444-4444-4444-8444-444444444444', true);
-select is((public.reconcile_habit_recoveries()->>'open_count')::integer, 1, 'the reverse-order habit opens one recovery window');
-select is(public.complete_habit_recovery('a3000000-0000-4000-8000-000000000003')->>'status', 'recovered', 'recovery-first request succeeds');
+select pg_temp.gw('prepare-day', '{}');
+select is((select count(*)::integer from public.habit_recovery_windows where user_id = '44444444-4444-4444-8444-444444444444' and status = 'open'), 1, 'the reverse-order habit opens one recovery window');
+select is(pg_temp.hw('complete_habit_recovery', 'a3000000-0000-4000-8000-000000000003')->>'status', 'recovered', 'recovery-first request succeeds');
 select lives_ok(
-  $$select public.complete_habit('a3000000-0000-4000-8000-000000000003', (statement_timestamp() at time zone 'UTC')::date, 'full')$$,
+  $$select pg_temp.hw('complete_habit', 'a3000000-0000-4000-8000-000000000003', jsonb_build_object('p_completed_on', (statement_timestamp() at time zone 'UTC')::date, 'p_kind', 'full'))$$,
   'today normal completion can follow recovery'
 );
 select is((select count(*) from public.habit_completions where habit_id = 'a3000000-0000-4000-8000-000000000003'), 3::bigint, 'recovery-first order preserves all distinct completion rows');
 select is((select xp from public.stats where user_id = '44444444-4444-4444-8444-444444444444' and stat = 'DEX'), 24, 'recovery-first order awards each applicable effect once');
 
 -- Exact/past deadline resolves to expired without accepting a late request.
+reset role;
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, days, created_at)
 values (
   'a4000000-0000-4000-8000-000000000004',
@@ -165,17 +204,20 @@ values (
   array[extract(dow from ((statement_timestamp() at time zone 'UTC')::date - 1))::smallint],
   ((((statement_timestamp() at time zone 'UTC')::date - 1)::timestamp + interval '12 hours') at time zone 'UTC')
 );
-select is((public.reconcile_habit_recoveries()->>'open_count')::integer, 1, 'the boundary fixture opens a recovery');
+set local role authenticated;
+select pg_temp.gw('prepare-day', '{}');
+select is((select count(*)::integer from public.habit_recovery_windows where user_id = '44444444-4444-4444-8444-444444444444' and status = 'open'), 1, 'the boundary fixture opens a recovery');
 set local role postgres;
 update public.habit_recovery_windows set deadline_at = statement_timestamp() where habit_id = 'a4000000-0000-4000-8000-000000000004';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '44444444-4444-4444-8444-444444444444', true);
-select is(public.complete_habit_recovery('a4000000-0000-4000-8000-000000000004')->>'status', 'expired', 'a request at the exclusive deadline is rejected');
+select is(pg_temp.hw('complete_habit_recovery', 'a4000000-0000-4000-8000-000000000004')->>'status', 'expired', 'a request at the exclusive deadline is rejected');
 select is((select status from public.habit_recovery_windows where habit_id = 'a4000000-0000-4000-8000-000000000004'), 'expired', 'deadline rejection persists reset/closed state');
 select is((select count(*) from public.habit_completions where habit_id = 'a4000000-0000-4000-8000-000000000004'), 0::bigint, 'late recovery records no completion');
 select is((select active_recovery_id from public.streaks where habit_id = 'a4000000-0000-4000-8000-000000000004'), null::uuid, 'expired recovery leaves the habit unfrozen');
 
 -- Schedule/timezone changes and reload cannot extend an already-open deadline.
+reset role;
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, days, created_at)
 values (
   'a5000000-0000-4000-8000-000000000005',
@@ -184,19 +226,22 @@ values (
   array[extract(dow from ((statement_timestamp() at time zone 'UTC')::date - 1))::smallint],
   ((((statement_timestamp() at time zone 'UTC')::date - 1)::timestamp + interval '12 hours') at time zone 'UTC')
 );
-select is((public.reconcile_habit_recoveries()->>'open_count')::integer, 1, 'the deadline fixture opens one recovery');
-select lives_ok($$update public.habits set days = '{0,6}' where id = 'a5000000-0000-4000-8000-000000000005'$$, 'a schedule edit is allowed while recovery is open');
+set local role authenticated;
+select pg_temp.gw('prepare-day', '{}');
+select is((select count(*)::integer from public.habit_recovery_windows where user_id = '44444444-4444-4444-8444-444444444444' and status = 'open'), 1, 'the deadline fixture opens one recovery');
+select lives_ok($$select pg_temp.gw('habit-save', '{"p_id":"a5000000-0000-4000-8000-000000000005","p_create":false,"p_mode":"custom","p_input":{"name":"Pinned deadline","easyVersion":"One minute","stat":"CHA","difficulty":"Medium","time":"08:00","days":[0,6]}}', '[{"kind":"habit","id":"a5000000-0000-4000-8000-000000000005","inputKind":"custom"}]')$$, 'a schedule edit is allowed while recovery is open');
 select is(public.set_account_time_zone('America/Los_Angeles'), 'America/Los_Angeles', 'an account timezone edit is allowed while recovery is open');
 select is(
   (select deadline_at from public.habit_recovery_windows where habit_id = 'a5000000-0000-4000-8000-000000000005'),
   ((((statement_timestamp() at time zone 'UTC')::date + 1)::timestamp) at time zone 'UTC'),
   'schedule/timezone edits do not move the stored absolute deadline'
 );
-select lives_ok($$select public.reconcile_habit_recoveries()$$, 'reload reconciliation is safe while a window remains open');
+select lives_ok($$select pg_temp.gw('prepare-day', '{}')$$, 'reload reconciliation is safe while a window remains open');
 select is((select count(*) from public.habit_recovery_windows where habit_id = 'a5000000-0000-4000-8000-000000000005'), 1::bigint, 'reload cannot duplicate or extend recovery');
 
 -- App absent for days: create one expired window, do not repeatedly refreeze.
 select is(public.set_account_time_zone('UTC'), 'UTC', 'the fixture timezone returns to UTC');
+reset role;
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, days, created_at)
 values (
   'a6000000-0000-4000-8000-000000000006',
@@ -204,20 +249,21 @@ values (
   'Absent for days', 'One minute', 'STR', 'Medium', '{0,1,2,3,4,5,6}',
   ((((statement_timestamp() at time zone 'UTC')::date - 4)::timestamp + interval '12 hours') at time zone 'UTC')
 );
+set local role authenticated;
 set local role postgres;
 insert into public.habit_completions (user_id, habit_id, completed_on, kind, xp_awarded)
 values ('44444444-4444-4444-8444-444444444444', 'a6000000-0000-4000-8000-000000000006', (statement_timestamp() at time zone 'UTC')::date - 4, 'full', 20);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '44444444-4444-4444-8444-444444444444', true);
-select lives_ok($$select public.reconcile_habit_recoveries()$$, 'multi-day absence reconciles chronologically');
+select lives_ok($$select pg_temp.gw('prepare-day', '{}')$$, 'multi-day absence reconciles chronologically');
 select is((select status from public.habit_recovery_windows where habit_id = 'a6000000-0000-4000-8000-000000000006'), 'expired', 'legacy/absent expired freeze is closed deterministically');
 select is((select current_streak from public.streaks where habit_id = 'a6000000-0000-4000-8000-000000000006'), 0, 'failed recovery resets the streak');
 select is((select recovery_armed from public.streaks where habit_id = 'a6000000-0000-4000-8000-000000000006'), false, 'continued inactivity cannot immediately open another chance');
-select lives_ok($$select public.reconcile_habit_recoveries()$$, 'repeating multi-day reconciliation is idempotent');
+select lives_ok($$select pg_temp.gw('prepare-day', '{}')$$, 'repeating multi-day reconciliation is idempotent');
 select is((select count(*) from public.habit_recovery_windows where habit_id = 'a6000000-0000-4000-8000-000000000006'), 1::bigint, 'continued misses do not create repeated windows');
 
 select throws_ok(
-  $$select public.complete_habit('a4000000-0000-4000-8000-000000000004', (statement_timestamp() at time zone 'UTC')::date - 1, 'full')$$,
+  $$select pg_temp.hw('complete_habit', 'a4000000-0000-4000-8000-000000000004', jsonb_build_object('p_completed_on', (statement_timestamp() at time zone 'UTC')::date - 1, 'p_kind', 'full'))$$,
   'P0001',
   'normal completion date must be the current account date',
   'a forged client date cannot backdate normal completion'
@@ -225,9 +271,9 @@ select throws_ok(
 
 select set_config('request.jwt.claim.sub', '55555555-5555-4555-8555-555555555555', true);
 select throws_ok(
-  $$select public.complete_habit_recovery('a2000000-0000-4000-8000-000000000002')$$,
-  'P0001',
-  'habit a2000000-0000-4000-8000-000000000002 not found for calling user',
+  $$select pg_temp.hw('complete_habit_recovery', 'a2000000-0000-4000-8000-000000000002')$$,
+  '42501',
+  'Tracker target unavailable.',
   'another user cannot recover the habit'
 );
 

@@ -1,4 +1,26 @@
 begin;
+-- Test-only templates, embedded in rollback tests/owned dblink connections.
+-- Exercise retained quota/processing policy beneath051, not live legacy ingress.
+-- Real instrumented admission/legacy refusal is covered by033/034.
+create function pg_temp.ai_policy_begin(p_user_id uuid,p_action text,p_request_id uuid,p_week_start date)
+returns jsonb language sql security definer set search_path='' as $$
+ select private.ai_begin_request_before_admission(p_user_id,p_action,p_request_id,p_week_start);
+$$;
+create function pg_temp.ai_policy_reserve(p_request_id uuid,p_attempt_number integer)
+returns boolean language sql security definer set search_path='' as $$
+ select private.ai_reserve_next_attempt_before_admission(p_request_id,p_attempt_number);
+$$;
+create function pg_temp.ai_policy_check(p_request_id uuid,p_age_version integer)
+returns boolean language sql security definer set search_path='' as $$
+ select private.ai_check_request_age_before_admission(p_request_id,p_age_version);
+$$;
+alter function pg_temp.ai_policy_begin(uuid,text,uuid,date) owner to postgres;
+alter function pg_temp.ai_policy_reserve(uuid,integer) owner to postgres;
+alter function pg_temp.ai_policy_check(uuid,integer) owner to postgres;
+revoke all on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_policy_reserve(uuid,integer),pg_temp.ai_policy_check(uuid,integer) from public,anon,authenticated;
+grant execute on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_policy_reserve(uuid,integer),pg_temp.ai_policy_check(uuid,integer) to service_role;
+
+
 
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
@@ -7,8 +29,14 @@ set local statement_timeout = '30s';
 select no_plan();
 
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('d2600000-0000-4000-8000-000000000001', 'refund-a@example.invalid', '{"display_name":"Refund A","time_zone":"UTC"}'::jsonb),
-  ('d2600000-0000-4000-8000-000000000002', 'refund-b@example.invalid', '{"display_name":"Refund B","time_zone":"UTC"}'::jsonb);
+  ('d2600000-0000-4000-8000-000000000001', 'refund-a@example.invalid', '{"display_name":"Refund A","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
+  ('d2600000-0000-4000-8000-000000000002', 'refund-b@example.invalid', '{"display_name":"Refund B","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
+-- Trusted synthetic proof fixture: refund behavior runs after eligibility.
+update private.mailbox_state set verified_version=version,verified_at=now() where user_id::text like 'd260%';
+-- Explicit synthetic accepted permissions for refund tests, not legacy backfill.
+insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version) values
+ ('d2600000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2),
+ ('d2600000-0000-4000-8000-000000000002',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
 
 -- Shape and privileges.
 select ok(to_regprocedure('public.ai_release_request(uuid)') is not null, 'the refund RPC exists');
@@ -32,9 +60,9 @@ set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
-select is((public.ai_begin_request('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000101', null)->>'allowed'), 'true', 'first request is reserved');
-select is((public.ai_begin_request('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000102', null)->>'allowed'), 'true', 'second request is reserved');
-select is((public.ai_begin_request('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000103', null)->>'reason'), 'user_limit', 'the bucket is full');
+select is((pg_temp.ai_policy_begin('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000101', null)->>'allowed'), 'true', 'first request is reserved');
+select is((pg_temp.ai_policy_begin('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000102', null)->>'allowed'), 'true', 'second request is reserved');
+select is((pg_temp.ai_policy_begin('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000103', null)->>'reason'), 'user_limit', 'the bucket is full');
 
 select is(public.ai_release_request('d2600000-0000-4000-8000-000000000101'), true, 'refunding a live request reports true');
 reset role;
@@ -56,7 +84,7 @@ select is((select request_count from private.ai_user_daily_usage
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000104', null)->>'allowed'), 'true', 'the refunded attempt can be used again');
+select is((pg_temp.ai_policy_begin('d2600000-0000-4000-8000-000000000001', 'easy-versions', 'd2600000-0000-4000-8000-000000000104', null)->>'allowed'), 'true', 'the refunded attempt can be used again');
 
 select is(public.ai_release_request('d2600000-0000-4000-8000-0000000009ff'), false, 'an unknown request id is a no-op');
 select is(public.ai_release_request(null), false, 'a null request id is a no-op');
@@ -81,7 +109,7 @@ select is((select request_count from private.ai_user_daily_usage
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request('d2600000-0000-4000-8000-000000000002', 'weekly-summary', 'd2600000-0000-4000-8000-000000000201',
+select is((pg_temp.ai_policy_begin('d2600000-0000-4000-8000-000000000002', 'weekly-summary', 'd2600000-0000-4000-8000-000000000201',
   current_date - (extract(isodow from current_date)::integer - 1))->>'requestClass'), 'initial', 'a weekly summary starts as an initial request');
 select is(public.ai_release_request('d2600000-0000-4000-8000-000000000201'), true, 'a weekly summary can be refunded');
 reset role;

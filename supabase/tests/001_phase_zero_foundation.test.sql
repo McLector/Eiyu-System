@@ -5,6 +5,17 @@ set local search_path = public, extensions;
 
 select plan(23);
 
+-- Tracker writes go through public.apply_tracker_write (S02 contract). This
+-- helper supplies the current revision and the expected target assertions.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+
 select has_table('public', 'profiles', 'profiles migration is applied');
 select has_table('public', 'habits', 'habits migration is applied');
 select has_table('public', 'habit_completions', 'habit completions migration is applied');
@@ -36,8 +47,8 @@ select ok(
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
-  ('11111111-1111-4111-8111-111111111111', 'phase0-user-1@example.invalid', '{"display_name":"Phase 0 User 1"}'::jsonb),
-  ('22222222-2222-4222-8222-222222222222', 'phase0-user-2@example.invalid', '{"display_name":"Phase 0 User 2"}'::jsonb);
+  ('11111111-1111-4111-8111-111111111111', 'phase0-user-1@example.invalid', '{"display_name":"Phase 0 User 1","birth_date":"2000-01-01"}'::jsonb),
+  ('22222222-2222-4222-8222-222222222222', 'phase0-user-2@example.invalid', '{"display_name":"Phase 0 User 2","birth_date":"2000-01-01"}'::jsonb);
 
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty)
 values
@@ -112,17 +123,21 @@ select throws_ok(
     values ('22222222-2222-4222-8222-222222222222', 'Forbidden habit', 'Forbidden easy habit', 'CHA', 'Easy')
   $$,
   '42501',
-  'new row violates row-level security policy for table "habits"',
+  'permission denied for table habits',
   'a user cannot insert a habit for another user'
 );
 
-select lives_ok(
+-- Direct table writes are denied outright now; the cross-user gateway attempt
+-- is refused as an unavailable target. Both leave user 2's row untouched.
+select throws_ok(
   $$
     update public.habits
     set name = 'Forbidden update'
     where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
   $$,
-  'an update targeting another user habit is safely filtered by RLS'
+  '42501',
+  'permission denied for table habits',
+  'a direct update targeting another user habit is denied'
 );
 
 select is(
@@ -131,22 +146,28 @@ select is(
   'an authenticated user sees only their own long quest stages'
 );
 
-select lives_ok(
+select throws_ok(
   $$
     update public.long_quest_stages
     set done = true
     where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
   $$,
-  'an update targeting another user long quest stage is safely filtered by RLS'
+  '42501',
+  'permission denied for table long_quest_stages',
+  'a direct update targeting another user long quest stage is denied'
 );
 
-select public.ensure_habit_occurrences(
-  (statement_timestamp() at time zone 'UTC')::date
+-- The fixture habits are legacy (no provenance), so they are custom roots and
+-- need the owner's explicit custom-tracker grant before they are processed.
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
 );
+select pg_temp.gw('prepare-day', '{}');
 
 select lives_ok(
   format(
-    $$select public.complete_habit('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', %L, 'full')$$,
+    $$select pg_temp.gw('complete_habit', jsonb_build_object('p_habit_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','p_completed_on',%L,'p_kind','full'), '[{"kind":"habit","id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","inputKind":"custom"}]')$$,
     (statement_timestamp() at time zone 'UTC')::date
   ),
   'an authenticated user can complete their own habit'
@@ -164,13 +185,14 @@ select is(
   'a full completion awards the current server-side XP amount'
 );
 
+-- The gateway maps the unique violation to its non-echoing invalid-input error.
 select throws_ok(
   format(
-    $$select public.complete_habit('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', %L, 'full')$$,
+    $$select pg_temp.gw('complete_habit', jsonb_build_object('p_habit_id','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','p_completed_on',%L,'p_kind','full'), '[{"kind":"habit","id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","inputKind":"custom"}]')$$,
     (statement_timestamp() at time zone 'UTC')::date
   ),
-  '23505',
-  'duplicate key value violates unique constraint "habit_completions_habit_id_completed_on_key"',
+  '22023',
+  'Invalid tracker input.',
   'a duplicate completion is rejected'
 );
 
@@ -182,11 +204,11 @@ select is(
 
 select throws_ok(
   format(
-    $$select public.complete_habit('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', %L, 'full')$$,
+    $$select pg_temp.gw('complete_habit', jsonb_build_object('p_habit_id','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','p_completed_on',%L,'p_kind','full'), '[{"kind":"habit","id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","inputKind":"custom"}]')$$,
     (statement_timestamp() at time zone 'UTC')::date
   ),
-  'P0001',
-  'habit bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb not found for calling user',
+  '42501',
+  'Tracker target unavailable.',
   'the completion RPC rejects another user habit'
 );
 

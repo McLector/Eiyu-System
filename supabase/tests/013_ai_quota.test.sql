@@ -1,4 +1,26 @@
 begin;
+-- Test-only templates, embedded in rollback tests/owned dblink connections.
+-- Exercise retained quota/processing policy beneath051, not live legacy ingress.
+-- Real instrumented admission/legacy refusal is covered by033/034.
+create function pg_temp.ai_policy_begin(p_user_id uuid,p_action text,p_request_id uuid,p_week_start date)
+returns jsonb language sql security definer set search_path='' as $$
+ select private.ai_begin_request_before_admission(p_user_id,p_action,p_request_id,p_week_start);
+$$;
+create function pg_temp.ai_policy_reserve(p_request_id uuid,p_attempt_number integer)
+returns boolean language sql security definer set search_path='' as $$
+ select private.ai_reserve_next_attempt_before_admission(p_request_id,p_attempt_number);
+$$;
+create function pg_temp.ai_policy_check(p_request_id uuid,p_age_version integer)
+returns boolean language sql security definer set search_path='' as $$
+ select private.ai_check_request_age_before_admission(p_request_id,p_age_version);
+$$;
+alter function pg_temp.ai_policy_begin(uuid,text,uuid,date) owner to postgres;
+alter function pg_temp.ai_policy_reserve(uuid,integer) owner to postgres;
+alter function pg_temp.ai_policy_check(uuid,integer) owner to postgres;
+revoke all on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_policy_reserve(uuid,integer),pg_temp.ai_policy_check(uuid,integer) from public,anon,authenticated;
+grant execute on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_policy_reserve(uuid,integer),pg_temp.ai_policy_check(uuid,integer) to service_role;
+
+
 
 create extension if not exists pgtap with schema extensions;
 create extension if not exists dblink with schema extensions;
@@ -8,8 +30,19 @@ set local statement_timeout = '30s';
 select no_plan();
 
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('d1300000-0000-4000-8000-000000000001', 'quota-owner@example.invalid', '{"display_name":"Quota Owner","time_zone":"UTC"}'::jsonb),
-  ('d1300000-0000-4000-8000-000000000002', 'quota-second@example.invalid', '{"display_name":"Quota Second","time_zone":"UTC"}'::jsonb);
+  ('d1300000-0000-4000-8000-000000000001', 'quota-owner@example.invalid', '{"display_name":"Quota Owner","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
+  ('d1300000-0000-4000-8000-000000000002', 'quota-second@example.invalid', '{"display_name":"Quota Second","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
+-- Trusted synthetic proof fixture: this suite tests accounting after eligibility.
+update private.mailbox_state set verified_version=version,verified_at=now() where user_id in ('d1300000-0000-4000-8000-000000000001','d1300000-0000-4000-8000-000000000002');
+-- Explicit synthetic accepted permissions; no production/legacy consent backfill.
+insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version) values
+ ('d1300000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2),
+ ('d1300000-0000-4000-8000-000000000002',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
+-- Deleted accounts can leave reserved-provider accounting by design. Compare
+-- this test's deltas instead of assuming the retained project has zero history.
+create temp table quota_attempt_baseline as select
+ coalesce((select attempt_count from private.ai_provider_daily_usage where usage_date=(statement_timestamp() at time zone 'UTC')::date),0)::bigint as counter,
+ (select count(*) from private.ai_provider_attempts where usage_date=(statement_timestamp() at time zone 'UTC')::date) as attempts;
 
 select ok(to_regnamespace('private') is not null, 'the private quota schema exists');
 select ok(
@@ -69,8 +102,8 @@ select set_config('request.jwt.claim.sub', 'd1300000-0000-4000-8000-000000000001
 select set_config('request.jwt.claim.role', 'authenticated', true);
 
 select lives_ok(
-  $$insert into public.weekly_summaries (user_id, week_start, summary)
-    values (auth.uid(), current_date - (extract(isodow from current_date)::integer - 1), 'Cached summary')$$,
+  $$insert into public.weekly_summaries (user_id, week_start, summary,age_version,consent_version,authority_version,mailbox_version)
+    values (auth.uid(), current_date - (extract(isodow from current_date)::integer - 1), 'Cached summary',1,2,0,1)$$,
   'the existing owner initial-summary insert remains valid'
 );
 select throws_ok(
@@ -148,10 +181,36 @@ select lives_ok($sql$
     end;
     $cleanup$;
     insert into auth.users (id, email, raw_user_meta_data)
-    values ('d1300000-0000-4000-8000-000000000099', 'quota-race@example.invalid', '{"display_name":"Quota Race","time_zone":"UTC"}'::jsonb)
+    values ('d1300000-0000-4000-8000-000000000099', 'quota-race@example.invalid', '{"display_name":"Quota Race","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb)
   $remote$)
 $sql$, 'creates a clean committed fixture for independent quota connections');
 
+do $connections$declare conn text;begin
+ foreach conn in array array['quota_a','quota_b','quota_c'] loop
+ perform extensions.dblink_exec(conn,$policy_helpers$
+-- Test-only templates, embedded in rollback tests/owned dblink connections.
+-- Exercise retained quota/processing policy beneath051, not live legacy ingress.
+-- Real instrumented admission/legacy refusal is covered by033/034.
+create function pg_temp.ai_policy_begin(p_user_id uuid,p_action text,p_request_id uuid,p_week_start date)
+returns jsonb language sql security definer set search_path='' as $$
+ select private.ai_begin_request_before_admission(p_user_id,p_action,p_request_id,p_week_start);
+$$;
+create function pg_temp.ai_policy_reserve(p_request_id uuid,p_attempt_number integer)
+returns boolean language sql security definer set search_path='' as $$
+ select private.ai_reserve_next_attempt_before_admission(p_request_id,p_attempt_number);
+$$;
+create function pg_temp.ai_policy_check(p_request_id uuid,p_age_version integer)
+returns boolean language sql security definer set search_path='' as $$
+ select private.ai_check_request_age_before_admission(p_request_id,p_age_version);
+$$;
+alter function pg_temp.ai_policy_begin(uuid,text,uuid,date) owner to postgres;
+alter function pg_temp.ai_policy_reserve(uuid,integer) owner to postgres;
+alter function pg_temp.ai_policy_check(uuid,integer) owner to postgres;
+revoke all on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_policy_reserve(uuid,integer),pg_temp.ai_policy_check(uuid,integer) from public,anon,authenticated;
+grant execute on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_policy_reserve(uuid,integer),pg_temp.ai_policy_check(uuid,integer) to service_role;
+
+$policy_helpers$);
+ end loop;end;$connections$;
 select lives_ok($sql$select extensions.dblink_exec('quota_a', $remote$set role service_role$remote$)$sql$, 'sets the trusted role on connection A');
 select lives_ok($sql$select extensions.dblink_exec('quota_b', $remote$set role service_role$remote$)$sql$, 'sets the trusted role on connection B');
 select lives_ok($sql$select extensions.dblink_exec('quota_c', $remote$set role service_role$remote$)$sql$, 'sets the trusted role on connection C');
@@ -161,9 +220,9 @@ select lives_ok($sql$select extensions.dblink_exec('quota_c', $remote$set "reque
 select lives_ok($sql$select extensions.dblink_exec('quota_a', $remote$set "request.jwt.claims" = '{"role":"service_role"}'$remote$)$sql$, 'sets the JWT claims on connection A');
 select lives_ok($sql$select extensions.dblink_exec('quota_b', $remote$set "request.jwt.claims" = '{"role":"service_role"}'$remote$)$sql$, 'sets the JWT claims on connection B');
 select lives_ok($sql$select extensions.dblink_exec('quota_c', $remote$set "request.jwt.claims" = '{"role":"service_role"}'$remote$)$sql$, 'sets the JWT claims on connection C');
-select is(extensions.dblink_send_query('quota_a', $$select public.ai_begin_request('d1300000-0000-4000-8000-000000000099', 'easy-versions', 'd1300000-0000-4000-8000-000000000091', null)$$), 1, 'launches quota request A');
-select is(extensions.dblink_send_query('quota_b', $$select public.ai_begin_request('d1300000-0000-4000-8000-000000000099', 'easy-versions', 'd1300000-0000-4000-8000-000000000092', null)$$), 1, 'launches quota request B');
-select is(extensions.dblink_send_query('quota_c', $$select public.ai_begin_request('d1300000-0000-4000-8000-000000000099', 'easy-versions', 'd1300000-0000-4000-8000-000000000093', null)$$), 1, 'launches quota request C');
+select is(extensions.dblink_send_query('quota_a', $$select pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000099', 'easy-versions', 'd1300000-0000-4000-8000-000000000091', null)$$), 1, 'launches quota request A');
+select is(extensions.dblink_send_query('quota_b', $$select pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000099', 'easy-versions', 'd1300000-0000-4000-8000-000000000092', null)$$), 1, 'launches quota request B');
+select is(extensions.dblink_send_query('quota_c', $$select pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000099', 'easy-versions', 'd1300000-0000-4000-8000-000000000093', null)$$), 1, 'launches quota request C');
 
 create temporary table quota_race_results (
   connection_name text primary key,
@@ -223,38 +282,38 @@ set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'easy-versions', 'd1300000-0000-4000-8000-000000000101', null
 )->>'allowed'), 'true', 'first easy-version request is reserved');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'easy-versions', 'd1300000-0000-4000-8000-000000000102', null
 )->>'allowed'), 'true', 'second easy-version request is reserved');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'easy-versions', 'd1300000-0000-4000-8000-000000000103', null
 )->>'allowed'), 'false', 'third easy-version request exceeds the per-user daily cap');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000104', null
 )->>'allowed'), 'true', 'stage-breakdown has an independent action bucket');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000105', null
 )->>'allowed'), 'true', 'second stage-breakdown request is reserved');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000106', null
 )->>'allowed'), 'false', 'third stage-breakdown request is denied');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'weekly-summary', 'd1300000-0000-4000-8000-000000000107',
   current_date - (extract(isodow from current_date)::integer - 1)
 )->>'allowed'), 'true', 'first weekly-summary cache miss may be generated');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'weekly-summary', 'd1300000-0000-4000-8000-000000000108',
   current_date - (extract(isodow from current_date)::integer - 1)
 )->>'allowed'), 'true', 'second failed initial-summary attempt remains available');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'weekly-summary', 'd1300000-0000-4000-8000-000000000109',
   current_date - (extract(isodow from current_date)::integer - 1)
 )->>'allowed'), 'false', 'third initial-summary attempt is denied');
 select throws_ok(
-  format($sql$select public.ai_begin_request(
+  format($sql$select pg_temp.ai_policy_begin(
     'd1300000-0000-4000-8000-000000000002', 'weekly-summary', 'd1300000-0000-4000-8000-000000000110',
     %L::date
   )$sql$, current_date - (extract(isodow from current_date)::integer - 1) - 7),
@@ -267,36 +326,36 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', 'd1300000-0000-4000-8000-000000000002', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 select lives_ok(
-  $$insert into public.weekly_summaries (user_id, week_start, summary)
-    values (auth.uid(), current_date - (extract(isodow from current_date)::integer - 1), 'Persisted cache')$$,
+  $$insert into public.weekly_summaries (user_id, week_start, summary,age_version,consent_version,authority_version,mailbox_version)
+    values (auth.uid(), current_date - (extract(isodow from current_date)::integer - 1), 'Persisted cache',1,2,0,1)$$,
   'successful first generation can persist through the existing client insert contract'
 );
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000002', 'weekly-summary', 'd1300000-0000-4000-8000-000000000111',
   current_date - (extract(isodow from current_date)::integer - 1)
 )->>'allowed'), 'false', 'a cached summary cannot be regenerated without a pending manual reservation');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000001', 'weekly-summary', 'd1300000-0000-4000-8000-000000000112',
   current_date - (extract(isodow from current_date)::integer - 1)
 )->>'requestClass'), 'regeneration', 'manual reservation is consumed only by its verified owner and week');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000001', 'weekly-summary', 'd1300000-0000-4000-8000-000000000113',
   current_date - (extract(isodow from current_date)::integer - 1)
 )->>'allowed'), 'true', 'each pending manual reservation authorizes one request');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000001', 'weekly-summary', 'd1300000-0000-4000-8000-000000000114',
   current_date - (extract(isodow from current_date)::integer - 1)
 )->>'allowed'), 'false', 'a consumed or absent pending reservation cannot be replayed');
-select ok(public.ai_reserve_next_attempt('d1300000-0000-4000-8000-000000000112', 2), 'retry reserves one provider-attempt slot');
-select ok(public.ai_reserve_next_attempt('d1300000-0000-4000-8000-000000000112', 2), 'replaying the same attempt number succeeds idempotently');
+select ok(pg_temp.ai_policy_reserve('d1300000-0000-4000-8000-000000000112', 2), 'retry reserves one provider-attempt slot');
+select ok(pg_temp.ai_policy_reserve('d1300000-0000-4000-8000-000000000112', 2), 'replaying the same attempt number succeeds idempotently');
 reset role;
 select is((select count(*) from private.ai_provider_attempts where request_id = 'd1300000-0000-4000-8000-000000000112'), 2::bigint, 'one logical request and its retry use two unique provider slots');
 select is(
-  (select attempt_count::bigint from private.ai_provider_daily_usage where usage_date = (statement_timestamp() at time zone 'UTC')::date),
-  (select count(*) from private.ai_provider_attempts where usage_date = (statement_timestamp() at time zone 'UTC')::date),
+  (select attempt_count::bigint-(select counter from quota_attempt_baseline) from private.ai_provider_daily_usage where usage_date = (statement_timestamp() at time zone 'UTC')::date),
+  (select count(*)-(select attempts from quota_attempt_baseline) from private.ai_provider_attempts where usage_date = (statement_timestamp() at time zone 'UTC')::date),
   'an idempotent retry replay does not add a provider quota charge'
 );
 
@@ -305,22 +364,23 @@ reset role;
 select is((select max_user_requests_per_action from private.ai_quota_config where singleton), 2,
   'the per-user cap lives in the config row and is still 2');
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('d1300000-0000-4000-8000-000000000003', 'quota-third@example.invalid', '{"display_name":"Quota Third","time_zone":"UTC"}'::jsonb),
-  ('d1300000-0000-4000-8000-000000000004', 'quota-fourth@example.invalid', '{"display_name":"Quota Fourth","time_zone":"UTC"}'::jsonb);
+  ('d1300000-0000-4000-8000-000000000003', 'quota-third@example.invalid', '{"display_name":"Quota Third","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
+  ('d1300000-0000-4000-8000-000000000004', 'quota-fourth@example.invalid', '{"display_name":"Quota Fourth","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
+update private.mailbox_state set verified_version=version,verified_at=now() where user_id::text like 'd130%';
 update private.ai_quota_config set max_user_requests_per_action = 3 where singleton;
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000201', null)->>'allowed'), 'true', 'cap 3: first request is allowed');
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000202', null)->>'allowed'), 'true', 'cap 3: second request is allowed');
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000203', null)->>'allowed'), 'true', 'cap 3: third request is allowed once the config row says 3');
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000204', null)->>'reason'), 'user_limit', 'cap 3: the fourth request is refused as user_limit');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000201', null)->>'allowed'), 'true', 'cap 3: first request is allowed');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000202', null)->>'allowed'), 'true', 'cap 3: second request is allowed');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000203', null)->>'allowed'), 'true', 'cap 3: third request is allowed once the config row says 3');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000204', null)->>'reason'), 'user_limit', 'cap 3: the fourth request is refused as user_limit');
 reset role;
 update private.ai_quota_config set max_user_requests_per_action = 2 where singleton;
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000205', null)->>'allowed'), 'false', 'cap back at 2: a user already at 3 stays refused');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000003', 'easy-versions', 'd1300000-0000-4000-8000-000000000205', null)->>'allowed'), 'false', 'cap back at 2: a user already at 3 stays refused');
 reset role;
 select throws_ok($$update private.ai_quota_config set max_user_requests_per_action = 0 where singleton$$, '23514', null, 'the cap must be at least 1');
 select throws_ok($$update private.ai_quota_config set max_user_requests_per_action = 101 where singleton$$, '23514', null, 'the cap is at most 100');
@@ -348,10 +408,10 @@ select is(private.ai_next_midnight('Asia/Manila', '2026-10-07 17:00+00'), '2026-
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000004', 'easy-versions', 'd1300000-0000-4000-8000-000000000211', null)->'exhaustedProviders'), '[]'::jsonb, 'no provider is exhausted at first');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000004', 'easy-versions', 'd1300000-0000-4000-8000-000000000211', null)->'exhaustedProviders'), '[]'::jsonb, 'no provider is exhausted at first');
 select is(public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-000000000211', 'groq', 'UTC'), true, 'a daily-quota failure marks the provider');
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000004', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000212', null)->'exhaustedProviders'), '["groq"]'::jsonb, 'the next request is told which provider to skip');
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000004', 'easy-versions', 'd1300000-0000-4000-8000-000000000211', null)->'exhaustedProviders'), '["groq"]'::jsonb, 'a replayed request id also reports exhausted providers');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000004', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000212', null)->'exhaustedProviders'), '["groq"]'::jsonb, 'the next request is told which provider to skip');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000004', 'easy-versions', 'd1300000-0000-4000-8000-000000000211', null)->'exhaustedProviders'), '["groq"]'::jsonb, 'a replayed request id also reports exhausted providers');
 select is(public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-0000000002ff', 'groq', 'UTC'), false, 'an unknown request id marks nothing');
 select throws_ok($$select public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-000000000211', 'Bad Name!', 'UTC')$$, '22023', null, 'a malformed provider name is refused');
 select throws_ok($$select public.ai_mark_provider_exhausted('d1300000-0000-4000-8000-000000000211', 'groq', 'Not/AZone')$$, '22023', null, 'an unknown time zone is refused');
@@ -370,7 +430,7 @@ update private.ai_provider_exhaustion set exhausted_until = statement_timestamp(
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request('d1300000-0000-4000-8000-000000000001', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000213', null)->'exhaustedProviders'), '[]'::jsonb, 'an expired mark is not reported');
+select is((pg_temp.ai_policy_begin('d1300000-0000-4000-8000-000000000001', 'stage-breakdown', 'd1300000-0000-4000-8000-000000000213', null)->'exhaustedProviders'), '[]'::jsonb, 'an expired mark is not reported');
 
 reset role;
 update private.ai_quota_config
@@ -380,10 +440,10 @@ where singleton;
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000001', 'easy-versions', 'd1300000-0000-4000-8000-000000000115', null
 )->>'allowed'), 'true', 'the last available project provider slot is reserved');
-select is((public.ai_begin_request(
+select is((pg_temp.ai_policy_begin(
   'd1300000-0000-4000-8000-000000000001', 'easy-versions', 'd1300000-0000-4000-8000-000000000116', null
 )->>'allowed'), 'false', 'the project-wide provider-attempt ceiling denies the next request');
 reset role;

@@ -3,6 +3,50 @@ create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 select no_plan();
 
+-- Tracker writes go through public.apply_tracker_write (S02 contract). The
+-- fixture roots are legacy rows without provenance, i.e. custom roots.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+create function pg_temp.hw(op text, habit uuid, extra jsonb default '{}')
+returns jsonb language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_habit_id', habit) || extra,
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', habit, 'inputKind', 'custom'))
+  );
+$$;
+create function pg_temp.hi(op text, id uuid) returns jsonb
+language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_id', id),
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', id, 'inputKind', 'custom'))
+  );
+$$;
+-- Lane / chain reorders through the gateway; every listed fixture root is legacy (custom).
+create function pg_temp.ro(lane text, ids uuid[]) returns jsonb
+language sql set search_path = '' as $$
+  select pg_temp.gw(
+    'reorder_quests',
+    jsonb_build_object('p_quest_type', lane, 'p_ids', to_jsonb(ids)),
+    coalesce((select jsonb_agg(jsonb_build_object('kind', 'habit', 'id', i, 'inputKind', 'custom')) from unnest(ids) i), '[]'::jsonb)
+  );
+$$;
+create function pg_temp.rl(ids uuid[]) returns jsonb
+language sql set search_path = '' as $$
+  select pg_temp.gw(
+    'reorder_long_quests',
+    jsonb_build_object('p_ids', to_jsonb(ids)),
+    coalesce((select jsonb_agg(jsonb_build_object('kind', 'chain', 'id', i, 'inputKind', 'custom')) from unnest(ids) i), '[]'::jsonb)
+  );
+$$;
+
 -- 044: a stored manual order for the three quest lanes (habit, one_time, backlog) and for chains.
 
 select has_column('public', 'habits', 'position', 'habits carry a manual position');
@@ -12,20 +56,21 @@ select ok(
   'every row has a position');
 select has_function('public', 'reorder_quests', array['text', 'uuid[]']::text[], 'quest reorder is a server function');
 select has_function('public', 'reorder_long_quests', array['uuid[]']::text[], 'chain reorder is a server function');
-select ok(has_function_privilege('authenticated', 'public.reorder_quests(text,uuid[])', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.reorder_long_quests(uuid[])', 'EXECUTE')
+select ok(not has_function_privilege('authenticated', 'public.reorder_quests(text,uuid[])', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.reorder_long_quests(uuid[])', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.apply_tracker_write(text,jsonb,jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.reorder_quests(text,uuid[])', 'EXECUTE')
     and not has_function_privilege('anon', 'public.reorder_long_quests(uuid[])', 'EXECUTE'),
-  'only signed-in users can reorder');
+  'only the signed-in write gateway can reorder');
 select ok(not has_function_privilege('authenticated', 'public.backfill_manual_order(uuid)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.backfill_manual_order(uuid)', 'EXECUTE'),
   'the backfill is not callable by clients');
 
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('25000000-0000-4000-8000-00000000000a', 'order25-a@example.invalid', '{"display_name":"Order A","time_zone":"UTC"}'),
-  ('25000000-0000-4000-8000-00000000000b', 'order25-b@example.invalid', '{"display_name":"Order B","time_zone":"UTC"}'),
-  ('25000000-0000-4000-8000-00000000000c', 'order25-c@example.invalid', '{"display_name":"Order C","time_zone":"UTC"}'),
-  ('25000000-0000-4000-8000-00000000000d', 'order25-d@example.invalid', '{"display_name":"Order D","time_zone":"UTC"}');
+  ('25000000-0000-4000-8000-00000000000a', 'order25-a@example.invalid', '{"display_name":"Order A","time_zone":"UTC","birth_date":"2000-01-01"}'),
+  ('25000000-0000-4000-8000-00000000000b', 'order25-b@example.invalid', '{"display_name":"Order B","time_zone":"UTC","birth_date":"2000-01-01"}'),
+  ('25000000-0000-4000-8000-00000000000c', 'order25-c@example.invalid', '{"display_name":"Order C","time_zone":"UTC","birth_date":"2000-01-01"}'),
+  ('25000000-0000-4000-8000-00000000000d', 'order25-d@example.invalid', '{"display_name":"Order D","time_zone":"UTC","birth_date":"2000-01-01"}');
 update private.backlog_rollover_settings set cutover = date '2000-01-01';
 
 -- ---------------------------------------------------------------------------
@@ -85,11 +130,16 @@ insert into public.habits (id, user_id, name, easy_version, stat, difficulty, qu
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000d', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
-select lives_ok($$select public.move_backlog_to_one_time('25000000-0000-4000-8000-0000000000d1')$$, 'D moves a Backlog quest to One-time');
+-- Legacy fixture quests are custom roots and need the owner's explicit grant.
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+select lives_ok($$select pg_temp.hi('move_backlog_to_one_time', '25000000-0000-4000-8000-0000000000d1')$$, 'D moves a Backlog quest to One-time');
 select ok((select position from public.habits where id = '25000000-0000-4000-8000-0000000000d1')
   < (select position from public.habits where id = '25000000-0000-4000-8000-0000000000d3'),
   'a quest moved into One-time lands above the quests already there');
-select lives_ok($$select public.move_one_time_to_backlog('25000000-0000-4000-8000-0000000000d3')$$, 'D moves a One-time quest back to Backlog');
+select lives_ok($$select pg_temp.hi('move_one_time_to_backlog', '25000000-0000-4000-8000-0000000000d3')$$, 'D moves a One-time quest back to Backlog');
 select ok((select position from public.habits where id = '25000000-0000-4000-8000-0000000000d3')
   < (select position from public.habits where id = '25000000-0000-4000-8000-0000000000d2'),
   'a quest moved into Backlog lands above the quests already there');
@@ -100,7 +150,7 @@ insert into public.habits (id, user_id, name, easy_version, stat, difficulty, qu
   ('25000000-0000-4000-8000-0000000000d4', '25000000-0000-4000-8000-00000000000d', 'D missed yesterday', null, 'INT', 'Easy', 'one_time', '{0,1,2,3,4,5,6}', false, (statement_timestamp() at time zone 'UTC')::date - 1);
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000d', true);
-select lives_ok($$select count(*) from public.get_habits_for_date((statement_timestamp() at time zone 'UTC')::date)$$, 'D loads the board');
+select lives_ok($$select pg_temp.gw('prepare-day', '{}')$$, 'D prepares the board');
 reset role;
 select is((select quest_type from public.habits where id = '25000000-0000-4000-8000-0000000000d4'), 'backlog', 'the missed quest rolled to Backlog');
 select ok((select position from public.habits where id = '25000000-0000-4000-8000-0000000000d4')
@@ -110,6 +160,11 @@ select ok((select position from public.habits where id = '25000000-0000-4000-800
 -- The board read carries the position.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000a', true);
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+select pg_temp.gw('prepare-day', '{}');
 select ok((select count(*) from public.get_habits_for_date((statement_timestamp() at time zone 'UTC')::date) where position is not null) >= 1,
   'the board read returns the position');
 reset role;
@@ -164,7 +219,11 @@ update public.habits set position = 9 where id = '25000000-0000-4000-8000-000000
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000b', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
-select lives_ok($$select public.reorder_quests('backlog', array['25000000-0000-4000-8000-0000000000ad', '25000000-0000-4000-8000-0000000000ab']::uuid[])$$,
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+select lives_ok($$select pg_temp.ro('backlog', array['25000000-0000-4000-8000-0000000000ad', '25000000-0000-4000-8000-0000000000ab']::uuid[])$$,
   'a subset of a lane can be reordered');
 reset role;
 select is((select array_agg(name order by position, id) from public.habits where user_id = '25000000-0000-4000-8000-00000000000b' and quest_type = 'backlog' and name in ('W', 'X', 'Y', 'Z')),
@@ -176,7 +235,7 @@ select is((select array_agg(position order by position) from public.habits where
 update public.habits set position = 0 where user_id = '25000000-0000-4000-8000-00000000000b';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000b', true);
-select lives_ok($$select public.reorder_quests('backlog', array['25000000-0000-4000-8000-0000000000ac', '25000000-0000-4000-8000-0000000000ab', '25000000-0000-4000-8000-0000000000aa', '25000000-0000-4000-8000-0000000000ad', '25000000-0000-4000-8000-0000000000f1']::uuid[])$$,
+select lives_ok($$select pg_temp.ro('backlog', array['25000000-0000-4000-8000-0000000000ac', '25000000-0000-4000-8000-0000000000ab', '25000000-0000-4000-8000-0000000000aa', '25000000-0000-4000-8000-0000000000ad', '25000000-0000-4000-8000-0000000000f1']::uuid[])$$,
   'a full reorder works when every position is tied');
 reset role;
 select is((select array_agg(name order by position, id) from public.habits where user_id = '25000000-0000-4000-8000-00000000000b' and quest_type = 'backlog'),
@@ -185,21 +244,21 @@ select is((select array_agg(name order by position, id) from public.habits where
 -- Refusals.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000b', true);
-select throws_ok($$select public.reorder_quests('backlog', null)$$, 'P0001', 'Quest order must list each quest once.', 'a null list is refused');
-select throws_ok($$select public.reorder_quests('backlog', array[]::uuid[])$$, 'P0001', 'Quest order must list each quest once.', 'an empty list is refused');
-select throws_ok($$select public.reorder_quests('backlog', array['25000000-0000-4000-8000-0000000000aa', '25000000-0000-4000-8000-0000000000aa']::uuid[])$$, 'P0001', 'Quest order must list each quest once.', 'a duplicate is refused');
-select throws_ok($$select public.reorder_quests('backlog', (select array_agg(gen_random_uuid()) from generate_series(1, 1001)))$$, 'P0001', 'Quest order must list each quest once.', 'more than 1000 ids are refused');
-select throws_ok($$select public.reorder_quests('backlog', array['25000000-0000-4000-8000-0000000000b1']::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'another user''s quest is refused');
-select throws_ok($$select public.reorder_quests('backlog', array[gen_random_uuid()]::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'an unknown id is refused');
-select throws_ok($$select public.reorder_quests('one_time', array['25000000-0000-4000-8000-0000000000aa']::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'a quest from another lane is refused');
-select throws_ok($$select public.reorder_quests('archived', array['25000000-0000-4000-8000-0000000000aa']::uuid[])$$, 'P0001', 'Unknown quest lane.', 'an unknown lane is refused');
+select throws_ok($$select pg_temp.ro('backlog', null)$$, '22023', 'Invalid tracker input.', 'a null list is refused');
+select throws_ok($$select pg_temp.ro('backlog', array[]::uuid[])$$, 'P0001', 'Quest order must list each quest once.', 'an empty list is refused');
+select throws_ok($$select pg_temp.ro('backlog', array['25000000-0000-4000-8000-0000000000aa', '25000000-0000-4000-8000-0000000000aa']::uuid[])$$, '22023', 'Duplicate targets.', 'a duplicate is refused');
+select throws_ok($$select pg_temp.ro('backlog', (select array_agg(gen_random_uuid()) from generate_series(1, 1001)))$$, '42501', 'Tracker target unavailable.', 'more than 1000 ids are refused');
+select throws_ok($$select pg_temp.ro('backlog', array['25000000-0000-4000-8000-0000000000b1']::uuid[])$$, '42501', 'Tracker target unavailable.', 'another user''s quest is refused');
+select throws_ok($$select pg_temp.ro('backlog', array[gen_random_uuid()]::uuid[])$$, '42501', 'Tracker target unavailable.', 'an unknown id is refused');
+select throws_ok($$select pg_temp.ro('one_time', array['25000000-0000-4000-8000-0000000000aa']::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'a quest from another lane is refused');
+select throws_ok($$select pg_temp.ro('archived', array['25000000-0000-4000-8000-0000000000aa']::uuid[])$$, 'P0001', 'Unknown quest lane.', 'an unknown lane is refused');
 reset role;
 update public.habits set archived = true where id = '25000000-0000-4000-8000-0000000000ad';
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000b', true);
-select throws_ok($$select public.reorder_quests('backlog', array['25000000-0000-4000-8000-0000000000ad']::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'an archived quest is refused');
+select throws_ok($$select pg_temp.ro('backlog', array['25000000-0000-4000-8000-0000000000ad']::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'an archived quest is refused');
 -- B cannot reorder A's lane even with A's real ids.
-select throws_ok($$select public.reorder_quests('backlog', array['25000000-0000-4000-8000-0000000000b2', '25000000-0000-4000-8000-0000000000b3']::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'a user cannot reorder someone else''s lane');
+select throws_ok($$select pg_temp.ro('backlog', array['25000000-0000-4000-8000-0000000000b2', '25000000-0000-4000-8000-0000000000b3']::uuid[])$$, '42501', 'Tracker target unavailable.', 'a user cannot reorder someone else''s lane');
 reset role;
 select is((select array_agg(name order by position, id) from public.habits where user_id = '25000000-0000-4000-8000-00000000000a' and quest_type = 'backlog'),
   array['A backlog 3', 'A backlog 2 renamed', 'A backlog 1'], 'the refused attempts changed nothing');
@@ -217,23 +276,22 @@ select is((select array_agg(name order by position, id) from public.long_quests 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000a', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
-select lives_ok($$select public.save_long_quest_definition('25000000-0000-4000-8000-0000000000e4', '25000000-0000-4000-8000-0000000000f2',
-  '{"name":"A chain 3","stat":"STR","description":null,"strictOrder":true,"stages":[{"id":null,"name":"Stage 1","description":null}]}'::jsonb, true)$$, 'a chain is created through the save RPC');
+select lives_ok($$select pg_temp.gw('chain-save', '{"p_id":"25000000-0000-4000-8000-0000000000e4","p_request_id":"25000000-0000-4000-8000-0000000000f2","p_create":true,"p_mode":"custom","p_input":{"name":"A chain 3","stat":"STR","description":null,"strictOrder":true,"stages":[{"id":null,"name":"Stage 1","description":null}]}}')$$, 'a chain is created through the save RPC');
 reset role;
 select is((select array_agg(name order by position, id) from public.long_quests where user_id = '25000000-0000-4000-8000-00000000000a'),
   array['A chain 3', 'A chain 2', 'A chain 1'], 'a chain created by the save RPC lands at the top');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000a', true);
-select lives_ok($$select public.reorder_long_quests(array['25000000-0000-4000-8000-0000000000e2', '25000000-0000-4000-8000-0000000000e4', '25000000-0000-4000-8000-0000000000e3']::uuid[])$$, 'chains can be reordered');
+select lives_ok($$select pg_temp.rl(array['25000000-0000-4000-8000-0000000000e2', '25000000-0000-4000-8000-0000000000e4', '25000000-0000-4000-8000-0000000000e3']::uuid[])$$, 'chains can be reordered');
 reset role;
 select is((select array_agg(name order by position, id) from public.long_quests where user_id = '25000000-0000-4000-8000-00000000000a'),
   array['A chain 1', 'A chain 3', 'A chain 2'], 'the chain order is exactly the given order');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '25000000-0000-4000-8000-00000000000a', true);
-select throws_ok($$select public.reorder_long_quests(null)$$, 'P0001', 'Quest order must list each quest once.', 'chains: a null list is refused');
-select throws_ok($$select public.reorder_long_quests(array['25000000-0000-4000-8000-0000000000e2', '25000000-0000-4000-8000-0000000000e2']::uuid[])$$, 'P0001', 'Quest order must list each quest once.', 'chains: a duplicate is refused');
-select throws_ok($$select public.reorder_long_quests(array['25000000-0000-4000-8000-0000000000a1']::uuid[])$$, 'P0001', 'Quest order is out of date. Reload and try again.', 'chains: another user''s chain is refused');
+select throws_ok($$select pg_temp.rl(null)$$, '22023', 'Invalid tracker input.', 'chains: a null list is refused');
+select throws_ok($$select pg_temp.rl(array['25000000-0000-4000-8000-0000000000e2', '25000000-0000-4000-8000-0000000000e2']::uuid[])$$, '22023', 'Duplicate targets.', 'chains: a duplicate is refused');
+select throws_ok($$select pg_temp.rl(array['25000000-0000-4000-8000-0000000000a1']::uuid[])$$, '42501', 'Tracker target unavailable.', 'chains: another user''s chain is refused');
 reset role;
 
 select * from finish();

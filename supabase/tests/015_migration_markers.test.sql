@@ -108,9 +108,12 @@ with checks(marker, ok) as (
     and to_regclass('public.gym_entries') is not null
     and (select bool_and(c.relrowsecurity) from pg_class c where c.oid = any(array[to_regclass('public.gym_routines'),to_regclass('public.gym_exercises'),to_regclass('public.gym_sessions'),to_regclass('public.gym_entries')]))
     and not has_table_privilege('authenticated',to_regclass('public.gym_entries'),'UPDATE')
-    and has_function_privilege('authenticated',to_regprocedure('public.start_gym_session(uuid)'),'EXECUTE')
+    -- S02 054: session/order RPCs are reachable only through the write gateway.
+    and not has_function_privilege('authenticated',to_regprocedure('public.start_gym_session(uuid)'),'EXECUTE')
     and not has_function_privilege('anon',to_regprocedure('public.start_gym_session(uuid)'),'EXECUTE')
-    and has_function_privilege('authenticated',to_regprocedure('public.reorder_gym_exercises(uuid,uuid[])'),'EXECUTE')
+    and not has_function_privilege('authenticated',to_regprocedure('public.reorder_gym_exercises(uuid,uuid[])'),'EXECUTE')
+    and has_function_privilege('authenticated',to_regprocedure('public.apply_tracker_write(text,jsonb,jsonb)'),'EXECUTE')
+    and not has_function_privilege('anon',to_regprocedure('public.apply_tracker_write(text,jsonb,jsonb)'),'EXECUTE')
   union all select '034 gym media: private bounded bucket and owner policies',
     exists (select 1 from storage.buckets where id = 'gym-exercise-media'
       and not public and file_size_limit = 20971520
@@ -122,7 +125,7 @@ with checks(marker, ok) as (
     and not has_column_privilege('authenticated','public.gym_routines','deleted_at','UPDATE')
     and not has_table_privilege('authenticated','public.gym_exercises','INSERT')
     and not has_table_privilege('authenticated','public.gym_media_cleanup','SELECT')
-    and has_function_privilege('authenticated','public.delete_gym_routine(uuid,boolean)','EXECUTE')
+    and not has_function_privilege('authenticated','public.delete_gym_routine(uuid,boolean)','EXECUTE')
     and has_function_privilege('authenticated','public.previous_gym_weights(uuid)','EXECUTE')
     and not has_function_privilege('anon','public.save_gym_exercise(uuid,jsonb)','EXECUTE')
   union all select '036 rewards: private owner receipts and no client stats writes',
@@ -130,13 +133,13 @@ with checks(marker, ok) as (
     and (select relrowsecurity from pg_class where oid = to_regclass('private.long_quest_reward_receipts'))
     and not has_table_privilege('authenticated','private.long_quest_reward_receipts','SELECT')
     and not has_table_privilege('authenticated','public.stats','UPDATE')
-    and has_function_privilege('authenticated','public.set_long_quest_stage_done_receipt(uuid,boolean,uuid)','EXECUTE')
+    and not has_function_privilege('authenticated','public.set_long_quest_stage_done_receipt(uuid,boolean,uuid)','EXECUTE')
     and not has_function_privilege('anon','public.set_long_quest_stage_done_receipt(uuid,boolean,uuid)','EXECUTE')
   union all select '037 quests: atomic definition saves and private reconciliation receipts',
     to_regclass('private.long_quest_definition_receipts') is not null
     and (select relrowsecurity from pg_class where oid = to_regclass('private.long_quest_definition_receipts'))
     and not has_table_privilege('authenticated','private.long_quest_definition_receipts','SELECT')
-    and has_function_privilege('authenticated','public.save_long_quest_definition(uuid,uuid,jsonb,boolean)','EXECUTE')
+    and not has_function_privilege('authenticated','public.save_long_quest_definition(uuid,uuid,jsonb,boolean)','EXECUTE')
     and not has_function_privilege('anon','public.save_long_quest_definition(uuid,uuid,jsonb,boolean)','EXECUTE')
 )
 select ok(ok, marker) from checks;
@@ -152,17 +155,19 @@ select ok(coalesce(exists (select 1 from pg_constraint where conrelid = 'public.
     and coalesce((select pg_get_functiondef(p.oid) ilike '%backlog%'
       from pg_proc p where p.oid = to_regprocedure('public.archive_habit(uuid)')), false)
     and to_regclass('private.backlog_rollover_settings') is not null
-    and has_function_privilege('authenticated', to_regprocedure('public.move_backlog_to_one_time(uuid)'), 'EXECUTE')
-    and has_function_privilege('authenticated', to_regprocedure('public.move_one_time_to_backlog(uuid)'), 'EXECUTE')
-    and has_function_privilege('authenticated', to_regprocedure('public.rollover_unfinished_one_time_quests()'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.move_backlog_to_one_time(uuid)'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.move_one_time_to_backlog(uuid)'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.rollover_unfinished_one_time_quests()'), 'EXECUTE')
     and not has_function_privilege('anon', to_regprocedure('public.move_backlog_to_one_time(uuid)'), 'EXECUTE')
-    and coalesce((select pg_get_functiondef(p.oid) ilike '%rollover_unfinished_one_time_quests%'
+    -- S02 055: the read no longer rolls quests over; preparation is a gateway operation.
+    and coalesce((select pg_get_functiondef(p.oid) not ilike '%rollover_unfinished_one_time_quests%'
+        and pg_get_functiondef(p.oid) not ilike '%ensure_habit_occurrences%'
       from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false), false),
   '038 Backlog quests, genre, optional time and server-owned moves are in place');
 
 -- Migration 039: Gym quick-log weights and the two newest weights per exercise.
 select ok(coalesce(
-    has_function_privilege('authenticated', to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'), 'EXECUTE')
+    not has_function_privilege('authenticated', to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'), 'EXECUTE')
     and not has_function_privilege('anon', to_regprocedure('public.log_gym_weight(uuid,uuid,numeric)'), 'EXECUTE')
     and has_function_privilege('authenticated', to_regprocedure('public.recent_gym_weights(uuid)'), 'EXECUTE')
     and not has_function_privilege('anon', to_regprocedure('public.recent_gym_weights(uuid)'), 'EXECUTE'), false),
@@ -181,7 +186,7 @@ select ok(coalesce(
     and exists (select 1 from pg_trigger where tgrelid = 'public.habits'::regclass and tgname = 'habits_one_time_date_guard' and not tgisinternal)
     and coalesce((select pg_get_functiondef(p.oid) ilike '%is already completed%'
       from pg_proc p where p.oid = to_regprocedure('public.complete_habit(uuid,date,public.completion_kind)')), false)
-    and coalesce((select pg_get_functiondef(p.oid) ilike '%scheduled_date > v_today%'
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%scheduled_date>v_today%'
       from pg_proc p where p.oid = to_regprocedure('public.get_habits_for_date(date)')), false)
     and not has_function_privilege('authenticated', to_regprocedure('public.guard_one_time_date_change()'), 'EXECUTE'), false),
   '042 Optional one-time date and upcoming quests are in place');
@@ -203,8 +208,8 @@ select ok(coalesce(
     and exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'long_quests' and column_name = 'position' and is_nullable = 'NO')
     and exists (select 1 from pg_trigger where tgrelid = 'public.habits'::regclass and tgname = 'habits_place_on_top' and not tgisinternal)
     and exists (select 1 from pg_trigger where tgrelid = 'public.long_quests'::regclass and tgname = 'long_quests_place_on_top' and not tgisinternal)
-    and has_function_privilege('authenticated', to_regprocedure('public.reorder_quests(text,uuid[])'), 'EXECUTE')
-    and has_function_privilege('authenticated', to_regprocedure('public.reorder_long_quests(uuid[])'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.reorder_quests(text,uuid[])'), 'EXECUTE')
+    and not has_function_privilege('authenticated', to_regprocedure('public.reorder_long_quests(uuid[])'), 'EXECUTE')
     and not has_function_privilege('anon', to_regprocedure('public.reorder_quests(text,uuid[])'), 'EXECUTE')
     and not has_function_privilege('authenticated', to_regprocedure('public.backfill_manual_order(uuid)'), 'EXECUTE'), false),
   '044 The manual order is in place');
@@ -215,7 +220,7 @@ select ok(coalesce(
     and to_regclass('private.ai_provider_exhaustion') is not null
     and has_function_privilege('service_role', to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'), 'EXECUTE')
     and not has_function_privilege('authenticated', to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'), 'EXECUTE')
-    and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)')), false), false),
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = coalesce(to_regprocedure('private.ai_begin_request_before_age(uuid,text,uuid,date)'),to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)'))), false), false),
   '045 The AI provider ledger is in place');
 
 -- Migration 046: refund a failed AI request's per-user attempt.
@@ -226,5 +231,22 @@ select ok(coalesce(
     and not has_function_privilege('anon', to_regprocedure('public.ai_release_request(uuid)'), 'EXECUTE'), false),
   '046 The AI refund is in place');
 
+--051 is additive/local: legacy names still exist but only instrumented callers can proceed.
+select ok(
+ to_regclass('private.ai_admission_control') is not null
+ and to_regclass('private.ai_execution_epochs') is not null
+ and to_regclass('private.ai_execution_details') is not null
+ and has_function_privilege('service_role','public.ai_admit_execution(uuid,text,uuid,date,uuid,integer)','EXECUTE')
+ and not has_function_privilege('authenticated','public.ai_admit_execution(uuid,text,uuid,date,uuid,integer)','EXECUTE')
+ and not has_function_privilege('service_role','private.open_ai_admission()','EXECUTE')
+ and (select relrowsecurity from pg_class where oid='private.ai_execution_details'::regclass),
+ '051 private admission and service-only execution contract exists');
+select ok(
+ to_regprocedure('public.owner_export_snapshot(uuid,uuid)') is not null
+ and has_function_privilege('service_role','public.owner_export_snapshot(uuid,uuid)','EXECUTE')
+ and not has_function_privilege('authenticated','public.owner_export_snapshot(uuid,uuid)','EXECUTE')
+ and not has_function_privilege('service_role','private.owner_export_manifest()','EXECUTE')
+ and (select provolatile='s' from pg_proc where oid='public.owner_export_snapshot(uuid,uuid)'::regprocedure),
+ '052 service-only read-only owner export exists');
 select * from finish();
 rollback;

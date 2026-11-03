@@ -8,6 +8,25 @@ set local statement_timeout = '30s';
 -- read-only ledger, and archive/restore pauses do not manufacture occurrences.
 select plan(58);
 
+-- Tracker writes go through public.apply_tracker_write (S02 contract). The
+-- fixture roots are legacy rows without provenance, i.e. custom roots.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+create function pg_temp.hw(op text, habit uuid, extra jsonb default '{}')
+returns jsonb language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_habit_id', habit) || extra,
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', habit, 'inputKind', 'custom'))
+  );
+$$;
+
 select has_table('public', 'deleted_habit_history', 'the deleted-habit history ledger exists');
 select has_table('public', 'habit_archive_intervals', 'archive intervals exist separately from executable habit state');
 select has_function('public', 'archive_habit', array['uuid']::text[], 'archive is an ownership-checked transport boundary');
@@ -28,13 +47,14 @@ select ok(
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
-  ('11111111-1111-4111-8111-111111111111', 'phase1-user-1@example.invalid', '{"display_name":"Phase 1 User 1","time_zone":"UTC"}'::jsonb),
-  ('22222222-2222-4222-8222-222222222222', 'phase1-user-2@example.invalid', '{"display_name":"Phase 1 User 2","time_zone":"UTC"}'::jsonb);
+  ('11111111-1111-4111-8111-111111111111', 'phase1-user-1@example.invalid', '{"display_name":"Phase 1 User 1","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
+  ('22222222-2222-4222-8222-222222222222', 'phase1-user-2@example.invalid', '{"display_name":"Phase 1 User 2","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
 
+reset role;
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, created_at
 )
@@ -60,7 +80,9 @@ values
     statement_timestamp() - interval '3 days'
   )
 ;
+set local role authenticated;
 
+reset role;
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, quest_type, scheduled_date, created_at
 )
@@ -76,7 +98,9 @@ values (
   (statement_timestamp() at time zone 'UTC')::date,
   statement_timestamp() - interval '1 day'
 );
+set local role authenticated;
 
+reset role;
 insert into public.habits (
   id, user_id, name, easy_version, stat, difficulty, days, archived, created_at
 )
@@ -91,15 +115,30 @@ values (
   true,
   statement_timestamp() - interval '3 days'
 );
+set local role authenticated;
 
+-- Legacy fixture roots need the owner's custom-tracker grant; reads no longer
+-- materialize occurrences, so the day is prepared through the gateway.
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+-- Model a grant that predates these backdated legacy schedules; 059 treats days
+-- before any custom-tracker grant as paused (legacy rollout), which is not what
+-- this test is about. The session role is restored afterwards.
+select set_config('eiyu.test_prior_role', current_setting('role'), true);
+reset role;
+update private.processing_consent_events set changed_at = '2000-01-01 00:00:00+00'
+ where user_id = auth.uid() and purpose = 'custom-tracker';
+select set_config('role', current_setting('eiyu.test_prior_role'), true);
 select lives_ok(
-  format($sql$select public.ensure_habit_occurrences(%L)$sql$, (statement_timestamp() at time zone 'UTC')::date),
+  $$select pg_temp.gw('prepare-day', '{}')$$,
   'the test fixture materializes current account-local occurrences'
 );
 
 select lives_ok(
   format(
-    $sql$select public.complete_habit('11111111-1111-4111-8111-111111111101', %L, 'full')$sql$,
+    $sql$select pg_temp.hw('complete_habit', '11111111-1111-4111-8111-111111111101', jsonb_build_object('p_completed_on', %L::date, 'p_kind', 'full'))$sql$,
     (statement_timestamp() at time zone 'UTC')::date
   ),
   'the active fixture has one server-authoritative completion'
@@ -111,7 +150,7 @@ select is(
 );
 
 select lives_ok(
-  $$select public.archive_habit('11111111-1111-4111-8111-111111111102')$$,
+  $$select pg_temp.hw('archive_habit', '11111111-1111-4111-8111-111111111102')$$,
   'archive succeeds for the owning account'
 );
 select is(
@@ -125,7 +164,7 @@ select is(
   'archive creates one interval'
 );
 select lives_ok(
-  $$select public.archive_habit('11111111-1111-4111-8111-111111111102')$$,
+  $$select pg_temp.hw('archive_habit', '11111111-1111-4111-8111-111111111102')$$,
   'repeating archive is idempotent'
 );
 select is(
@@ -134,7 +173,7 @@ select is(
   'repeating archive does not duplicate the interval'
 );
 select lives_ok(
-  $$select public.restore_habit('11111111-1111-4111-8111-111111111102')$$,
+  $$select pg_temp.hw('restore_habit', '11111111-1111-4111-8111-111111111102')$$,
   'restore succeeds for the owning account'
 );
 select is(
@@ -149,11 +188,11 @@ select is(
 );
 
 select lives_ok(
-  $$select public.archive_habit('11111111-1111-4111-8111-111111111103')$$,
+  $$select pg_temp.hw('archive_habit', '11111111-1111-4111-8111-111111111103')$$,
   'archive also supports one-time quests'
 );
 select lives_ok(
-  $$select public.restore_habit('11111111-1111-4111-8111-111111111103')$$,
+  $$select pg_temp.hw('restore_habit', '11111111-1111-4111-8111-111111111103')$$,
   'restore also supports one-time quests'
 );
 select is(
@@ -191,11 +230,11 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select lives_ok(
-  $$select public.archive_habit('11111111-1111-4111-8111-111111111102')$$,
+  $$select pg_temp.hw('archive_habit', '11111111-1111-4111-8111-111111111102')$$,
   'archiving a habit with open recovery preserves the recovery state'
 );
 select lives_ok(
-  $$select public.restore_habit('11111111-1111-4111-8111-111111111102')$$,
+  $$select pg_temp.hw('restore_habit', '11111111-1111-4111-8111-111111111102')$$,
   'restoring a habit with open recovery preserves the recovery state'
 );
 select is(
@@ -233,7 +272,7 @@ select set_config(
 );
 
 select lives_ok(
-  $$select public.delete_habit('11111111-1111-4111-8111-111111111101')$$,
+  $$select pg_temp.hw('delete_habit', '11111111-1111-4111-8111-111111111101')$$,
   'permanent delete succeeds for the owning account'
 );
 select is(
@@ -275,26 +314,30 @@ select is(
   20,
   'deleting a habit does not remove earned XP'
 );
-select lives_ok(
-  $$select public.delete_habit('11111111-1111-4111-8111-111111111101')$$,
-  'repeating delete is idempotent'
+-- The gateway verifies the target exists, so a retry after deletion is refused
+-- as an unavailable target instead of silently succeeding.
+select throws_ok(
+  $$select pg_temp.hw('delete_habit', '11111111-1111-4111-8111-111111111101')$$,
+  '42501',
+  'Tracker target unavailable.',
+  'repeating delete cannot resurrect or re-delete the definition'
 );
 select throws_ok(
-  $$select public.archive_habit('11111111-1111-4111-8111-111111111101')$$,
-  'P0001',
-  'habit 11111111-1111-4111-8111-111111111101 not found for calling user',
+  $$select pg_temp.hw('archive_habit', '11111111-1111-4111-8111-111111111101')$$,
+  '42501',
+  'Tracker target unavailable.',
   'a stale archive cannot resurrect a deleted definition'
 );
 select throws_ok(
-  $$select public.restore_habit('11111111-1111-4111-8111-111111111101')$$,
-  'P0001',
-  'habit 11111111-1111-4111-8111-111111111101 not found for calling user',
+  $$select pg_temp.hw('restore_habit', '11111111-1111-4111-8111-111111111101')$$,
+  '42501',
+  'Tracker target unavailable.',
   'a stale restore cannot resurrect a deleted definition'
 );
 select throws_ok(
-  $$select public.complete_habit('11111111-1111-4111-8111-111111111101', (statement_timestamp() at time zone 'UTC')::date, 'full')$$,
-  'P0001',
-  'habit 11111111-1111-4111-8111-111111111101 not found for calling user',
+  $$select pg_temp.hw('complete_habit', '11111111-1111-4111-8111-111111111101', jsonb_build_object('p_completed_on', (statement_timestamp() at time zone 'UTC')::date, 'p_kind', 'full'))$$,
+  '42501',
+  'Tracker target unavailable.',
   'a stale completion cannot resurrect a deleted definition or award XP'
 );
 
@@ -311,15 +354,17 @@ select throws_ok(
   'permission denied for table deleted_habit_history',
   'authenticated clients cannot forge retained history'
 );
-select lives_ok(
-  $$select public.delete_habit('22222222-2222-4222-8222-222222222201')$$,
-  'a missing or foreign ID is an indistinguishable, safe delete retry'
+select throws_ok(
+  $$select pg_temp.hw('delete_habit', '22222222-2222-4222-8222-222222222201')$$,
+  '42501',
+  'Tracker target unavailable.',
+  'a missing or foreign ID is an indistinguishable refusal'
 );
 
 -- A legacy archived row has no interval metadata. Restore must establish a
 -- conservative closed interval so materialization cannot backfill its pause.
 select lives_ok(
-  $$select public.restore_habit('11111111-1111-4111-8111-111111111104')$$,
+  $$select pg_temp.hw('restore_habit', '11111111-1111-4111-8111-111111111104')$$,
   'legacy archived rows can be restored'
 );
 select is(
@@ -328,7 +373,7 @@ select is(
   'legacy restore creates conservative interval metadata'
 );
 select lives_ok(
-  format($sql$select public.ensure_habit_occurrences(%L)$sql$, (statement_timestamp() at time zone 'UTC')::date),
+  $$select pg_temp.gw('prepare-day', '{}')$$,
   'restored legacy row can materialize only current/future eligibility'
 );
 select is(
@@ -356,11 +401,11 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
 select lives_ok(
-  $$select public.restore_habit('11111111-1111-4111-8111-111111111105')$$,
+  $$select pg_temp.hw('restore_habit', '11111111-1111-4111-8111-111111111105')$$,
   'an off-day archived habit can be restored'
 );
 select lives_ok(
-  format($sql$select public.ensure_habit_occurrences(%L)$sql$, (statement_timestamp() at time zone 'UTC')::date),
+  $$select pg_temp.gw('prepare-day', '{}')$$,
   'off-day restoration can reconcile without fabricating today'
 );
 select is(
@@ -392,7 +437,7 @@ select is(
   'the lifecycle timezone fixture uses a persisted IANA timezone'
 );
 select lives_ok(
-  $$select public.archive_habit('11111111-1111-4111-8111-111111111106')$$,
+  $$select pg_temp.hw('archive_habit', '11111111-1111-4111-8111-111111111106')$$,
   'archive succeeds at a timezone boundary'
 );
 select is(
@@ -401,7 +446,7 @@ select is(
   'archive interval stores the account-local transition date'
 );
 select lives_ok(
-  $$select public.restore_habit('11111111-1111-4111-8111-111111111106')$$,
+  $$select pg_temp.hw('restore_habit', '11111111-1111-4111-8111-111111111106')$$,
   'timezone-boundary archive can be restored'
 );
 
@@ -413,13 +458,27 @@ values ('22222222-2222-4222-8222-222222222201', '22222222-2222-4222-8222-2222222
 reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
-select lives_ok($$select public.delete_habit('22222222-2222-4222-8222-222222222201')$$, 'a foreign delete request is a safe no-op');
+select throws_ok($$select pg_temp.hw('delete_habit', '22222222-2222-4222-8222-222222222201')$$, '42501', 'Tracker target unavailable.', 'a foreign delete request is refused');
 set local role postgres;
 select is((select count(*) from public.habits where id = '22222222-2222-4222-8222-222222222201'), 1::bigint, 'a foreign delete request leaves the owner''s definition intact');
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select is(auth.uid(), '22222222-2222-4222-8222-222222222222'::uuid, 'the owner claim switches before the owner delete');
-select public.ensure_habit_occurrences((statement_timestamp() at time zone 'UTC')::date);
-select lives_ok($$select public.delete_habit('22222222-2222-4222-8222-222222222201')$$, 'the second owner can delete its own habit');
+set local role authenticated;
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+-- Model a grant that predates these backdated legacy schedules; 059 treats days
+-- before any custom-tracker grant as paused (legacy rollout), which is not what
+-- this test is about. The session role is restored afterwards.
+select set_config('eiyu.test_prior_role', current_setting('role'), true);
+reset role;
+update private.processing_consent_events set changed_at = '2000-01-01 00:00:00+00'
+ where user_id = auth.uid() and purpose = 'custom-tracker';
+select set_config('role', current_setting('eiyu.test_prior_role'), true);
+select pg_temp.gw('prepare-day', '{}');
+select lives_ok($$select pg_temp.hw('delete_habit', '22222222-2222-4222-8222-222222222201')$$, 'the second owner can delete its own habit');
+set local role postgres;
 select ok((select count(*) > 0 from public.deleted_habit_history where user_id = '22222222-2222-4222-8222-222222222222'), 'the second owner receives isolated retained history');
 delete from auth.users where id = '22222222-2222-4222-8222-222222222222';
 reset role;

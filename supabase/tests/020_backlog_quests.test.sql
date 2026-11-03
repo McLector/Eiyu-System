@@ -3,23 +3,53 @@ create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 select no_plan();
 
+-- Tracker writes go through public.apply_tracker_write (S02 contract). The
+-- fixture roots are legacy rows without provenance, i.e. custom roots.
+create function pg_temp.gw(op text, args jsonb, targets jsonb default '[]')
+returns jsonb language sql set search_path = '' as $$
+  select public.apply_tracker_write(
+    op,
+    args || jsonb_build_object('p_expected_targets', targets),
+    public.get_tracker_processing_access()->'revision'
+  );
+$$;
+create function pg_temp.hw(op text, habit uuid, extra jsonb default '{}')
+returns jsonb language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_habit_id', habit) || extra,
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', habit, 'inputKind', 'custom'))
+  );
+$$;
+create function pg_temp.hi(op text, id uuid) returns jsonb
+language sql set search_path = '' as $$
+  select pg_temp.gw(
+    op,
+    jsonb_build_object('p_id', id),
+    jsonb_build_array(jsonb_build_object('kind', 'habit', 'id', id, 'inputKind', 'custom'))
+  );
+$$;
+
 -- 038 adds the types, columns and server-owned moves.
 select has_function('public', 'move_backlog_to_one_time', array['uuid']::text[], 'Backlog to One-time is a server function');
 select has_function('public', 'move_one_time_to_backlog', array['uuid']::text[], 'One-time to Backlog is a server function');
 select has_function('public', 'rollover_unfinished_one_time_quests', array[]::text[], 'the midnight rollover is a server function');
-select ok(has_function_privilege('authenticated', 'public.move_backlog_to_one_time(uuid)', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.move_one_time_to_backlog(uuid)', 'EXECUTE')
-    and has_function_privilege('authenticated', 'public.rollover_unfinished_one_time_quests()', 'EXECUTE')
+-- S02 054: these are reachable only through public.apply_tracker_write.
+select ok(not has_function_privilege('authenticated', 'public.move_backlog_to_one_time(uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.move_one_time_to_backlog(uuid)', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.rollover_unfinished_one_time_quests()', 'EXECUTE')
+    and has_function_privilege('authenticated', 'public.apply_tracker_write(text,jsonb,jsonb)', 'EXECUTE')
+    and not has_function_privilege('anon', 'public.apply_tracker_write(text,jsonb,jsonb)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.move_backlog_to_one_time(uuid)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.move_one_time_to_backlog(uuid)', 'EXECUTE')
     and not has_function_privilege('anon', 'public.rollover_unfinished_one_time_quests()', 'EXECUTE'),
-  'only signed-in users can call the new functions');
+  'only the signed-in write gateway can reach the moves and the rollover');
 select ok(not has_table_privilege('authenticated', 'private.backlog_rollover_settings', 'SELECT'),
   'rollover settings are private');
 
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('20000000-0000-4000-8000-00000000000a', 'backlog-a@example.invalid', '{"display_name":"Backlog A","time_zone":"UTC"}'),
-  ('20000000-0000-4000-8000-00000000000b', 'backlog-b@example.invalid', '{"display_name":"Backlog B","time_zone":"UTC"}');
+  ('20000000-0000-4000-8000-00000000000a', 'backlog-a@example.invalid', '{"display_name":"Backlog A","time_zone":"UTC","birth_date":"2000-01-01"}'),
+  ('20000000-0000-4000-8000-00000000000b', 'backlog-b@example.invalid', '{"display_name":"Backlog B","time_zone":"UTC","birth_date":"2000-01-01"}');
 
 -- The cutover only protects pre-existing quests; the rollover tests start with it far in the past.
 update private.backlog_rollover_settings set cutover = date '2000-01-01';
@@ -44,7 +74,21 @@ update public.habits set reminder_time = '19:00' where id = '20000000-0000-4000-
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-00000000000b', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
-select lives_ok($$select count(*) from public.get_habits_for_date((statement_timestamp() at time zone 'UTC')::date)$$, 'B loads the board');
+-- Fixture quests are legacy (custom) roots: B grants custom tracking, and the
+-- board is prepared explicitly because the read no longer materializes.
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+-- Model a grant that predates these backdated legacy schedules; 059 treats days
+-- before any custom-tracker grant as paused (legacy rollout), which is not what
+-- this test is about. The session role is restored afterwards.
+select set_config('eiyu.test_prior_role', current_setting('role'), true);
+reset role;
+update private.processing_consent_events set changed_at = '2000-01-01 00:00:00+00'
+ where user_id = auth.uid() and purpose = 'custom-tracker';
+select set_config('role', current_setting('eiyu.test_prior_role'), true);
+select lives_ok($$select pg_temp.gw('prepare-day', '{}')$$, 'B prepares the board');
 reset role;
 select is((select quest_type from public.habits where id = '20000000-0000-4000-8000-0000000000c1'), 'one_time',
   'B loading the board does not roll over A''s quest');
@@ -57,10 +101,13 @@ select is((select count(*) from public.habit_occurrences where habit_id = '20000
 -- reads a past day): it must still record the missed day before the quest leaves One-time.
 insert into public.habits (id, user_id, name, easy_version, stat, difficulty, quest_type, days, time_set, scheduled_date, created_at) values
   ('20000000-0000-4000-8000-0000000000d2', '20000000-0000-4000-8000-00000000000b', 'B missed, never loaded', null, 'STR', 'Easy', 'one_time', '{0,1,2,3,4,5,6}', false, (statement_timestamp() at time zone 'UTC')::date - 1, now() - interval '10 days');
+-- Clients cannot call the rollover directly any more; the retained routine is
+-- exercised as the owner for B (the claim still names B's account).
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-00000000000b', true);
-select lives_ok($$select public.rollover_unfinished_one_time_quests()$$, 'B runs the rollover directly');
+select throws_ok($$select public.rollover_unfinished_one_time_quests()$$, '42501', null, 'clients cannot run the rollover directly');
 reset role;
+select lives_ok($$select public.rollover_unfinished_one_time_quests()$$, 'B runs the rollover directly');
 select is((select quest_type from public.habits where id = '20000000-0000-4000-8000-0000000000d2'), 'backlog',
   'a direct rollover returns the quest to Backlog');
 select is((select count(*) from public.habit_occurrences where habit_id = '20000000-0000-4000-8000-0000000000d2'
@@ -70,10 +117,14 @@ select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claims', '', true);
 select throws_ok($$select public.rollover_unfinished_one_time_quests()$$, 'P0001', null, 'the rollover needs a signed-in caller');
 
--- A: shape constraints.
+-- A: shape constraints. Clients cannot insert directly, so the CHECK constraints
+-- are exercised as the table owner and one client insert proves the denial.
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-00000000000a', true);
 select set_config('request.jwt.claim.role', 'authenticated', true);
+select throws_ok($$insert into public.habits (user_id, name, easy_version, stat, difficulty, quest_type, days) values ('20000000-0000-4000-8000-00000000000a', 'client write', null, 'INT', 'Easy', 'backlog', '{}')$$,
+  '42501', null, 'clients cannot insert quests directly');
+reset role;
 select throws_ok($$insert into public.habits (user_id, name, easy_version, stat, difficulty, quest_type, days, genre) values ('20000000-0000-4000-8000-00000000000a', 'bad genre', null, 'INT', 'Easy', 'backlog', '{}', 'bogus')$$,
   '23514', null, 'an unknown genre is rejected');
 select throws_ok($$insert into public.habits (user_id, name, easy_version, stat, difficulty, quest_type, days, scheduled_date) values ('20000000-0000-4000-8000-00000000000a', 'dated backlog', null, 'INT', 'Easy', 'backlog', '{}', (statement_timestamp() at time zone 'UTC')::date)$$,
@@ -88,15 +139,30 @@ select throws_ok($$insert into public.habits (user_id, name, easy_version, stat,
   '23514', null, 'a Backlog row carries no weekdays');
 select throws_ok($$insert into public.habits (user_id, name, easy_version, stat, difficulty, quest_type, days, time_set, target_count) values ('20000000-0000-4000-8000-00000000000a', 'counted backlog', null, 'INT', 'Easy', 'backlog', '{}', false, 3)$$,
   '23514', null, 'a Backlog row carries no target count');
-select lives_ok($$insert into public.habits (user_id, name, easy_version, stat, difficulty, quest_type, days, time_set, genre) values ('20000000-0000-4000-8000-00000000000a', 'Fresh idea', null, 'WIS', 'Easy', 'backlog', '{}', false, 'todo')$$,
+set local role authenticated;
+select public.set_tracker_processing_consent(
+  'custom-tracker', true, '2026-10-23-custom-tracker-v1',
+  public.get_tracker_processing_access()->'revision'
+);
+-- Model a grant that predates these backdated legacy schedules; 059 treats days
+-- before any custom-tracker grant as paused (legacy rollout), which is not what
+-- this test is about. The session role is restored afterwards.
+select set_config('eiyu.test_prior_role', current_setting('role'), true);
+reset role;
+update private.processing_consent_events set changed_at = '2000-01-01 00:00:00+00'
+ where user_id = auth.uid() and purpose = 'custom-tracker';
+select set_config('role', current_setting('eiyu.test_prior_role'), true);
+select lives_ok($$select pg_temp.gw('habit-save', '{"p_id":"20000000-0000-4000-8000-0000000000e1","p_create":true,"p_mode":"custom","p_input":{"questType":"backlog","name":"Fresh idea","stat":"WIS","difficulty":"Easy","time":"08:00","days":[],"genre":"todo"}}')$$,
   'a Backlog quest needs no penalty');
 
 -- Backlog quests cannot be archived, completed or progressed.
-select throws_ok($$select public.archive_habit('20000000-0000-4000-8000-0000000000b1')$$, 'P0001', null, 'a Backlog quest cannot be archived');
-select throws_ok($$select public.complete_habit('20000000-0000-4000-8000-0000000000b1', (statement_timestamp() at time zone 'UTC')::date, 'full')$$, 'P0001', null, 'a Backlog quest cannot be completed');
-select throws_ok($$select public.increment_habit_progress('20000000-0000-4000-8000-0000000000b1', (statement_timestamp() at time zone 'UTC')::date, 1)$$, 'P0001', null, 'a Backlog quest has no progress counter');
+select throws_ok($$select pg_temp.hw('archive_habit', '20000000-0000-4000-8000-0000000000b1')$$, 'P0001', null, 'a Backlog quest cannot be archived');
+select throws_ok($$select pg_temp.hw('complete_habit', '20000000-0000-4000-8000-0000000000b1', jsonb_build_object('p_completed_on', (statement_timestamp() at time zone 'UTC')::date, 'p_kind', 'full'))$$, 'P0001', null, 'a Backlog quest cannot be completed');
+select throws_ok($$select pg_temp.hw('increment_habit_progress', '20000000-0000-4000-8000-0000000000b1', jsonb_build_object('p_date', (statement_timestamp() at time zone 'UTC')::date, 'p_delta', 1))$$, 'P0001', null, 'a Backlog quest has no progress counter');
 
 -- Board load: Backlog never appears; the rollover returns only yesterday's unfinished quest.
+-- The rollover now happens in the explicit prepare-day operation, not in the read.
+select pg_temp.gw('prepare-day', '{}');
 select is((select count(*) from public.get_habits_for_date((statement_timestamp() at time zone 'UTC')::date) where id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint,
   'the board query never returns a Backlog quest');
 select is((select quest_type from public.habits where id = '20000000-0000-4000-8000-0000000000c1'), 'backlog', 'an unfinished quest from yesterday returned to Backlog');
@@ -122,21 +188,21 @@ insert into public.habits (id, user_id, name, easy_version, stat, difficulty, qu
   ('20000000-0000-4000-8000-0000000000c5', '20000000-0000-4000-8000-00000000000a', 'Ancient task', null, 'INT', 'Easy', 'one_time', '{0,1,2,3,4,5,6}', false, (statement_timestamp() at time zone 'UTC')::date - 5, now() - interval '20 days');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-00000000000a', true);
-select lives_ok($$select count(*) from public.get_habits_for_date((statement_timestamp() at time zone 'UTC')::date)$$, 'A loads the board again');
+select lives_ok($$select pg_temp.gw('prepare-day', '{}')$$, 'A prepares the board again');
 select is((select quest_type from public.habits where id = '20000000-0000-4000-8000-0000000000c5'), 'one_time', 'a quest older than the cutover is left alone');
 
 -- Moves.
-select lives_ok($$select public.move_backlog_to_one_time('20000000-0000-4000-8000-0000000000b1')$$, 'Backlog moves to One-time');
+select lives_ok($$select pg_temp.hi('move_backlog_to_one_time', '20000000-0000-4000-8000-0000000000b1')$$, 'Backlog moves to One-time');
 select is((select quest_type from public.habits where id = '20000000-0000-4000-8000-0000000000b1'), 'one_time', 'it is now One-time');
 select is((select scheduled_date from public.habits where id = '20000000-0000-4000-8000-0000000000b1'), (statement_timestamp() at time zone 'UTC')::date, 'dated today by the server');
 select is((select time_set from public.habits where id = '20000000-0000-4000-8000-0000000000b1'), false, 'with no set time');
 select is((select reminder_time from public.habits where id = '20000000-0000-4000-8000-0000000000b1'), '08:00'::time, 'stored as the untimed 08:00');
+select pg_temp.gw('prepare-day', '{}');
 select is((select count(*) from public.get_habits_for_date((statement_timestamp() at time zone 'UTC')::date) where id = '20000000-0000-4000-8000-0000000000b1'), 1::bigint, 'and it is on today''s board');
-select throws_ok($$select public.move_backlog_to_one_time('20000000-0000-4000-8000-0000000000b1')$$, 'P0001', null, 'a quest that is not in Backlog cannot be moved again');
+select throws_ok($$select pg_temp.hi('move_backlog_to_one_time', '20000000-0000-4000-8000-0000000000b1')$$, 'P0001', null, 'a quest that is not in Backlog cannot be moved again');
 -- The user gives it a time and a penalty while it is One-time; going back to Backlog clears both.
-update public.habits set reminder_time = '20:00', time_set = true, easy_version = 'Do less'
-where id = '20000000-0000-4000-8000-0000000000b1';
-select lives_ok($$select public.move_one_time_to_backlog('20000000-0000-4000-8000-0000000000b1')$$, 'One-time returns to Backlog');
+select pg_temp.gw('habit-save', '{"p_id":"20000000-0000-4000-8000-0000000000b1","p_create":false,"p_mode":"custom","p_input":{"questType":"one_time","name":"Backlog idea","stat":"INT","difficulty":"Easy","time":"20:00","timeSet":true,"days":[0,1,2,3,4,5,6],"genre":"tool","scheduledDate":null}}', '[{"kind":"habit","id":"20000000-0000-4000-8000-0000000000b1","inputKind":"custom"}]');
+select lives_ok($$select pg_temp.hi('move_one_time_to_backlog', '20000000-0000-4000-8000-0000000000b1')$$, 'One-time returns to Backlog');
 select is((select time_set from public.habits where id = '20000000-0000-4000-8000-0000000000b1'), false, 'back in Backlog with no set time');
 select is((select reminder_time from public.habits where id = '20000000-0000-4000-8000-0000000000b1'), '08:00'::time, 'back in Backlog stored as 08:00');
 select is((select easy_version from public.habits where id = '20000000-0000-4000-8000-0000000000b1'), null::text, 'back in Backlog with no penalty');
@@ -149,15 +215,15 @@ select is((select count(*) from jsonb_array_elements(public.read_history_range((
   'History shows nothing for it today');
 
 -- A completed One-time quest cannot return.
-select public.move_backlog_to_one_time('20000000-0000-4000-8000-0000000000b1');
-select lives_ok($$select count(*) from public.get_habits_for_date((statement_timestamp() at time zone 'UTC')::date)$$, 'occurrence created');
-select lives_ok($$select public.complete_habit('20000000-0000-4000-8000-0000000000b1', (statement_timestamp() at time zone 'UTC')::date, 'full')$$, 'completes today');
-select throws_ok($$select public.move_one_time_to_backlog('20000000-0000-4000-8000-0000000000b1')$$, 'P0001', null, 'a completed quest cannot go back to Backlog');
+select pg_temp.hi('move_backlog_to_one_time', '20000000-0000-4000-8000-0000000000b1');
+select lives_ok($$select pg_temp.gw('prepare-day', '{}')$$, 'occurrence created');
+select lives_ok($$select pg_temp.hw('complete_habit', '20000000-0000-4000-8000-0000000000b1', jsonb_build_object('p_completed_on', (statement_timestamp() at time zone 'UTC')::date, 'p_kind', 'full'))$$, 'completes today');
+select throws_ok($$select pg_temp.hi('move_one_time_to_backlog', '20000000-0000-4000-8000-0000000000b1')$$, 'P0001', null, 'a completed quest cannot go back to Backlog');
 
 -- Ownership.
 select set_config('request.jwt.claim.sub', '20000000-0000-4000-8000-00000000000b', true);
-select throws_ok($$select public.move_one_time_to_backlog('20000000-0000-4000-8000-0000000000c3')$$, 'P0001', null, 'B cannot move A''s One-time quest');
-select throws_ok($$select public.move_backlog_to_one_time('20000000-0000-4000-8000-0000000000c1')$$, 'P0001', null, 'B cannot move A''s Backlog quest');
+select throws_ok($$select pg_temp.hi('move_one_time_to_backlog', '20000000-0000-4000-8000-0000000000c3')$$, '42501', 'Tracker target unavailable.', 'B cannot move A''s One-time quest');
+select throws_ok($$select pg_temp.hi('move_backlog_to_one_time', '20000000-0000-4000-8000-0000000000c1')$$, '42501', 'Tracker target unavailable.', 'B cannot move A''s Backlog quest');
 
 select * from finish();
 rollback;
