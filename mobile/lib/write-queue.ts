@@ -325,10 +325,10 @@ function isEntry(value: unknown): value is QueueEntry {
   );
 }
 
-const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value);
+const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 
 /** A revision is kept only when it is well formed and belongs to the entry's owner; anything else counts as absent. */
-function cleanRevision(value: unknown, userId: string): TrackerRevision | undefined {
+export function cleanRevision(value: unknown, userId: string): TrackerRevision | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const r = value as Record<string, unknown>;
   if (r.userId !== userId || !isCount(r.ageVersion) || !isCount(r.consentVersion) || !isCount(r.authorityVersion)) return undefined;

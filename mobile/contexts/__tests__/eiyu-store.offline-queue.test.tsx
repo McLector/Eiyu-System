@@ -6,7 +6,8 @@ import { Text } from 'react-native';
 
 import { encodeQueue, type QueueEntry } from '@/lib/write-queue';
 import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
-import { basicTarget, CLASSIFIED, createTrackerMocks, resetTrackerMocks, revisionOf } from '@/test-support/tracker-fixtures';
+import { trackerWriteMarkerKey } from '@/lib/tracker-write-marker';
+import { basicTarget, CLASSIFIED, createTrackerMocks, resetTrackerMocks, revisionOf, trackerAccess } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 // Each step here crosses several async hops (storage, engine, query refetch); a full parallel run is slower than one suite alone.
@@ -53,7 +54,8 @@ jest.doMock('@eiyu/shared', () => ({
   ...mockTracker,
   completeHabit: mockCompleteHabit,
 }));
-jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user: { id: 'user-1' } } }) }));
+const mockAuth: { session: { user: { id: string } } | null } = { session: { user: { id: 'user-1' } } };
+jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: mockAuth.session }) }));
 // The store filters reminder rows with the real, pure helper; native scheduling stays mocked.
 jest.doMock('@/lib/notifications', () => ({ ...mockNative, filterReminderRows: jest.requireActual('@/lib/notifications').filterReminderRows }));
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
@@ -117,6 +119,7 @@ const storedEntry = (overrides: Partial<QueueEntry> = {}): QueueEntry => ({
 beforeEach(async () => {
   jest.clearAllMocks();
   resetTrackerMocks(mockTracker);
+  mockAuth.session = { user: { id: 'user-1' } };
   jest.useFakeTimers({
     now: DAY1,
     doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback'],
@@ -392,5 +395,172 @@ describe('across app launches', () => {
     await mountStore();
     await waitFor(() => expect(currentStore?.failedSyncs).toHaveLength(1));
     expect(mockCompleteHabit).not.toHaveBeenCalled();
+  });
+});
+
+describe('offline at a cold start, before any live access read', () => {
+  const custom: Quest = { ...quest, inputKind: 'custom', canWrite: true };
+  const customTarget = [{ kind: 'habit', id: 'habit-1', inputKind: 'custom' }];
+  const liveCustomTargets = async (kind: string, ids: string[]) => ids.map(id => ({ kind, id, inputKind: 'custom', canWrite: true }));
+  const saveMarker = (over: Record<string, unknown> = {}) => AsyncStorage.setItem(trackerWriteMarkerKey('user-1'), JSON.stringify({
+    userId: 'user-1', revision: revisionOf(), canWriteBasic: true, canWriteCustom: true, savedAt: DAY1.getTime() - 60_000, ...over,
+  }));
+  async function coldStart(habits: Quest[] = [custom]) {
+    mockTracker.fetchTrackerAccess.mockRejectedValue(new TypeError('Network request failed'));
+    mockShared.fetchTodayHabits.mockResolvedValue(habits);
+    await startOffline();
+    await act(async () => { await tick(); });
+  }
+  const tap = () => act(async () => { currentStore!.toggleQuest('habit-1'); });
+  function expectRefused() {
+    expect(currentStore?.syncEntries).toEqual([]);
+    expect(byId('habit-1')?.completed).toBe(false);
+  }
+
+  it('queues a tap on an ordinary custom quest, and sends it only after the live check passes', async () => {
+    await saveMarker();
+    await coldStart();
+    await tap();
+    expect(byId('habit-1')?.completed).toBe(true);
+    expect(currentStore?.syncEntries).toEqual([expect.objectContaining({ kind: 'complete', trackerRevision: revisionOf(), trackerTargets: customTarget })]);
+    expect(mockCompleteHabit).not.toHaveBeenCalled();
+
+    mockTracker.fetchTrackerAccess.mockImplementation(async () => trackerAccess({}, 'user-1'));
+    mockTracker.fetchTrackerTargets.mockImplementation(liveCustomTargets);
+    mockShared.fetchTodayHabits.mockResolvedValue([{ ...custom, completed: true }]);
+    await goOnline();
+    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', 'full', revisionOf(), customTarget, TODAY, 'UTC'));
+    await waitFor(() => expect(currentStore?.syncEntries).toEqual([]));
+  });
+  it('queues a tap on a basic quest', async () => {
+    await saveMarker({ canWriteCustom: false });
+    await coldStart([quest]);
+    await tap();
+    expect(currentStore?.syncEntries).toEqual([expect.objectContaining({ kind: 'complete', trackerTargets: basicTarget('habit-1') })]);
+  });
+  it('queues offline progress the same way', async () => {
+    await saveMarker();
+    await coldStart([water]);
+    await act(async () => { currentStore!.adjustProgress('water', 1); });
+    expect(currentStore?.syncEntries).toEqual([expect.objectContaining({ kind: 'progress', delta: 1 })]);
+  });
+
+  it('holds the tap when custom permission was withdrawn elsewhere, and never sends it', async () => {
+    await saveMarker();
+    await coldStart();
+    await tap();
+    mockTracker.fetchTrackerAccess.mockImplementation(async () => trackerAccess({ customConsent: false, canWriteCustom: false }, 'user-1'));
+    mockTracker.fetchTrackerTargets.mockImplementation(async (kind: string, ids: string[]) => ids.map(id => ({ kind, id, inputKind: 'custom', canWrite: false })));
+    await goOnline();
+    await waitFor(() => expect(currentStore?.failedSyncs).toHaveLength(1));
+    expect(currentStore?.failedSyncs[0]).toEqual(expect.objectContaining({ heldForProcessingPause: true }));
+    expect(mockCompleteHabit).not.toHaveBeenCalled();
+  });
+  it('holds the tap when the account was paused in the meantime, and never sends it', async () => {
+    await saveMarker();
+    await coldStart();
+    await tap();
+    mockTracker.fetchTrackerAccess.mockImplementation(async () => trackerAccess({ canWriteBasic: false, canWriteCustom: false }, 'user-1'));
+    await goOnline();
+    await waitFor(() => expect(currentStore?.failedSyncs).toHaveLength(1));
+    expect(currentStore?.failedSyncs[0]).toEqual(expect.objectContaining({ heldForTrackerPause: true }));
+    expect(mockCompleteHabit).not.toHaveBeenCalled();
+  });
+  it('holds the tap when the server refuses the revision it was made under', async () => {
+    await saveMarker();
+    await coldStart();
+    await tap();
+    const moved = { ...revisionOf(), consentVersion: revisionOf().consentVersion + 1 };
+    mockTracker.fetchTrackerAccess.mockImplementation(async () => trackerAccess({ revision: moved }, 'user-1'));
+    mockTracker.fetchTrackerTargets.mockImplementation(liveCustomTargets);
+    mockCompleteHabit.mockRejectedValue({ code: 'ET003', message: 'Tracker access changed.' });
+    await goOnline();
+    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', 'full', revisionOf(), customTarget, TODAY, 'UTC'));
+    await waitFor(() => expect(currentStore?.failedSyncs).toHaveLength(1));
+    expect(currentStore?.failedSyncs[0]).toEqual(expect.objectContaining({ heldForProcessingPause: true }));
+  });
+
+  it('refuses a tap when no marker is stored', async () => {
+    await coldStart();
+    await tap();
+    expectRefused();
+  });
+  it('refuses a custom quest when the marker has no custom grant', async () => {
+    await saveMarker({ canWriteCustom: false });
+    await coldStart();
+    await tap();
+    expectRefused();
+  });
+  it('refuses a tap when the last read showed a paused account', async () => {
+    await saveMarker({ canWriteBasic: false, canWriteCustom: false });
+    await coldStart();
+    await tap();
+    expectRefused();
+  });
+  it('refuses a tap when the marker is too old', async () => {
+    await saveMarker({ savedAt: DAY1.getTime() - 7 * 24 * 60 * 60 * 1000 });
+    await coldStart();
+    await tap();
+    expectRefused();
+  });
+  it('refuses a tap when the marker belongs to another account', async () => {
+    await saveMarker({ userId: 'user-2', revision: revisionOf('user-2') });
+    await coldStart();
+    await tap();
+    expectRefused();
+  });
+  it('refuses a quest whose kind or writability is unknown', async () => {
+    await saveMarker();
+    await coldStart([{ ...quest, inputKind: undefined, canWrite: undefined }]);
+    await tap();
+    expectRefused();
+  });
+  it('never lets a marker unlock a write that goes straight to the server', async () => {
+    await saveMarker();
+    await coldStart();
+    await expect(currentStore!.reorderQuests('habit', ['habit-1'])).rejects.toThrow();
+    expect(currentStore?.syncEntries).toEqual([]);
+  });
+});
+
+describe('keeping the stored marker current', () => {
+  const stored = async () => JSON.parse((await AsyncStorage.getItem(trackerWriteMarkerKey('user-1'))) ?? 'null');
+
+  it('saves the projection after a live read, without consent details', async () => {
+    await mountStore();
+    await waitFor(async () => expect(await stored()).toEqual({
+      userId: 'user-1', revision: revisionOf(), canWriteBasic: true, canWriteCustom: true, savedAt: DAY1.getTime(),
+    }));
+  });
+  it('replaces an earlier grant when a live read shows a pause', async () => {
+    await AsyncStorage.setItem(trackerWriteMarkerKey('user-1'), JSON.stringify({
+      userId: 'user-1', revision: revisionOf(), canWriteBasic: true, canWriteCustom: true, savedAt: DAY1.getTime() - 1,
+    }));
+    mockTracker.fetchTrackerAccess.mockImplementation(async () => trackerAccess({ canWriteBasic: false, canWriteCustom: false }, 'user-1'));
+    await mountStore();
+    await waitFor(async () => expect(await stored()).toEqual(expect.objectContaining({ canWriteBasic: false, canWriteCustom: false })));
+  });
+  it('leaves the marker alone when the live read fails', async () => {
+    await AsyncStorage.setItem(trackerWriteMarkerKey('user-1'), JSON.stringify({
+      userId: 'user-1', revision: revisionOf(), canWriteBasic: true, canWriteCustom: true, savedAt: DAY1.getTime() - 1,
+    }));
+    mockTracker.fetchTrackerAccess.mockRejectedValue(new TypeError('Network request failed'));
+    await mountStore();
+    await waitFor(() => expect(quests().length).toBeGreaterThan(0));
+    await act(async () => { await tick(); });
+    expect(await stored()).toEqual(expect.objectContaining({ savedAt: DAY1.getTime() - 1 }));
+  });
+  it('removes the marker on sign-out', async () => {
+    const view = await mountStore();
+    await waitFor(async () => expect(await stored()).not.toBeNull());
+    mockAuth.session = null;
+    await act(async () => {
+      view.rerender(
+        <QueryClientProvider client={activeClient!}>
+          <EiyuProvider><Probe /></EiyuProvider>
+        </QueryClientProvider>
+      );
+    });
+    await waitFor(async () => expect(await stored()).toBeNull());
   });
 });

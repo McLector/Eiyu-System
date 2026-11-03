@@ -105,7 +105,7 @@ export function refreshTrackerAfterFailure(qc: QueryClient, userId: string | und
 export interface TrackedRecord { inputKind?: TrackerInputKind; canWrite?: boolean }
 
 /** A known denial, decided before anything is sent. An unclassified record counts as custom and read-only. */
-export function writeDenial(access: TrackerAccess | null | undefined, records: readonly TrackedRecord[]): string | null {
+export function writeDenial(access: Pick<TrackerAccess, 'canWriteBasic' | 'canWriteCustom'> | null | undefined, records: readonly TrackedRecord[]): string | null {
   if (!access) return TRACKER_ACCESS_MESSAGE;
   if (!access.canWriteBasic) return TRACKER_MESSAGES.paused;
   for (const record of records) {

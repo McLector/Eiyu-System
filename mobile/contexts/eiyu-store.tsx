@@ -101,6 +101,13 @@ import {
   type TrackedRecord,
 } from '@/contexts/tracker-access';
 import { newRequestId } from '@/lib/request-id';
+import {
+  clearTrackerWriteMarker,
+  markerAccess,
+  readTrackerWriteMarker,
+  saveTrackerWriteMarker,
+  type TrackerWriteMarker,
+} from '@/lib/tracker-write-marker';
 import { useWriteQueue } from '@/lib/use-write-queue';
 import { useWidgetSnapshot } from '@/lib/use-widget-snapshot';
 import {
@@ -335,6 +342,19 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const tracker = trackerQuery.data && trackerQuery.data.revision.userId === userId ? trackerQuery.data : null;
   const trackerRef = useRef<TrackerAccess | null>(null);
   trackerRef.current = tracker;
+  const writeMarker = useRef<TrackerWriteMarker | null>(null);
+  useEffect(() => {
+    writeMarker.current = null;
+    if (!userId) return undefined;
+    let live = true;
+    void readTrackerWriteMarker(userId).then(marker => { if (live) writeMarker.current = marker; });
+    return () => { live = false; };
+  }, [userId]);
+  // Every live read replaces the marker, denials included, so a pause is remembered as firmly as a grant.
+  const trackerReadAt = trackerQuery.dataUpdatedAt;
+  useEffect(() => {
+    if (tracker) void saveTrackerWriteMarker(tracker, Date.now());
+  }, [tracker, trackerReadAt]);
   // Only an account that can still be asked for an optional purpose can see a prompt, so only it reads the age band.
   const audience = useAccountAudience(userId, !!tracker && !(tracker.customConsent && tracker.fitnessConsent));
   // Reminders and the widget only need the two permission bits; keying on them avoids a resync on every access refetch.
@@ -433,6 +453,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     const previousUserId = activeUserId.current;
     if (previousUserId && previousUserId !== userId) {
       qc.removeQueries({ predicate: query => query.queryKey.includes(previousUserId) });
+      void clearTrackerWriteMarker(previousUserId);
     }
     if (!userId) qc.removeQueries();
     activeUserId.current = userId;
@@ -831,11 +852,14 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   /**
    * Hands one progress write to the queue with the capability and the record's kind as the person saw them. A known
    * denial is decided here and by the queue; neither stores the label or the action. Returns whether it was accepted.
+   * With no live read yet (usually offline at a cold start) the stored marker stands in, for queuing only: the queue
+   * checks access again before sending, and the server decides.
    */
   const enqueueTracked = (request: { kind: 'complete' | 'undo' | 'progress' | 'recovery'; habitId: string; delta?: number; base?: number; label: string }, quest: Quest): boolean => {
-    let gate: ReturnType<typeof authorize>;
-    try { gate = authorize('habit', [quest]); } catch (err) { setQuestActionError(formatError(err)); return false; }
-    const accepted = enqueueWrite({ ...request, trackerAccess: gate.access, trackerTargets: gate.targets });
+    const access = trackerRef.current ?? markerAccess(writeMarker.current, userId, Date.now());
+    const denial = writeDenial(access, [quest]);
+    if (denial || !access) { setQuestActionError(denial ?? TRACKER_MESSAGES.paused); return false; }
+    const accepted = enqueueWrite({ ...request, trackerAccess: access, trackerTargets: [snapshotOf('habit', quest)] });
     if (!accepted) {
       setQuestActionError(TRACKER_MESSAGES.readOnly);
       void refreshTracker();

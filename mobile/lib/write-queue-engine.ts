@@ -64,7 +64,7 @@ export interface EnqueueRequest {
   base?: number;
   label?: string;
   /** What the user was allowed to do when acting. Only its revision is stored. */
-  trackerAccess: TrackerAccess;
+  trackerAccess: QueueWriteAccess;
   /** The input kind of the habit as the user saw it. */
   trackerTargets: TrackerTargetSnapshot[];
 }
@@ -86,6 +86,9 @@ export interface WriteQueueEngine {
   dismiss(id: string): QueueEntry | undefined;
   dispose(): void;
 }
+
+/** The part of the capability that decides whether a tap may be queued. */
+export type QueueWriteAccess = Pick<TrackerAccess, 'revision' | 'canWriteBasic' | 'canWriteCustom'>;
 
 export const writeQueueKey = (userId: string) => `eiyu.writeQueue.v1.${userId}`;
 

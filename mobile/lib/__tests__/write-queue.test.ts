@@ -506,6 +506,7 @@ describe('tracker consent in the queue model', () => {
     it.each([
       ['a revision missing a field', { userId: USER, ageVersion: 1, consentVersion: 1 }],
       ['a revision with a string version', { ...REVISION, consentVersion: '2' }],
+      ['a revision with a negative version', { ...REVISION, consentVersion: -1 }],
       ['a revision belonging to another account', { ...REVISION, userId: 'someone-else' }],
       ['a non-object revision', 'rev'],
     ])('keeps the entry but drops %s, so it is treated as having no captured grant', (_name, revision) => {

@@ -50,7 +50,8 @@ export default function RootLayout() {
         persister,
         // A week of local-first reads; stale data still revalidates on mount.
         maxAge: 7 * 24 * 60 * 60 * 1000,
-        // The tracker capability is read from the server on every start; a stored grant is never restored.
+        // The tracker capability is read from the server on every start and is never restored here. Queued taps use
+        // their own small marker (lib/tracker-write-marker), which the queue checks again before sending.
         dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
       }}>
       <FontScaleNudgeProvider>
