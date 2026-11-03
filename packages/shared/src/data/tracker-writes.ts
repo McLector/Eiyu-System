@@ -37,6 +37,17 @@ const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a
 export class TrackerWriteRefused extends Error {
   constructor() { super(TRACKER_ACCESS_MESSAGE); this.name = 'TrackerWriteRefused'; }
 }
+/** No server code means no answer arrived, so the write may have landed. A write that was never sent is not one of these. */
+export function isUnansweredTrackerWrite(error: unknown): boolean {
+  if (error instanceof TrackerWriteRefused) return false;
+  return !(error && typeof error === 'object' && (error as {code?: unknown}).code);
+}
+/** The gateway's answer when the record is not there, which is also what a repeat of a delete that landed gets. */
+export function isTrackerTargetGone(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const {code, message} = error as {code?: unknown; message?: unknown};
+  return code === '42501' && typeof message === 'string' && /tracker target unavailable/i.test(message);
+}
 /** True when the failure happened locally before the request was sent. Callers must not treat it as an uncertain save. */
 export function isRefusedBeforeSend(error: unknown): boolean {
   return error instanceof TrackerWriteRefused;

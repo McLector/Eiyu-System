@@ -86,6 +86,7 @@ import {
   type TrackerAccess,
   type TrackerTargetSnapshot,
 } from '@eiyu/shared';
+import { isTrackerTargetGone, isUnansweredTrackerWrite } from '@eiyu/shared';
 import {
   TRACKER_MESSAGES,
   readTrackerAccess,
@@ -970,10 +971,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           if (operation === 'restore') await restoreHabit(id, expected, targets);
           if (operation === 'delete') {
             try { await deleteHabit(id, expected, targets); } catch (err) {
-              const kind = safeTrackerErrorKind(err);
-              // Delete is not idempotent: 42501 after our own unanswered attempt means it already landed.
-              if (kind === 'denied' && attemptedDeletes.current.has(id)) attemptedDeletes.current.delete(id);
-              else { if (!kind) attemptedDeletes.current.add(id); throw err; }
+              // Delete is not idempotent: "target unavailable" after our own unanswered attempt means it already landed.
+              const landed = attemptedDeletes.current.has(id) && isTrackerTargetGone(err);
+              attemptedDeletes.current.delete(id);
+              if (!landed) { if (isUnansweredTrackerWrite(err)) attemptedDeletes.current.add(id); throw err; }
             }
             attemptedDeletes.current.delete(id);
           }

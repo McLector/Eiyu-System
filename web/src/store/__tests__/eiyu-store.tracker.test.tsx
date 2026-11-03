@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initialUser, type HabitEditorInput, LongQuest, Quest, TrackerAccess } from '@eiyu/shared';
 
 const shared = vi.hoisted(() => ({
+  session: { user: { id: 'owner-a' } } as { user: { id: string } } | null,
   order: [] as string[],
   fetchTrackerAccess: vi.fn(), fetchAccountAge: vi.fn(), prepareDay: vi.fn(), subscribe: vi.fn(), kind: vi.fn(),
   createHabit: vi.fn(), updateHabit: vi.fn(), archiveHabit: vi.fn(), deleteHabit: vi.fn(), restoreHabit: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock('@eiyu/shared', async () => {
     deleteLongQuest: shared.deleteLongQuest, reorderLongQuests: shared.reorderLongQuests,
   };
 });
-vi.mock('../session-context', () => ({ useSession: () => ({ session: { user: { id: 'owner-a' } } }) }));
+vi.mock('../session-context', () => ({ useSession: () => ({ session: shared.session }) }));
 
 import { EiyuProvider, useEiyu } from '../eiyu-store';
 import { trackerAccess } from '../../test/tracker-fixtures';
@@ -79,6 +80,7 @@ async function mount(over: Partial<TrackerAccess> = {}) {
 
 beforeEach(() => {
   store = null;
+  shared.session = { user: { id: 'owner-a' } };
   for (const fn of Object.values(shared)) if (typeof fn === 'function' && 'mockReset' in fn) (fn as ReturnType<typeof vi.fn>).mockReset();
   shared.order.length = 0;
   shared.subscribe.mockReturnValue(() => undefined);
@@ -281,6 +283,60 @@ describe('late server facts', () => {
     let done: boolean | undefined;
     await act(async () => { done = await store!.toggleQuest('b1'); });
     expect(done).toBe(false);
+  });
+
+  it('reports a 42501 after a delete the server had already answered with a failure', async () => {
+    await mount();
+    shared.kind.mockReturnValue(null);
+    shared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 'XX000' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    shared.kind.mockReturnValue('denied');
+    shared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('Tracker target unavailable.'), { code: '42501' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+  });
+
+  it('reports a 42501 that means something other than the quest being gone, after an unanswered delete', async () => {
+    await mount();
+    shared.kind.mockReturnValue(null);
+    shared.deleteHabit.mockRejectedValueOnce(new Error('Network down'));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    shared.kind.mockReturnValue('denied');
+    shared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('Account changed.'), { code: '42501' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+  });
+
+  it('forgets an unanswered delete once the server has answered a later attempt with a failure', async () => {
+    await mount();
+    shared.kind.mockReturnValue(null);
+    shared.deleteHabit.mockRejectedValueOnce(new Error('Network down'));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    shared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 'XX000' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    shared.kind.mockReturnValue('denied');
+    shared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('Tracker target unavailable.'), { code: '42501' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+  });
+
+  it.each([
+    ['archive', () => store!.archiveQuest('b1'), () => shared.archiveHabit],
+    ['move', () => store!.moveToBacklog('b1'), () => shared.moveOneTimeToBacklog],
+  ])('re-reads access after a refused %s when the session arrived after the first render', async (_name, run, mock) => {
+    access = trackerAccess({}, 'owner-a');
+    shared.fetchTrackerAccess.mockImplementation(async () => access);
+    shared.session = null;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = () => <QueryClientProvider client={client}><EiyuProvider><Probe /></EiyuProvider></QueryClientProvider>;
+    const view = render(tree());
+    shared.session = { user: { id: 'owner-a' } };
+    view.rerender(tree());
+    await waitFor(() => expect(store?.user.quests.length).toBe(4));
+    await waitFor(() => expect(store?.tracker).toBeTruthy());
+    const reads = shared.fetchTrackerAccess.mock.calls.length;
+    // Not "access-changed": that also reloads the lists, and reading the board re-reads access by another route.
+    shared.kind.mockReturnValue('purpose-required');
+    mock().mockRejectedValueOnce(Object.assign(new Error('needs permission'), { code: 'ET002' }));
+    await expectRejects(run);
+    await waitFor(() => expect(shared.fetchTrackerAccess.mock.calls.length).toBeGreaterThan(reads));
   });
 
   it('settles a delete retry that gets 42501 after its own earlier attempt, but not a first delete', async () => {

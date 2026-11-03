@@ -6,7 +6,7 @@ jest.mock('../../supabase/client', () => ({
 }));
 jest.mock('../profile', () => ({initializeAccountTimeZone: (...args: unknown[]) => initializeAccountTimeZone(...args)}));
 import {
-  NO_TARGETS, TRACKER_ERROR_CODES, invokeTrackerWrite, isRefusedBeforeSend, prepareDay, trackerErrorKind,
+  NO_TARGETS, TRACKER_ERROR_CODES, TrackerWriteRefused, invokeTrackerWrite, isRefusedBeforeSend, isTrackerTargetGone, isUnansweredTrackerWrite, prepareDay, trackerErrorKind,
 } from '../tracker-writes';
 import {TRACKER_ACCESS_MESSAGE, type TrackerRevision, type TrackerTargetSnapshot} from '../tracker-access';
 import {OWNER_A, OWNER_B, trackerRpcDouble} from '../../test-support/tracker-rpc';
@@ -171,5 +171,26 @@ describe('isRefusedBeforeSend', () => {
     expect(isRefusedBeforeSend(await invokeTrackerWrite('archive_habit', {}, revision, [target]).catch((e: unknown) => e))).toBe(false);
     expect(isRefusedBeforeSend(new Error('network'))).toBe(false);
     expect(isRefusedBeforeSend(null)).toBe(false);
+  });
+});
+
+describe('reading a failed delete', () => {
+  it('counts a failure with no server code as unanswered', () => {
+    expect(isUnansweredTrackerWrite(new Error('Network down'))).toBe(true);
+    expect(isUnansweredTrackerWrite({message: 'TypeError: Failed to fetch', code: ''})).toBe(true);
+  });
+  it('does not count an answer from the server as unanswered', () => {
+    expect(isUnansweredTrackerWrite({message: 'boom', code: 'XX000'})).toBe(false);
+    expect(isUnansweredTrackerWrite({message: 'no', code: '42501'})).toBe(false);
+  });
+  it('does not count a write that was never sent as unanswered', () => {
+    expect(isUnansweredTrackerWrite(new TrackerWriteRefused())).toBe(false);
+  });
+  it('treats only a target-unavailable refusal as the target being gone', () => {
+    expect(isTrackerTargetGone({message: 'Tracker target unavailable.', code: '42501'})).toBe(true);
+    expect(isTrackerTargetGone({message: 'Account changed.', code: '42501'})).toBe(false);
+    expect(isTrackerTargetGone({message: 'Tracker target unavailable.', code: 'XX000'})).toBe(false);
+    expect(isTrackerTargetGone(null)).toBe(false);
+    expect(isTrackerTargetGone('Tracker target unavailable.')).toBe(false);
   });
 });

@@ -371,6 +371,38 @@ describe('a stale save and late server facts', () => {
     expect(mockShared.updateHabit).toHaveBeenCalledTimes(1);
   });
 
+  it('reports a 42501 after a delete the server had already answered with a failure', async () => {
+    await mount();
+    mockShared.trackerErrorKind.mockReturnValue(null);
+    mockShared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 'XX000' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    mockShared.trackerErrorKind.mockReturnValue('denied');
+    mockShared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('Tracker target unavailable.'), { code: '42501' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+  });
+
+  it('reports a 42501 that means something other than the quest being gone, after an unanswered delete', async () => {
+    await mount();
+    mockShared.trackerErrorKind.mockReturnValue(null);
+    mockShared.deleteHabit.mockRejectedValueOnce(new Error('Network down'));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    mockShared.trackerErrorKind.mockReturnValue('denied');
+    mockShared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('Account changed.'), { code: '42501' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+  });
+
+  it('forgets an unanswered delete once the server has answered a later attempt with a failure', async () => {
+    await mount();
+    mockShared.trackerErrorKind.mockReturnValue(null);
+    mockShared.deleteHabit.mockRejectedValueOnce(new Error('Network down'));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    mockShared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('boom'), { code: 'XX000' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+    mockShared.trackerErrorKind.mockReturnValue('denied');
+    mockShared.deleteHabit.mockRejectedValueOnce(Object.assign(new Error('Tracker target unavailable.'), { code: '42501' }));
+    await expectRejects(() => store!.deleteQuest('b1'));
+  });
+
   it('settles a delete retry that gets 42501 after its own earlier attempt, but not a first delete', async () => {
     await mount();
     mockShared.deleteHabit.mockRejectedValueOnce(new Error('Network down'));

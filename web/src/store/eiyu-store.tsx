@@ -56,6 +56,7 @@ import {
 
 import { stageNotice } from '@eiyu/shared';
 import { useSession } from './session-context';
+import { isTrackerTargetGone, isUnansweredTrackerWrite } from '@eiyu/shared';
 import {
   TRACKER_MESSAGES, readTrackerAccess, refreshTrackerAfterFailure, safeTrackerErrorKind, snapshotOf,
   trackerErrorMessage, trackerKey, useAccountAudience, useTrackerAccess, type AccountAudience, writeDenial, type TrackedRecord,
@@ -473,10 +474,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           if (operation === 'restore') await restoreHabit(id, expected, targets);
           if (operation === 'delete') {
             try { await deleteHabit(id, expected, targets); } catch (err) {
-              const kind = safeTrackerErrorKind(err);
-              // delete is not idempotent: 42501 after our own unanswered attempt means it already landed.
-              if (kind === 'denied' && attemptedDeletes.current.has(id)) attemptedDeletes.current.delete(id);
-              else { if (!kind) attemptedDeletes.current.add(id); throw err; }
+              // Delete is not idempotent: "target unavailable" after our own unanswered attempt means it already landed.
+              const landed = attemptedDeletes.current.has(id) && isTrackerTargetGone(err);
+              attemptedDeletes.current.delete(id);
+              if (!landed) { if (isUnansweredTrackerWrite(err)) attemptedDeletes.current.add(id); throw err; }
             }
             attemptedDeletes.current.delete(id);
           }
@@ -503,7 +504,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       return request;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [qc]
+    [qc, userId]
   );
 
   const archiveQuest = useCallback((id: string) => runLifecycle(id, 'archive'), [runLifecycle]);
@@ -532,7 +533,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       return request;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [qc]
+    [qc, userId]
   );
   const moveToOneTime = useCallback((id: string) => runMove(id, 'to-one-time'), [runMove]);
   const moveToBacklog = useCallback((id: string) => runMove(id, 'to-backlog'), [runMove]);
