@@ -2,7 +2,7 @@
   "expo": {
     "name": "eiyu-system",
     "slug": "eiyu-system",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "eiyusystem",
@@ -22,7 +22,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.mclector.eiyusystem"
     },
-    "runtimeVersion": "1.2.0",
+    "runtimeVersion": "1.3.0",
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"

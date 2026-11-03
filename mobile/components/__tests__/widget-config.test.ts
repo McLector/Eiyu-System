@@ -39,10 +39,10 @@ describe('home screen widget config', () => {
     expect(parseInt(widget.minHeight, 10)).toBeGreaterThanOrEqual(110);
   });
 
-  it('ships a native module, so the app and runtime version moved past 1.1.0 together', () => {
-    expect(appJson.expo.version).toBe('1.2.0');
-    expect(appJson.expo.runtimeVersion).toBe('1.2.0');
-    expect(pkg.version).toBe('1.2.0');
+  it('moved the app and runtime version together for the native font-scale change, so an older APK gets no update it cannot run', () => {
+    expect(appJson.expo.version).toBe('1.3.0');
+    expect(appJson.expo.runtimeVersion).toBe('1.3.0');
+    expect(pkg.version).toBe('1.3.0');
   });
 
   it('pins the library to the version the spike used', () => {
