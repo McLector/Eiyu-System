@@ -29,6 +29,7 @@
     },
     "plugins": [
       "expo-router",
+      "./plugins/with-font-scale-config-changes",
       [
         "expo-splash-screen",
         {

@@ -2,9 +2,10 @@ import { render, type RenderResult } from '@testing-library/react-native';
 import { PALETTE_TOKENS, type Palette, type ThemeMode } from '@eiyu/shared';
 import type { ReactElement, ReactNode } from 'react';
 
+import { FontScaleNudgeProvider } from '@/contexts/font-scale-nudge';
 import { ThemeContext } from '@/contexts/theme-store';
 
-/** Test stand-in for AppThemeProvider: same value shape, no storage and no account. */
+/** Test stand-in for AppThemeProvider (plus the root FontScaleNudgeProvider): same value shape, no storage and no account. */
 export function TestThemeProvider({ children, mode = 'dark', palette = 'cyan', setMode = () => {}, setPalette = () => {} }: {
   children: ReactNode;
   mode?: ThemeMode;
@@ -22,7 +23,7 @@ export function TestThemeProvider({ children, mode = 'dark', palette = 'cyan', s
         setMode,
         setPalette,
       }}>
-      {children}
+      <FontScaleNudgeProvider>{children}</FontScaleNudgeProvider>
     </ThemeContext.Provider>
   );
 }
