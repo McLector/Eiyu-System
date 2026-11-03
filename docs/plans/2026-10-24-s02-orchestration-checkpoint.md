@@ -136,3 +136,11 @@ The run stopped on 2026-10-24 when a session limit hit. Nothing changed in the r
 Every client review finding now has a result, recorded under "Outcome" in `2026-11-03-s02-review-clients.md` and `2026-11-03-s02-review-admin.md`. C11 stays open for the owner's testing, and C5 stays a release gate.
 
 **Next, in order:** CI mirror and push, full SQL suite with races and Edge tests, APK at runtime 1.3.0 against the local stack, emulator batch, then the Oppo with the owner.
+
+## Update 2026-11-04, emulator batch finished
+
+Checks at `7835db5` before the batch: clean-copy CI passed (shared 1080 with 8 skipped, mobile 2035, web 1491, three type checks, lint 0 errors), SQL 49 files with 1941 assertions including the races, Edge 275.
+
+The batch found that saved quests never survived a cold start, which also meant the C3 marker did nothing on a device. Fixed test-first in `62171fb`. Results are in "Emulator batch" in `2026-11-03-s02-review-clients.md`.
+
+**Next:** the Oppo font checklist with the owner, on the APK built from `62171fb` or later. After that S02 is "engineering done, release pending". It is not complete: real email delivery and rollout stay unproved.

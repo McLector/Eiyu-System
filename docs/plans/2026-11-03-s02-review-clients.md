@@ -41,7 +41,7 @@ Shared access parsing and target reads are strict and owner-bound. `invokeTracke
 | --- | --- | --- |
 | C1 | Fixed. A 22023 settles only if the completion row is really there. | `b8cba72` |
 | C2 | Fixed. A web grant or withdrawal reloads the quest lists. | `c3c6464` |
-| C3 | Fixed with a per-account marker of the last confirmed access, used only to decide whether to queue. It holds custom access too, because every existing or named quest is custom. | `c883def` |
+| C3 | Fixed in two parts. A per-account marker of the last confirmed access decides whether to queue; it holds custom access too, because every existing or named quest is custom. That marker alone did nothing on a device, because the saved quests were wiped on every cold start (see below). | `c883def`, `62171fb` |
 | C4 | Fixed. App and runtime version 1.3.0. | `51ee47d` |
 | C5 | Still a release gate. | |
 | C6 | Fixed with C8. A refused write now re-reads access for the current account. | `f7e7a14` |
@@ -55,4 +55,28 @@ Shared access parsing and target reads are strict and owner-bound. `invokeTracke
 
 **Found while fixing C10, not by the reviewer:** web Profile gave its permissions and data export sections the same key, so a re-render could leave a stale copy on screen. Fixed in `514c7ec`.
 
-These results rest on unit and component tests. The native behaviour of C3, C4, C7 and C12 still needs the APK, the emulator batch and the Oppo.
+**Found in the emulator batch, not by the reviewer:** the saved quests have never survived a cold start, online or offline. The account cleanup treated "no user" during the session check as a sign-out, removed what the restore had just loaded, and offline then saved the empty cache over the good copy. A device with no connection showed "Couldn't load quests". Only queries whose last fetch succeeded were saved as well, so one failed refresh dropped good data from the copy. The unit tests for C3 missed this because their mocks kept returning quests while "offline" and had no loading phase for the session. Both causes are fixed in `62171fb`, and this behaviour is on `main` too, so the fix matters beyond S02.
+
+These results rested on unit and component tests until the emulator batch below.
+
+### Emulator batch, 2026-11-04
+
+Release APK from `62171fb` at version 1.3.0 against the local stack, on an x86_64 emulator at API 35. The artifact gate passed.
+
+| Check | Result |
+| --- | --- |
+| Offline cold start shows saved quests and profile, twice in a row | Passed |
+| Offline tap queues, and survives a restart while still offline | Passed, 0 rows in `habit_completions` |
+| Reconnecting without a restart sends it | Passed, exactly 1 row, streak 1 |
+| C4: version 1.3.0 and `fontScale` in the installed Activity | Passed |
+| Draft in the quest editor across 1.0 and 1.6, several cycles | Passed: same Activity and process, draft and focus kept, text grows and rewraps |
+| Typing and return in a multiline field after a cycle | Passed |
+| C12: typed gym weight across 1.0 and 1.6 | Passed |
+| Cold launch at 1.6: Board, Gym, editors | Passed |
+| Discarded draft leaves no write | Passed, 0 rows |
+| Account switch shows nothing from the previous account | Passed |
+| C10 and teen account: plainer wording, review step, agreement unavailable | Passed |
+
+**Not covered here:** auth fields and a selection range during a font change, and anything specific to a physical phone. Those stay on the Oppo checklist.
+
+**How to test a font change:** leave the app, change the size, come back. React Native reads the new scale when the app resumes, so changing it with `adb` while the app stays in front leaves old text beside clipped new text. That looks like a product bug and is not what a person sees.

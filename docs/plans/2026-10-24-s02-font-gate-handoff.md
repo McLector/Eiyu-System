@@ -63,3 +63,5 @@ Also open: native change needs a new APK; runtimeVersion NOT bumped (owner decis
 2. With app running, unsaved draft in quest editor, auth fields, and a multiline field with a selection: 1.0 to 1.6 and back via Settings. Same Activity, route, draft, focus, selection, no keyboard drop; Field text and Board quest titles reflow (letterSpacing alternates 0.01/0.02 only after the change).
 3. Repeat at least twice, then edit a multiline field (typing, return, cursor) - the unproved case.
 4. No duplicate writes/queue entries; text still really grows (allowFontScaling untouched); confirm no visible tracking difference at launch (no patch at mount).
+
+Emulator results for steps 1 to 4 are in `2026-11-03-s02-review-clients.md`. Auth fields and a selection range were not covered there. Change the font through Settings, so the app is left and resumed: that is what makes it read the new scale.
