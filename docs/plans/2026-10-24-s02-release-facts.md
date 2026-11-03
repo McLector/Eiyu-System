@@ -194,6 +194,8 @@ Order matters. Each step lists why it comes before the next.
 
 **Release gates added 2026-11-03:** enable pg_cron and the retention job together with the new notices, because the notices promise removal. Bump `runtimeVersion` to 1.3.0 for the native `fontScale` change, so an update cannot reach older binaries. Migrations now run 047-062.
 
+**Release gate added 2026-11-03 (contact):** the notices, Privacy Policy and error messages all send people to `privacy@eiyusystem.app`, and data requests depend on it. The domain only sends mail today. Before release, set up forwarding or a mailbox, then send a real message to it and confirm it arrives.
+
 ## UNKNOWN list (gate stays open)
 
 1. Owner's intended launch web origin (`eiyu-system.vercel.app` versus `eiyusystem.app`, whose ownership and reachability are unknown).

@@ -28,7 +28,10 @@ Where the recommendation left a number for the owner, the orchestrator chose a c
 - Any change to the numbers marked as the orchestrator's call.
 - Authorising automated removal for decisions 5 and 6, if ever wanted.
 - Actually doing the reviews under decision 1 once teens opt in.
+- Set up `privacy@eiyusystem.app` so it receives mail, before release.
 
 ## Update 2026-11-03
 
 The owner is currently the only real user. They will review these numbers and notices by using the app for a few days with some friends testing, and plan to consult a professional they know. The numbers stay as adopted unless a problem shows up. This is not legal sign-off.
+
+**Public contact changed, 2026-11-03.** The owner chose `privacy@eiyusystem.app` over their personal inbox, because this repo and the app are public. Older records in `docs/plans/` now show the new address, so they read as if it had been the contact from the start. The S01 inbox check was done on the owner's personal inbox, not this address, and proves nothing about it.
