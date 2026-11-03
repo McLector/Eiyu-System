@@ -76,10 +76,10 @@ export function Screen({
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
 
-  const withSafePadding = <T extends FlatPadding>(flat: T): T => ({
+  const withSafePadding = <T extends FlatPadding>(flat: T, topInset: number): T => ({
     ...flat,
     ...(edges.includes('top')
-      ? { paddingTop: insets.top + topGap + resolveVerticalPadding(flat).top }
+      ? { paddingTop: topInset + topGap + resolveVerticalPadding(flat).top }
       : null),
     ...(edges.includes('bottom')
       ? { paddingBottom: insets.bottom + resolveVerticalPadding(flat).bottom }
@@ -89,17 +89,18 @@ export function Screen({
   if (!scroll) {
     const flat = (StyleSheet.flatten(style) ?? {}) as FlatPadding & ViewStyle;
     return (
-      <View style={{ ...(fill ? { flex: 1 } : { flexShrink: 1 }), ...withSafePadding(flat) }}>
+      <View style={{ ...(fill ? { flex: 1 } : { flexShrink: 1 }), ...withSafePadding(flat, insets.top) }}>
         {children}
       </View>
     );
   }
 
   const flatContent = (StyleSheet.flatten(contentContainerStyle) ?? {}) as FlatPadding & ViewStyle;
+  // The top inset sits outside the scroll view. As content padding it would scroll away and let text run under the status bar.
   return (
     <KeyboardAwareScrollView
-      style={[fill ? styles.fill : styles.wrap, style]}
-      contentContainerStyle={withSafePadding(flatContent)}
+      style={[fill ? styles.fill : styles.wrap, edges.includes('top') ? { marginTop: insets.top } : null, style]}
+      contentContainerStyle={withSafePadding(flatContent, 0)}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}>
       {children}
