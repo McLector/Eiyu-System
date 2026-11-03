@@ -1,7 +1,8 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
+import { AppTextInput } from '@/components/ui/app-text-input';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import PagerView from 'react-native-pager-view';
 import { GYM_COPY, type GymExercise } from '@eiyu/shared';
@@ -187,7 +188,7 @@ function WeightInput({ exercise, unit, value, locked, readOnly, onChange }: { ex
   const t = useTokens();
   return (
     <>
-      <TextInput
+      <AppTextInput
         testID={`gym-weight-${exercise.id}`}
         accessibilityLabel={`Current weight for ${exercise.name} in ${unit}`}
         keyboardType="decimal-pad"

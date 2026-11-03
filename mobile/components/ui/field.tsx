@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { StyleSheet, TextInput, View, type StyleProp, type TextInputProps, type TextStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type TextInputProps, type TextStyle } from 'react-native';
 
 import { fonts } from '@/constants/eiyu-theme';
 import { AppText } from '@/components/ui/app-text';
-import { useSharedFontScaleNudge } from '@/contexts/font-scale-nudge';
+import { AppTextInput } from '@/components/ui/app-text-input';
 import { useTokens } from '@/contexts/theme-store';
 
 export type FieldProps = Omit<TextInputProps, 'style'> & {
@@ -21,13 +21,12 @@ export type FieldProps = Omit<TextInputProps, 'style'> & {
 export function Field({ label, error, hint, errorTestID, accessibilityLabel, multiline, onFocus, onBlur, style, trailing, ...rest }: FieldProps) {
   const t = useTokens();
   const [focused, setFocused] = useState(false);
-  const nudge = useSharedFontScaleNudge();
   const border = error ? t.danger : focused ? t.accent : t['glass-border'];
   return (
     <View style={styles.wrap}>
       <AppText style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>{label}</AppText>
       <View style={styles.inputWrap}>
-      <TextInput
+      <AppTextInput
         {...rest}
         multiline={multiline}
         accessibilityLabel={accessibilityLabel ?? label}
@@ -40,7 +39,6 @@ export function Field({ label, error, hint, errorTestID, accessibilityLabel, mul
           { backgroundColor: t.track, borderColor: border, color: t.text, fontFamily: fonts.body },
           trailing ? styles.withTrailing : null,
           style,
-          nudge,
         ]}
       />
       {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
