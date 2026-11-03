@@ -300,6 +300,10 @@ export interface Database {
           regenerate_count: number;
           last_regenerated_date: string | null;
           created_at: string;
+          age_version: number | null;
+          mailbox_version: number | null;
+          consent_version: number | null;
+          authority_version: number | null;
         };
         Insert: Partial<Database['public']['Tables']['weekly_summaries']['Row']> & {
           user_id: string;
@@ -435,6 +439,87 @@ export interface Database {
       update_profile: {
         Args: { p_display_name: string; p_user_class: string };
         Returns: { displayName: string; userClass: string; timeZone: string | null };
+      };
+      get_account_age: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      get_processing_access: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      set_processing_consent: {
+        Args: {
+          p_purpose: string;
+          p_granted: boolean;
+          p_notice_version: string;
+          p_expected_user_id: string;
+          p_expected_age_version: number;
+          p_expected_consent_version: number;
+          p_expected_authority_version: number;
+          p_expected_mailbox_version: number;
+        };
+        Returns: Json;
+      };
+      get_tracker_processing_access: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      get_tracker_targets: {
+        Args: { p_kind: string; p_ids: string[] };
+        Returns: Json;
+      };
+      set_tracker_processing_consent: {
+        Args: { p_purpose: string; p_granted: boolean; p_notice_version: string; p_expected: Json };
+        Returns: Json;
+      };
+      apply_tracker_write: {
+        Args: { p_operation: string; p_arguments: Json; p_expected: Json };
+        Returns: Json;
+      };
+      get_operator_status: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      request_authority_review: {
+        Args: { p_purpose: string; p_note: string };
+        Returns: Json;
+      };
+      cancel_authority_review: {
+        Args: { p_purpose: string };
+        Returns: Json;
+      };
+      get_my_review_requests: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      get_tracker_retention_notice: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      operator_list_review_requests: {
+        Args: { p_status: string };
+        Returns: Json;
+      };
+      operator_decide_review: {
+        Args: { p_request_id: string; p_decision: string };
+        Returns: Json;
+      };
+      operator_pause_purpose: {
+        Args: { p_user_id: string | null; p_purpose: string; p_reason_code: string; p_email?: string | null };
+        Returns: Json;
+      };
+      operator_list_retention: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      get_mailbox_status: {
+        Args: Record<string, never>;
+        Returns: Json;
+      };
+      set_account_birthday: {
+        Args: { p_birth_date: string; p_expected_user_id?: string };
+        Returns: Json;
       };
       set_profile_palette: {
         Args: { p_palette: string };

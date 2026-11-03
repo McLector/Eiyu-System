@@ -6,6 +6,9 @@ export type QuestType = 'habit' | 'one_time' | 'backlog';
 /** What a One-time or Backlog quest is about. Habits have no genre. */
 export type QuestGenre = 'tool' | 'concept' | 'article' | 'software_idea' | 'todo';
 
+/** Whether a quest's content is server-validated basic input or custom text. */
+export type QuestInputKind = 'basic' | 'custom';
+
 export interface StatData {
   level: number;
   xp: number;
@@ -52,6 +55,10 @@ export interface Quest {
   targetCount: number | null;
   /** Today's progress toward targetCount; 0 when not a quantity habit or no progress yet (Slice 5). */
   progressCount: number;
+  /** Server classification. Absent means unclassified: treat as custom and read-only. */
+  inputKind?: QuestInputKind;
+  /** Whether the current permissions allow writing this quest. Absent means unclassified: read-only. */
+  canWrite?: boolean;
 }
 
 export interface QuestStage {
@@ -74,6 +81,10 @@ export interface LongQuest {
   strictOrder?: boolean;
   /** Stored manual order in the Chain list (migration 044); lower comes first. Absent before 044. */
   position?: number;
+  /** Server classification. Absent means unclassified: treat as custom and read-only. */
+  inputKind?: QuestInputKind;
+  /** Whether the current permissions allow writing this chain. Absent means unclassified: read-only. */
+  canWrite?: boolean;
   stages: QuestStage[];
 }
 
