@@ -1,8 +1,56 @@
 # Supabase migrations
 
-Run **every** `.sql` file in this folder, in filename order — that is what the
-`NNN_` prefixes are for. All of them are required: the app as it ships touches
-each one, so skipping any leaves a feature broken at runtime.
+**047–062 are local, incomplete S02 groundwork/drafts. Do not apply them to a deployed project yet.**
+S01 investigation is COMPLETE under `../../docs/handoff/027-handoff.md`;
+S02 and public release remain INCOMPLETE. See that handoff and
+`../../docs/plans/2026-10-20-s02-continuation.md` for current contracts and
+rollout prerequisites. The deployed baseline remains 001–046. Historical clean
+seed verification covered 047–048; 049 has local application, transactional
+reapplication and regression evidence, not a fresh clean-stack seed claim.
+No production rollout was performed. The new
+`mailbox-verification` Edge Function is also local only. Its typed-code flow
+requires a suitable SMTP service and an approved Magic Link template containing
+`{{ .Token }}` before release; this work changed only a disposable local template.
+
+The shipped baseline requires **001–046** in filename order. The local seed
+workflow's canonical globs include drafts through052.051–052 have retained-local application and rollback reconstruction evidence, not a fresh full-stack seed claim. The warning above governs deployment.
+
+The approved tracker-consent work follows052 in canonical order053–056. While
+implementation is incomplete,053 is tested only inside rollback transactions;
+do not apply a partial prefix. Only the complete053–056 bundle may be applied
+atomically to the guarded retained local stack after backend single-session
+checks pass. Cross-session acceptance follows that local commit. This does not
+authorize hosted application or activation. See
+`../../docs/plans/2026-10-23-s02-tracker-consent-implementation.md`.
+057 follows 056 in canonical order: a local-only plpgsql_check lint follow-up to 054 (STABLE argument validator, explicit casts). Not approved for deployment.
+
+058 follows 057: independent-review fixes (an ID with retained history cannot be reused as a new root; media attachments bound to owner, routine and current tracker tuple; no client TRUNCATE on tracker tables). 059 follows 058: owner decision 14, days inside a custom-tracker pause are not scheduled for protected roots, so a regrant does not record them as missed. Both local-only; not approved for deployment.
+
+060 follows 059: operator accounts (added by hand, no RPC adds one), the MFA-gated (AAL2) teen review queue and dispute pause, with a content-free audit; it also wraps the export manifest. 061 follows 060: automated 30-day retention after full withdrawal of custom-tracker or fitness permission (day-23 reminder, runbook-scope removal by `private.run_tracker_retention`), plus the operator retention list. Both local-only; not approved for deployment. pg_cron is scheduled on the local stack only and is not enabled on the live project; enabling it is a release step.
+
+062 follows 061: fixes from the admin console and retention review. A review request records the age version it was made under and cannot be approved after a birthday correction; one failing account no longer stops the retention job and shows as `failed` in the console; removal always comes at least 30 full days after withdrawal; a missed reminder is sent before any removal; `operator_resume_purpose` lifts a pause without granting anything. It also wraps the export manifest.
+
+051 adds default-closed AI admission and separate execution accounting. Legacy
+generation RPCs deny even after reopening; refunds do not settle executions.
+Detailed execution metadata has a seven-day deletion target; account-unlinked
+aggregate uncertainty survives expiry or account removal. Maintenance freshness
+and overdue backlog fail closed. No schedule is installed by this migration,
+and outages prevent an unconditional erasure guarantee. See
+`../../docs/plans/2026-10-22-s02-request-drain-verification.md` for exact local
+evidence and open scheduler, bootstrap, hosted parity and review gates.
+
+052 adds service-only read-only owner export snapshot/fresh-check functions with
+current account/session/mailbox proof, an explicit40-table/48-FK manifest,
+security-field omissions, lossless bigint identifiers,10,000-record/5MiB bounds
+and refusal when media needs assisted handling. The separate account-export
+Edge source and existing Account/Profile controls are local only. No function
+serving copy or deployment is included. Retain JWT checks for any future
+separately authorized activation. Local37-file/1250-assertion SQL and real
+Auth/RPC Node HTTP tests passed; browser/native receiving and independent
+acceptance remain incomplete. See
+`../../docs/plans/2026-10-22-s02-export-receiving-verification.md` before
+repeating qualified checks. This is neither an account-deletion API nor a
+promise about backups, vendor retention or unreachable client copies.
 
 Paste each file into the **SQL Editor** on your Supabase dashboard and run it,
 lowest number first.
@@ -10,6 +58,34 @@ lowest number first.
 > `supabase db push` does *not* pick these up. The CLI reads migrations from
 > `supabase/migrations/` at the repo root, which this project doesn't use — its
 > schema lives here instead, applied by hand.
+
+## Password recovery — local client work, incomplete rollout
+
+The local web and mobile clients now request an explicit `auth/recovery` callback and expose a password-update screen. They retain the current implicit Auth flow; they do not enable automatic URL session detection or a new login provider. Recovery uses a separate Auth client with persistence and automatic refresh disabled. A different signed-in account denies the operation, and the normal quest session is never replaced with link credentials. Successful recovery does not grant private mailbox proof. Ordinary email-change and Magic Link callbacks are separate remaining checks.
+
+October21 current-source local Dev acceptance passed both live A→B mailbox send/redemption response races and real recovery receiving (different-owner refusal, signed-out cold form, password save and normal sign-in), with zero inference attempts and compared synthetic histories retained. Final phone cleanup restored the preserved historical APK without data clear and direct USB. These are scoped local results, not hosted SMTP, release-origin/build parity, full callback timing, drain or public-release approval. See [qualified acceptance](../../docs/plans/2026-10-21-s02-current-device-acceptance.md). Other S02 gates remain open.
+
+On Android, Expo SDK 54's native-intent hook validates the original variant-specific recovery URL before Router discards its fragment. The credentials pass once through module memory; the route contains only a nonsecret attempt revision. A new link replaces an already-open recovery form, and invalid, missing or consumed handoffs fail closed. No recovery bearer credentials are saved to navigation parameters or persistent storage. This receiving path needs a matching installed build; a unit test or direct Auth API redirect alone does not establish device acceptance.
+
+Before activation, verify and allowlist exact callback URLs for the actual deployed web origin (`<verified-web-origin>/auth/recovery`) and each intended installed variant: `eiyusystem://auth/recovery`, `eiyusystem-preview://auth/recovery`, or `eiyusystem-dev://auth/recovery`. Do not infer a deployed web origin from domain ownership or use broad wildcard redirects. Confirm that the actual Recovery email template retains its Supabase confirmation link and delivers the requested callback, then test expired/consumed links, signed-out and already-signed-in states, password updates, and normal sign-in afterward on the matching clients. A direct Supabase Auth redirect/API test is not physical-device or hosted callback acceptance.
+
+No hosted redirect, SMTP/template, confirmation setting or deployment was changed for this client work. The disposable test project alone has exact loopback-web and Dev callback allowlist entries; it retains eight-digit email OTPs and disabled signup confirmations. S01 investigation is complete; keep S02 and public release INCOMPLETE until the remaining release gates pass.
+
+## Processing permission — local server draft 050
+
+050 follows049 and adds the reviewed weekly-debrief processing contract. It keeps `adultDeclared` an18+ fact while computing separate12+ debrief eligibility with current accepted declaration, age-purpose grant, specific optional AI grant, applicable server-controlled authority and current-mailbox proof. Unknown/pending/under12 accounts remain AI-denied. Declining optional generation permits otherwise authorized saved-summary reads without inference. Teen eligibility in tests uses a synthetic reviewed disposition; real authority applicability and retention remain release gates.
+
+Consent and authority revisions bind request reservation, provider attempts, final output and saved-content provenance. Owner serialization covers withdrawal/revocation and birthday changes. Initial Auth signup captures only the specific current age-purpose boolean grant; editable metadata cannot later grant AI or authority. The initial session can still contain the signup birthday, which the candidate notice discloses. Legacy accounts receive no affirmative backfill. Real local Auth and32 local SQL files/1068 assertions passed at the server checkpoint; this is not hosted deployment or physical acceptance.
+
+Current client source adds separate signup/Profile choices and checks processing capability before the combined read/create helper. Missing capability fails closed for AI; ordinary name/class edits remain available. Specific AI withdrawal has its own control. This does not complete the broader sensitive-tracker consent branch, supported live-font repair, callbacks/build parity, old-client cache/drain mechanisms or actual authority/data-request operating procedures. See the current continuation and release review for exact test qualifications. Do not rerun canonical050 on the retained database or infer its deployment from local tests. Hosted ai-proxy was separately paused at v26; later local core changes require a new exact review before any separately authorized activation.
+
+## Under-12 tracker pause — local server draft 049
+
+049 enforces the adopted existing-under12 write pause using accepted private birthday declarations in the existing Asia/Manila civil timezone. It preserves ordinary history reads and account recovery/correction/data-request boundaries. Unknown legacy birthdays keep existing tracker access; minor/unknown/pending AI denial is unchanged. A valid initial under12 declaration is rejected before Auth/profile creation. This does not replace the missing signup notice/consent or establish universal age assurance for Auth methods without a declaration.
+
+Tracker-table mutation triggers cover quest/workout writes and their RPCs; restrictive Storage policies preserve the existing bucket/owner boundary. Read preparation skips materialization/rollover while paused. Writes lock the same owner row as birthday corrections; privileged operator deletion remains possible. `get_account_age()` now includes `trackerWritesPaused`; old servers may omit it, and absence is not proof of tracker-write permission. The self-scoped `tracker_writes_allowed()` RPC is authenticated-only.
+
+This server boundary is applied only to the retained local test database. The mobile queue source now checks fresh owner-bound pause status, retains held actions for explicit Retry/reconciliation and preserves original dates. Missing old-server pause fields never establish queue-write permission, so compatible rollout/build parity is required. Client notice/disabled controls, signup preflight, complete widget handling, specific consent and conditional guardian authority remain unfinished. No real Auth signup or physical under12 client acceptance is claimed by SQL/queue tests. See `../../docs/plans/2026-10-20-s02-continuation.md` for fresh checks and limitations. Do not replay the whole migration to inspect its state or reset retained fixtures.
 
 ## Checking what is already applied
 
@@ -341,7 +417,7 @@ with checks(marker, ok) as (
     and to_regclass('private.ai_provider_exhaustion') is not null
     and has_function_privilege('service_role',to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'),'EXECUTE')
     and not has_function_privilege('authenticated',to_regprocedure('public.ai_mark_provider_exhausted(uuid,text,text)'),'EXECUTE')
-    and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)')), false), false)
+    and coalesce((select pg_get_functiondef(p.oid) ilike '%exhaustedProviders%' from pg_proc p where p.oid = coalesce(to_regprocedure('private.ai_begin_request_before_age(uuid,text,uuid,date)'),to_regprocedure('public.ai_begin_request(uuid,text,uuid,date)'))), false), false)
   union all select '046 AI refund: a failed request gives its attempt back', coalesce(
     exists (select 1 from information_schema.columns where table_schema = 'private' and table_name = 'ai_logical_requests' and column_name = 'refunded_at')
     and has_function_privilege('service_role',to_regprocedure('public.ai_release_request(uuid)'),'EXECUTE')
@@ -372,24 +448,9 @@ After running these, enable email/password auth in **Authentication → Provider
 
 ## Edge Functions
 
-`functions/ai-proxy` is the only place the Gemini API key is read (R-63) — the
-client never sees it, and every response it returns is a suggestion the user can
-edit or ignore, never auto-saved (R-64). SQL 030 adds the server-owned quota
-RPCs; the Edge Function fails closed if those RPCs or the service-role
-environment value are missing. Review the matching migration markers before
-enabling the function.
+The current **local, unreleased** `functions/ai-proxy` entrypoint defaults to the strict Groq-only weekly-review route. Client code never receives provider credentials. Missing/invalid routing, keys, quota RPCs or eligibility revisions fail closed. No local implementation authorizes deployment. S01 and S02 remain INCOMPLETE; read their checkpoints before planning activation.
 
-Get a free key at https://aistudio.google.com/apikey, then deploy and configure
-the function once:
-
-```
-supabase functions deploy ai-proxy
-supabase secrets set GEMINI_API_KEY=...
-```
-
-Run both commands yourself — never paste the API key into chat or a `.env` file.
-`supabase secrets set` stores it as an encrypted project secret that only the
-deployed function can read at runtime.
+Only `GROQ_API_KEY` is read in the default Groq mode. Gemini implementation is retained for future deliberate code review; the release factory cannot select it through configuration or fallback. AI is denied for unknown/currently declared minor accounts and requires current-mailbox proof for weekly debriefs. Initial and corrected birthday declarations are trusted screening, not independently verified age. Explicit valid owner saves accept the date, clear earlier local pending state and advance the revision; unchanged accepted declarations remain idempotent. Unknown/currently declared minors and unresolved pending rows remain AI-ineligible. Missing/stale birthday revisions cannot reserve further provider attempts or release responses. Privacy/audience reconciliation remains an unmet release gate.
 
 ## Plan 011 rollout
 
@@ -415,24 +476,31 @@ Apply **041** (`041_profile_theme.sql`) and verify its marker. Both clients trea
 
 ## AI refund rollout (046)
 
-Apply **046** (`046_ai_refund_failed_request.sql`) after 045 and verify its marker. It adds `private.ai_logical_requests.refunded_at` and `ai_release_request(request)` (service role only), which gives one attempt back to the caller's per-user daily counter (never below 0, and a second refund of the same request does nothing). `ai-proxy` calls it, best effort and on its own 3 s deadline, when a request ends in a busy, exhausted, timed-out or failed state; it never refunds a success or a 429, and a failed refund is logged and never changes the response. The project-wide provider-attempt ledger is not refunded (the calls were made). A regeneration charges no per-user bucket, so nothing is given back for it. Either order is safe: a function from before 046 never calls the RPC; one from after it logs a warning if the RPC is missing. Test with `supabase/tests/026_ai_release_request.test.sql`.
+Apply **046** (`046_ai_refund_failed_request.sql`) after 045 and verify its marker. It adds `private.ai_logical_requests.refunded_at` and `ai_release_request(request)` (service role only), which gives one attempt back to the caller's per-user daily counter (never below 0, and a second refund of the same request does nothing). `ai-proxy` calls it, best effort and on its own 3 s deadline, when a request ends in a busy, exhausted, timed-out or failed state; it never refunds a successful result or a per-user quota-denial 429 (provider 429 is mapped to retry-later 503 and refunded by the current local route), and a failed refund is logged and never changes the response. The project-wide provider-attempt ledger is not refunded (the calls were made). A regeneration charges no per-user bucket, so nothing is given back for it. Either order is safe: a function from before 046 never calls the RPC; one from after it logs a warning if the RPC is missing. Test with `supabase/tests/026_ai_release_request.test.sql`.
 
-**Setting `AI_PROVIDERS` safely.** Never pass the JSON as a command-line value: PowerShell 5.1 strips the inner double quotes, the secret becomes invalid JSON, and `ai-proxy` quietly falls back to the single Gemini key (the boot log says `AI_PROVIDERS is not valid JSON`). Put the one-line `AI_PROVIDERS=[...]` in a gitignored temp file, run `npx supabase secrets set --env-file <file> --project-ref <ref>` from `backend/`, delete the file, redeploy, and confirm the next boot log has no `AI_PROVIDERS` warning.
+**Routing configuration and rollout:** The local strict route requires exactly the approved one-entry shape below. The existing hosted three-provider configuration remains unchanged. Deploying new code alone against that list deliberately disables AI. Coordinate authorized code/configuration activation after evidence/release checks. Never paste credentials or secret configuration values into chat, logs or tracked files.
 
 ## AI providers rollout (045)
 
 Apply **045** (`045_ai_providers.sql`) after 044 and verify its marker; compare the live `ai_begin_request` with 030 first (the file header says what was compared). It moves the per-user daily AI cap (2 per action) into `private.ai_quota_config.max_user_requests_per_action`, adds the private `ai_provider_exhaustion` table, makes `ai_begin_request` also return `exhaustedProviders`, and adds `ai_mark_provider_exhausted(request, provider, time_zone)` (service role only). To raise the cap later: `update private.ai_quota_config set max_user_requests_per_action = 3 where singleton;`. Either order is safe: the new `ai-proxy` treats a missing field or a missing mark RPC as "nothing exhausted", and the old one ignores the extra field. Test with `supabase/tests/013_ai_quota.test.sql`.
 
-**Edge secrets.** Without `AI_PROVIDERS`, `ai-proxy` behaves as before (`GEMINI_API_KEY`, `GEMINI_PRIMARY_MODEL`, `GEMINI_FALLBACK_MODEL`, `AI_RETRY_ENABLED`). To add providers, set one `AI_PROVIDERS` secret holding an ordered JSON list and one secret per key, then redeploy once:
+**Approved local route shape (configuration example, no credential value):**
 
 ```json
 [
-  {"name": "gemini", "kind": "gemini", "model": "gemini-3.6-flash", "keyEnv": "GEMINI_API_KEY"},
-  {"name": "groq", "kind": "openai", "baseUrl": "https://api.groq.com/openai/v1", "model": "<model id>", "keyEnv": "GROQ_API_KEY"}
+  {"name":"groq","kind":"openai","baseUrl":"https://api.groq.com/openai/v1","model":"openai/gpt-oss-20b","keyEnv":"GROQ_API_KEY"}
 ]
 ```
 
-`kind` is `gemini` or `openai` (any OpenAI-compatible `/chat/completions` host); `baseUrl` must be `https`; `resetTimeZone` is optional (default `UTC`, `America/Los_Angeles` for `gemini`, because Google resets its daily quota at midnight Pacific). Providers are tried in order. Adding a provider later is a secret change plus a redeploy of the function, not a code change. Quest names, habit names and weekly counts go into the prompt, so read each provider's data terms before adding it.
+Only this model/host/key reference is accepted. A trailing slash and optional `resetTimeZone: "UTC"` are accepted; other fields, hosts, models, extra entries and missing/malformed lists are denied before quota. Redirects are refused. Only weekly-summary actions are enabled. Groq 429 returns generic retry-later 503 (bounded Retry-After, default 60 seconds), makes no second call and refunds failed logical quota without refunding actual provider attempts. It does not infer a midnight reset. Transient failures can retry the same Groq provider once; there is no paid or other-provider fallback. Existing database exhaustion marks remain enforced until their stored expiry and need coordinated cutover review. Account Free/ZDR/training/model settings cannot be proven by this code.
+
+**Gemini disabled in the release entry point (local source; not deployed):** `AI_PROVIDER_MODE` accepts only unset or `groq-only`, with the exact Groq singleton above. `gemini-only`, unknown/blank modes, mismatched lists or extra providers fail closed before quota or provider credential lookup. No configuration switch can enable Gemini through this entry point. Gemini and generic fallback implementations remain retained for deliberate future code review, not as an active or selectable release route. Groq 429 stops; transient retry stays on the same Groq provider once. No OpenRouter, other-provider or paid fallback is enabled.
+
+After the owner's explicit October20 authorization, `AI_PROVIDER_MODE=disabled` was applied and only the tested strict ai-proxy replacement deployed. Fresh metadata reports **ACTIVE v26, JWT verification enabled**; mailbox-verification remains absent and other functions are unchanged. All five downloaded runtime files exactly match the tested canonical source. An unauthenticated non-inference POST returned401; no hosted authenticated503 or model request was exercised. Hosted debriefs remain paused; Groq is not enabled, current age/mailbox guards remain, and this cutover did not apply SQL or publish clients. An effective globally drained old-request state must not be inferred from metadata/source parity. See the [cutover and eligibility record](../../docs/plans/2026-10-20-s02-groq-only-eligibility-review.md). S02 remains INCOMPLETE.
+
+Removing the blanket adult-only debrief rule was requested for review alongside Gemini exclusion. It has not been implemented or established as permitted for the intended younger users merely by changing provider. Groq's Cloud Services age clause and minor-accessible Customer Application provisions require a recorded applicability assessment; the model's Apache2.0 license is distinct from the hosting agreement. Preserve current age/mailbox controls while that question and the replacement eligibility/consent design are unresolved. This is not a claim that Gemini's app-audience restriction must be retained forever.
+
+SQL 045/046 accounting contracts remain unchanged. SQL 047–049 are local incomplete S02 groundwork, not applied in production. S01 investigation is complete; S02/release remain incomplete. S04 still owns manual Generate/two-total-per-week changes. See `ai-proxy-route_test.ts`, `ai-proxy-policy_test.ts` and `../../docs/plans/2026-10-20-s02-continuation.md` for verification and outstanding release evidence.
 
 ## Manual order rollout (044)
 
