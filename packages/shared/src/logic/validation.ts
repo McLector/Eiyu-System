@@ -18,6 +18,19 @@ const NAME_INVISIBLE_CONTENT = /[\s\u00a0\u200b\u200c\u200d\u2060\ufeff]/gu;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** A neutral civil-date declaration; validation does not verify somebody's age. */
+export function validateBirthday(value: string, today = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date())): string | null {
+  if (!value) return 'Enter your birthday.';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.slice(0, 4) === '0000') return 'Use a valid birthday in YYYY-MM-DD format.';
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value || value > today) {
+    return 'Enter a valid birthday that is not in the future.';
+  }
+  return null;
+}
+
 /** Generic required-field check with a label for a readable message. */
 export function validateRequired(value: string, label: string): string | null {
   return value.trim().length === 0 ? `${label} is required.` : null;
