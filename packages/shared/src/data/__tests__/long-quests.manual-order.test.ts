@@ -1,5 +1,6 @@
 import { fetchLongQuests, reorderLongQuests } from '../long-quests';
 import { supabase } from '../../supabase/client';
+import { trackerRpcDouble } from '../../test-support/tracker-rpc';
 
 function chainable(result: { data?: unknown; error: unknown }) {
   const builder: any = {
@@ -13,7 +14,7 @@ function chainable(result: { data?: unknown; error: unknown }) {
 }
 
 jest.mock('../../supabase/client', () => ({
-  supabase: { from: jest.fn(), rpc: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn(), auth: { getSession: jest.fn() } },
 }));
 
 const row = (extra: Record<string, unknown> = {}) => ({
@@ -98,15 +99,25 @@ describe('fetchLongQuests manual order', () => {
 });
 
 describe('reorderLongQuests', () => {
-  it('sends the ids in order', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: null });
-    await reorderLongQuests(['b', 'a']);
-    expect(supabase.rpc).toHaveBeenCalledWith('reorder_long_quests', { p_ids: ['b', 'a'] });
+  const OWNER = 'da230000-0000-4000-8000-000000000001';
+  const REVISION = { userId: OWNER, ageVersion: 1, consentVersion: 2, authorityVersion: 3 };
+  const a = { kind: 'chain' as const, id: 'da230000-0000-4000-8000-0000000000d1', inputKind: 'basic' as const };
+  const b = { kind: 'chain' as const, id: 'da230000-0000-4000-8000-0000000000d2', inputKind: 'custom' as const };
+  beforeEach(() => {
+    (supabase.auth.getSession as jest.Mock).mockReset().mockResolvedValue({ data: { session: { user: { id: OWNER }, access_token: 't' } }, error: null });
+  });
+
+  it('sends the ids in order with a snapshot for each', async () => {
+    (supabase.rpc as jest.Mock).mockImplementation(() => trackerRpcDouble({ data: null, error: null }));
+    await reorderLongQuests([b.id, a.id], REVISION, [b, a]);
+    expect(supabase.rpc).toHaveBeenCalledWith('apply_tracker_write', {
+      p_operation: 'reorder_long_quests', p_arguments: { p_ids: [b.id, a.id], p_expected_targets: [b, a] }, p_expected: REVISION,
+    });
   });
 
   it('surfaces the server error', async () => {
     const failure = new Error('Quest order is out of date. Reload and try again.');
-    (supabase.rpc as jest.Mock).mockResolvedValue({ data: null, error: failure });
-    await expect(reorderLongQuests(['a'])).rejects.toBe(failure);
+    (supabase.rpc as jest.Mock).mockImplementation(() => trackerRpcDouble({ data: null, error: failure }));
+    await expect(reorderLongQuests([a.id], REVISION, [a])).rejects.toBe(failure);
   });
 });

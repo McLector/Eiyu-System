@@ -3,6 +3,8 @@
  * Runs the real shared data layer against a DISPOSABLE local Supabase stack (API port 54321 only) with a fetch wrapper that
  * performs the request, then loses the response, and separately fails the reconciliation reads. Secrets come from the
  * environment at run time (R3_JWT_SECRET) and are never written anywhere.
+ * S02: every write now goes through apply_tracker_write with a captured revision. This suite needs the 053-056 bundle on the
+ * isolated stack and has NOT been run against it from the shared lane (no database access); treat it as unverified.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
@@ -10,6 +12,7 @@ import { initSupabaseClient } from '../../supabase/client';
 import { UncertainSaveError } from '../save-outcome';
 import { deleteGymRoutine, saveGymExercise, saveGymRoutine, saveGymSession, startGymSession } from '../gym';
 import { saveAtomicLongQuest, setStageDoneWithReceipt } from '../long-quests';
+import { fetchTrackerAccess, setTrackerConsent, TRACKER_NOTICE_VERSIONS, type TrackerRevision } from '../tracker-access';
 
 const enabled = process.env.R3_NATIVE === '1';
 const run = enabled ? describe : describe.skip;
@@ -38,6 +41,9 @@ run('committed-but-unconfirmed writes on a real stack', () => {
   // The real client retries failed reads with backoff, so simulated outages take several seconds.
   jest.setTimeout(90_000);
   let admin: SupabaseClient; let userId = ''; let routineId = '';
+  const NO: never[] = [];
+  /** The current revision, read fresh; consent for both purposes is granted once in beforeAll. */
+  const revision = async (): Promise<TrackerRevision> => (await fetchTrackerAccess(userId)).revision;
   const count = async (table: string, column: string, value: string) => { const r = await admin.from(table).select('id', { count: 'exact', head: true }).eq(column, value); expect(r.error).toBeNull(); return r.count; };
   beforeAll(async () => {
     if (!/:54321$/.test(API)) throw new Error('Refusing to run against anything but the isolated stack on 54321.');
@@ -49,46 +55,50 @@ run('committed-but-unconfirmed writes on a real stack', () => {
     const client = createClient(API, token('anon'), { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: wrappedFetch } });
     expect((await client.auth.signInWithPassword({ email, password })).error).toBeNull();
     initSupabaseClient(client as never);
+    let current = await revision();
+    for (const purpose of ['custom-tracker', 'fitness-tracking'] as const) {
+      current = (await setTrackerConsent(purpose, true, TRACKER_NOTICE_VERSIONS[purpose], current)).revision;
+    }
   });
   afterEach(() => { rules = []; });
   afterAll(async () => { if (userId) await admin.auth.admin.deleteUser(userId); });
 
   it('routine creation: no duplicate, protected input, reconciled retry, then later changed saves work', async () => {
     const creationId = randomUUID(); routineId = creationId;
-    rules = [drop('/rest/v1/gym_routines'), outageOn('/rest/v1/gym_routines')];
-    await expect(saveGymRoutine(userId, 'R3 routine', 'kg', undefined, creationId)).rejects.toBeInstanceOf(UncertainSaveError);
+    rules = [drop('/rpc/apply_tracker_write'), outageOn('/rest/v1/gym_routines')];
+    await expect(saveGymRoutine(userId, 'R3 routine', 'kg', await revision(), NO, undefined, creationId)).rejects.toBeInstanceOf(UncertainSaveError);
     expect(await count('gym_routines', 'id', creationId)).toBe(1);
     rules = [];
-    await expect(saveGymRoutine(userId, 'R3 changed', 'kg', undefined, creationId)).rejects.toBeInstanceOf(UncertainSaveError);
-    await expect(saveGymRoutine(userId, 'R3 routine', 'kg', undefined, creationId)).resolves.toBe(creationId);
+    await expect(saveGymRoutine(userId, 'R3 changed', 'kg', await revision(), NO, undefined, creationId)).rejects.toBeInstanceOf(UncertainSaveError);
+    await expect(saveGymRoutine(userId, 'R3 routine', 'kg', await revision(), NO, undefined, creationId)).resolves.toBe(creationId);
     expect(await count('gym_routines', 'id', creationId)).toBe(1);
-    await expect(saveGymRoutine(userId, 'R3 changed', 'kg', creationId)).resolves.toBe(creationId);
+    await expect(saveGymRoutine(userId, 'R3 changed', 'kg', await revision(), NO, creationId)).resolves.toBe(creationId);
     const row = await admin.from('gym_routines').select('name').eq('id', creationId).single(); expect(row.data?.name).toBe('R3 changed');
   });
 
   it('exercise creation: lost response and failed reads leave one row with a stable id', async () => {
     const id = randomUUID();
     const input = { id, routine_id: routineId, user_id: userId, name: 'R3 lift', position: 0, sets: 3, reps: '6-10', rest_seconds: 150, rir: 2, rir_max: null, notes: '', media_path: null, media_mime: null } as const;
-    rules = [drop('/rpc/save_gym_exercise'), outageOn('/rest/v1/gym_exercises')];
-    await expect(saveGymExercise(input)).rejects.toBeInstanceOf(UncertainSaveError);
+    rules = [drop('/rpc/apply_tracker_write'), outageOn('/rest/v1/gym_exercises')];
+    await expect(saveGymExercise(input, await revision(), NO)).rejects.toBeInstanceOf(UncertainSaveError);
     expect(await count('gym_exercises', 'id', id)).toBe(1);
     rules = [];
-    await expect(saveGymExercise(input)).resolves.toBe(id);
+    await expect(saveGymExercise(input, await revision(), NO)).resolves.toBe(id);
     expect(await count('gym_exercises', 'id', id)).toBe(1);
   });
 
   it('draft start and Finish: idempotent after a lost response, with saved weights intact', async () => {
     const exercise = (await admin.from('gym_exercises').select('id').eq('routine_id', routineId).limit(1).single()).data!.id as string;
-    rules = [drop('/rpc/start_gym_session'), outageOn('/rest/v1/gym_sessions')];
-    await expect(startGymSession(routineId)).rejects.toBeInstanceOf(UncertainSaveError);
+    rules = [drop('/rpc/apply_tracker_write'), outageOn('/rest/v1/gym_sessions')];
+    await expect(startGymSession(routineId, await revision(), NO)).rejects.toBeInstanceOf(UncertainSaveError);
     rules = [];
-    const draft = await startGymSession(routineId);
+    const draft = await startGymSession(routineId, await revision(), NO);
     const drafts = await admin.from('gym_sessions').select('id').eq('routine_id', routineId).eq('status', 'draft'); expect(drafts.data).toHaveLength(1); expect(drafts.data![0].id).toBe(draft);
     const weights = [{ exercise_id: exercise, weight: 42.5 }];
-    rules = [drop('/rpc/save_gym_session'), outageOn('/rest/v1/gym_sessions'), outageOn('/rest/v1/gym_entries')];
-    await expect(saveGymSession(draft, weights, true)).rejects.toBeInstanceOf(UncertainSaveError);
+    rules = [drop('/rpc/apply_tracker_write'), outageOn('/rest/v1/gym_sessions'), outageOn('/rest/v1/gym_entries')];
+    await expect(saveGymSession(draft, weights, await revision(), NO, true)).rejects.toBeInstanceOf(UncertainSaveError);
     rules = [];
-    await expect(saveGymSession(draft, weights, true)).resolves.toBeUndefined();
+    await expect(saveGymSession(draft, weights, await revision(), NO, true)).resolves.toBeUndefined();
     const done = await admin.from('gym_sessions').select('status').eq('id', draft).single(); expect(done.data?.status).toBe('completed');
     const entry = await admin.from('gym_entries').select('weight').eq('session_id', draft); expect(entry.data).toHaveLength(1); expect(Number(entry.data![0].weight)).toBe(42.5);
   });
@@ -100,11 +110,11 @@ run('committed-but-unconfirmed writes on a real stack', () => {
     expect((await admin.from('long_quest_stages').insert([{ id: stage, user_id: userId, long_quest_id: quest, name: 'R3 stage', position: 0 }, { id: randomUUID(), user_id: userId, long_quest_id: quest, name: 'R3 final', position: 1 }])).error).toBeNull();
     const xp = async () => Number((await admin.from('stats').select('xp').eq('user_id', userId).eq('stat', 'INT').single()).data!.xp);
     const before = await xp(); const requestId = randomUUID();
-    rules = [drop('/rpc/set_long_quest_stage_done_receipt'), outageOn('/rpc/get_long_quest_reward_receipt', 'POST')];
-    await expect(setStageDoneWithReceipt(stage, true, requestId)).rejects.toBeInstanceOf(UncertainSaveError);
+    rules = [drop('/rpc/apply_tracker_write'), outageOn('/rpc/get_long_quest_reward_receipt', 'POST')];
+    await expect(setStageDoneWithReceipt(stage, true, requestId, await revision(), [{ kind: 'chain', id: quest, inputKind: 'custom' }])).rejects.toBeInstanceOf(UncertainSaveError);
     expect(await xp()).toBe(before + 20);
     rules = [];
-    const receipt = await setStageDoneWithReceipt(stage, true, requestId);
+    const receipt = await setStageDoneWithReceipt(stage, true, requestId, await revision(), [{ kind: 'chain', id: quest, inputKind: 'custom' }]);
     expect(receipt.replayed).toBe(true); expect(receipt.totals[0].delta).toBe(20);
     expect(await xp()).toBe(before + 20);
   });
@@ -112,19 +122,19 @@ run('committed-but-unconfirmed writes on a real stack', () => {
   it('atomic definition create: lost response and failed receipt read, then one quest with its stages', async () => {
     const quest = randomUUID(), requestId = randomUUID();
     const input = { name: 'R3 atomic', stat: 'WIS' as const, description: null, stages: [{ id: null, name: 'R3 one', description: null }, { id: null, name: 'R3 two', description: null }] };
-    rules = [drop('/rpc/save_long_quest_definition'), outageOn('/rpc/get_long_quest_definition_receipt', 'POST')];
-    await expect(saveAtomicLongQuest(quest, requestId, input as never, true)).rejects.toBeInstanceOf(UncertainSaveError);
+    rules = [drop('/rpc/apply_tracker_write'), outageOn('/rpc/get_long_quest_definition_receipt', 'POST')];
+    await expect(saveAtomicLongQuest(quest, requestId, { mode: 'custom', values: input as never }, true, await revision(), NO)).rejects.toBeInstanceOf(UncertainSaveError);
     expect(await count('long_quests', 'id', quest)).toBe(1);
     rules = [];
-    await expect(saveAtomicLongQuest(quest, requestId, input as never, true)).resolves.toBe(quest);
+    await expect(saveAtomicLongQuest(quest, requestId, { mode: 'custom', values: input as never }, true, await revision(), NO)).resolves.toBe(quest);
     expect(await count('long_quests', 'id', quest)).toBe(1); expect(await count('long_quest_stages', 'long_quest_id', quest)).toBe(2);
   });
 
   it('routine deletion: lost response is reconciled by an idempotent retry', async () => {
-    rules = [drop('/rpc/delete_gym_routine'), outageOn('/rest/v1/gym_routines')];
-    await expect(deleteGymRoutine(routineId, true)).rejects.toBeInstanceOf(UncertainSaveError);
+    rules = [drop('/rpc/apply_tracker_write'), outageOn('/rest/v1/gym_routines')];
+    await expect(deleteGymRoutine(routineId, await revision(), NO, true)).rejects.toBeInstanceOf(UncertainSaveError);
     rules = [];
-    await expect(deleteGymRoutine(routineId, true)).resolves.toBeUndefined();
+    await expect(deleteGymRoutine(routineId, await revision(), NO, true)).resolves.toBeUndefined();
     const row = await admin.from('gym_routines').select('deleted_at').eq('id', routineId).single(); expect(row.data?.deleted_at).not.toBeNull();
   });
 });

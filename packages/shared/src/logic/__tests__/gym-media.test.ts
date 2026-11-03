@@ -37,8 +37,29 @@ describe('validateGymMediaBytes', () => {
 });
 
 describe('gymMediaPath', () => {
-  it('is per-user, per-routine, with the extension from the type', () => {
-    expect(gymMediaPath('u1', 'r1', 'image/gif', 'abc')).toBe('u1/r1/abc.gif');
-    expect(gymMediaPath('u1', 'r1', 'video/mp4', 'abc')).toBe('u1/r1/abc.mp4');
+  const OWNER = 'da230000-0000-4000-8000-000000000001';
+  const ROUTINE = 'da230000-0000-4000-8000-0000000000a1';
+  const OBJECT = 'da230000-0000-4000-8000-0000000000b1';
+  const revision = { userId: OWNER, ageVersion: 1, consentVersion: 22, authorityVersion: 3 };
+
+  it('is per-user, per-routine and per-revision, with the extension from the type', () => {
+    expect(gymMediaPath(OWNER, ROUTINE, 'image/gif', OBJECT, revision)).toBe(`${OWNER}/${ROUTINE}/1-22-3/${OBJECT}.gif`);
+    expect(gymMediaPath(OWNER, ROUTINE, 'video/mp4', OBJECT, revision)).toBe(`${OWNER}/${ROUTINE}/1-22-3/${OBJECT}.mp4`);
+  });
+  it('moves to another folder when any one revision moves', () => {
+    const paths = [revision, { ...revision, ageVersion: 2 }, { ...revision, consentVersion: 23 }, { ...revision, authorityVersion: 4 }]
+      .map(r => gymMediaPath(OWNER, ROUTINE, 'image/gif', OBJECT, r));
+    expect(new Set(paths).size).toBe(4);
+  });
+  it('refuses a revision of another owner', () => {
+    expect(() => gymMediaPath(OWNER, ROUTINE, 'image/gif', OBJECT, { ...revision, userId: 'da230000-0000-4000-8000-000000000002' })).toThrow();
+  });
+  it('refuses an invalid revision, and ids that are not lowercase UUIDs', () => {
+    expect(() => gymMediaPath(OWNER, ROUTINE, 'image/gif', OBJECT, undefined as never)).toThrow();
+    expect(() => gymMediaPath(OWNER, ROUTINE, 'image/gif', OBJECT, { ...revision, consentVersion: -1 })).toThrow();
+    for (const bad of ['', 'r1', '../x', ROUTINE.toUpperCase(), `${ROUTINE}/x`]) {
+      expect(() => gymMediaPath(OWNER, bad, 'image/gif', OBJECT, revision)).toThrow();
+      expect(() => gymMediaPath(OWNER, ROUTINE, 'image/gif', bad, revision)).toThrow();
+    }
   });
 });

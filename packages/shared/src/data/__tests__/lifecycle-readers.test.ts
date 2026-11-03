@@ -1,8 +1,6 @@
 import { fetchWeeklyReview, weeklyStatTotal } from '../weekly-review';
-import { fetchOrCreateWeeklyQuest } from '../weekly-quest';
-import { gatherWeekData } from '../weekly-summary';
+import { fetchWeeklyQuest } from '../weekly-quest';
 import { supabase } from '../../supabase/client';
-import { Stat, StatData } from '../../types/eiyu';
 
 jest.mock('../../supabase/client', () => ({
   supabase: { from: jest.fn(), rpc: jest.fn() },
@@ -147,53 +145,27 @@ describe('lifecycle readers', () => {
       throw new Error(`unexpected table ${table}`);
     });
 
-    const stats = {} as Record<Stat, StatData>;
-    const result = await fetchOrCreateWeeklyQuest(
-      'user-1',
-      stats,
-      'UTC',
-      new Date('2026-09-17T12:00:00Z')
-    );
+    const result = await fetchWeeklyQuest('user-1', 'UTC', new Date('2026-09-17T12:00:00Z'));
 
     expect(result).toMatchObject({ weekStart: '2026-09-14', stat: 'DEX', currentCount: 3 });
   });
 
-  it('keeps archived live definitions and deleted retained completions in AI summary inputs', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({ data: { habits: [{ id: 'archived-1', name: 'Archived', stat: 'WIS' }], recurring_totals: {}, rows: [
-      { source_habit_id: 'archived-1', historical_date: '2026-09-15', habit_name: 'Archived', stat: 'WIS', quest_type: 'habit', scheduled: true, completion_kind: 'full' },
-      { source_habit_id: 'deleted-1', historical_date: '2026-09-16', habit_name: 'Deleted', stat: 'CHA', quest_type: 'habit', scheduled: true, completion_kind: 'easy' },
-    ] }, error: null });
+  it('reads the prepared weekly quest without ever creating one, and reports null when it is not prepared yet', async () => {
+    const insert = jest.fn();
+    const read = chainable({ data: null, error: null });
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
-      if (table === 'habits') {
-        return chainable({ data: [{ id: 'archived-1', name: 'Archived', stat: 'WIS' }], error: null });
-      }
-      if (table === 'habit_completions') {
-        return chainable({ data: [{ habit_id: 'archived-1', kind: 'full' }], error: null });
-      }
-      if (table === 'deleted_habit_history') {
-        return chainable({
-          data: [
-            {
-              source_habit_id: 'deleted-1',
-              habit_name: 'Deleted',
-              stat: 'CHA',
-              completion_kind: 'easy',
-            },
-          ],
-          error: null,
-        });
-      }
+      if (table === 'weekly_quests') return Object.assign(read, { insert, upsert: insert });
       throw new Error(`unexpected table ${table}`);
     });
+    await expect(fetchWeeklyQuest('user-1', 'UTC', new Date('2026-09-17T12:00:00Z'))).resolves.toBeNull();
+    expect(insert).not.toHaveBeenCalled();
+    expect(supabase.rpc).not.toHaveBeenCalled();
+    expect(read.eq).toHaveBeenCalledWith('week_start', '2026-09-14');
+  });
 
-    const result = await gatherWeekData('user-1', '2026-09-14', '2026-09-21');
-
-    expect(result.habits).toEqual(
-      expect.arrayContaining([
-        { name: 'Archived', stat: 'WIS', fullCount: 1, easyCount: 0 },
-        { name: 'Deleted', stat: 'CHA', fullCount: 0, easyCount: 1 },
-      ])
-    );
-    expect(result.statTotals).toMatchObject({ WIS: 1, CHA: 1 });
+  it('surfaces a read error instead of reporting an unprepared week', async () => {
+    const failure = new Error('read failed');
+    (supabase.from as jest.Mock).mockImplementation(() => chainable({ data: null, error: failure }));
+    await expect(fetchWeeklyQuest('user-1', 'UTC', new Date('2026-09-17T12:00:00Z'))).rejects.toBe(failure);
   });
 });

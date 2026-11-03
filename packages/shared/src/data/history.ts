@@ -55,12 +55,15 @@ export function pageHistoryEvidence(snapshot: HistorySnapshot, offset: number, l
  */
 export async function fetchHistoryEvidence(
   startDate: string,
-  endDate: string
+  endDate: string,
+  authorization?: string
 ): Promise<HistorySnapshot> {
-  const { data, error } = await supabase.rpc('read_history_range', {
+  const query = supabase.rpc('read_history_range', {
     p_start_date: startDate,
     p_end_date: endDate,
   });
+  if (authorization) query.setHeader('Authorization', authorization);
+  const { data, error } = await query;
   if (error) throw error;
   const snapshot = data as HistorySnapshot | null;
   if (!snapshot || !Array.isArray(snapshot.rows) || !Array.isArray(snapshot.habits) || !snapshot.recurring_totals) {

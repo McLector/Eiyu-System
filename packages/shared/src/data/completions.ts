@@ -1,4 +1,5 @@
-import { supabase } from '../supabase/client';
+import type { TrackerRevision, TrackerTargetSnapshot } from './tracker-access';
+import { invokeTrackerWrite, trackerErrorKind } from './tracker-writes';
 import { accountDateKey, deviceTimeZone } from '../logic/date-utils';
 import { CompletionKind } from '../types/database';
 import { Stat } from '../types/eiyu';
@@ -20,21 +21,27 @@ export async function completeHabit(
   habitId: string,
   stat: Stat,
   kind: CompletionKind,
+  expected: TrackerRevision,
+  targets: readonly TrackerTargetSnapshot[],
   completedOn?: string,
   timeZone: string = deviceTimeZone()
-) {
+): Promise<void> {
   // userId/stat stay in the signature for API stability; both are resolved
   // server-side by the RPC (auth.uid(), habit lookup) so client and DB can't
   // disagree — as of migration 014, so is the XP amount (see 014's comment).
   void userId;
   void stat;
 
-  const { error } = await supabase.rpc('complete_habit', {
-    p_habit_id: habitId,
-    p_completed_on: completedOn ?? todayKey(timeZone),
-    p_kind: kind,
-  });
-  if (error) throw error;
+  const date = completedOn ?? todayKey(timeZone);
+  // Checked here so the only 22023 left to explain is the server's duplicate-completion refusal.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || (kind !== 'full' && kind !== 'easy')) throw new Error('This completion could not be prepared.');
+  try {
+    await invokeTrackerWrite<unknown>('complete_habit', { p_habit_id: habitId, p_completed_on: date, p_kind: kind }, expected, targets);
+  } catch (error) {
+    // A second completion for the same habit and day is refused as 22023: it is already recorded, never a second row.
+    if (trackerErrorKind(error) === 'invalid-input') return;
+    throw error;
+  }
 }
 
 export type RecoveryCompletionStatus = 'recovered' | 'already_recovered';
@@ -44,12 +51,11 @@ export type RecoveryCompletionStatus = 'recovered' | 'already_recovered';
  * deadline, XP, and clock so the client cannot forge or extend the window.
  */
 export async function completeHabitRecovery(
-  habitId: string
+  habitId: string,
+  expected: TrackerRevision,
+  targets: readonly TrackerTargetSnapshot[]
 ): Promise<RecoveryCompletionStatus> {
-  const { data, error } = await supabase.rpc('complete_habit_recovery', {
-    p_habit_id: habitId,
-  });
-  if (error) throw error;
+  const data = await invokeTrackerWrite<unknown>('complete_habit_recovery', { p_habit_id: habitId }, expected, targets);
 
   const status = (data as { status?: string } | null)?.status;
   if (status === 'expired') throw new Error('Recovery window has expired');
@@ -72,19 +78,20 @@ export async function undoCompletion(
   userId: string,
   habitId: string,
   stat: Stat,
+  expected: TrackerRevision,
+  targets: readonly TrackerTargetSnapshot[],
   timeZone: string = deviceTimeZone(),
   completedOn?: string
-) {
+): Promise<void> {
   // userId/stat remain in the signature for API stability; the RPC resolves
   // both server-side so client and DB can't disagree.
   void userId;
   void stat;
 
-  const { error } = await supabase.rpc('undo_habit_completion', {
+  await invokeTrackerWrite<unknown>('undo_habit_completion', {
     p_habit_id: habitId,
     p_completed_on: completedOn ?? todayKey(timeZone),
-  });
-  if (error) throw error;
+  }, expected, targets);
 }
 
 /**
@@ -97,12 +104,18 @@ export async function undoCompletion(
  * whichever response lands last should win, not whichever request was
  * issued last.
  */
-export async function incrementHabitProgress(habitId: string, date: string, delta: number): Promise<number> {
-  const { data, error } = await supabase.rpc('increment_habit_progress', {
+export async function incrementHabitProgress(
+  habitId: string,
+  date: string,
+  delta: number,
+  expected: TrackerRevision,
+  targets: readonly TrackerTargetSnapshot[]
+): Promise<number> {
+  const count = await invokeTrackerWrite<unknown>('increment_habit_progress', {
     p_habit_id: habitId,
     p_date: date,
     p_delta: delta,
-  });
-  if (error) throw error;
-  return data as number;
+  }, expected, targets);
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) throw new Error('Unexpected progress result');
+  return count;
 }

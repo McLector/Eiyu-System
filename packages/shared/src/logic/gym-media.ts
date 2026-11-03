@@ -1,3 +1,4 @@
+import { copyTrackerRevision, TRACKER_ACCESS_MESSAGE, type TrackerRevision } from '../data/tracker-access';
 export const GYM_BUCKET = 'gym-exercise-media';
 export const GYM_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
 export type GymMediaMime = 'image/gif' | 'video/mp4';
@@ -23,6 +24,13 @@ export function validateGymMediaBytes(bytes: Uint8Array | ArrayBuffer, type: str
   checkGymMediaSignature(data, mime);
   return mime;
 }
-export function gymMediaPath(userId: string, routineId: string, mime: GymMediaMime, id: string): string {
-  return `${userId}/${routineId}/${id}.${mime === 'image/gif' ? 'gif' : 'mp4'}`;
+const LOWER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/**
+ * Where an upload goes: `<owner>/<routine>/<age>-<consent>-<authority>/<object>.<gif|mp4>`. The revision folder is the
+ * captured tracker revision, so Storage can refuse a body that was started under a permission that has since changed.
+ */
+export function gymMediaPath(userId: string, routineId: string, mime: GymMediaMime, id: string, expected: TrackerRevision): string {
+  const revision = copyTrackerRevision(expected);
+  if (revision.userId !== userId || !LOWER_UUID.test(routineId) || !LOWER_UUID.test(id)) throw new Error(TRACKER_ACCESS_MESSAGE);
+  return `${userId}/${routineId}/${revision.ageVersion}-${revision.consentVersion}-${revision.authorityVersion}/${id}.${mime === 'image/gif' ? 'gif' : 'mp4'}`;
 }

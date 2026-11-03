@@ -1,10 +1,15 @@
 import { supabase } from '../supabase/client';
 import { GYM_BUCKET, gymMediaPath, type GymMediaMime } from '../logic/gym-media';
 import { newRequestId } from '../logic/request-id';
+import type { TrackerRevision } from './tracker-access';
 
-/** Upload an already validated file body (a File/Blob on web, an ArrayBuffer on a phone) to this user's folder. */
-export async function uploadGymMediaBody(userId: string, routineId: string, body: Blob | ArrayBuffer | Uint8Array, mime: GymMediaMime) {
-  const path = gymMediaPath(userId, routineId, mime, newRequestId());
+/**
+ * Upload an already validated file body (a File/Blob on web, an ArrayBuffer on a phone) to this user's folder for the
+ * captured revision. A refused attachment is not proof the bytes were never stored.
+ */
+export async function uploadGymMediaBody(userId: string, routineId: string, body: Blob | ArrayBuffer | Uint8Array, mime: GymMediaMime, expected: TrackerRevision) {
+  // The path is built from the revision captured by the caller, before any await.
+  const path = gymMediaPath(userId, routineId, mime, newRequestId(), expected);
   const { error } = await supabase.storage.from(GYM_BUCKET).upload(path, body, { contentType: mime, upsert: false });
   if (error) throw error;
   return { path, mime };

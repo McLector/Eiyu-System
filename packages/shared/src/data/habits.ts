@@ -7,6 +7,11 @@ import { initializeAccountTimeZone } from './profile';
 import { normalizeEditableQuestName } from '../logic/validation';
 import { byPosition, hasManualOrder } from '../logic/manual-order';
 import { readBatches } from './pagination';
+import { type TrackerRevision, type TrackerTargetSnapshot } from './tracker-access';
+import { invokeTrackerWrite, isRefusedBeforeSend, NO_TARGETS, trackerErrorKind } from './tracker-writes';
+import { isConfirmedFailure } from './save-outcome';
+import { withTrackerClassification } from './tracker-classify';
+import { habitGatewayInput, type HabitEditorInput } from '../logic/tracker-input';
 
 type HabitRow = Database['public']['Tables']['habits']['Row'];
 type RecoveryRow = Database['public']['Functions']['get_open_habit_recoveries']['Returns'][number];
@@ -185,7 +190,7 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
   const progressByHabit = new Map<string, number>();
   for (const p of progress) progressByHabit.set(p.habit_id, p.progress_count);
 
-  return boardItems.map(h =>
+  const quests = boardItems.map(h =>
     toQuest(
       h,
       completedToday.has(h.id),
@@ -198,6 +203,7 @@ export async function fetchTodayHabits(userId: string): Promise<Quest[]> {
       recoveryByHabit.get(h.id)
     )
   );
+  return withTrackerClassification('habit', quests, userId);
 }
 
 export interface HabitInput {
@@ -221,39 +227,31 @@ export interface HabitInput {
   timeSet?: boolean;
 }
 
-/** Shared insert/update column mapping so both write paths stay in lockstep. */
-function habitColumns(input: HabitInput) {
-  const type: QuestType = input.questType ?? 'habit';
-  // A time needs a date (042): an undated one-time quest is always stored untimed at the 08:00 placeholder.
-  const undated = type === 'one_time' && !input.scheduledDate;
-  return {
-    name: input.name,
-    // Only recurring habits have a penalty (easy version).
-    easy_version: type !== 'habit' ? null : input.easyVersion?.trim() ? input.easyVersion.trim() : null,
-    description: input.description?.trim() ? input.description.trim() : null,
-    quest_type: type,
-    stat: input.stat,
-    difficulty: input.difficulty,
-    reminder_time: undated ? '08:00' : input.time,
-    days: type === 'backlog' ? [] : input.days,
-    scheduled_date: type === 'one_time' ? (input.scheduledDate ?? null) : null,
-    target_count: type === 'habit' ? (input.targetCount ?? null) : null,
-    // Sent only when the caller supplied them, so an edit that never read them cannot reset them.
-    ...(type === 'habit' ? { genre: null } : input.genre !== undefined ? { genre: input.genre } : {}),
-    ...(type === 'backlog' || undated ? { time_set: false } : type === 'habit' ? { time_set: true } : input.timeSet !== undefined ? { time_set: input.timeSet } : {}),
-  };
+/** Normalizes the one field the client still validates (the custom name); the server owns everything else. */
+function preparedEditor(input: HabitEditorInput, originalName?: string) {
+  if (input?.mode === 'custom') {
+    return habitGatewayInput({ mode: 'custom', values: { ...input.values, name: normalizeEditableQuestName(input.values?.name, originalName) } });
+  }
+  return habitGatewayInput(input);
 }
 
-export async function createHabit(userId: string, input: HabitInput): Promise<string> {
-  const name = normalizeEditableQuestName(input.name);
-  await initializeAccountTimeZone();
-  const { data, error } = await supabase
-    .from('habits')
-    .insert({ user_id: userId, ...habitColumns({ ...input, name }) })
-    .select('id')
-    .single();
-  if (error) throw error;
-  return data.id;
+/**
+ * Creates through the revision-bound gateway. `creationId` is chosen by the editor and kept across uncertain retries, so
+ * a retry of a save that already landed returns the same id instead of making a second quest. `userId` stays for API
+ * stability: the owner is the revision's `userId`.
+ */
+export async function createHabit(
+  userId: string,
+  input: HabitEditorInput,
+  expected: TrackerRevision,
+  creationId: string
+): Promise<string> {
+  void userId;
+  if (typeof creationId !== 'string' || !creationId) throw new Error('This quest could not be prepared to save.');
+  const { mode, input: payload } = preparedEditor(input);
+  const id = await invokeTrackerWrite<unknown>('habit-save', { p_id: creationId, p_create: true, p_mode: mode, p_input: payload }, expected, NO_TARGETS);
+  if (typeof id !== 'string' || id.toLowerCase() !== creationId.toLowerCase()) throw new Error('The save result could not be confirmed. Check the quest before retrying.');
+  return id;
 }
 
 export interface ActiveHabitReminder {
@@ -261,6 +259,18 @@ export interface ActiveHabitReminder {
   name: string;
   time: string;
   days: number[];
+  /** Server classification for reminder filtering; absent means unclassified (treated as custom). */
+  inputKind?: 'basic' | 'custom';
+  canWrite?: boolean;
+}
+
+export interface UpcomingOneTimeReminder {
+  id: string;
+  name: string;
+  time: string;
+  date: string;
+  inputKind?: 'basic' | 'custom';
+  canWrite?: boolean;
 }
 
 /**
@@ -278,7 +288,7 @@ export async function fetchAllActiveHabits(userId: string): Promise<ActiveHabitR
     .eq('archived', false)
     .eq('quest_type', 'habit');
   if (error) throw error;
-  return (data ?? []).map(h => ({ id: h.id, name: h.name, time: h.reminder_time.slice(0, 5), days: h.days }));
+  return withTrackerClassification('habit', (data ?? []).map(h => ({ id: h.id, name: h.name, time: h.reminder_time.slice(0, 5), days: h.days })), userId);
 }
 
 /**
@@ -307,23 +317,21 @@ export async function fetchTodayOneTimeHabits(
   return (data ?? []).map(h => ({ id: h.id, name: h.name, time: h.reminder_time.slice(0, 5) }));
 }
 
-export async function updateHabit(id: string, input: HabitInput, originalName?: string) {
-  const name = normalizeEditableQuestName(input.name, originalName);
-  await initializeAccountTimeZone();
-  const { data, error } = await supabase
-    .from('habits')
-    .update(habitColumns({ ...input, name }))
-    .eq('id', id)
-    .select('id')
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) throw new Error('This quest no longer exists or could not be updated. Reload the board before saving.');
+export async function updateHabit(
+  id: string,
+  input: HabitEditorInput,
+  expected: TrackerRevision,
+  targets: readonly TrackerTargetSnapshot[],
+  originalName?: string
+): Promise<void> {
+  const { mode, input: payload } = preparedEditor(input, originalName);
+  await invokeTrackerWrite<unknown>('habit-save', { p_id: id, p_create: false, p_mode: mode, p_input: payload }, expected, targets);
 }
 
 /** All upcoming active one-time reminders, including future dates. */
 export async function fetchUpcomingOneTimeHabits(
   userId: string
-): Promise<{ id: string; name: string; time: string; date: string }[]> {
+): Promise<UpcomingOneTimeReminder[]> {
   const timeZone = await initializeAccountTimeZone();
   const today = accountDateKey(new Date(), timeZone);
   const { data, error } = await supabase
@@ -335,9 +343,9 @@ export async function fetchUpcomingOneTimeHabits(
     .eq('time_set', true)
     .gte('scheduled_date', today);
   if (error) throw error;
-  return (data ?? []).filter(h => h.scheduled_date != null).map(h => ({
+  return withTrackerClassification('habit', (data ?? []).filter(h => h.scheduled_date != null).map(h => ({
     id: h.id, name: h.name, time: h.reminder_time.slice(0, 5), date: h.scheduled_date!,
-  }));
+  })), userId);
 }
 
 /** Active Backlog quests in their manual order, or newest first until every row has a position (before 044). Kept apart from the board read: Backlog has no day, so the daily RPC never returns it. */
@@ -355,45 +363,62 @@ export async function fetchBacklogQuests(userId: string): Promise<Quest[]> {
   const ordered = hasManualOrder(rows)
     ? byPosition(rows)
     : rows.sort((a, b) => b.created_at.localeCompare(a.created_at) || a.id.localeCompare(b.id));
-  return ordered
-    .map(row => toQuest(row, false, new Set(), new Set(), new Date(), 0, 'UTC', false));
+  return withTrackerClassification('habit', ordered
+    .map(row => toQuest(row, false, new Set(), new Set(), new Date(), 0, 'UTC', false)), userId);
 }
 
 /**
  * Saves a lane's manual order. `ids` are the unfinished quests the screen shows, in their new order; the server
- * puts them into the slots they already hold, so quests it does not show keep their place.
+ * puts them into the slots they already hold, so quests it does not show keep their place. `targets` has a snapshot for
+ * every id in `ids`.
  */
-export async function reorderQuests(questType: QuestType, ids: string[]): Promise<void> {
-  const { error } = await supabase.rpc('reorder_quests', { p_quest_type: questType, p_ids: ids });
-  if (error) throw error;
+export async function reorderQuests(
+  questType: QuestType,
+  ids: string[],
+  expected: TrackerRevision,
+  targets: readonly TrackerTargetSnapshot[]
+): Promise<void> {
+  await invokeTrackerWrite<unknown>('reorder_quests', { p_quest_type: questType, p_ids: [...ids] }, expected, targets);
 }
 
 /** Server-dated: the account's current day, never a client clock. */
-export async function moveBacklogToOneTime(id: string): Promise<void> {
-  const { error } = await supabase.rpc('move_backlog_to_one_time', { p_id: id });
-  if (error) throw error;
+export async function moveBacklogToOneTime(id: string, expected: TrackerRevision, targets: readonly TrackerTargetSnapshot[]): Promise<void> {
+  await invokeTrackerWrite<unknown>('move_backlog_to_one_time', { p_id: id }, expected, targets);
 }
 
 /** Refused by the server when the quest already has a completion. */
-export async function moveOneTimeToBacklog(id: string): Promise<void> {
-  const { error } = await supabase.rpc('move_one_time_to_backlog', { p_id: id });
-  if (error) throw error;
+export async function moveOneTimeToBacklog(id: string, expected: TrackerRevision, targets: readonly TrackerTargetSnapshot[]): Promise<void> {
+  await invokeTrackerWrite<unknown>('move_one_time_to_backlog', { p_id: id }, expected, targets);
 }
 
 /** Phase 1: archive through the server boundary so pause metadata is recorded. */
-export async function archiveHabit(id: string) {
-  const { error } = await supabase.rpc('archive_habit', { p_habit_id: id });
-  if (error) throw error;
+export async function archiveHabit(id: string, expected: TrackerRevision, targets: readonly TrackerTargetSnapshot[]): Promise<void> {
+  await invokeTrackerWrite<unknown>('archive_habit', { p_habit_id: id }, expected, targets);
 }
 
 /** Phase 1: restore through the server boundary so paused dates are not backfilled. */
-export async function restoreHabit(id: string) {
-  const { error } = await supabase.rpc('restore_habit', { p_habit_id: id });
-  if (error) throw error;
+export async function restoreHabit(id: string, expected: TrackerRevision, targets: readonly TrackerTargetSnapshot[]): Promise<void> {
+  await invokeTrackerWrite<unknown>('restore_habit', { p_habit_id: id }, expected, targets);
 }
 
-/** Phase 1: permanently remove the executable definition while retaining history. */
-export async function deleteHabit(id: string) {
-  const { error } = await supabase.rpc('delete_habit', { p_habit_id: id });
-  if (error) throw error;
+/** Habits whose delete went out and failed without a confirmed answer: a later "target unavailable" may be its own success. */
+const uncertainDeletes = new Set<string>();
+
+/**
+ * Phase 1: permanently remove the executable definition while retaining history. The server no longer treats a repeat as
+ * a no-op (it answers 42501 for a missing habit), so a retry that gets 42501 after this session's own uncertain attempt is
+ * settled, once. Any other 42501 is a real refusal.
+ */
+export async function deleteHabit(id: string, expected: TrackerRevision, targets: readonly TrackerTargetSnapshot[]): Promise<void> {
+  try {
+    await invokeTrackerWrite<unknown>('delete_habit', { p_habit_id: id }, expected, targets);
+    uncertainDeletes.delete(id);
+  } catch (error) {
+    if (!isRefusedBeforeSend(error)) {
+      if (trackerErrorKind(error) === 'denied' && uncertainDeletes.delete(id)) return;
+      if (!isConfirmedFailure(error) && !trackerErrorKind(error)) uncertainDeletes.add(id);
+      else uncertainDeletes.delete(id);
+    }
+    throw error;
+  }
 }

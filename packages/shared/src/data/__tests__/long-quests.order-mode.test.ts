@@ -1,5 +1,6 @@
 import { fetchLongQuests, saveAtomicLongQuest } from '../long-quests';
 import { supabase } from '../../supabase/client';
+import { trackerRpcDouble } from '../../test-support/tracker-rpc';
 
 function chainable(result: { data?: unknown; error: unknown }) {
   const builder: any = {
@@ -13,7 +14,7 @@ function chainable(result: { data?: unknown; error: unknown }) {
 }
 
 jest.mock('../../supabase/client', () => ({
-  supabase: { from: jest.fn(), rpc: jest.fn() },
+  supabase: { from: jest.fn(), rpc: jest.fn(), auth: { getSession: jest.fn() } },
 }));
 
 const row = (extra: Record<string, unknown> = {}) => ({
@@ -99,24 +100,24 @@ describe('fetchLongQuests order mode', () => {
 });
 
 describe('saveAtomicLongQuest order mode', () => {
-  const input = { name: 'Ship it', stat: 'INT' as const, stages: [{ id: 's1', name: 'Plan', description: null }] };
+  const OWNER = 'da230000-0000-4000-8000-000000000001';
+  const REVISION = { userId: OWNER, ageVersion: 1, consentVersion: 2, authorityVersion: 3 };
+  const ID = 'da230000-0000-4000-8000-0000000000d1';
+  const TARGET = { kind: 'chain' as const, id: ID, inputKind: 'custom' as const };
+  const input = { name: 'Ship it', stat: 'INT' as const, stages: [{ id: 'da230000-0000-4000-8000-0000000000f1', name: 'Plan', description: null }] };
+  const payload = () => (supabase.rpc as jest.Mock).mock.calls[0][1].p_arguments.p_input;
+  beforeEach(() => {
+    (supabase.auth.getSession as jest.Mock).mockReset().mockResolvedValue({ data: { session: { user: { id: OWNER }, access_token: 't' } }, error: null });
+    (supabase.rpc as jest.Mock).mockImplementation(() => trackerRpcDouble({ data: ID, error: null }));
+  });
 
   it('sends strictOrder in the saved definition when the caller chose a mode', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({ data: 'lq-1', error: null });
-
-    await saveAtomicLongQuest('lq-1', 'req-1', { ...input, strictOrder: false }, false);
-
-    expect(supabase.rpc).toHaveBeenCalledWith('save_long_quest_definition', expect.objectContaining({
-      p_input: expect.objectContaining({ strictOrder: false }),
-    }));
+    await saveAtomicLongQuest(ID, 'da230000-0000-4000-8000-0000000000e1', { mode: 'custom', values: { ...input, strictOrder: false } }, false, REVISION, [TARGET]);
+    expect(payload()).toEqual(expect.objectContaining({ strictOrder: false }));
   });
 
   it('omits the key when no mode was chosen, so the server keeps the current one', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({ data: 'lq-1', error: null });
-
-    await saveAtomicLongQuest('lq-1', 'req-2', input, false);
-
-    const payload = (supabase.rpc as jest.Mock).mock.calls[0][1].p_input;
-    expect(payload).not.toHaveProperty('strictOrder');
+    await saveAtomicLongQuest(ID, 'da230000-0000-4000-8000-0000000000e2', { mode: 'custom', values: input }, false, REVISION, [TARGET]);
+    expect(payload()).not.toHaveProperty('strictOrder');
   });
 });
