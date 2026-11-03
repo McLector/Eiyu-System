@@ -17,6 +17,7 @@ const shared = vi.hoisted(() => ({
 
 vi.mock('@eiyu/shared', async () => ({
   ...(await vi.importActual<typeof import('@eiyu/shared')>('@eiyu/shared')),
+  ...(await import('../../test/tracker-store-mocks')).trackerSharedMocks('user-1'),
   ...shared,
 }));
 vi.mock('../session-context', () => ({ useSession: () => ({ session: { user: { id: 'user-1' } } }) }));
@@ -26,11 +27,12 @@ import { EiyuProvider, useEiyu } from '../eiyu-store';
 const quest = (id: string, position: number, questType: Quest['questType'] = 'backlog'): Quest => ({
   id, name: id, stat: 'INT', difficulty: 'Easy', easyVersion: null, description: null, questType, position,
   genre: null, timeSet: false, archived: false, time: '08:00', days: [], streak: 0, frozen: false, completed: false,
-  targetCount: null, progressCount: 0, dailyEligible: true,
+  targetCount: null, progressCount: 0, dailyEligible: true, inputKind: 'basic', canWrite: true,
 });
 const chain = (id: string, position: number): LongQuest => ({
   id, name: id, stat: 'INT', description: null, completedAt: null, position,
   stages: [{ id: `${id}-s`, name: 's', done: false, description: null }],
+  inputKind: 'basic', canWrite: true,
 });
 
 let store: ReturnType<typeof useEiyu> | null = null;
@@ -62,7 +64,7 @@ describe('reorderQuests in the web store', () => {
     shared.reorderQuests.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
     const done = store!.reorderQuests('backlog', ['b3', 'b1']);
     await waitFor(() => expect(backlogIds()).toEqual(['b3', 'b2', 'b1']));
-    expect(shared.reorderQuests).toHaveBeenCalledWith('backlog', ['b3', 'b1']);
+    expect(shared.reorderQuests).toHaveBeenCalledWith('backlog', ['b3', 'b1'], expect.objectContaining({ userId: 'user-1' }), [{ kind: 'habit', id: 'b3', inputKind: 'basic' }, { kind: 'habit', id: 'b1', inputKind: 'basic' }]);
     const invalidated = vi.spyOn(client, 'invalidateQueries');
     release();
     await done;
@@ -135,7 +137,7 @@ describe('reorderChains in the web store', () => {
     shared.reorderLongQuests.mockImplementationOnce(() => new Promise<void>(() => {}));
     void store!.reorderChains(['c3', 'c1']);
     await waitFor(() => expect(store?.user.longQuests.map(q => q.id)).toEqual(['c3', 'c2', 'c1']));
-    expect(shared.reorderLongQuests).toHaveBeenCalledWith(['c3', 'c1']);
+    expect(shared.reorderLongQuests).toHaveBeenCalledWith(['c3', 'c1'], expect.objectContaining({ userId: 'user-1' }), [{ kind: 'chain', id: 'c3', inputKind: 'basic' }, { kind: 'chain', id: 'c1', inputKind: 'basic' }]);
   });
 
   it('reads the chains again and publishes the failure when the server refuses', async () => {

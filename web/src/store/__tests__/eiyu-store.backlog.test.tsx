@@ -18,6 +18,7 @@ const shared = vi.hoisted(() => ({
 
 vi.mock('@eiyu/shared', async () => ({
   ...(await vi.importActual<typeof import('@eiyu/shared')>('@eiyu/shared')),
+  ...(await import('../../test/tracker-store-mocks')).trackerSharedMocks('user-1'),
   ...shared,
 }));
 vi.mock('../session-context', () => ({ useSession: () => ({ session: { user: { id: 'user-1' } } }) }));
@@ -27,7 +28,7 @@ import { EiyuProvider, useEiyu } from '../eiyu-store';
 const idea = (id: string): Quest => ({
   id, name: `Idea ${id}`, stat: 'INT', difficulty: 'Easy', easyVersion: null, description: null, questType: 'backlog',
   genre: 'tool', timeSet: false, archived: false, time: '08:00', days: [], streak: 0, frozen: false, completed: false,
-  targetCount: null, progressCount: 0,
+  targetCount: null, progressCount: 0, inputKind: 'basic', canWrite: true,
 });
 
 let store: ReturnType<typeof useEiyu> | null = null;
@@ -78,6 +79,7 @@ describe('Backlog in the web store', () => {
   });
 
   it('publishes a failed move through the board error state and rethrows', async () => {
+    shared.fetchTodayHabits.mockResolvedValue([{ ...idea('t1'), questType: 'one_time' }]);
     renderStore();
     await waitFor(() => expect(store?.backlog).toHaveLength(1));
     shared.moveOneTimeToBacklog.mockRejectedValueOnce(new Error('quest has a completion'));

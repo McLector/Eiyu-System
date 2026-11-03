@@ -19,6 +19,7 @@ const shared = vi.hoisted(() => ({
 
 vi.mock('@eiyu/shared', async () => ({
   ...(await vi.importActual<typeof import('@eiyu/shared')>('@eiyu/shared')),
+  ...(await import('../../test/tracker-store-mocks')).trackerSharedMocks('user-1'),
   ...shared,
 }));
 
@@ -44,9 +45,11 @@ const quest: Quest = {
   completed: false,
   targetCount: null,
   progressCount: 0,
+  inputKind: 'custom',
+  canWrite: true,
 };
 
-const input: HabitInput = {
+const customValues: HabitInput = {
   name: 'Morning walk',
   easyVersion: 'Walk for one minute',
   description: null,
@@ -93,7 +96,7 @@ afterEach(() => vi.clearAllMocks());
 describe('web lifecycle store boundary', () => {
   it('single-flights repeated delete calls, evicts the cache, and blocks stale editor saves', async () => {
     const client = renderStore();
-    await waitFor(() => expect(latestStore).not.toBeNull());
+    await waitFor(() => expect(latestStore?.tracker).toBeTruthy());
 
     let release!: () => void;
     shared.deleteHabit.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
@@ -107,7 +110,7 @@ describe('web lifecycle store boundary', () => {
     await first;
 
     expect(client.getQueryData(['habits', 'today', 'user-1'])).toEqual([]);
-    await expect(latestStore!.saveHabit(input, 'habit-1')).rejects.toThrow('This quest was deleted');
+    await expect(latestStore!.saveHabit({ mode: 'custom', values: customValues }, 'habit-1')).rejects.toThrow('This quest was deleted');
     expect(shared.updateHabit).not.toHaveBeenCalled();
   });
 
@@ -116,7 +119,7 @@ describe('web lifecycle store boundary', () => {
     shared.fetchBacklogQuests.mockResolvedValue([backlogQuest]);
     renderStore();
     await waitFor(() => expect(latestStore?.backlog).toHaveLength(1));
-    await latestStore!.saveHabit({ ...input, questType: 'backlog', name: 'New name' }, 'b-1');
-    expect(shared.updateHabit).toHaveBeenCalledWith('b-1', expect.objectContaining({ name: 'New name' }), 'Old backlog name');
+    await latestStore!.saveHabit({ mode: 'custom', values: { ...customValues, questType: 'backlog', name: 'New name' } }, 'b-1');
+    expect(shared.updateHabit).toHaveBeenCalledWith('b-1', expect.objectContaining({ mode: 'custom', values: expect.objectContaining({ name: 'New name' }) }), expect.objectContaining({ userId: 'user-1' }), [{ kind: 'habit', id: 'b-1', inputKind: 'custom' }], 'Old backlog name');
   });
 });

@@ -42,16 +42,24 @@ import {
   undoCompletion,
   updateHabit,
   restoreHabit,
-  type HabitInput,
+  copyTrackerRevision,
+  prepareDay,
+  type ChainEditorInput,
+  type HabitEditorInput,
   type LongQuest,
-  type LongQuestInput,
   type Quest,
+  type TrackerAccess,
+  type TrackerTargetSnapshot,
   type QuestType,
   type UserProfile,
 } from '@eiyu/shared';
 
 import { stageNotice } from '@eiyu/shared';
 import { useSession } from './session-context';
+import {
+  TRACKER_MESSAGES, readTrackerAccess, refreshTrackerAfterFailure, safeTrackerErrorKind, snapshotOf,
+  trackerErrorMessage, trackerKey, useAccountAudience, useTrackerAccess, type AccountAudience, writeDenial, type TrackedRecord,
+} from './tracker';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -90,7 +98,15 @@ interface EiyuStore {
   adjustProgress: (id: string, delta: number) => void;
   /** Ask the server to resolve the authoritative open recovery window. */
   completeRecovery: (id: string) => void;
-  saveHabit: (input: HabitInput, existingId?: string) => Promise<void>;
+  saveHabit: (input: HabitEditorInput, existingId?: string) => Promise<void>;
+  /** The signed-in owner's loaded tracker capability; null until it is read (every tracker write is refused meanwhile). */
+  tracker: TrackerAccess | null;
+  /** Declared age band for the optional-notice prompts; undefined (adult wording) until known or when unknown. */
+  audience: AccountAudience | undefined;
+  /** Take a server-confirmed capability (after a grant or withdrawal) for the current owner only. */
+  acceptTracker: (access: TrackerAccess) => void;
+  /** Re-read the capability, for example after a stale or refused write. */
+  refreshTracker: () => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
   restoreQuest: (id: string) => Promise<void>;
   deleteQuest: (id: string) => Promise<void>;
@@ -101,7 +117,7 @@ interface EiyuStore {
   longQuestsLoading: boolean;
   longQuestsError: string | null;
   retryLongQuests: () => Promise<void>;
-  saveLongQuest: (input: LongQuestInput, existingId?: string) => Promise<void>;
+  saveLongQuest: (input: ChainEditorInput, existingId?: string) => Promise<void>;
   removeLongQuest: (id: string) => Promise<void>;
   saveProfile: (input: { displayName: string; userClass: string }) => Promise<void>;
 }
@@ -127,10 +143,30 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const deletedHabitIds = useRef(new Set<string>());
   const stageRequests = useRef(new Set<string>());
   const activeUserId = useRef(userId);
+  const creationIds = useRef(new Map<string, string>());
+  // Deletes whose answer was never seen: a later 42501 for the same id means the first attempt did land.
+  const attemptedDeletes = useRef(new Set<string>());
+
+  const trackerQuery = useTrackerAccess(userId);
+  const tracker = trackerQuery.data && trackerQuery.data.revision.userId === userId ? trackerQuery.data : null;
+  const trackerRef = useRef<TrackerAccess | null>(null);
+  trackerRef.current = tracker;
+  // Only an account that can still be asked for an optional purpose can see a prompt, so only it reads the age band.
+  const audience = useAccountAudience(userId, !!tracker && !(tracker.customConsent && tracker.fitnessConsent));
+
+  // Preparation comes first and is never required for reading: a failed or paused preparation still shows history.
+  const prepareBoard = useCallback(async (owner: string) => {
+    try {
+      const access = await qc.fetchQuery({ queryKey: trackerKey(owner), queryFn: () => readTrackerAccess(owner), staleTime: 0 });
+      if (!access.canWriteBasic || access.revision.userId !== owner) return;
+      const result = await prepareDay(copyTrackerRevision(access.revision));
+      if (result.accessChanged) await qc.invalidateQueries({ queryKey: trackerKey(owner) });
+    } catch { /* Preparation is optional for reading; the board read below does not depend on it. */ }
+  }, [qc]);
 
   const habitsQuery = useQuery({
     queryKey: habitsTodayKey(userId),
-    queryFn: () => fetchTodayHabits(userId!),
+    queryFn: async () => { await prepareBoard(userId!); return fetchTodayHabits(userId!); },
     enabled: !!userId,
   });
   // Read Backlog only after the board read: that read runs the server rollover that can add quests to Backlog.
@@ -191,6 +227,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     setPendingStageIds([]);
     rewardRequests.current.clear();
     definitionRequests.current.clear();
+    creationIds.current.clear();
+    attemptedDeletes.current.clear();
   }, [userId]);
   useEffect(() => {
     const previousUserId = activeUserId.current;
@@ -212,6 +250,54 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       : longQuestsQuery.error
         ? formatError(longQuestsQuery.error)
         : lqActionError;
+
+  const questsRef = useRef<Quest[]>([]);
+  const backlogRef = useRef<Quest[]>([]);
+  const longQuestsRef = useRef<LongQuest[]>([]);
+  questsRef.current = quests;
+  backlogRef.current = backlog;
+  longQuestsRef.current = longQuests;
+  const findQuest = (id: string) => questsRef.current.find(q => q.id === id) ?? backlogRef.current.find(q => q.id === id);
+
+  /**
+   * Decide a write before anything is sent. Copies the revision and builds the target snapshots synchronously from the
+   * loaded view models, so a later refresh cannot retarget the request. A known denial throws and nothing is sent.
+   */
+  const authorize = (kind: 'habit' | 'chain', records: readonly (TrackedRecord & { id: string })[], extra?: (access: TrackerAccess) => string | null) => {
+    const access = trackerRef.current;
+    const denial = writeDenial(access, records) ?? (access ? extra?.(access) ?? null : null);
+    if (denial || !access) throw new Error(denial ?? TRACKER_MESSAGES.paused);
+    const seen = new Set<string>();
+    const targets: TrackerTargetSnapshot[] = [];
+    for (const record of records) if (!seen.has(record.id)) { seen.add(record.id); targets.push(snapshotOf(kind, record)); }
+    return { expected: copyTrackerRevision(access.revision), targets };
+  };
+  const NOT_LOADED = 'That item is not loaded any more. Reload and try again.';
+  const habitsOrThrow = (ids: string[]) => ids.map(id => findQuest(id) ?? (() => { throw new Error(NOT_LOADED); })());
+  const chainsOrThrow = (ids: string[]) => ids.map(id => longQuestsRef.current.find(q => q.id === id) ?? (() => { throw new Error(NOT_LOADED); })());
+
+  /** After a refused or stale write: re-read access and the lists (never replay), and word the error for people. */
+  const afterRefusal = (err: unknown): Error => {
+    refreshTrackerAfterFailure(qc, userId, err);
+    if (safeTrackerErrorKind(err) === 'access-changed') {
+      void qc.invalidateQueries({ queryKey: ['habits'] });
+      void qc.invalidateQueries({ queryKey: ['backlog'] });
+      void qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
+    }
+    const message = trackerErrorMessage(err);
+    return message ? new Error(message) : err instanceof Error ? err : new Error(formatError(err));
+  };
+  const acceptTracker = useCallback((access: TrackerAccess) => {
+    if (!userId || access.revision.userId !== userId) return;
+    qc.setQueryData(trackerKey(userId), access);
+    // Each record's kind and writability depend on the permission, so the lists are read again.
+    void qc.invalidateQueries({ queryKey: ['habits'] });
+    void qc.invalidateQueries({ queryKey: ['backlog'] });
+    void qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
+  }, [qc, userId]);
+  const refreshTracker = useCallback(async () => {
+    if (userId) await qc.invalidateQueries({ queryKey: trackerKey(userId) });
+  }, [qc, userId]);
 
   /** Optimistic completion with rollback. */
   const runCompletion = useCallback(
@@ -235,10 +321,12 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         qc.setQueryData<Quest[]>(key, qs =>
           qs?.map(q => (q.id === id ? { ...q, completed: !optimisticCompleted } : q))
         );
-        setQuestActionError(formatError(err));
+        const shown = afterRefusal(err);
+        if (activeUserId.current === userId) setQuestActionError(formatError(shown));
         return false;
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [userId, qc]
   );
 
@@ -246,16 +334,22 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     (id: string): Promise<boolean> => {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId) return Promise.resolve(false);
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('habit', [quest]); } catch (err) { setQuestActionError(formatError(err)); return Promise.resolve(false); }
+      const { expected, targets } = gate;
       if (quest.completed) {
         return runCompletion(
           id,
-          () => undoCompletion(userId, id, quest.stat, profile?.timeZone),
+          () => undoCompletion(userId, id, quest.stat, expected, targets, profile?.timeZone),
           false
         );
       } else {
         return runCompletion(
           id,
-          () => completeHabit(userId, id, quest.stat, 'full', undefined, profile?.timeZone),
+          // A duplicate completion for the day (22023) means it is already recorded: settle, never add a second row.
+          () => completeHabit(userId, id, quest.stat, 'full', expected, targets, undefined, profile?.timeZone).catch(err => {
+            if (safeTrackerErrorKind(err) !== 'invalid-input') throw err;
+          }),
           true
         );
       }
@@ -274,6 +368,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     (id: string, delta: number) => {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId || quest.targetCount == null) return;
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('habit', [quest]); } catch (err) { setQuestActionError(formatError(err)); return; }
+      const { expected, targets } = gate;
       const target = quest.targetCount;
       const key = habitsTodayKey(userId);
       const prevProgress = quest.progressCount;
@@ -285,7 +382,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       incrementHabitProgress(
         id,
         accountDateKey(new Date(), profile?.timeZone ?? deviceTimeZone()),
-        delta
+        delta,
+        expected,
+        targets
       )
         .then(async serverCount => {
           qc.setQueryData<Quest[]>(key, qs =>
@@ -302,9 +401,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           qc.setQueryData<Quest[]>(key, qs =>
             qs?.map(q => (q.id === id ? { ...q, progressCount: prevProgress, completed: prevCompleted } : q))
           );
-          setQuestActionError(formatError(err));
+          const shown = afterRefusal(err);
+          if (activeUserId.current === userId) setQuestActionError(formatError(shown));
         });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [quests, userId, qc, profile?.timeZone]
   );
 
@@ -313,7 +414,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const quest = quests.find(q => q.id === id);
       if (!quest || !userId || !quest.frozen) return;
       try {
-        await completeHabitRecovery(id);
+        const { expected, targets } = authorize('habit', [quest]);
+        await completeHabitRecovery(id, expected, targets);
         await Promise.all([
           qc.invalidateQueries({ queryKey: ['stats', userId] }),
           qc.invalidateQueries({ queryKey: habitsTodayKey(userId) }),
@@ -322,27 +424,44 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         ]);
         setQuestActionError(null);
       } catch (err) {
-        setQuestActionError(formatError(err));
+        const shown = afterRefusal(err);
+        if (activeUserId.current === userId) setQuestActionError(formatError(shown));
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [quests, userId, qc]
   );
 
   const saveHabit = useCallback(
-    async (input: HabitInput, existingId?: string) => {
+    async (input: HabitEditorInput, existingId?: string) => {
       if (!userId) return;
       if (existingId && deletedHabitIds.current.has(existingId)) {
         throw new Error('This quest was deleted. Close this editor and reload the board.');
       }
-      if (existingId) {
-        await updateHabit(existingId, input, (quests.find(quest => quest.id === existingId) ?? backlog.find(quest => quest.id === existingId))?.name);
-      } else {
-        await createHabit(userId, input);
+      const existing = existingId ? findQuest(existingId) : undefined;
+      if (existingId && !existing) throw new Error(NOT_LOADED);
+      // Decided and captured before any await; nothing is sent on a known denial.
+      const { expected, targets } = authorize('habit', existing ? [existing] : [], access => {
+        if (input.mode === 'custom' && !access.canWriteCustom) return TRACKER_MESSAGES.purpose;
+        if (input.mode === 'basic' && existing?.inputKind === 'custom') return 'A quest with custom details cannot go back to basic tracking.';
+        return null;
+      });
+      const creationId = existing ? undefined : creationIds.current.get('habit') ?? crypto.randomUUID();
+      if (creationId) creationIds.current.set('habit', creationId);
+      try {
+        if (existing && existingId) await updateHabit(existingId, input, expected, targets, existing.name);
+        else await createHabit(userId, input, expected, creationId!);
+        creationIds.current.delete('habit');
+      } catch (err) {
+        // A confirmed refusal means nothing was created, so the next attempt starts with a fresh id.
+        if (safeTrackerErrorKind(err)) creationIds.current.delete('habit');
+        throw afterRefusal(err);
       }
       await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
       setQuestActionError(null);
     },
-    [userId, qc, quests, backlog]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [userId, qc]
   );
 
   const runLifecycle = useCallback(
@@ -352,9 +471,18 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
 
       const request = (async () => {
         try {
-          if (operation === 'archive') await archiveHabit(id);
-          if (operation === 'restore') await restoreHabit(id);
-          if (operation === 'delete') await deleteHabit(id);
+          const { expected, targets } = authorize('habit', habitsOrThrow([id]));
+          if (operation === 'archive') await archiveHabit(id, expected, targets);
+          if (operation === 'restore') await restoreHabit(id, expected, targets);
+          if (operation === 'delete') {
+            try { await deleteHabit(id, expected, targets); } catch (err) {
+              const kind = safeTrackerErrorKind(err);
+              // delete is not idempotent: 42501 after our own unanswered attempt means it already landed.
+              if (kind === 'denied' && attemptedDeletes.current.has(id)) attemptedDeletes.current.delete(id);
+              else { if (!kind) attemptedDeletes.current.add(id); throw err; }
+            }
+            attemptedDeletes.current.delete(id);
+          }
 
           if (operation === 'delete') {
             deletedHabitIds.current.add(id);
@@ -364,8 +492,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
           await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
           setQuestActionError(null);
         } catch (err) {
-          setQuestActionError(formatError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setQuestActionError(formatError(shown));
+          throw shown;
         }
       })();
 
@@ -376,6 +505,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       );
       return request;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [qc]
   );
 
@@ -389,19 +519,22 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       if (existing) return existing;
       const request = (async () => {
         try {
-          if (direction === 'to-one-time') await moveBacklogToOneTime(id);
-          else await moveOneTimeToBacklog(id);
+          const { expected, targets } = authorize('habit', habitsOrThrow([id]));
+          if (direction === 'to-one-time') await moveBacklogToOneTime(id, expected, targets);
+          else await moveOneTimeToBacklog(id, expected, targets);
           await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
           setQuestActionError(null);
         } catch (err) {
-          setQuestActionError(formatError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setQuestActionError(formatError(shown));
+          throw shown;
         }
       })();
       lifecycleRequests.current.set(id, request);
       request.then(() => lifecycleRequests.current.delete(id), () => lifecycleRequests.current.delete(id));
       return request;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [qc]
   );
   const moveToOneTime = useCallback((id: string) => runMove(id, 'to-one-time'), [runMove]);
@@ -419,6 +552,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const reorderQuests = useCallback(
     (lane: QuestType, ids: string[]): Promise<void> => {
       if (!userId) return Promise.resolve();
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('habit', habitsOrThrow(ids)); } catch (err) { setQuestActionError(formatError(err)); return Promise.reject(err); }
+      const { expected, targets } = gate;
       if (lane === 'backlog') {
         qc.setQueryData<Quest[]>(backlogKey(userId), rows => (rows ? applyManualOrder(rows, ids) : rows));
       } else {
@@ -431,36 +567,43 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       }
       return inTurn(`quests:${lane}`, async () => {
         try {
-          await reorderQuestsRequest(lane, ids);
+          await reorderQuestsRequest(lane, ids, expected, targets);
           setQuestActionError(null);
         } catch (err) {
-          setQuestActionError(formatError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setQuestActionError(formatError(shown));
+          throw shown;
         } finally {
           // The server's numbering replaces the optimistic one; after a refusal this is what puts the old order back.
           await Promise.all([qc.invalidateQueries({ queryKey: ['habits'] }), qc.invalidateQueries({ queryKey: ['backlog'] })]);
         }
       });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [qc, userId, inTurn]
   );
 
   const reorderChains = useCallback(
     (ids: string[]): Promise<void> => {
       if (!userId) return Promise.resolve();
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('chain', chainsOrThrow(ids)); } catch (err) { setLqActionError(formatError(err)); return Promise.reject(err); }
+      const { expected, targets } = gate;
       qc.setQueryData<LongQuest[]>(longQuestsKey(userId), rows => (rows ? applyManualOrder(rows, ids) : rows));
       return inTurn('chains', async () => {
         try {
-          await reorderLongQuests(ids);
+          await reorderLongQuests(ids, expected, targets);
           setLqActionError(null);
         } catch (err) {
-          setLqActionError(formatError(err));
-          throw err;
+          const shown = afterRefusal(err);
+          setLqActionError(formatError(shown));
+          throw shown;
         } finally {
           await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
         }
       });
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [qc, userId, inTurn]
   );
 
@@ -490,6 +633,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const lq = longQuests.find(q => q.id === lqId);
       const stage = lq?.stages.find(s => s.id === stageId);
       if (!stage || !userId || stageRequests.current.has(lqId)) return;
+      let gate: ReturnType<typeof authorize>;
+      try { gate = authorize('chain', [lq!]); } catch (err) { setLqActionError(formatError(err)); return; }
+      const { expected, targets } = gate;
       stageRequests.current.add(lqId);
       const nextDone = !stage.done;
       const key = longQuestsKey(userId);
@@ -498,7 +644,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const requestId = rewardRequests.current.get(operation) ?? crypto.randomUUID();
       rewardRequests.current.set(operation, requestId);
       try {
-        const receipt = await setStageDoneWithReceipt(stageId, nextDone, requestId);
+        const receipt = await setStageDoneWithReceipt(stageId, nextDone, requestId, expected, targets);
         rewardRequests.current.delete(operation);
         qc.setQueryData<LongQuest[]>(key, lqs => lqs?.map(q => q.id === lqId ? { ...q, stages: q.stages.map(s => s.id === stageId ? { ...s, done: receipt.done } : s) } : q));
         if (activeUserId.current !== userId) return;
@@ -506,8 +652,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setRewardReceipt(receipt.replayed ? null : receipt);
         setStageRewardNotice(stageNotice(receipt.replayed ? 'replayed' : receipt.changed ? (nextDone ? 'completed' : 'undone') : 'unchanged'));
       } catch (err) {
+        const shown = afterRefusal(err);
         if (activeUserId.current === userId) {
-          setLqActionError(formatError(err));
+          setLqActionError(formatError(shown));
           setStageRewardNotice(null);
         }
       } finally {
@@ -517,29 +664,45 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
         setPendingStageIds(ids => ids.filter(id => id !== stageId));
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [longQuests, userId, qc]
   );
 
   const saveLongQuest = useCallback(
-    async (input: LongQuestInput, existingId?: string) => {
+    async (input: ChainEditorInput, existingId?: string) => {
       if (!userId) return;
+      const existing = existingId ? longQuestsRef.current.find(q => q.id === existingId) : undefined;
+      if (existingId && !existing) throw new Error(NOT_LOADED);
+      const { expected, targets } = authorize('chain', existing ? [existing] : [], access => {
+        if (input.mode === 'custom' && !access.canWriteCustom) return TRACKER_MESSAGES.purpose;
+        if (input.mode === 'basic' && existing?.inputKind === 'custom') return 'A chain with custom details cannot go back to basic tracking.';
+        return null;
+      });
       const operation = existingId ?? 'new';
       const stable = definitionRequests.current.get(operation) ?? { id: existingId ?? crypto.randomUUID(), request: crypto.randomUUID() };
       definitionRequests.current.set(operation, stable);
-      await saveAtomicLongQuest(stable.id, stable.request, input, !existingId, longQuests.find(q => q.id === existingId)?.name);
+      try {
+        await saveAtomicLongQuest(stable.id, stable.request, input, !existingId, expected, targets, existing?.name);
+      } catch (err) {
+        if (safeTrackerErrorKind(err)) definitionRequests.current.delete(operation);
+        throw afterRefusal(err);
+      }
       definitionRequests.current.delete(operation);
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
-    [userId, qc, longQuests]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [userId, qc]
   );
 
   const removeLongQuest = useCallback(
     async (id: string) => {
-      await deleteLongQuest(id);
+      const { expected, targets } = authorize('chain', chainsOrThrow([id]));
+      try { await deleteLongQuest(id, expected, targets); } catch (err) { throw afterRefusal(err); }
       await qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
       setLqActionError(null);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [userId, qc]
   );
 
@@ -583,6 +746,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       adjustProgress,
       completeRecovery,
       saveHabit,
+      tracker,
+      audience,
+      acceptTracker,
+      refreshTracker,
       archiveQuest,
       restoreQuest,
       deleteQuest,
@@ -615,6 +782,10 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       adjustProgress,
       completeRecovery,
       saveHabit,
+      tracker,
+      audience,
+      acceptTracker,
+      refreshTracker,
       archiveQuest,
       restoreQuest,
       deleteQuest,
