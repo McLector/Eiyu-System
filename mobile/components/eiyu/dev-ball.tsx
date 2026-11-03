@@ -30,7 +30,6 @@ import { AI_SUGGESTIONS_STORAGE_KEY, completeHabit, copyTrackerRevision, newRequ
 import type { TrackerAccess } from '@eiyu/shared';
 import { accountDateKey } from '@eiyu/shared';
 import { createHabit, HabitInput } from '@eiyu/shared';
-import { supabase } from '@/lib/supabase';
 import { CompletionKind } from '@eiyu/shared';
 import { Difficulty, QuestType, Stat } from '@eiyu/shared';
 
@@ -214,48 +213,6 @@ function DevBallInner() {
         Alert.alert(
           'Seeded',
           `"${input.name}" completed on ${todayKey}.`
-        );
-      },
-    },
-    {
-      label: 'Wipe completion history',
-      run: () => {
-        if (!userId) throw new Error('Not signed in.');
-        Alert.alert(
-          'Wipe completion history?',
-          'Deletes every habit completion on this account and reverses the XP each one awarded. Quests themselves are kept.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Wipe',
-              style: 'destructive',
-              onPress: async () => {
-                // Runs outside the menu's try/catch (Alert callbacks are
-                // detached), so it owns its own error reporting.
-                try {
-                  const { data, error } = await supabase
-                    .from('habit_completions')
-                    .select('habit_id, completed_on')
-                    .eq('user_id', userId);
-                  if (error) throw error;
-                  // One undo RPC per row rather than a bulk delete: the RPC is
-                  // what reverses xp_awarded, and a raw delete would leave the
-                  // stat bars holding XP for history that no longer exists.
-                  for (const row of data ?? []) {
-                    const { error: rpcError } = await supabase.rpc('undo_habit_completion', {
-                      p_habit_id: row.habit_id,
-                      p_completed_on: row.completed_on,
-                    });
-                    if (rpcError) throw rpcError;
-                  }
-                  await qc.invalidateQueries();
-                  Alert.alert('History wiped', `Removed ${(data ?? []).length} completion(s).`);
-                } catch (err) {
-                  Alert.alert('Wipe failed', String(err));
-                }
-              },
-            },
-          ]
         );
       },
     },

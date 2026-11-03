@@ -61,3 +61,12 @@ describe('dev ball: seed a quest completed today', () => {
     expect(mockShared.completeHabit).not.toHaveBeenCalled();
   });
 });
+
+describe('dev ball: writes', () => {
+  it('sends nothing straight to the database, because direct completion calls are revoked', () => {
+    const source = jest.requireActual<typeof import('fs')>('fs').readFileSync(
+      jest.requireActual<typeof import('path')>('path').join(__dirname, '..', 'eiyu', 'dev-ball.tsx'), 'utf8');
+    expect(source).not.toMatch(/\.rpc\(/);
+    expect(source).not.toMatch(/undo_habit_completion/);
+  });
+});
