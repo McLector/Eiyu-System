@@ -1,0 +1,36 @@
+# S02 old-client cache inventory — treatment FOR REVIEW
+
+S01 investigation is COMPLETE; S02 is INCOMPLETE. This is read-only source evidence and a proposed local treatment, not deployed-version inventory, cache erasure or approved residual retention. No stored values, credentials or personal cache contents were read. Preserve server histories, retained synthetic fixtures and ignored experiment artifacts.
+
+## Observed surfaces
+
+The comparison baseline is local Git HEAD46aeebc, not proof of which code serves a hosted origin or every installed APK. Current source includes unreleased S02 changes. Do not equate the two.
+
+| Surface | Evidence and retention consequence |
+| --- | --- |
+| Shared stage suggestions, HEAD | `packages/shared/src/ai/suggestions.ts` reads the unscoped `eiyu:ai-suggestions` key. Entries include normalized quest input in their keys, timestamp and suggested stages. The24-hour freshness check only decides reuse; it does not delete expired bytes. HEAD returns a fresh cache hit without a server age/mailbox check. |
+| Shared stage suggestions, current | Uses `eiyu:ai-suggestions:<owner>:<age-version>` and revalidates age/owner before returning. The original unscoped key is ignored, not erased. Old revision/owner keys are not automatically removed by this implementation. Current cache guards do not prove physical deletion. |
+| Mobile storage adapter | `mobile/lib/supabase.ts` binds the shared suggestion cache to AsyncStorage. Auth session storage uses the same storage facility but is a separate purpose/key: never print it or clear all storage as a cache fix. |
+| Web storage adapter | `web/src/lib/cache-adapter.ts` binds shared suggestions to localStorage. Browser content depends on the exact origin/profile. A different origin or cleared test profile does not establish retirement of the real origin's copy. |
+| Mobile debrief text | HEAD and current `mobile/components/status/weekly-debrief.tsx` use component state, not the React Query persister for summary text. HEAD lacks current owner-keyed remount and foreground/revision invalidation. Backgrounded/mounted old UI may retain already received text. No timed remote recall is established. |
+| Web debrief text | HEAD `web/src/web/WebStatus.tsx` uses in-memory `['weeklySummary', owner]` with staleTime Infinity. Current source rechecks on mount, hides text while fetching/paused and resets on local age/mailbox events. `web/src/main.tsx` uses QueryClientProvider without a disk query persister. This source finding does not prove no browser/OS snapshot or old deployed variation. |
+| Mobile query persistence | `mobile/contexts/eiyu-store.tsx` creates an AsyncStorage persister with the installed default key `REACT_QUERY_OFFLINE_CACHE`. Root sets maxAge7days and query gcTime7days. It contains ordinary query data; current debrief component state is separate. maxAge is a hydration policy, not a promise that bytes are erased on day7. Do not delete the whole query cache by assumption. |
+| Widget and queued actions | `eiyu.widget.v1` stores ordinary board presentation, and `eiyu.writeQueue.v1.<owner>` retains actions and uncertainty. Neither is an AI-retirement key. Broad storage clearing would lose unsynced actions and could remove evidence needed for reconciliation. Keep these and ordinary histories. |
+| Debug cache control | The Dev-only “Clear AI suggestion cache” removes the single legacy key. It neither deletes current scoped keys nor retires an old binary. It is not an operational release mechanism. |
+
+No service-worker file was found in the searched web source paths. That limited source search does not attest HTTP/browser/CDN caches at an unknown actual deployment origin.
+
+## Proposed treatment to review and test
+
+1. On an approved compatible client, remove only the exact legacy suggestion key and its explicit scoped descendants as a purpose-specific cache migration. Enumerate/filter key names in memory; never log keys containing owner/revision or cache values. Preserve Auth, ordinary tracker queries, widget, queues and server rows. Test prefix collisions, storage failure, restart interruption and repeated execution before implementation. Decide whether compatible same-owner suggestion reuse remains allowed under the eventual consent revision; age-version scoping alone does not establish AI consent.
+2. Keep debrief display fail-closed during eligibility revalidation and invalidate mounted/in-flight state on account, birthday, mailbox and eventually consent revisions. Verify offline restoration, old tab resume, background/foreground and A→B→A behavior on actual variants. A cleanup migration cannot rewrite already running old JavaScript.
+3. Inventory distributed builds and actual web origins from available nonsecret release records. Mark unavailable population/version facts UNKNOWN. For each reachable old client, rehearse upgrade/reload with only synthetic caches, verify target AI data removed and normal quests/queues retained. Record result and limitations per origin/build.
+4. Review the disposition of unreachable/offline old clients and browser/OS backups or captures. An online server version gate can stop future requests only after an independently authorized compatible implementation and rollout; it cannot erase offline bytes or manufacture an effective forced-update capability in old binaries. The owner must explicitly accept a truthful residual-retention treatment or keep release blocked. No such acceptance is inferred here.
+
+This sequence is concrete enough for design review and test planning, but it is not yet an implemented or reviewed retirement mechanism. No cache deletion or version-gate product behavior was added in this inventory pass. Cache retirement and request drain remain separate gates: waiting for client freshness or signing out does not prove old server/provider work has drained. See the [release review](2026-10-19-s01-s02-release-review.md) and [continuation checkpoint](2026-10-20-s02-continuation.md).
+
+## October22 compatible-client implementation amendment
+
+The planning-only statement above is historical. The owner approved the focused [design](2026-10-21-s02-selective-ai-cache-design.md), reviewed its [implementation plan](2026-10-21-s02-selective-ai-cache-implementation.md) and authorized inline execution. Exact known-key retirement, explicit failed status/retry and real mobile/browser enumeration are implemented locally. The unused stage-suggestion entry point is paused before cache/Auth/model work, so cleanup creates no replacement provider requests or successor cache namespace. Weekly debrief policy remains unchanged. [Software/browser evidence and ongoing isolated native acceptance](2026-10-22-s02-selective-ai-cache-verification.md) qualify this result; no real-user caches were inspected.
+
+Unknown key formats intentionally remain. This does not erase already running old JavaScript, offline copies, backups or exports, and does not accept residual retention. Source review of `private.ai_provider_attempts`/`private.ai_logical_requests` found reservation/creation records, not an active-to-completed execution registry. Empty/old reservation counts cannot establish provider completion or global drain. No production maintenance, forced upgrade, provider-key rotation or new request-drain mechanism was applied. S02 INCOMPLETE.

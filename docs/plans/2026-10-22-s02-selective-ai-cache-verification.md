@@ -1,0 +1,51 @@
+# S02 selective AI cache retirement — local verification, release INCOMPLETE
+
+The owner approved the [design](2026-10-21-s02-selective-ai-cache-design.md) for planning, then authorized inline implementation of its [concrete plan](2026-10-21-s02-selective-ai-cache-implementation.md) with “do what you think is best.” No deployment, provider inference, paid spend, real-user cache inspection or later phase is authorized by this work.
+
+## Implemented boundary
+
+The shared storage adapter starts an adapter-bound retirement operation. It enumerates names, validates the whole list, and removes only the exact legacy suggestion key and canonical UUID/integer-version keys. Similar prefixes, extra suffixes, uppercase namespace variants, malformed versions and unknown formats remain untouched. No retired value is read or logged. The UUID component accepts both hex cases; the namespace itself stays case exact.
+
+Status is running/complete/failed for that adapter instance. Concurrent callers share one pending operation; an old adapter cannot publish completion over its replacement. Storage errors remain failed, never a successful marker. Partial progress can be retried explicitly or completed idempotently after restart. No persistent success marker, broad storage clear, Auth lock, query/widget/queue deletion or server history change.
+
+Both real adapters provide public key enumeration. Mobile static rendering refuses device enumeration and never fabricates successful device cleanup. Browser enumeration snapshots key names before deletion and contains unavailable storage as a cache-only failure. Ordinary Auth initialization and storage methods remain independent.
+
+The currently unused `suggestStages` entry point now returns a specific unavailable error before cache/Auth/provider work. A source search found no mobile/web call site; no new UI feature is added. This deliberately avoids replacing retired persistence with more model requests while the action's own consent contract is unreviewed. Weekly debrief generation, current quota/week/timezone rules and S04 work remain unchanged. The three existing weekly owner/history race tests remain; provider-error tests now exercise the active weekly entry point rather than relying on the paused stage action.
+
+## Software evidence
+
+- Task1 initially failed on the missing module/interface, then11 focused tests passed. Self-review added two failing assertions for namespace-case overmatch and sparse enumeration. Both were repaired before the final full shared suite: **739 passed,8 existing skips,60 passed suites**. Sparse enumeration now fails before any removal. This full rerun was justified by those changes.
+- Mobile real-adapter tests: RED2/3, then GREEN3 for exact retirement, failure/retry and static rendering. The later require-style lint cleanup used dynamic imports unsupported by this installed Jest VM; that produced3 failures and was corrected with typed Jest module APIs. Final3 passed; no production workaround/VM flag was added.
+- Browser real-adapter tests: corrected missing jsdom setup, observed intended RED2, then GREEN2. The SDK imports read their own nonsecret debug preference; assertions target no AI-value reads. Tests inspect failed startup status before explicitly retrying rather than mistaking their own retry for an automatic recovery.
+- Mobile surrounding Auth/signup/recovery/root regressions: **6 suites44 passed**, with an existing Dimensions/React act warning. Web surrounding Auth/recovery/adapter regressions: **4 files17 passed**. These are synthetic/mock software checks, not hosted Auth acceptance.
+- Shared/mobile/web TypeScript checks exited0. Affected mobile/web lint exited0, including the final typed-Jest correction; final mobile typecheck also exited0. Web build exited0,798 modules,1.87s, with its existing chunk-size advisory.
+
+One host test rerun was not executed because automatic approval review hit a usage limit. It was explicitly a review-availability failure, not an unsafe-action determination. No bypass was attempted. After its stated reset passed, the same approval path accepted the rerun; the Jest-only issue above was then diagnosed and fixed. The earlier sandbox transform-cache rename error likewise was an execution restriction, not a product failure.
+
+## Actual browser rehearsal
+
+An ignored page used the actual browser adapter and shared implementation on isolated `http://127.0.0.1:57491`, with only declared synthetic keys/values. Its guard refused unknown keys or nonfixture values before seeding. Injected startup enumeration failure stayed failed with ordinary sentinels intact; explicit retry removed only known AI keys, preserved all ordinary synthetic sentinels exactly, and repeated completion succeeded. A real browser reload repeated the guarded rehearsal successfully. The visible PASS was inspected and saved in ignored `browser-rehearsal.png`; no Auth client or model request was created.
+
+This is actual browser/localStorage acceptance on that synthetic origin, not deletion on a deployed origin, unreachable clients or another profile. The retained page/artifacts are not part of the web product build.
+
+On continuation the old tab showed a stopped state and then connection-refused; those states were not counted as a new pass. The temporary server had to be restarted. Host HTTP200 was checked; the old tab remained unreliable, while a fresh tab in the same browser completed the instrumented rehearsal and actual reload successfully, with visible PASS and `browser-rehearsal-resumed.png` retained. No browser security setting/policy was bypassed. The successful new tab was closed and the owned server stopped. The old tab became a browser-generated data-URL error page; browser policy blocked closing it through the tool, so that harmless leftover tab may need manual closure. No storage value or raw failure detail was exposed.
+
+## Native rehearsal checkpoint
+
+A separate application ID `com.mclector.eiyusystem.dev.s02cacheprobe` is being prepared, using the official public Gradle applicationIdSuffix mechanism, unique runtime/schemes and the retained OTA-disabled native release overlay. It cannot share the baseline Dev package's app data. The harness uses the current real mobile adapter with only synthetic storage and refuses unrelated package/key/value state. No sign-in, account/quest action or secret input is offered.
+
+Process deviation: the disposable controller was initially drafted before its tests ran. The unvalidated draft was archived, the active implementation reset to a nonfunctional stub, and a corrected scratch test invocation observed RED1/3 before the controller was independently implemented and GREEN3. No unvalidated driver was installed. All intermediate artifacts remain preserved.
+
+The first build stopped at local-service preflight because Docker was unavailable; no APK installation or data access occurred. The verified per-user Docker launcher resumed retained containers without reset; the existing exited Edge container was started. Retrying the detached offline build succeeded **4m44s,exit0,1027 tasks (47 executed,980 up to date)**. The compiled gate verified unique package/runtime, correct namespace-resolved launch activity, isolated provider authorities/callbacks, embedded current cache/pause implementation and native OTA-disabled release metadata. A PowerShell XML namespace-manager argument error initially stopped that guard; correcting the argument handling produced its explicit PASS before installation. The absent app.json `updates.enabled` property was not treated as OTA evidence; the compiled native metadata was checked.
+
+Physical driver exited0 on the authorized Oppo. First boot used the real current mobile adapter and actual AsyncStorage in the new package: only declared synthetic keys were allowed, injected enumeration failure stayed failed, explicit retry removed known keys, ordinary synthetic sentinels compared exactly and the stage action returned its pause. After an actual force-stop/process absence and relaunch, the guarded rehearsal passed again. Both images were inspected. The harness reseeds its known synthetic AI entries before exercising retirement on each boot; this proves actual native adapter/repeated-process acceptance, not every possible interruption during native disk operations. Partial-removal/restart behavior also has the separate automated boundary tests above.
+
+The native harness creates the ordinary local Auth client as part of the real adapter module import but offers no sign-in or normal app/provider flow. No account, quest, birthday, mailbox or model action was initiated. Stage refusal before Auth/model work is pinned by software tests; this run was not a global traffic/drain measurement.
+
+Cleanup passed: existing Dev APK remained byte-equal to the preserved historical baseline before/after, its storage was never touched by this probe, ordinary signed-out Dev was restored foreground, font1.0/direct57321/race57326 absent/X alias absent. The isolated synthetic package is retained **force-stopped**, with its ordinary sentinels preserved rather than deleting fixtures. Experimental inputs/APK/images/result JSON are archived; five scratch overlay files and prior build output were byte-restored. Current product cache source remains staged in the scratch tree, with old/current source backups retained. This is no permission to publish the diagnostic native configuration.
+
+## Remaining release gates
+
+Compatible-client cleanup does not retire an already running old tab or remote offline binary, prove deletion from backups, or establish server/provider drain. Actual distributed population/origin facts unavailable under the accepted evidence limitation remain UNKNOWN. Residual-copy disposition and executable drain require their own reviewed closure; elapsed time, sign-out and cache status cannot substitute.
+
+Supported full live-font repair, actual conditional-authority operations, email-change receiving/final origin/build parity and comprehensive export/deletion/vendor-retention rehearsal also remain open. Independent read-only review is unavailable; no replacement reviewer/delegate was spawned. **S02 INCOMPLETE; public release blocked; no028 or S03.**

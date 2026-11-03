@@ -1,0 +1,37 @@
+# S02 isolated Text leaf spike — CONCLUDED, NEGATIVE REFLOW RESULT
+
+Owner approval: “Run the isolated Text probe.” This approves a disposable feasibility question, not a product font repair. S02 remains INCOMPLETE; no S03 or S04 work.
+
+Question: after normal Oppo Settings font changes 1.0↔1.6, does recreating just a plain React Native Text through React's public key reflow the text while parent state stays mounted? Compare a stable control Text and ordinary rerender. Keep font scaling enabled, use installed SDK54/RN0.81.5/React19.1, and reuse the prior public MainActivity fontScale configuration handler only in the disposable build. No app reload, internal flags, dependency patch or SDK upgrade.
+
+The standalone entry imports Expo registration, Inter font loading and the probe only. It does not mount the product Auth, cache, widget or provider flows. Parent state includes a synthetic draft and a synthetic home/recovery route marker. This marker is not Expo Router or a real recovery callback; success cannot establish whole-application navigation, input ownership or editor safety. The selected keyed node is a plain Text, not a keyed screen, provider or TextInput.
+
+Exact official Expo sdk-54 documentation source and RN0.81 Text/useWindowDimensions docs were read before code, along with React's public key/state documentation. Artifacts reside in ignored `.superpowers/s02-text-leaf-20261022`; prior scratch entry/layout/config/Gradle/manifest/runtime strings and build output were preserved before mutation. Baseline Dev and retained synthetic packages/data are preserved. New package is `com.mclector.eiyusystem.dev.s02textprobe` with unique runtime and callback schemes.
+
+Test-first evidence: initial sandbox Jest invocation could not write its atomic transform cache and executed no assertions. Host rerun against the empty View stub failed both tests for missing draft/leaf controls. Implementation then passed both tests: selected host Text recreated, control and parent state preserved, ordinary rerender and public dimension update leave both leaves mounted. Affected probe lint exited0. Scratch whole-workspace typecheck exited2 for the retained, unrelated `components/__tests__/handover-probe.test.tsx:5` TS2556 spread argument; no new-probe diagnostic was reported. That old artifact is unchanged. Reused manifest transform's two tests passed. No full product suite was repeated for this standalone ignored experiment.
+
+Preflight: retained local database/Auth/mailbox/API/Edge containers running; vector container restarting as previously observed. Authorized Oppo initially connected/awake/font1.0. The phone locked during the detached offline build; normal owner unlock requested. No unlock attempt or bypass. Physical font/reflow/continuity acceptance and final cleanup are still PENDING; no physical pass or font fix is claimed.
+
+Build completed2m2s/exit0/1027tasks47executed980up-to-date with existing native deprecation notices. Artifact gate passed for exact package/runtime/activity, compiled fontScale bit, isolated callback/provider authorities, embedded standalone probe and OTA disabled. Separate package installed after confirming it was absent and comparing baseline Dev bytes in RAM. First guarded UI observation stopped: subsequent sanitized inspection found zero probe UI nodes, an Activity marker present, and the phone asleep/locked. This is not a reproduced app crash or layout failure. Owner unlock requested again; no reinstall, baseline mutation or physical pass inferred.
+
+Physical-access qualification: two subsequent owner unlock replies were followed by direct observations of asleep/locked phone, zero probe UI nodes, and no Android app-error indicator. screen_off_timeout reads1800seconds; the reason for the mismatch remains UNKNOWN. Do not describe a short configured timeout or claim the app crashed. No font setting changed and no draft/remount acceptance ran. A free-text physical unlock confirmation is pending. Probe package/APK/data and all saved inputs remain retained; current experimental scratch overlays/build output still await scoped cleanup. Baseline Dev package/data untouched.
+
+## Completed physical observation and cleanup
+
+The owner subsequently replied “ready.” Two driver invocations stopped in preflight; sanitized inspection confirmed one authorized connected Oppo, then awake/unlocked, installed isolated package and a successful direct launch. The transient driver preflight error was not diagnosed as an app failure. Subsequent guarded observations succeeded. These later results supersede the pending physical/cleanup statements above, which remain historical qualifications.
+
+| Observation | Keyed Text height / latest line callback | Control height / latest line callback | State |
+| --- | --- | --- | --- |
+| Initial Default1.0 | 120 / 5 | 120 / 5 | Synthetic draft and recovery marker set |
+| Normal Settings → Very large1.6 | 120 / 8 | 120 / 5 | Same Activity instance, JS boot, exact draft and parent route marker |
+| Ordinary rerender at1.6 | 120 / 8 | 120 / 5 | Rerender counter1; key counter0 |
+| Explicit plain Text key remount at1.6 | 120 / 8 | 120 / 5 | Key counter1; parent state unchanged |
+| Settled observation at1.6 | 120 / 8 | 120 / 5 | Both samples visibly clipped before their final words |
+| Normal Settings → Default1.0 | 120 / 5 | 120 / 5 | Same Activity/boot/draft/route |
+| Another key remount at1.0 | 120 / 5 | 120 / 5 | Key counter2; parent state unchanged; full sample readable |
+
+Scale1.6 was reported approximately1.6000000238 by the public hook. Callback counts are the latest reported values; the unchanged control count is not evidence that all its enlarged text fits. The settled large screenshot visibly shows clipping in both samples and in the control heading. The original `large-before.png` includes a transient generic system Simple mode tip despite the pre-capture UI guard; it is retained and not counted as unobscured evidence. `large-settled.png` has no such tip and was visually inspected, as were initial/default-return screenshots. No system tip was activated or dismissed through a preference-changing action.
+
+Conclusion: a public key change on a plain Text is **insufficient** to repair this reproduced live-font layout within the tested SDK54 build. Tests establish the selected React host element is recreated; no native Text object address was instrumented. This experiment does not prove a specific native cache is the root cause. Parent-state continuity was observed only for this synthetic standalone case. Actual Router/recovery, all editors, TextInput reflow, process death and full product repair remain unproved. Do not adopt a Text-key workaround, broaden it to screens/providers, suppress scaling, patch dependencies or infer approval for another experiment.
+
+Cleanup completed with explicit PASS: six scratch inputs (entry/layout/config/Gradle/manifest/runtime strings) and previous build-output APK byte-restored; experimental inputs/APK/images retained. Separate probe package and synthetic data retained force-stopped. Baseline Dev APK compared byte-equal in RAM, ordinary signed-out Dev visible, font1.0, direct57321, no57326 and no X build alias. Baseline Dev data was not cleared. `conclusion.json` consistency assertions passed across all seven recorded observations and cleanup; this verifies a negative repair finding, not a passing font release gate. No account, mailbox, provider, SQL, production or spend action. S02 remains INCOMPLETE; no028 or later phase.
