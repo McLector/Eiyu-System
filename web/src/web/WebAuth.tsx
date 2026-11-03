@@ -11,6 +11,10 @@ import {
   passwordStrength,
   resetLinkSentMessage,
   validateConfirmPassword,
+  validateSignupBirthday,
+  initialBirthdayMetadata,
+  CHILD_PRIVACY_NOTICE,
+  PROCESSING_NOTICES,
   validateDisplayName,
   validateEmail,
   validatePassword,
@@ -72,7 +76,9 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
   const [password, setPassword] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [name, setName] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [terms, setTerms] = useState(false);
+  const [ageConsent, setAgeConsent] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -95,12 +101,15 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
     setAttempted(false);
     setPassword('');
     setConfirmPw('');
+    setBirthday('');
     setTerms(false);
+    setAgeConsent(false);
   };
 
   const emailError = validateEmail(email);
   const passwordError = mode !== 'forgot' ? validatePassword(password) : null;
   const nameError = mode === 'signup' ? validateDisplayName(name) : null;
+  const birthdayError = mode === 'signup' ? validateSignupBirthday(birthday) : null;
   const confirmError = mode === 'signup' ? validateConfirmPassword(password, confirmPw) : null;
 
   const valid =
@@ -108,7 +117,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
       ? !emailError
       : mode === 'login'
         ? !emailError && !passwordError
-        : !emailError && !nameError && !passwordError && !confirmError && terms;
+        : !emailError && !nameError && !birthdayError && !passwordError && !confirmError && terms && ageConsent;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +127,9 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
     setSubmitting(true);
     try {
       if (mode === 'forgot') {
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim());
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+          redirectTo: `${window.location.origin}/auth/recovery`,
+        });
         if (resetError) throw resetError;
         setNotice({ icon: 'mail', title: 'MESSAGE DISPATCHED', message: resetLinkSentMessage(email.trim()) });
         return;
@@ -127,7 +138,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
         const { data, error: authError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { display_name: normalizeNameBoundaries(name), time_zone: deviceTimeZone() } },
+          options: { data: { display_name: normalizeNameBoundaries(name), time_zone: deviceTimeZone(), ...initialBirthdayMetadata(birthday, ageConsent) } },
         });
         if (authError) throw authError;
         if (!data.session) {
@@ -196,6 +207,20 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
                   <label className="field-label auth-label">DISPLAY NAME</label>
                   <input aria-label="Display name" aria-invalid={attempted && !!nameError} aria-describedby={attempted && nameError ? 'signup-name-error' : undefined} className="field" placeholder="Kaito Mizuru" value={name} onChange={e => setName(e.target.value)} />
                   {attempted && nameError && <p id="signup-name-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{nameError}</p>}
+                </div>
+              )}
+              {mode === 'signup' && (
+                <div>
+                  <label className="field-label auth-label">BIRTHDAY</label>
+                  <p style={{fontSize: 13, lineHeight: 1.6}}>{CHILD_PRIVACY_NOTICE}</p>
+                  <p style={{fontSize: 13, lineHeight: 1.6}}>{PROCESSING_NOTICES['age-screening'].body}</p>
+                  <label style={{display: 'flex', gap: 10, minHeight: 44, paddingBlock: 10}}>
+                    <input type="checkbox" checked={ageConsent} onChange={e => setAgeConsent(e.target.checked)}/>
+                    <span>{PROCESSING_NOTICES['age-screening'].label}</span>
+                  </label>
+                  {attempted && !ageConsent && <p role="alert">Review the birthday notice and give specific permission before signup.</p>}
+                  <input aria-label="Birthday" aria-invalid={attempted && !!birthdayError} aria-describedby={attempted && birthdayError ? 'signup-birthday-error' : undefined} className="field" placeholder="YYYY-MM-DD" value={birthday} onChange={e => setBirthday(e.target.value)} />
+                  {attempted && birthdayError && <p id="signup-birthday-error" role="alert" aria-live="polite" style={{ fontFamily: 'Inter', fontSize: 11, color: 'var(--c-danger)', margin: '6px 0 0' }}>{birthdayError}</p>}
                 </div>
               )}
               <div>

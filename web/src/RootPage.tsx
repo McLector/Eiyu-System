@@ -1,7 +1,8 @@
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 import { useSession } from './store/session-context';
 import Landing from './web/Landing';
+import PostSignInRedirect from './web/PostSignInRedirect';
 
 // Deliberately reversing a prior ruling: Plan B deleted Landing.tsx because
 // there was no deploy target and no audience yet, with an explicit trigger
@@ -13,6 +14,6 @@ export default function RootPage() {
   const { session, loading } = useSession();
   const navigate = useNavigate();
   if (loading) return null;
-  if (session) return <Navigate to="/board" replace />;
+  if (session) return <PostSignInRedirect />;
   return <Landing onGetStarted={() => navigate('/auth')} />;
 }
