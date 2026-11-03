@@ -1,35 +1,38 @@
-import { generateWeeklySummary, WeeklySummaryHabitDatum } from '../ai/suggestions';
+import { generateWeeklySummary } from '../ai/suggestions';
 import { supabase } from '../supabase/client';
-import { STATS } from '../constants/eiyu-data';
-import { accountDateKey, addDateKeyDays, mondayDateKey } from '../logic/date-utils';
-import { Stat } from '../types/eiyu';
-import { fetchHistoryEvidence } from './history';
+import { accountDateKey, mondayDateKey } from '../logic/date-utils';
+import {requireDebriefAccess, PROCESSING_ACCESS_MESSAGE, type ProcessingAccess} from './processing-access';
+import { requireMailboxProof, MAILBOX_MESSAGE, type MailboxStatus } from './mailbox';
+import { authorizationForOwner } from '../supabase/authorization';
 
-export async function gatherWeekData(
-  userId: string,
-  weekStart: string,
-  weekEndExclusive: string
-): Promise<{ habits: WeeklySummaryHabitDatum[]; statTotals: Record<Stat, number> }> {
-  const snapshot = await fetchHistoryEvidence(weekStart, weekEndExclusive);
-  const countsByHabit = new Map<string, WeeklySummaryHabitDatum>();
-  for (const habit of snapshot.habits) {
-    countsByHabit.set(habit.id, { name: habit.name, stat: habit.stat, fullCount: 0, easyCount: 0 });
-  }
-  for (const row of snapshot.rows) {
-    if (!row.completion_kind) continue;
-    let datum = countsByHabit.get(row.source_habit_id);
-    if (!datum) {
-      datum = { name: row.habit_name, stat: row.stat, fullCount: 0, easyCount: 0 };
-      countsByHabit.set(row.source_habit_id, datum);
-    }
-    if (row.completion_kind === 'full') datum.fullCount += 1;
-    else datum.easyCount += 1;
-  }
-  const habits = Array.from(countsByHabit.values());
-  const statTotals = STATS.reduce((acc, stat) => ({ ...acc, [stat]: 0 }), {} as Record<Stat, number>);
-  for (const habit of habits) statTotals[habit.stat] += habit.fullCount + habit.easyCount;
-  return { habits, statTotals };
+async function debriefContext(userId: string, kind: 'read' | 'generate') {
+  const mailbox = await requireMailboxProof();
+  if (mailbox.userId !== userId) throw new Error(MAILBOX_MESSAGE);
+  const access = await requireDebriefAccess(kind);
+  if (access.userId !== userId) throw new Error(PROCESSING_ACCESS_MESSAGE);
+  const authorization = await authorizationForOwner(userId, PROCESSING_ACCESS_MESSAGE);
+  return {access, mailbox, authorization};
 }
+async function checkAccess(kind: 'read' | 'generate', access: ProcessingAccess, mailbox: MailboxStatus): Promise<void> {
+  await requireDebriefAccess(kind, access);
+  await requireMailboxProof(mailbox);
+}
+function provenance(access: ProcessingAccess) {
+  return {age_version: access.ageVersion, mailbox_version: access.mailboxVersion,
+    consent_version: access.consentVersion, authority_version: access.authorityVersion};
+}
+
+/** Read only: withdrawing optional generation permission does not request history deletion. */
+export async function fetchSavedWeeklySummary(userId: string, timeZone: string, now: Date = new Date()): Promise<string | null> {
+  const {access, mailbox, authorization} = await debriefContext(userId, 'read');
+  const weekStart = mondayDateKey(accountDateKey(now, timeZone));
+  const {data, error} = await supabase.from('weekly_summaries').select('summary')
+    .eq('user_id', userId).eq('week_start', weekStart).setHeader('Authorization', authorization).maybeSingle();
+  if (error) throw error;
+  await checkAccess('read', access, mailbox);
+  return data?.summary ?? null;
+}
+
 /**
  * R-60: fetches this week's AI summary paragraph, generating one (from the
  * week-to-date's completion data) the first time it's read in a given week -
@@ -41,24 +44,30 @@ export async function fetchOrCreateWeeklySummary(
   timeZone: string,
   now: Date = new Date()
 ): Promise<string> {
+  const {access, mailbox, authorization} = await debriefContext(userId, 'read');
   const weekStart = mondayDateKey(accountDateKey(now, timeZone));
-  const weekEnd = addDateKeyDays(weekStart, 7);
 
   const { data: existing, error: fetchError } = await supabase
     .from('weekly_summaries')
     .select('summary')
     .eq('user_id', userId)
     .eq('week_start', weekStart)
+    .setHeader('Authorization', authorization)
     .maybeSingle();
   if (fetchError) throw fetchError;
-  if (existing) return existing.summary;
+  if (existing) {
+    await checkAccess('read', access, mailbox);
+    return existing.summary;
+  }
 
-  const { habits, statTotals } = await gatherWeekData(userId, weekStart, weekEnd);
-  const summary = await generateWeeklySummary(weekStart, habits, statTotals);
+  await checkAccess('generate', access, mailbox);
+  const summary = await generateWeeklySummary(weekStart, {access, mailbox});
+  await checkAccess('generate', access, mailbox);
 
   const { error: insertError } = await supabase
     .from('weekly_summaries')
-    .insert({ user_id: userId, week_start: weekStart, summary });
+    .insert({ user_id: userId, week_start: weekStart, summary, ...provenance(access) })
+    .setHeader('Authorization', authorization);
   // Unique constraint on (user_id, week_start): a second tab racing to
   // generate the same week's summary loses the insert, not the read - just
   // trust whatever won rather than showing two different paragraphs.
@@ -69,11 +78,14 @@ export async function fetchOrCreateWeeklySummary(
       .select('summary')
       .eq('user_id', userId)
       .eq('week_start', weekStart)
+      .setHeader('Authorization', authorization)
       .single();
     if (refetchError) throw refetchError;
+    await checkAccess('read', access, mailbox);
     return winner.summary;
   }
 
+  await checkAccess('generate', access, mailbox);
   return summary;
 }
 
@@ -89,23 +101,25 @@ export async function regenerateWeeklySummary(
   timeZone: string,
   now: Date = new Date()
 ): Promise<string> {
+  const {access, mailbox, authorization} = await debriefContext(userId, 'generate');
   const weekStart = mondayDateKey(accountDateKey(now, timeZone));
-  const weekEnd = addDateKeyDays(weekStart, 7);
 
   const { error: reserveError } = await supabase.rpc('reserve_weekly_summary_regen', {
     p_week_start: weekStart,
-  });
+  }).setHeader('Authorization', authorization);
   if (reserveError) throw reserveError;
 
-  const { habits, statTotals } = await gatherWeekData(userId, weekStart, weekEnd);
-  const summary = await generateWeeklySummary(weekStart, habits, statTotals);
+  await checkAccess('generate', access, mailbox);
+  const summary = await generateWeeklySummary(weekStart, {access, mailbox});
+  await checkAccess('generate', access, mailbox);
 
   const { error: updateError } = await supabase
     .from('weekly_summaries')
-    .update({ summary })
+    .update({ summary, ...provenance(access) })
     .eq('user_id', userId)
-    .eq('week_start', weekStart);
+    .eq('week_start', weekStart)
+    .setHeader('Authorization', authorization);
   if (updateError) throw updateError;
-
+  await checkAccess('generate', access, mailbox);
   return summary;
 }

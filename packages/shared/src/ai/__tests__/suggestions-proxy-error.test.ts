@@ -1,11 +1,16 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
-import { suggestStages } from '../suggestions';
+import { generateWeeklySummary } from '../suggestions';
 import { supabase } from '../../supabase/client';
 import { initCacheAdapter, type CacheAdapter } from '../../cache/adapter';
 
 jest.mock('../../supabase/client', () => ({
   supabase: {
+    auth: {getSession: async () => ({data:{session:{user:{id:'owner'},access_token:'inert-owner'}},error:null})},
+    rpc: jest.fn(async (name:string) => ({data:name==='get_mailbox_status'
+      ? {userId:'owner',version:1,verified:true}
+      : {contractVersion:1,userId:'owner',ageVersion:1,mailboxVersion:1,consentVersion:1,authorityVersion:0,
+        ageEligible:true,ageConsent:true,aiConsent:true,canReadDebrief:true,canGenerateDebrief:true,authorityState:'not-required'},error:null})),
     functions: {
       invoke: jest.fn(),
     },
@@ -25,7 +30,8 @@ function inMemoryCacheAdapter(): CacheAdapter {
   };
 }
 
-describe('invokeAiProxy error handling (via suggestStages)', () => {
+const summary=()=>generateWeeklySummary('2026-10-19');
+describe('invokeAiProxy error handling (via active weekly-summary entry point)', () => {
   beforeEach(() => {
     (supabase.functions.invoke as jest.Mock).mockClear();
     initCacheAdapter(inMemoryCacheAdapter());
@@ -38,7 +44,7 @@ describe('invokeAiProxy error handling (via suggestStages)', () => {
       error: new FunctionsHttpError(fakeResponse),
     });
 
-    await expect(suggestStages('', 'STR')).rejects.toThrow('questName is required');
+    await expect(summary()).rejects.toThrow('questName is required');
   });
 
   it('falls back to the generic SDK message when the error body is not parseable JSON', async () => {
@@ -52,7 +58,7 @@ describe('invokeAiProxy error handling (via suggestStages)', () => {
       error: new FunctionsHttpError(fakeResponse),
     });
 
-    await expect(suggestStages('Read', 'INT')).rejects.toThrow(
+    await expect(summary()).rejects.toThrow(
       'Edge Function returned a non-2xx status code'
     );
   });
@@ -63,6 +69,6 @@ describe('invokeAiProxy error handling (via suggestStages)', () => {
       error: new Error('Failed to fetch'),
     });
 
-    await expect(suggestStages('Read', 'WIS')).rejects.toThrow('Failed to fetch');
+    await expect(summary()).rejects.toThrow('Failed to fetch');
   });
 });

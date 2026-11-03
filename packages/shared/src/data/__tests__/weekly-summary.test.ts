@@ -5,9 +5,17 @@ import { generateWeeklySummary } from '../../ai/suggestions';
 jest.mock('../../ai/suggestions', () => ({
   generateWeeklySummary: jest.fn(async () => 'a fresh paragraph'),
 }));
+jest.mock('../account-age', () => ({ requireAdultDeclaration: jest.fn(async () => ({ userId: 'user-1', version: 1 })) }));
+jest.mock('../processing-access', () => ({requireDebriefAccess: jest.fn(async () => ({
+  contractVersion: 1, userId: 'user-1', ageVersion: 1, consentVersion: 2, authorityVersion: 0,
+  mailboxVersion: 1, ageEligible: true, ageConsent: true, aiConsent: true,
+  canReadDebrief: true, canGenerateDebrief: true, authorityState: 'not-required',
+}))}));
+jest.mock('../mailbox', () => ({ requireMailboxProof: jest.fn(async () => ({ userId: 'user-1', version: 1, verified: true })) }));
 
 jest.mock('../../supabase/client', () => ({
   supabase: {
+    auth: {getSession: jest.fn(async () => ({data:{session:{user:{id:'user-1'},access_token:'inert-user-1'}},error:null}))},
     rpc: jest.fn(),
     from: jest.fn(),
   },
@@ -23,6 +31,7 @@ function chainable(result: { data?: unknown; error: unknown }) {
     gte: jest.fn(() => builder),
     lt: jest.fn(() => builder),
     update: jest.fn(() => builder),
+    setHeader: jest.fn(() => builder),
     then: (resolve: (v: typeof result) => void) => Promise.resolve(result).then(resolve),
   };
   return builder;
@@ -38,12 +47,12 @@ describe('regenerateWeeklySummary', () => {
     (generateWeeklySummary as jest.Mock).mockClear();
   });
 
-  it('reserves a regen slot, gathers week data, generates and saves a new summary', async () => {
-    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => name === 'read_history_range'
-      ? { data: { habits: [{ id: 'h1', name: 'Read', stat: 'INT' }], recurring_totals: { INT: 1 }, rows: [
+  it('reserves a regen slot, generates from the metadata-only command and saves a new summary', async () => {
+    (supabase.rpc as jest.Mock).mockImplementation((name: string) => name === 'read_history_range'
+      ? chainable({ data: { habits: [{ id: 'h1', name: 'Read', stat: 'INT' }], recurring_totals: { INT: 1 }, rows: [
         { source_habit_id: 'h1', historical_date: '2026-09-03', habit_name: 'Read', stat: 'INT', quest_type: 'habit', scheduled: true, completion_kind: 'full' },
-      ] }, error: null }
-      : { data: 1, error: null });
+      ] }, error: null })
+      : chainable({ data: 1, error: null }));
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') {
         return chainable({ data: [{ id: 'h1', name: 'Read', stat: 'INT' }], error: null });
@@ -67,11 +76,13 @@ describe('regenerateWeeklySummary', () => {
       p_week_start: '2026-08-31',
     });
     expect(generateWeeklySummary).toHaveBeenCalledTimes(1);
+    expect(generateWeeklySummary).toHaveBeenCalledWith('2026-08-31', expect.anything());
+    expect((supabase.rpc as jest.Mock).mock.calls.map(c => c[0])).not.toContain('read_history_range');
     expect((supabase.from as jest.Mock).mock.calls.some(([t]) => t === 'weekly_summaries')).toBe(true);
   });
 
   it('throws and never calls generateWeeklySummary when the reservation is rejected', async () => {
-    (supabase.rpc as jest.Mock).mockResolvedValue({
+    (supabase.rpc as jest.Mock).mockReturnValue(chainable({
       data: null,
       // Real supabase-js rejects with a PostgrestError, which extends Error.
       // Jest's `.rejects.toThrow(string)` only recognizes rejections that
@@ -81,7 +92,7 @@ describe('regenerateWeeklySummary', () => {
       // it correctly. Object.assign onto a real Error keeps both the
       // message-based matcher and the .code property realistic.
       error: Object.assign(new Error('regen cap reached for week 2026-08-31'), { code: 'P0001' }),
-    });
+    }));
 
     await expect(regenerateWeeklySummary('user-1', 'UTC', now)).rejects.toThrow('regen cap reached');
     await expect(regenerateWeeklySummary('user-1', 'UTC', now)).rejects.toMatchObject({ code: 'P0001' });
@@ -91,9 +102,9 @@ describe('regenerateWeeklySummary', () => {
   });
 
   it('throws if the final update fails after a successful generation', async () => {
-    (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => name === 'read_history_range'
-      ? { data: { habits: [], recurring_totals: {}, rows: [] }, error: null }
-      : { data: 1, error: null });
+    (supabase.rpc as jest.Mock).mockImplementation((name: string) => name === 'read_history_range'
+      ? chainable({ data: { habits: [], recurring_totals: {}, rows: [] }, error: null })
+      : chainable({ data: 1, error: null }));
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       if (table === 'habits') return chainable({ data: [], error: null });
       if (table === 'habit_completions') return chainable({ data: [], error: null });

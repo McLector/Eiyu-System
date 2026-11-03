@@ -1,7 +1,9 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../supabase/client';
-import { getCacheAdapter } from '../cache/adapter';
 import { Stat } from '../types/eiyu';
+import {requireDebriefAccess, PROCESSING_ACCESS_MESSAGE, type ProcessingAccess} from '../data/processing-access';
+import { requireMailboxProof, type MailboxStatus } from '../data/mailbox';
+import { authorizationForOwner } from '../supabase/authorization';
 
 interface AiProxyError {
   error: string;
@@ -30,15 +32,9 @@ async function toAiProxyError(error: unknown): Promise<Error> {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-/**
- * Improvement-pass #11 ("AI takes too long to respond"):
- * - a hard client timeout so the UI regains control with an actionable
- *   message instead of hanging on a spinner;
- * - a local TTL cache keyed by (action, name, stat) so repeat taps for the
- *   same input are instant and cost nothing.
- * Server-side latency was addressed separately: the edge function's array
- * responses dropped maxOutputTokens 2048 -> 512.
- */
+/** Active weekly requests retain their client timeout. Legacy suggestion-cache
+ * constants/pure helpers remain for compatibility; the stage entry point below
+ * is deliberately paused and no longer reads or recreates persistent caches. */
 
 export const AI_TIMEOUT_MS = 20_000;
 export const AI_SUGGESTIONS_STORAGE_KEY = 'eiyu:ai-suggestions';
@@ -75,22 +71,11 @@ export function isFreshSuggestions(
   );
 }
 
-async function readSuggestionCache(): Promise<SuggestionCache> {
-  const raw = await getCacheAdapter().getItem(AI_SUGGESTIONS_STORAGE_KEY);
-  return raw ? JSON.parse(raw) : {};
-}
-
-async function writeSuggestionCacheEntry(key: string, value: string[]): Promise<void> {
-  const cache = await readSuggestionCache();
-  cache[key] = { at: Date.now(), value };
-  await getCacheAdapter().setItem(AI_SUGGESTIONS_STORAGE_KEY, JSON.stringify(cache));
-}
-
 /**
  * invoke + hard timeout. The underlying request is not aborted (supabase-js
  * has no signal plumbing here) but the caller regains control immediately.
  */
-async function invokeAiProxy<T>(body: Record<string, unknown>): Promise<T> {
+async function invokeAiProxy<T>(body: Record<string, unknown>, authorization?: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
@@ -101,7 +86,7 @@ async function invokeAiProxy<T>(body: Record<string, unknown>): Promise<T> {
   try {
     return await Promise.race([
       (async () => {
-        const { data, error } = await supabase.functions.invoke('ai-proxy', { body });
+        const { data, error } = await supabase.functions.invoke('ai-proxy', { body, ...(authorization ? {headers: {Authorization: authorization}} : {}) });
         if (error) throw await toAiProxyError(error);
         if (data && typeof data === 'object' && 'error' in data) {
           throw new Error((data as AiProxyError).error);
@@ -115,22 +100,14 @@ async function invokeAiProxy<T>(body: Record<string, unknown>): Promise<T> {
   }
 }
 
-/** R-62: break a Long Quest name into 3-6 editable stages, always optional (R-64). */
-export async function suggestStages(questName: string, stat: Stat): Promise<string[]> {
-  const key = suggestionCacheKey('stage-breakdown', questName, stat);
-  const cached = (await readSuggestionCache())[key];
-  if (isFreshSuggestions(cached)) return cached.value;
+export const STAGE_SUGGESTIONS_PAUSED_MESSAGE = 'Stage suggestions are unavailable while their privacy requirements are reviewed.';
 
-  const data = await invokeAiProxy<{ stages?: string[] }>({
-    action: 'stage-breakdown',
-    questName: questName.trim(),
-    stat,
-  });
-  if (!data?.stages) throw new Error('No stages returned');
-  await writeSuggestionCacheEntry(key, data.stages);
-  return data.stages;
+/** No current UI caller. Never replace retired cache reads with extra provider requests. */
+export async function suggestStages(_questName: string, _stat: Stat): Promise<string[]> {
+  throw new Error(STAGE_SUGGESTIONS_PAUSED_MESSAGE);
 }
 
+/** No longer sent: the server builds the weekly evidence. Kept as an exported type for older callers. */
 export interface WeeklySummaryHabitDatum {
   name: string;
   stat: Stat;
@@ -138,18 +115,28 @@ export interface WeeklySummaryHabitDatum {
   easyCount: number;
 }
 
-/** R-60: raw call to the ai-proxy for a weekly summary paragraph - generate-once-per-week caching lives in data/weekly-summary.ts, so no local TTL cache here. */
+/**
+ * R-60: raw call to the ai-proxy for a weekly summary paragraph - generate-once-per-week caching lives in data/weekly-summary.ts, so no local TTL cache here.
+ * The body is metadata only: the week and the captured processing revisions. Habit text and totals are built on the server.
+ */
 export async function generateWeeklySummary(
   weekStart: string,
-  habits: WeeklySummaryHabitDatum[],
-  statTotals: Record<Stat, number>
+  expected?: {access: ProcessingAccess; mailbox: Pick<MailboxStatus, 'userId' | 'version'>}
 ): Promise<string> {
+  const mailbox = await requireMailboxProof(expected?.mailbox);
+  const access = await requireDebriefAccess('generate', expected?.access);
+  if (mailbox.userId !== access.userId) throw new Error('Verify your email to access your weekly debrief.');
+  const authorization = await authorizationForOwner(access.userId, PROCESSING_ACCESS_MESSAGE);
+  await requireDebriefAccess('generate', access);
+  await requireMailboxProof(mailbox);
   const data = await invokeAiProxy<{ summary?: string }>({
     action: 'weekly-summary',
     weekStart,
-    habits,
-    statTotals,
-  });
+    processingAccess: {contractVersion: 1, ageVersion: access.ageVersion, mailboxVersion: access.mailboxVersion,
+      consentVersion: access.consentVersion, authorityVersion: access.authorityVersion},
+  }, authorization);
   if (!data?.summary) throw new Error('No summary returned');
+  await requireDebriefAccess('generate', access);
+  await requireMailboxProof(mailbox);
   return data.summary;
 }
