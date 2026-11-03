@@ -7,12 +7,12 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TRACKER_PURPOSE_NOTICES as NOTICES, type TrackerAccess } from '@eiyu/shared';
 
-const mocks = vi.hoisted(() => ({ fetchAccess: vi.fn(), setConsent: vi.fn(), kind: vi.fn(), access: null as unknown as TrackerAccess }));
+const mocks = vi.hoisted(() => ({ fetchAccess: vi.fn(), setConsent: vi.fn(), kind: vi.fn(), fetchAge: vi.fn(), access: null as unknown as TrackerAccess }));
 vi.mock('@eiyu/shared', async importOriginal => ({
   ...await importOriginal<object>(),
   fetchTrackerAccess: mocks.fetchAccess, subscribeTrackerAccessChanges: () => () => undefined,
   setTrackerConsent: (...args: unknown[]) => mocks.setConsent(...args), trackerErrorKind: (error: unknown) => mocks.kind(error),
-  fetchAccountAge: async () => ({ userId: 'owner-a', birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false }),
+  fetchAccountAge: () => mocks.fetchAge(),
   setAccountBirthday: vi.fn(),
   fetchProcessingAccess: async () => ({ contractVersion: 1, userId: 'owner-a', ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
     ageEligible: true, ageConsent: true, aiConsent: false, canReadDebrief: true, canGenerateDebrief: false, authorityState: 'not-required' }),
@@ -28,6 +28,7 @@ afterEach(cleanup);
 beforeEach(() => {
   mocks.fetchAccess.mockReset().mockImplementation(async () => mocks.access);
   mocks.setConsent.mockReset(); mocks.kind.mockReset().mockReturnValue(null);
+  mocks.fetchAge.mockReset().mockResolvedValue({ userId: 'owner-a', birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false });
 });
 
 function setup(access: TrackerAccess | Error) {
@@ -46,6 +47,18 @@ it('shows both tracker purposes as separate choices reflecting the server and wr
   expect(screen.getByText(NOTICES['fitness-tracking'].body)).toBeInTheDocument();
   expect(mocks.setConsent).not.toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'Prepare data download' })).toBeEnabled();
+});
+
+it('gives each Profile section its own key, so a re-render cannot leave a stale copy on screen', async () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  try {
+    setup(noGrant());
+    await box('custom-tracker');
+    await waitFor(() => expect(mocks.fetchAge).toHaveBeenCalled());
+    await screen.findByText(NOTICES['custom-tracker'].body);
+    const duplicates = errors.mock.calls.filter(call => String(call[0]).includes('two children with the same key'));
+    expect(duplicates).toEqual([]);
+  } finally { errors.mockRestore(); }
 });
 
 it('grants Gym tracking alone with its notice version and a copy of the captured revision', async () => {

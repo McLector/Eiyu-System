@@ -131,8 +131,8 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
         {birthdayNote && <p role="status">{birthdayNote}</p>}
         {processing && userId && <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/>}
         {processingError && <p role="alert">{processingError}</p>}
-        {userId && <TrackerPermissions key={userId} userId={userId} audience={audience}/>}
-        {userId && <OwnerExport key={userId} userId={userId}/>}
+        {userId && <TrackerPermissions key={`${userId}-permissions`} userId={userId} audience={audience}/>}
+        {userId && <OwnerExport key={`${userId}-export`} userId={userId}/>}
         <div className="phase4-dialog-actions">
           <button type="button" className="btn-secondary" onClick={() => requestClose(onClose)} disabled={pending}>CANCEL</button>
           <button type="button" className="btn-primary" onClick={() => void save()} disabled={pending}>
