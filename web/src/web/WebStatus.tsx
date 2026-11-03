@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import {
   STAT_COLORS, STATS, RANK_CONFIG, tintSecondaryText, type Stat, type UserProfile,
   fetchWeeklyReview, fetchOrCreateWeeklySummary, regenerateWeeklySummary, formatError,
+  subscribeAccountAgeChanges, subscribeMailboxChanges, MAILBOX_MESSAGE,
+  fetchProcessingAccess, fetchSavedWeeklySummary, fetchMailboxStatus,
+  subscribeProcessingAccessChanges, PROCESSING_ACCESS_MESSAGE, type ProcessingAccess,
 } from '@eiyu/shared';
 import { WEEKLY_REVIEW_COPY } from '@eiyu/shared';
 import { StatIcon, SparkleIcon } from '../Icons';
@@ -12,6 +15,8 @@ import { useSession } from '../store/session-context';
 import SignaturePanel from '../SignaturePanel';
 import WebHeatmap from './WebHeatmap';
 import WeeklyReviewMatrix from './WeeklyReviewMatrix';
+import MailboxVerification from './MailboxVerification';
+import {DebriefConsent} from './DebriefConsent';
 
 interface Props { darkMode: boolean; }
 
@@ -19,13 +24,47 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
   const [expanded, setExpanded] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [mailboxGate, setMailboxGate] = useState(false);
+  const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
   const queryClient = useQueryClient();
-  const { data: summary, isPending, error, refetch } = useQuery({
+  const revision = useRef(0);
+  useEffect(() => () => { revision.current++; }, []);
+  const { data: summary, isPending, isFetching, fetchStatus, error, errorUpdatedAt, refetch } = useQuery({
     queryKey: ['weeklySummary', userId],
-    queryFn: () => fetchOrCreateWeeklySummary(userId, timeZone),
+    queryFn: async ({signal}) => {
+      const current = revision.current;
+      const access = await fetchProcessingAccess();
+      if (signal.aborted || revision.current !== current) throw new Error('Permission check changed.');
+      if (access.userId !== userId) throw new Error(PROCESSING_ACCESS_MESSAGE);
+      setProcessing(access);
+      if (access.canGenerateDebrief) return fetchOrCreateWeeklySummary(userId, timeZone);
+      if (access.canReadDebrief) return fetchSavedWeeklySummary(userId, timeZone);
+      const mailbox = await fetchMailboxStatus();
+      if (signal.aborted || revision.current !== current || mailbox.userId !== userId) throw new Error(PROCESSING_ACCESS_MESSAGE);
+      throw new Error(!mailbox.verified ? MAILBOX_MESSAGE : PROCESSING_ACCESS_MESSAGE);
+    },
     enabled: !!userId,
-    staleTime: Infinity,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
+  const mailboxError = !!error && formatError(error).includes(MAILBOX_MESSAGE);
+  const rechecking = isPending || isFetching || fetchStatus === 'paused';
+  useEffect(() => {
+    if (!rechecking) setMailboxGate(mailboxError);
+  }, [rechecking, mailboxError]);
+  useEffect(() => subscribeAccountAgeChanges(() => {
+    revision.current++;
+    void queryClient.resetQueries({ queryKey: ['weeklySummary', userId] });
+  }), [queryClient, userId]);
+  useEffect(() => subscribeMailboxChanges(() => {
+    revision.current++;
+    void queryClient.resetQueries({ queryKey: ['weeklySummary', userId] });
+  }), [queryClient, userId]);
+  useEffect(() => subscribeProcessingAccessChanges(() => {
+    revision.current++;
+    setProcessing(null);
+    void queryClient.resetQueries({queryKey: ['weeklySummary', userId]});
+  }), [queryClient, userId]);
   const SHORT_LIMIT = 160;
 
   const text = summary ?? '';
@@ -33,13 +72,15 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
   const displayed = expanded || !isLong ? text : text.slice(0, SHORT_LIMIT).trimEnd() + '…';
 
   const handleRegenerate = async () => {
-    if (regenerating || !summary) return;
+    if (regenerating || !summary || !processing?.canGenerateDebrief) return;
+    const current = revision.current;
     setRegenerating(true);
     setRegenerateError(null);
     try {
       const nextSummary = await regenerateWeeklySummary(userId, timeZone);
-      queryClient.setQueryData(['weeklySummary', userId], nextSummary);
+      if (revision.current === current) queryClient.setQueryData(['weeklySummary', userId], nextSummary);
     } catch (err) {
+      if (revision.current !== current) return;
       const message = formatError(err);
       setRegenerateError(message.includes('regen cap reached')
         ? "You've used both regenerations for today — more tomorrow"
@@ -58,7 +99,7 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
         <span style={{ flex: 1, fontFamily: 'Rajdhani', fontSize: 12, fontWeight: 700, color: 'var(--c-accent-text)', letterSpacing: '0.1em' }}>WEEKLY DEBRIEF</span>
         <button
           onClick={() => void handleRegenerate()}
-          disabled={regenerating || isPending || !summary}
+          disabled={regenerating || isPending || isFetching || !summary || !processing?.canGenerateDebrief}
           aria-label="Regenerate weekly summary"
           className="btn-secondary"
           style={{ minHeight: 30, padding: '4px 10px', fontSize: 11 }}
@@ -66,7 +107,10 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
           {regenerating ? 'REGENERATING…' : '↻ REGENERATE'}
         </button>
       </div>
-      {isPending ? (
+      {processing && <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/>}
+      {mailboxError || (mailboxGate && rechecking) ? (
+        <MailboxVerification key={userId} userId={userId} refreshRevision={errorUpdatedAt} onVerified={() => { void refetch(); }} />
+      ) : rechecking ? (
         <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>Reading the week&apos;s signs…</p>
       ) : error ? (
         <div className="status-query-error" role="alert">
@@ -75,6 +119,7 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
         </div>
       ) : (
         <>
+          {!processing?.canGenerateDebrief && <p>AI permission is off. Ordinary quests remain available. Saved debriefs appear here when reading is permitted.</p>}
           {regenerateError && <p role="alert" style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-danger)', lineHeight: 1.5, margin: '0 0 6px' }}>{regenerateError}</p>}
           <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>
             {displayed}
