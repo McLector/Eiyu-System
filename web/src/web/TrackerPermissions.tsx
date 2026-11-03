@@ -13,7 +13,13 @@ export default function TrackerPermissions({ userId, audience }: { userId: strin
     return <p role="status">Tracker permission settings are unavailable. Your basic quests are not affected.</p>;
   }
   const stale = () => void qc.invalidateQueries({ queryKey: trackerKey(userId) });
-  const changed = (next: typeof access) => { qc.setQueryData(trackerKey(userId), next); };
+  const changed = (next: typeof access) => {
+    qc.setQueryData(trackerKey(userId), next);
+    // Each row carries its own write permission, so the lists are read again.
+    void qc.invalidateQueries({ queryKey: ['habits'] });
+    void qc.invalidateQueries({ queryKey: ['backlog'] });
+    void qc.invalidateQueries({ queryKey: ['longQuests', userId] });
+  };
   return <div style={{ display: 'grid', gap: 12 }} aria-label="Tracker permissions" role="group">
     <RetentionNotice key={`${userId}-retention`} userId={userId} />
     <TrackerConsent key={`${userId}-custom`} userId={userId} access={access} purpose="custom-tracker" audience={audience} onChanged={changed} onStale={stale} />
