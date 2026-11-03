@@ -4,6 +4,7 @@ import RootPage from './RootPage';
 import RequireAuth from './RequireAuth';
 import ProtectedLayout from './ProtectedLayout';
 import AuthPage from './pages/AuthPage';
+import PasswordRecoveryPage from './pages/PasswordRecoveryPage';
 import BoardPage from './pages/BoardPage';
 import StatusPage from './pages/StatusPage';
 import WebLongQuests from './web/WebLongQuests';
@@ -11,13 +12,16 @@ import SettingsPage from './pages/SettingsPage';
 import HistoryPage from './pages/HistoryPage';
 import QuestEditorPage from './pages/QuestEditorPage';
 import WebGym from './web/WebGym';
+import AdminPage from './pages/AdminPage';
 
 export const router = createBrowserRouter([
   { path: '/', element: <RootPage /> },
   { path: '/auth', element: <AuthPage /> },
+  { path: '/auth/recovery', element: <PasswordRecoveryPage /> },
   {
     element: <RequireAuth />,
     children: [
+      { path: '/admin', element: <AdminPage /> },
       {
         element: <ProtectedLayout />,
         children: [
