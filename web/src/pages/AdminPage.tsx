@@ -12,5 +12,5 @@ export default function AdminPage() {
   if (state.phase === 'loading') return null;
   if (state.phase === 'error' || !state.status.isOperator || !user) return <Navigate to="/board" replace />;
   if (state.status.aal !== 'aal2') return <AdminMfa onVerified={state.refresh} />;
-  return <AdminConsole userId={user.id} />;
+  return <AdminConsole key={user.id} userId={user.id} />;
 }

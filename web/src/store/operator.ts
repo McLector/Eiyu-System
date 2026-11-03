@@ -8,16 +8,17 @@ export type OperatorState =
 
 /** The caller's own operator status. A failed read is `error`; callers treat it as "not an operator". */
 export function useOperatorStatus(userId: string | undefined): OperatorState & { refresh: () => void } {
-  const [state, setState] = useState<OperatorState>({ phase: 'loading' });
+  // Each answer records whose it is, so nothing is shown for a different account, even for one render after a switch.
+  const [state, setState] = useState<{ owner: string | undefined; value: OperatorState }>({ owner: userId, value: { phase: 'loading' } });
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!userId) { setState({ phase: 'error' }); return; }
+    if (!userId) { setState({ owner: userId, value: { phase: 'error' } }); return; }
     let live = true;
     fetchOperatorStatus(userId)
-      .then(status => { if (live) setState({ phase: 'ready', status }); })
-      .catch(() => { if (live) setState({ phase: 'error' }); });
+      .then(status => { if (live) setState({ owner: userId, value: { phase: 'ready', status } }); })
+      .catch(() => { if (live) setState({ owner: userId, value: { phase: 'error' } }); });
     return () => { live = false; };
   }, [userId, tick]);
   const refresh = useCallback(() => setTick(n => n + 1), []);
-  return { ...state, refresh };
+  return { ...(state.owner === userId ? state.value : { phase: 'loading' }), refresh };
 }
