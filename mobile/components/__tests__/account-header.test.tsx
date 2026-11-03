@@ -1,8 +1,10 @@
-import { act, screen, userEvent, within } from '@testing-library/react-native';
+import { act, fireEvent, screen, userEvent, within, waitFor } from '@testing-library/react-native';
 import { Alert, StyleSheet } from 'react-native';
 
+import { TRACKER_PURPOSE_NOTICES, type TrackerAccess } from '@eiyu/shared';
+import { noGrant, trackerAccess } from '../../test-support/tracker-fixtures';
 import AccountHeader from '../eiyu/account-header';
-import { renderWithTheme } from '../ui/test-theme';
+import { renderWithTheme, TestThemeProvider } from '../ui/test-theme';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -12,15 +14,36 @@ jest.mock('react-native-safe-area-context', () => ({
 
 const mockSignOut = jest.fn();
 const mockSaveProfile = jest.fn();
+const mockFetchAge = jest.fn();
+const mockSetBirthday = jest.fn();
+const mockProcessing = jest.fn();
+const mockConsent = jest.fn();
+const mockTrackerConsent = jest.fn();
+const mockAcceptTracker = jest.fn();
+const mockRefreshTracker = jest.fn();
+let mockTracker: TrackerAccess | null = null;
+let mockAgeOwner = 'owner-a';
+let mockRetention: unknown[] = [];
+jest.mock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'),
+  setTrackerConsent: (...args: unknown[]) => mockTrackerConsent(...args),
+  fetchRetentionNotice: () => Promise.resolve(mockRetention),
+  fetchAccountAge: (...args: unknown[]) => mockFetchAge(...args),
+  setAccountBirthday: (...args: unknown[]) => mockSetBirthday(...args),
+  fetchProcessingAccess: (...args: unknown[]) => mockProcessing(...args),
+  setProcessingConsent: (...args: unknown[]) => mockConsent(...args),
+}));
 let mockParams: { account?: string } = {};
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), navigate: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => mockParams }));
 const mockRouter = jest.requireMock('expo-router').router as { push: jest.Mock; navigate: jest.Mock; setParams: jest.Mock };
-jest.mock('@/contexts/auth-store', () => ({ useAuth: () => ({ signOut: mockSignOut }) }));
+jest.mock('@/contexts/auth-store', () => ({ useAuth: () => ({ signOut: mockSignOut, session: { user: { id: mockAgeOwner } } }) }));
 jest.mock('@/contexts/eiyu-store', () => ({
   useEiyu: () => ({
     user: { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C', quests: [] },
     saveProfile: mockSaveProfile,
+    tracker: mockTracker,
+    acceptTracker: mockAcceptTracker,
+    refreshTracker: mockRefreshTracker,
     restoreQuest: jest.fn(),
     deleteQuest: jest.fn(),
     notificationsEnabled: true,
@@ -36,6 +59,17 @@ describe('native account header', () => {
   beforeEach(() => {
     mockSignOut.mockReset().mockResolvedValue({ error: null });
     mockSaveProfile.mockReset().mockResolvedValue(undefined);
+    mockFetchAge.mockReset().mockResolvedValue({ userId: 'owner-a', birthDate: null, pendingBirthDate: null, correctionPending: false });
+    mockSetBirthday.mockReset().mockResolvedValue({ birthDate: '2000-01-01', correctionPending: false });
+    mockAgeOwner = 'owner-a';
+    mockProcessing.mockReset().mockImplementation(async () => ({contractVersion: 1, userId: mockAgeOwner, ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
+      ageEligible: true, ageConsent: true, aiConsent: false, canReadDebrief: true, canGenerateDebrief: false, authorityState: 'not-required'}));
+    mockConsent.mockReset();
+    mockTrackerConsent.mockReset();
+    mockAcceptTracker.mockReset();
+    mockRefreshTracker.mockReset().mockResolvedValue(undefined);
+    mockTracker = noGrant('owner-a');
+    mockRetention = [];
     mockRouter.push.mockReset();
     mockRouter.navigate.mockReset();
     mockRouter.setParams.mockReset();
@@ -48,6 +82,124 @@ describe('native account header', () => {
     expect(screen.getByTestId('account-brand-mark')).toBeOnTheScreen();
     expect(screen.getByTestId('account-trigger')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: TRIGGER })).toBeOnTheScreen();
+  });
+  describe('tracker permissions in Profile', () => {
+    const custom = TRACKER_PURPOSE_NOTICES['custom-tracker'];
+    const fitness = TRACKER_PURPOSE_NOTICES['fitness-tracking'];
+
+    it('shows both purposes, unchecked and separate from AI, and sends nothing on open', async () => {
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByRole('checkbox', { name: custom.label })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: fitness.label })).not.toBeChecked();
+      expect(mockTrackerConsent).not.toHaveBeenCalled();
+    });
+
+    it('shows the retention notice in Profile only when a reminder is due', async () => {
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await screen.findByRole('checkbox', { name: custom.label });
+      expect(screen.queryByText(/will be removed on/)).toBeNull();
+    });
+
+    it('names the removal date when a reminder is due', async () => {
+      mockRetention = [{ purpose: 'custom-tracker', removalDueOn: '2026-10-31', reminded: true }];
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByText(/custom quest records will be removed on October 31, 2026/)).toBeOnTheScreen();
+    });
+
+    it('grants one purpose with the owner revision and hands the server answer to the store', async () => {
+      const next = trackerAccess({ fitnessConsent: true, canWriteFitness: true }, 'owner-a');
+      mockTrackerConsent.mockResolvedValue(next);
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('checkbox', { name: fitness.label }));
+      await waitFor(() => expect(mockAcceptTracker).toHaveBeenCalledWith(next));
+      expect(mockTrackerConsent).toHaveBeenCalledWith('fitness-tracking', true, fitness.version, noGrant('owner-a').revision);
+      expect(mockTrackerConsent).not.toHaveBeenCalledWith('custom-tracker', expect.anything(), expect.anything(), expect.anything());
+    });
+
+    it('withdraws a granted purpose', async () => {
+      mockTracker = trackerAccess({}, 'owner-a');
+      mockTrackerConsent.mockResolvedValue({ ...mockTracker, customConsent: false, canWriteCustom: false });
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      const box = await screen.findByRole('checkbox', { name: custom.label });
+      expect(box).toBeChecked();
+      await user.press(box);
+      await waitFor(() => expect(mockTrackerConsent).toHaveBeenCalledWith('custom-tracker', false, custom.version, mockTracker!.revision));
+    });
+
+    it('asks the store to re-read access when a change was refused as stale', async () => {
+      mockTrackerConsent.mockRejectedValue(Object.assign(new Error('stale'), { code: 'ET003' }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('checkbox', { name: custom.label }));
+      await waitFor(() => expect(mockRefreshTracker).toHaveBeenCalledTimes(1));
+      expect(mockAcceptTracker).not.toHaveBeenCalled();
+    });
+
+    it('shows no usable controls while access is unavailable or belongs to another account', async () => {
+      mockTracker = null;
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByText(/tracker permissions are unavailable/i)).toBeOnTheScreen();
+      expect(screen.queryByRole('checkbox', { name: custom.label })).toBeNull();
+      expect(mockTrackerConsent).not.toHaveBeenCalled();
+    });
+  });
+
+  it('offers explicit export in Profile without saving an unsaved display name',async()=>{
+    const user=userEvent.setup();await renderWithTheme(<AccountHeader/>);await openProfile(user);
+    await fireEvent.changeText(screen.getByLabelText('Display name'),'Synthetic draft');
+    expect(screen.getByRole('button',{name:'Prepare data download'})).toBeEnabled();
+    expect(screen.getByLabelText('Display name').props.value).toBe('Synthetic draft');expect(mockSaveProfile).not.toHaveBeenCalled();
+  });
+  it('requires separate birthday permission before a legacy birthday write, without requiring guardian evidence', async () => {
+    const access = {...await mockProcessing(), ageConsent: false, canReadDebrief: false};
+    mockProcessing.mockResolvedValue(access);
+    mockConsent.mockResolvedValue({...access, ageConsent: true, consentVersion: 2});
+    const user = userEvent.setup(); await renderWithTheme(<AccountHeader/>); await openProfile(user);
+    await waitFor(() => expect(screen.getByLabelText('Birthday')).toBeEnabled());
+    await fireEvent.changeText(screen.getByLabelText('Birthday'), '2020-01-01');
+    await user.press(screen.getByRole('button', {name: 'Save'}));
+    expect(mockSetBirthday).not.toHaveBeenCalled();
+    await user.press(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
+    await user.press(screen.getByRole('button', {name: 'Save'}));
+    expect(mockSetBirthday).toHaveBeenCalledWith('2020-01-01', 'owner-a');
+  });
+  it('lets a legacy user declare a birthday in Profile while a failed save stays editable', async () => {
+    const user = userEvent.setup();
+    await renderWithTheme(<AccountHeader />);
+    await openProfile(user);
+    await waitFor(() => expect(screen.getByLabelText('Birthday')).toBeEnabled());
+    await fireEvent.changeText(screen.getByLabelText('Birthday'), '2000-01-01');
+    mockSetBirthday.mockRejectedValueOnce(new Error('Birthday save unavailable'));
+    await user.press(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('Birthday save unavailable')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01');
+    await user.press(screen.getByRole('button', { name: 'Save' }));
+    expect(mockSetBirthday).toHaveBeenCalledWith('2000-01-01', 'owner-a');
+  });
+  it('clears the previous account birthday when authentication switches owners', async () => {
+    mockFetchAge.mockResolvedValueOnce({ birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false });
+    const user = userEvent.setup(); const tree = await renderWithTheme(<AccountHeader />);
+    await openProfile(user);
+    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01'));
+    mockAgeOwner = 'owner-b';
+    await tree.rerender(<TestThemeProvider><AccountHeader /></TestThemeProvider>);
+    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue(''));
+  });
+
+  it('explicitly accepts an unchanged pending birthday, but never accepts it merely by opening Profile', async () => {
+    mockFetchAge.mockResolvedValueOnce({userId:'owner-a',birthDate:'2014-01-01',pendingBirthDate:'2000-01-01',correctionPending:true});
+    const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01'));
+    expect(mockSetBirthday).not.toHaveBeenCalled();
+    await user.press(screen.getByRole('button', {name:'Save'}));
+    expect(mockSetBirthday).toHaveBeenCalledWith('2000-01-01','owner-a');
+  });
+
+  it('does not resubmit an unchanged birthday when there is no pending correction', async () => {
+    mockFetchAge.mockResolvedValueOnce({userId:'owner-a',birthDate:'2000-01-01',pendingBirthDate:null,correctionPending:false});
+    const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01'));
+    await user.press(screen.getByRole('button', {name:'Save'}));
+    expect(mockSetBirthday).not.toHaveBeenCalled();
   });
 
   it('lays a pulsing glow under the brand mark, invisible to screen readers', async () => {

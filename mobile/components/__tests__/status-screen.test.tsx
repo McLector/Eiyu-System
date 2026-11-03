@@ -8,11 +8,20 @@ import { renderWithTheme } from '../ui/test-theme';
 const mockFetchOrCreateWeeklySummary = jest.fn();
 const mockFetchWeeklyReview = jest.fn();
 const mockRegenerateWeeklySummary = jest.fn();
+const mockProcessing = jest.fn();
+const mockFetchMailboxStatus = jest.fn(async () => ({ userId: 'user-1', version: 1, verified: false }));
+let mockOnAgeChanged: (() => void) | null = null;
+let mockOnMailboxChanged: (() => void) | null = null;
 jest.mock('@eiyu/shared', () => ({
   ...jest.requireActual('@eiyu/shared'),
   fetchOrCreateWeeklySummary: (...args: unknown[]) => mockFetchOrCreateWeeklySummary(...args),
   fetchWeeklyReview: (...args: unknown[]) => mockFetchWeeklyReview(...args),
   regenerateWeeklySummary: (...args: unknown[]) => mockRegenerateWeeklySummary(...args),
+  fetchProcessingAccess: () => mockProcessing(),
+  subscribeProcessingAccessChanges: () => () => {},
+  fetchMailboxStatus: () => mockFetchMailboxStatus(),
+  subscribeAccountAgeChanges: (listener: () => void) => { mockOnAgeChanged = listener; return () => { mockOnAgeChanged = null; }; },
+  subscribeMailboxChanges: (listener: () => void) => { mockOnMailboxChanged = listener; return () => { mockOnMailboxChanged = null; }; },
 }));
 
 let mockStoreValue: { user: UserProfile };
@@ -46,10 +55,20 @@ function mount(statOverrides: Partial<UserProfile['stats']> = {}) {
 const goto = async (label: string) => { await userEvent.setup().press(screen.getByRole('radio', { name: label })); };
 
 describe('StatusScreen views', () => {
+  it('hides an AI summary after a birthday change without removing quest statistics', async () => {
+    await mount(); await goto('WEEKLY');
+    expect(await screen.findByTestId('weekly-summary-content')).toHaveTextContent(summary);
+    mockFetchOrCreateWeeklySummary.mockRejectedValue(new Error('Adult AI eligibility required.'));
+    await act(async () => { mockOnAgeChanged?.(); });
+    await waitFor(() => expect(screen.queryByTestId('weekly-summary-content')).toBeNull());
+    expect(screen.getByRole('radio', { name: 'STATS' })).toBeOnTheScreen();
+  });
   beforeEach(() => {
     mockFetchOrCreateWeeklySummary.mockReset().mockResolvedValue(summary);
     mockFetchWeeklyReview.mockReset().mockResolvedValue(week);
     mockRegenerateWeeklySummary.mockReset().mockResolvedValue('A fresh paragraph.');
+    mockProcessing.mockReset().mockResolvedValue({contractVersion: 1, userId: 'user-1', ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
+      ageEligible: true, ageConsent: true, aiConsent: true, canReadDebrief: true, canGenerateDebrief: true, authorityState: 'not-required'});
   });
 
   it('offers HERO, STATS and WEEKLY and opens on STATS', async () => {
@@ -82,6 +101,15 @@ describe('StatusScreen views', () => {
 });
 
 describe('StatusScreen STATS', () => {
+  it('offers mailbox verification in the debrief while quest statistics stay visible', async () => {
+    mockFetchOrCreateWeeklySummary.mockRejectedValue(new Error('Verify your email to access your weekly debrief.'));
+    await mount();
+    await userEvent.setup().press(screen.getByRole('radio', { name: 'WEEKLY' }));
+    expect(await screen.findByRole('button', { name: 'Send verification email' })).toBeTruthy();
+    expect(screen.queryByTestId('weekly-summary-content')).toBeNull();
+    await userEvent.setup().press(screen.getByRole('radio', { name: 'STATS' }));
+    expect(screen.getByRole('radio', { name: 'STATS' })).toBeChecked();
+  });
   beforeEach(() => {
     mockFetchOrCreateWeeklySummary.mockReset().mockResolvedValue(summary);
     mockFetchWeeklyReview.mockReset().mockResolvedValue(week);
@@ -138,6 +166,33 @@ describe('StatusScreen HERO', () => {
 });
 
 describe('StatusScreen WEEKLY', () => {
+  it.each(['birthday', 'mailbox'])('keeps late regeneration hidden while %s eligibility is being rechecked', async kind => {
+    let finishRegeneration!: (value: string) => void;
+    let finishRecheck!: (value: string) => void;
+    mockRegenerateWeeklySummary.mockReturnValue(new Promise<string>(resolve => { finishRegeneration = resolve; }));
+    await mount(); await goto('WEEKLY'); await screen.findByTestId('weekly-summary-content');
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Regenerate weekly summary' }));
+    mockFetchOrCreateWeeklySummary.mockReturnValue(new Promise<string>(resolve => { finishRecheck = resolve; }));
+    await act(async () => { (kind === 'birthday' ? mockOnAgeChanged : mockOnMailboxChanged)?.(); });
+    expect(screen.queryByTestId('weekly-summary-content')).toBeNull();
+    await act(async () => { finishRegeneration('Late private content'); });
+    expect(screen.queryByTestId('weekly-summary-content')).toBeNull();
+    await act(async () => { finishRecheck('Freshly checked saved content'); });
+    expect(screen.getByTestId('weekly-summary-content')).toHaveTextContent('Freshly checked saved content');
+    expect(screen.queryByText('Late private content')).toBeNull();
+    expect(screen.getByRole('radio', { name: 'STATS' })).toBeOnTheScreen();
+  });
+  it('discards a regeneration that completes after eligibility invalidation', async () => {
+    let resolve!: (value: string) => void;
+    mockRegenerateWeeklySummary.mockReturnValue(new Promise<string>(done => { resolve = done; }));
+    await mount(); await goto('WEEKLY'); await screen.findByTestId('weekly-summary-content');
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Regenerate weekly summary' }));
+    mockFetchOrCreateWeeklySummary.mockRejectedValue(new Error('Adult AI eligibility required.'));
+    await act(async () => { mockOnAgeChanged?.(); });
+    await waitFor(() => expect(screen.queryByTestId('weekly-summary-content')).toBeNull());
+    await act(async () => { resolve('Late private content'); });
+    expect(screen.queryByText('Late private content')).toBeNull();
+  });
   beforeEach(() => {
     mockFetchOrCreateWeeklySummary.mockReset().mockResolvedValue(summary);
     mockFetchWeeklyReview.mockReset().mockResolvedValue(week);

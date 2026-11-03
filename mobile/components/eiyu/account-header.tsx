@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
+import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
+import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
+import {DebriefConsent} from '@/components/status/debrief-consent';
+import {TrackerConsent} from '@/components/status/tracker-consent';
+import {audienceOf} from '@/contexts/tracker-access';
+import {RetentionNotice} from '@/components/eiyu/retention-notice';
+import {OwnerExport} from '@/components/eiyu/owner-export';
 
 import ArchivedHabitsSheet from '@/components/eiyu/archived-habits-sheet';
 import { BrandMark } from '@/components/eiyu/brand-mark';
@@ -19,16 +26,44 @@ import { useTokens } from '@/contexts/theme-store';
 type OpenSheet = 'menu' | 'profile' | 'settings' | 'archived' | null;
 const ROUTE_SHEETS = ['profile', 'settings', 'archived'] as const;
 
-function ProfileSheet({ onClose }: { onClose: () => void }) {
+function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string | undefined }) {
   const t = useTokens();
-  const { user, saveProfile } = useEiyu();
+  const { user, saveProfile, tracker, acceptTracker, refreshTracker } = useEiyu();
   const [displayName, setDisplayName] = useState(user.name);
   const [userClass, setUserClass] = useState(user.userClass);
+  const [birthday, setBirthday] = useState('');
+  const [originalBirthday, setOriginalBirthday] = useState('');
+  const [correctionPending, setCorrectionPending] = useState(false);
+  const [ageLoaded, setAgeLoaded] = useState(false);
+  const [audience, setAudience] = useState<'teen' | 'adult' | undefined>();
+  const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
+  const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [discardPrompt, setDiscardPrompt] = useState(false);
   const saving = useRef(false);
-  const dirty = displayName !== user.name || userClass !== user.userClass;
+  const dirty = displayName !== user.name || userClass !== user.userClass || birthday !== originalBirthday;
+
+  useEffect(() => {
+    let active = true;
+    fetchProcessingAccess().then(status => {
+      if (!active) return;
+      if (status.userId !== userId) throw new Error('Permission settings are unavailable for this account.');
+      setProcessing(status);
+    }).catch(() => {if (active) setProcessingError('Permission settings are unavailable. You can still edit your name and class.');});
+    fetchAccountAge().then(status => {
+      if (!active) return;
+      const value = status.pendingBirthDate ?? status.birthDate ?? '';
+      setBirthday(value); setOriginalBirthday(value); setAgeLoaded(true);
+      setBirthdayOwner(userId);
+      setCorrectionPending(status.correctionPending);
+      setAudience(audienceOf(status) ?? undefined);
+      if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
+    }).catch(() => { if (active) setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); });
+    return () => { active = false; };
+  }, [userId]);
 
   useEffect(() => {
     setDisplayName(user.name);
@@ -52,9 +87,26 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
       const normalized = normalizeProfileEdit({ displayName, userClass }, {
         displayName: user.name, userClass: user.userClass,
       });
+      if (birthday !== originalBirthday || correctionPending) {
+        if (!userId || processing?.userId !== userId || !processing.ageConsent) throw new Error('Review the birthday permission before saving a birthday correction.');
+        const validation = validateBirthday(birthday);
+        if (validation) throw new Error(validation);
+      }
       saving.current = true;
       setPending(true);
       await saveProfile(normalized);
+      if (birthday !== originalBirthday || correctionPending) {
+        const status = await setAccountBirthday(birthday, birthdayOwner);
+        const value = status.pendingBirthDate ?? status.birthDate ?? birthday;
+        setOriginalBirthday(value); setBirthday(value);
+        setCorrectionPending(status.correctionPending);
+        if (status.correctionPending) {
+          setProcessing(null);
+          fetchProcessingAccess().then(next => {if (next.userId === userId) setProcessing(next);}).catch(() => setProcessingError('Refresh Profile to review permission settings.'));
+          setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
+          return;
+        }
+      }
       onClose();
     } catch (err) {
       setError(formatError(err));
@@ -83,7 +135,23 @@ function ProfileSheet({ onClose }: { onClose: () => void }) {
         <View style={styles.form}>
           <Field label="Display name" value={displayName} editable={!pending} onChangeText={setDisplayName} autoFocus />
           <Field label="Class" value={userClass} editable={!pending} onChangeText={setUserClass} />
-          {error ? <Text accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+          <AppText selectable style={[styles.error, {color: t['muted-flat'], fontFamily: fonts.body}]}>{CHILD_PRIVACY_NOTICE}</AppText>
+          {processing && userId ? <DebriefConsent userId={userId} access={processing} purpose="age-screening" onChanged={setProcessing}/> : null}
+          <Field label="Birthday" placeholder="YYYY-MM-DD" value={birthday} editable={ageLoaded && !pending} onChangeText={setBirthday} />
+          {processing && userId ? <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/> : null}
+          {userId && tracker && tracker.revision.userId === userId ? (
+            <View accessibilityLabel="Tracker permissions" style={{gap: 12}}>
+              <RetentionNotice key={`${userId}-retention`} userId={userId}/>
+              <TrackerConsent userId={userId} access={tracker} purpose="custom-tracker" audience={audience} onChanged={acceptTracker} onStale={() => void refreshTracker()}/>
+              <TrackerConsent userId={userId} access={tracker} purpose="fitness-tracking" audience={audience} onChanged={acceptTracker} onStale={() => void refreshTracker()}/>
+            </View>
+          ) : (
+            <AppText style={[styles.error, {color: t['muted-flat'], fontFamily: fonts.body}]}>Tracker permissions are unavailable right now. Basic tracking is not affected.</AppText>
+          )}
+          {processingError ? <AppText accessibilityRole="alert" style={[styles.error, {color: t.danger}]}>{processingError}</AppText> : null}
+          {userId ? <OwnerExport key={userId} userId={userId}/> : null}
+          {birthdayNote ? <AppText style={[styles.error, { color: t['muted-flat'], fontFamily: fonts.body }]}>{birthdayNote}</AppText> : null}
+          {error ? <AppText accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
         </View>
       </Sheet>
 
@@ -102,7 +170,7 @@ export default function AccountHeader() {
   const { account } = useLocalSearchParams<{ account?: string }>();
   const t = useTokens();
   const { user } = useEiyu();
-  const { signOut } = useAuth();
+  const { signOut, session } = useAuth();
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<OpenSheet>(null);
   const [logoutPending, setLogoutPending] = useState(false);
@@ -144,7 +212,7 @@ export default function AccountHeader() {
           onPress={() => router.navigate({ pathname: '/(tabs)/board' })}
           style={styles.brand}>
           <BrandMark testID="account-brand-mark" style={[styles.brandMark, { color: t['accent-text'], borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }]}>英</BrandMark>
-          <Text style={[styles.brandText, { color: t.text, fontFamily: fonts.display }]}>EIYU</Text>
+          <AppText style={[styles.brandText, { color: t.text, fontFamily: fonts.display }]}>EIYU</AppText>
         </Pressable>
         <Pressable
           testID="account-trigger"
@@ -154,20 +222,20 @@ export default function AccountHeader() {
           onPress={() => { setLogoutError(null); setSheet('menu'); }}
           style={styles.accountTrigger}>
           <View style={[styles.avatar, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
-            <Text style={[styles.avatarText, { color: t['accent-text'], fontFamily: fonts.display }]}>{profileInitials(user.name)}</Text>
+            <AppText style={[styles.avatarText, { color: t['accent-text'], fontFamily: fonts.display }]}>{profileInitials(user.name)}</AppText>
           </View>
           <View style={styles.accountCopy}>
-            <Text numberOfLines={1} style={[styles.accountName, { color: t.text, fontFamily: fonts.display }]}>{user.name}</Text>
-            <Text numberOfLines={1} style={[styles.accountClass, { color: t['muted-flat'], fontFamily: fonts.body }]}>{user.userClass}</Text>
+            <AppText numberOfLines={1} style={[styles.accountName, { color: t.text, fontFamily: fonts.display }]}>{user.name}</AppText>
+            <AppText numberOfLines={1} style={[styles.accountClass, { color: t['muted-flat'], fontFamily: fonts.body }]}>{user.userClass}</AppText>
           </View>
-          <Text style={[styles.rank, { color: rankCfg.color, borderColor: rankCfg.color }]}>{user.rank}</Text>
+          <AppText style={[styles.rank, { color: rankCfg.color, borderColor: rankCfg.color }]}>{user.rank}</AppText>
         </Pressable>
       </View>
 
       <Sheet visible={sheet === 'menu'} title="ACCOUNT" dismissible={!logoutPending} onClose={() => setSheet(null)} testID="account-menu">
         {menuItems.map(item => (
           <Pressable key={item.label} accessibilityRole="menuitem" accessibilityLabel={item.label} onPress={item.onPress} style={[styles.menuItem, { borderBottomColor: t['divider-flat'] }]}>
-            <Text style={[styles.menuText, { color: t.text, fontFamily: fonts.display }]}>{item.label}</Text>
+            <AppText style={[styles.menuText, { color: t.text, fontFamily: fonts.display }]}>{item.label}</AppText>
           </Pressable>
         ))}
         <Pressable
@@ -177,12 +245,12 @@ export default function AccountHeader() {
           disabled={logoutPending}
           onPress={() => void logout()}
           style={styles.menuItem}>
-          <Text style={[styles.menuText, { color: t.danger, fontFamily: fonts.display }]}>{logoutPending ? 'Logging out…' : 'Logout'}</Text>
+          <AppText style={[styles.menuText, { color: t.danger, fontFamily: fonts.display }]}>{logoutPending ? 'Logging out…' : 'Logout'}</AppText>
         </Pressable>
-        {logoutError ? <Text accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{logoutError}</Text> : null}
+        {logoutError ? <AppText accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{logoutError}</AppText> : null}
       </Sheet>
 
-      {sheet === 'profile' && <ProfileSheet onClose={() => setSheet(null)} />}
+      {sheet === 'profile' && <ProfileSheet key={session?.user.id} userId={session?.user.id} onClose={() => setSheet(null)} />}
       <ArchivedHabitsSheet visible={sheet === 'archived'} onClose={() => setSheet(null)} />
 
       <SettingsSheet visible={sheet === 'settings'} onClose={() => setSheet(null)} />
