@@ -59,7 +59,7 @@ import { useSession } from './session-context';
 import { isTrackerTargetGone, isUnansweredTrackerWrite } from '@eiyu/shared';
 import {
   TRACKER_MESSAGES, readTrackerAccess, refreshTrackerAfterFailure, safeTrackerErrorKind, snapshotOf,
-  trackerErrorMessage, trackerKey, useAccountAudience, useTrackerAccess, type AccountAudience, writeDenial, type TrackedRecord,
+  trackerErrorMessage, trackerKey, useAccountAudience, useTrackerAccess, type NoticeAudience, writeDenial, type TrackedRecord,
 } from './tracker';
 
 export const queryClient = new QueryClient({
@@ -103,7 +103,7 @@ interface EiyuStore {
   /** The signed-in owner's loaded tracker capability; null until it is read (every tracker write is refused meanwhile). */
   tracker: TrackerAccess | null;
   /** Declared age band for the optional-notice prompts; undefined (adult wording) until known or when unknown. */
-  audience: AccountAudience | undefined;
+  audience: NoticeAudience | undefined;
   /** Take a server-confirmed capability (after a grant or withdrawal) for the current owner only. */
   acceptTracker: (access: TrackerAccess) => void;
   /** Re-read the capability, for example after a stale or refused write. */

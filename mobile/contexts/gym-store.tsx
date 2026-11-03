@@ -31,7 +31,7 @@ import {
 } from '@eiyu/shared';
 
 import { useAuth } from '@/contexts/auth-store';
-import { refreshTrackerAfterFailure, trackerErrorMessage, trackerKey, TRACKER_MESSAGES, useAccountAudience, useTrackerAccess, type AccountAudience } from '@/contexts/tracker-access';
+import { refreshTrackerAfterFailure, trackerErrorMessage, trackerKey, TRACKER_MESSAGES, useAccountAudience, useTrackerAccess, type NoticeAudience } from '@/contexts/tracker-access';
 
 const EMPTY: GymData = { routines: [], exercises: [] };
 
@@ -95,7 +95,7 @@ interface GymStore {
   fitnessPrompt: boolean;
   setFitnessPrompt: (open: boolean) => void;
   /** Declared age band for the Gym notice; undefined (adult wording) until known or when unknown. */
-  audience: AccountAudience | undefined;
+  audience: NoticeAudience | undefined;
   /** For a screen that opens an editor: true when Gym writes are open, otherwise it opens the permission notice. */
   requireFitness: () => boolean;
   /** For an editor's save: a copy of the current revision, or null (and the message to show) when writes are not open. */

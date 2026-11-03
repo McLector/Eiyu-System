@@ -8,7 +8,7 @@ import {
 import {ReviewRequest} from '@/components/status/review-request';
 import {fonts} from '@/constants/eiyu-theme';
 import {useTokens} from '@/contexts/theme-store';
-import {TRACKER_MESSAGES, safeTrackerErrorKind, trackerErrorMessage} from '@/contexts/tracker-access';
+import {TRACKER_MESSAGES, safeTrackerErrorKind, trackerErrorMessage, type NoticeAudience} from '@/contexts/tracker-access';
 
 type Props = {
   userId: string;
@@ -21,8 +21,8 @@ type Props = {
   onStale?: () => void;
   onDecline?: () => void;
   declineLabel?: string;
-  /** Declared age band: `teen` shows the 12-17 explanation; absent or unknown shows the adult notice. */
-  audience?: 'teen' | 'adult';
+  /** Declared age band: `teen` shows the 12-17 explanation; absent or unknown shows the adult notice; `checking` shows neither and holds the grant. */
+  audience?: NoticeAudience;
 };
 
 const fieldsFor = (purpose: TrackerPurpose) => purpose === 'custom-tracker'
@@ -57,8 +57,10 @@ export function TrackerConsent({userId, access, purpose, mode = 'profile', onCha
   const authority = access[keys.authority];
   const authorityBlocked = authority === 'pending' || authority === 'revoked';
   const paused = !access.canWriteBasic;
+  // Nobody agrees to a notice they have not been shown, so a grant also waits for the age answer.
+  const checking = audience === 'checking';
   // Withdrawal is always open; only turning a purpose on waits for authority and an unpaused account.
-  const blocked = !granted && (authorityBlocked || paused);
+  const blocked = !granted && (authorityBlocked || paused || checking);
   const disabled = busy || blocked;
 
   const change = async () => {
@@ -88,6 +90,7 @@ export function TrackerConsent({userId, access, purpose, mode = 'profile', onCha
     {authorityBlocked && !granted ? <AppText selectable style={body}>This permission needs review before it can be turned on.</AppText> : null}
     {authority === 'pending' && !granted ? <ReviewRequest userId={userId} purpose={purpose}/> : null}
     {paused && !granted && !authorityBlocked ?<AppText selectable style={body}>{TRACKER_MESSAGES.paused}</AppText> : null}
+    {checking ? <AppText style={body}>Checking your account…</AppText> : null}
     {busy ? <AppText style={body}>Saving permission…</AppText> : null}
     {remindersNote ? <AppText selectable style={body}>{DELIVERED_REMINDER_NOTICE}</AppText> : null}
     {error ? <AppText accessibilityRole="alert" style={[body, {color: t.danger}]}>{error}</AppText> : null}
@@ -95,7 +98,7 @@ export function TrackerConsent({userId, access, purpose, mode = 'profile', onCha
 
   if (mode === 'prompt') {
     return <View style={styles.container} accessibilityLabel={notice.label}>
-      <AppText selectable style={body}>{text}</AppText>
+      {checking ? null : <AppText selectable style={body}>{text}</AppText>}
       {status}
       <View style={styles.actions}>
         <Pressable role="button" aria-label={declineLabel} disabled={busy} onPress={() => onDecline?.()}
@@ -111,7 +114,7 @@ export function TrackerConsent({userId, access, purpose, mode = 'profile', onCha
   }
 
   return <View style={styles.container}>
-    <AppText selectable style={body}>{text}</AppText>
+    {checking ? null : <AppText selectable style={body}>{text}</AppText>}
     <Pressable role="checkbox" aria-label={notice.label} accessibilityState={{checked: granted, disabled}}
       disabled={disabled} onPress={() => void change()} style={[styles.choice, disabled && styles.disabled]}>
       <AppText aria-hidden style={{color: t['accent-text'], fontSize: 20}}>{granted ? '☑' : '☐'}</AppText>

@@ -330,6 +330,6 @@ describe('gym store: age band for the Gym notice', () => {
     await mount();
     await act(async () => gym!.setFitnessPrompt(true));
     await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    expect(gym!.audience).toBeUndefined();
+    await waitFor(() => expect(gym!.audience).toBeUndefined());
   });
 });

@@ -192,6 +192,37 @@ describe('TrackerConsent age-appropriate text', () => {
     expect(screen.getByText(notice.body)).toBeOnTheScreen();
     expect(screen.queryByText(notice.childBody)).not.toBeOnTheScreen();
   });
+  it.each(cases)('shows neither notice and holds the grant while the age is being read (%s)', async (purpose, notice) => {
+    const user = userEvent.setup();
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={noGrant()} purpose={purpose} audience="checking"/>);
+    expect(screen.queryByText(notice.body)).not.toBeOnTheScreen();
+    expect(screen.queryByText(notice.childBody)).not.toBeOnTheScreen();
+    expect(screen.getByText('Checking your account…')).toBeOnTheScreen();
+    const box = screen.getByRole('checkbox', {name: notice.label});
+    expect(box).toBeDisabled();
+    await user.press(box);
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+  it('keeps withdrawal open while the age is being read', async () => {
+    const access = trackerAccess(); mockSave.mockResolvedValue(noGrant()); const user = userEvent.setup();
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={access} purpose="custom-tracker" audience="checking"/>);
+    const box = screen.getByRole('checkbox', {name: custom.label});
+    expect(box).toBeEnabled();
+    await user.press(box);
+    expect(mockSave).toHaveBeenCalledWith('custom-tracker', false, custom.version, access.revision);
+  });
+  it('in the editor prompt, holds the grant but lets the person decline while the age is being read', async () => {
+    const decline = jest.fn(); const user = userEvent.setup();
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={noGrant()} purpose="custom-tracker" mode="prompt" audience="checking" onDecline={decline}/>);
+    expect(screen.queryByText(custom.body)).not.toBeOnTheScreen();
+    expect(screen.getByRole('button', {name: custom.label})).toBeDisabled();
+    await user.press(screen.getByRole('button', {name: 'Not now'}));
+    expect(decline).toHaveBeenCalledTimes(1);
+  });
+  it('says nothing about checking once the age is known', async () => {
+    await renderWithTheme(<TrackerConsent userId="owner-a" access={noGrant()} purpose="custom-tracker" audience="adult"/>);
+    expect(screen.queryByText('Checking your account…')).not.toBeOnTheScreen();
+  });
   it('uses the teen text in the editor prompt too, and keeps the same notice version', async () => {
     const access = noGrant(); mockSave.mockResolvedValue(granted(access, 'custom-tracker')); const user = userEvent.setup();
     await renderWithTheme(<TrackerConsent userId="owner-a" access={access} purpose="custom-tracker" mode="prompt" audience="teen"/>);

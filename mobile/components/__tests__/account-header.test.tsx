@@ -134,6 +134,31 @@ describe('native account header', () => {
       expect(mockAcceptTracker).not.toHaveBeenCalled();
     });
 
+    it('holds both grants and shows no notice until the age read answers, then shows the teen text', async () => {
+      let answer: (value: unknown) => void = () => undefined;
+      mockFetchAge.mockReturnValue(new Promise(resolve => { answer = resolve; }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      const box = await screen.findByRole('checkbox', { name: custom.label });
+      expect(box).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: fitness.label })).toBeDisabled();
+      expect(screen.queryByText(custom.body)).toBeNull();
+      expect(screen.queryByText(custom.childBody)).toBeNull();
+      expect(screen.getAllByText('Checking your account…')).toHaveLength(2);
+      await act(async () => { answer({ userId: 'owner-a', birthDate: '2012-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: false }); });
+      expect(await screen.findByText(custom.childBody)).toBeOnTheScreen();
+      expect(screen.queryByText(custom.body)).toBeNull();
+      expect(screen.queryByText('Checking your account…')).toBeNull();
+      expect(screen.getByRole('checkbox', { name: custom.label })).toBeEnabled();
+    });
+
+    it('falls back to the adult notice with the grant open when the age read fails, because the server still decides', async () => {
+      mockFetchAge.mockRejectedValue(new Error('down'));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByText(custom.body)).toBeOnTheScreen();
+      expect(screen.queryByText('Checking your account…')).toBeNull();
+      expect(screen.getByRole('checkbox', { name: custom.label })).toBeEnabled();
+    });
+
     it('shows no usable controls while access is unavailable or belongs to another account', async () => {
       mockTracker = null;
       const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);

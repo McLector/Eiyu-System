@@ -369,6 +369,12 @@ describe('age band for the optional-notice prompts', () => {
     userId: 'owner-a', birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: true, version: 1, ...over,
   });
 
+  it('says checking while the read is out, so nobody sees the wrong notice', async () => {
+    shared.fetchAccountAge.mockReturnValue(new Promise(() => undefined));
+    await mount({ customConsent: false, canWriteCustom: false });
+    await waitFor(() => expect(store?.audience).toBe('checking'));
+  });
+
   it('is teen when a birthday is present and adult is not declared', async () => {
     shared.fetchAccountAge.mockResolvedValue(age({ birthDate: '2012-01-01', adultDeclared: false }));
     await mount({ customConsent: false, canWriteCustom: false });
@@ -385,14 +391,14 @@ describe('age band for the optional-notice prompts', () => {
     shared.fetchAccountAge.mockResolvedValue(age({ birthDate: null, adultDeclared: false }));
     await mount({ customConsent: false, canWriteCustom: false });
     await waitFor(() => expect(shared.fetchAccountAge).toHaveBeenCalled());
-    expect(store?.audience).toBeUndefined();
+    await waitFor(() => expect(store?.audience).toBeUndefined());
   });
 
   it('stays unknown when the read fails, and the failure does not break the store', async () => {
     shared.fetchAccountAge.mockRejectedValue(new Error('down'));
     await mount({ customConsent: false, canWriteCustom: false });
     await waitFor(() => expect(shared.fetchAccountAge).toHaveBeenCalled());
-    expect(store?.audience).toBeUndefined();
+    await waitFor(() => expect(store?.audience).toBeUndefined());
     expect(store?.tracker).toBeTruthy();
   });
 
@@ -400,7 +406,7 @@ describe('age band for the optional-notice prompts', () => {
     shared.fetchAccountAge.mockResolvedValue(age({ userId: 'owner-b', birthDate: '2012-01-01', adultDeclared: false }));
     await mount({ customConsent: false, canWriteCustom: false });
     await waitFor(() => expect(shared.fetchAccountAge).toHaveBeenCalled());
-    expect(store?.audience).toBeUndefined();
+    await waitFor(() => expect(store?.audience).toBeUndefined());
   });
 
   it('does no extra read when both optional purposes are already granted', async () => {

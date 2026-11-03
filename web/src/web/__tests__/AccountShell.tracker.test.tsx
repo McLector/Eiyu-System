@@ -61,6 +61,31 @@ it('gives each Profile section its own key, so a re-render cannot leave a stale 
   } finally { errors.mockRestore(); }
 });
 
+it('holds both grants and shows no notice until the age read answers, then shows the teen text', async () => {
+  let answer: (value: unknown) => void = () => undefined;
+  mocks.fetchAge.mockReturnValue(new Promise(resolve => { answer = resolve; }));
+  setup(noGrant());
+  const custom = await box('custom-tracker');
+  expect(custom).toBeDisabled();
+  expect(await box('fitness-tracking')).toBeDisabled();
+  expect(screen.queryByText(NOTICES['custom-tracker'].body)).not.toBeInTheDocument();
+  expect(screen.queryByText(NOTICES['custom-tracker'].childBody)).not.toBeInTheDocument();
+  expect(screen.getAllByText('Checking your account…')).toHaveLength(2);
+  answer({ userId: 'owner-a', birthDate: '2012-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: false });
+  expect(await screen.findByText(NOTICES['custom-tracker'].childBody)).toBeInTheDocument();
+  expect(screen.queryByText(NOTICES['custom-tracker'].body)).not.toBeInTheDocument();
+  expect(screen.queryByText('Checking your account…')).not.toBeInTheDocument();
+  expect(custom).toBeEnabled();
+});
+
+it('falls back to the adult notice with the grant open when the age read fails, because the server still decides', async () => {
+  mocks.fetchAge.mockRejectedValue(new Error('down'));
+  setup(noGrant());
+  expect(await screen.findByText(NOTICES['custom-tracker'].body)).toBeInTheDocument();
+  expect(screen.queryByText('Checking your account…')).not.toBeInTheDocument();
+  expect(await box('custom-tracker')).toBeEnabled();
+});
+
 it('grants Gym tracking alone with its notice version and a copy of the captured revision', async () => {
   const access = trackerAccess({ fitnessConsent: false, canWriteFitness: false });
   const next = { ...trackerAccess({}), revision: { ...access.revision, consentVersion: 2 } };

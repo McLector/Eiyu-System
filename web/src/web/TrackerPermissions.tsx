@@ -1,10 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { trackerKey, useTrackerAccess } from '../store/tracker';
+import { trackerKey, useTrackerAccess, type NoticeAudience } from '../store/tracker';
 import { TrackerConsent } from './TrackerConsent';
 import RetentionNotice from './RetentionNotice';
 
 /** The two optional tracker purposes in Profile, each with its own notice and server-confirmed grant or withdrawal. Reads only; never writes on mount. */
-export default function TrackerPermissions({ userId, audience }: { userId: string; audience?: 'teen' | 'adult' }) {
+export default function TrackerPermissions({ userId, audience }: { userId: string; audience?: NoticeAudience }) {
   const qc = useQueryClient();
   const query = useTrackerAccess(userId);
   const access = query.data;

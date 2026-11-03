@@ -7,7 +7,7 @@ import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, nor
 import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
 import {DebriefConsent} from '@/components/status/debrief-consent';
 import {TrackerConsent} from '@/components/status/tracker-consent';
-import {audienceOf} from '@/contexts/tracker-access';
+import {audienceOf, type NoticeAudience} from '@/contexts/tracker-access';
 import {RetentionNotice} from '@/components/eiyu/retention-notice';
 import {OwnerExport} from '@/components/eiyu/owner-export';
 
@@ -35,7 +35,7 @@ function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string
   const [originalBirthday, setOriginalBirthday] = useState('');
   const [correctionPending, setCorrectionPending] = useState(false);
   const [ageLoaded, setAgeLoaded] = useState(false);
-  const [audience, setAudience] = useState<'teen' | 'adult' | undefined>();
+  const [audience, setAudience] = useState<NoticeAudience | undefined>('checking');
   const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
   const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
   const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
@@ -61,7 +61,7 @@ function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string
       setCorrectionPending(status.correctionPending);
       setAudience(audienceOf(status) ?? undefined);
       if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-    }).catch(() => { if (active) setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); });
+    }).catch(() => { if (active) { setAudience(undefined); setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); } });
     return () => { active = false; };
   }, [userId]);
 

@@ -5,7 +5,7 @@ import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from
 import {DebriefConsent} from './DebriefConsent';
 import OwnerExport from './OwnerExport';
 import TrackerPermissions from './TrackerPermissions';
-import { audienceOf } from '../store/tracker';
+import { audienceOf, type NoticeAudience } from '../store/tracker';
 
 import { BoardIcon, DumbbellIcon, GearIcon, ScrollIcon, SignOutIcon, StatusIcon } from '../Icons';
 import { useSession } from '../store/session-context';
@@ -45,7 +45,7 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
   const [originalBirthday, setOriginalBirthday] = useState('');
   const [correctionPending, setCorrectionPending] = useState(false);
   const [ageLoaded, setAgeLoaded] = useState(false);
-  const [audience, setAudience] = useState<'teen' | 'adult' | undefined>();
+  const [audience, setAudience] = useState<NoticeAudience | undefined>('checking');
   const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
   const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
   const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
@@ -71,7 +71,7 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
       setCorrectionPending(status.correctionPending);
       setAudience(audienceOf(status) ?? undefined);
       if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-    }).catch(() => { if (active) setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); });
+    }).catch(() => { if (active) { setAudience(undefined); setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); } });
     return () => { active = false; };
   }, [userId]);
 

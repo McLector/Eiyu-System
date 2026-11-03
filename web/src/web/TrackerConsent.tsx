@@ -4,7 +4,7 @@ import {
   type TrackerAccess, type TrackerPurpose,
 } from '@eiyu/shared';
 import { ReviewRequest } from './ReviewRequest';
-import { TRACKER_MESSAGES, safeTrackerErrorKind, trackerErrorMessage } from '../store/tracker';
+import { TRACKER_MESSAGES, safeTrackerErrorKind, trackerErrorMessage, type NoticeAudience } from '../store/tracker';
 
 type Props = {
   userId: string;
@@ -17,8 +17,8 @@ type Props = {
   onStale?: () => void;
   onDecline?: () => void;
   declineLabel?: string;
-  /** Declared age band: `teen` shows the 12-17 explanation; absent or unknown shows the adult notice. */
-  audience?: 'teen' | 'adult';
+  /** Declared age band: `teen` shows the 12-17 explanation; absent or unknown shows the adult notice; `checking` shows neither and holds the grant. */
+  audience?: NoticeAudience;
 };
 
 const fieldsFor = (purpose: TrackerPurpose) => purpose === 'custom-tracker'
@@ -50,8 +50,10 @@ export function TrackerConsent({ userId, access, purpose, mode = 'profile', onCh
   const authority = access[keys.authority];
   const authorityBlocked = authority === 'pending' || authority === 'revoked';
   const paused = !access.canWriteBasic;
+  // Nobody agrees to a notice they have not been shown, so a grant also waits for the age answer.
+  const checking = audience === 'checking';
   // Withdrawal is always open; only turning a purpose on waits for authority and an unpaused account.
-  const blocked = !granted && (authorityBlocked || paused);
+  const blocked = !granted && (authorityBlocked || paused || checking);
   const disabled = busy || blocked;
 
   const change = async () => {
@@ -77,13 +79,14 @@ export function TrackerConsent({ userId, access, purpose, mode = 'profile', onCh
     {authorityBlocked && !granted && <p>This permission needs review before it can be turned on.</p>}
     {authority === 'pending' && !granted && <ReviewRequest userId={userId} purpose={purpose} />}
     {paused && !granted && !authorityBlocked && <p>{TRACKER_MESSAGES.paused}</p>}
+    {checking && <p role="status">Checking your account…</p>}
     {busy && <p role="status">Saving permission…</p>}
     {error && <p role="alert" tabIndex={-1} ref={alertRef}>{error}</p>}
   </>;
 
   if (mode === 'prompt') {
     return <section style={{ display: 'grid', gap: 8 }} aria-label={notice.label}>
-      <p>{text}</p>
+      {!checking && <p>{text}</p>}
       {status}
       <div className="action-footer">
         <button type="button" className="btn-secondary" disabled={busy} onClick={() => onDecline?.()}>{declineLabel}</button>
@@ -93,7 +96,7 @@ export function TrackerConsent({ userId, access, purpose, mode = 'profile', onCh
   }
 
   return <section style={{ display: 'grid', gap: 8 }}>
-    <p>{text}</p>
+    {!checking && <p>{text}</p>}
     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, minHeight: 44, paddingBlock: 10 }}>
       <input type="checkbox" checked={granted} disabled={disabled} onChange={() => void change()} />
       <span>{notice.label}</span>

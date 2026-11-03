@@ -98,7 +98,7 @@ import {
   useAccountAudience,
   useTrackerAccess,
   writeDenial,
-  type AccountAudience,
+  type NoticeAudience,
   type TrackedRecord,
 } from '@/contexts/tracker-access';
 import { newRequestId } from '@/lib/request-id';
@@ -209,7 +209,7 @@ interface EiyuStore {
   /** The signed-in owner's loaded tracker capability; null until it is read (every tracker write is refused meanwhile). */
   tracker: TrackerAccess | null;
   /** Declared age band for the optional-notice prompts; undefined (adult wording) until known or when unknown. */
-  audience: AccountAudience | undefined;
+  audience: NoticeAudience | undefined;
   /** Take a server-confirmed capability (after a grant or withdrawal) for the current owner only. */
   acceptTracker: (access: TrackerAccess) => void;
   /** Re-read the capability, for example after a stale or refused write. */

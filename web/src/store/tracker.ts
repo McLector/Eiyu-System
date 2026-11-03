@@ -28,6 +28,8 @@ export function useTrackerAccess(userId: string | undefined) {
 }
 
 export type AccountAudience = 'teen' | 'adult';
+/** What the optional notices know about the age band. `checking` means no answer yet, so neither notice can be chosen. */
+export type NoticeAudience = AccountAudience | 'checking';
 export const accountAgeKey = (userId?: string) => ['account-age', userId ?? null] as const;
 
 /** Declared age band from the age read: a birthday with no adult declaration is teen, any other birthday is adult, none is unknown. */
@@ -37,10 +39,10 @@ export function audienceOf(age: Pick<AccountAge, 'birthDate' | 'adultDeclared'>)
 
 /**
  * The declared age band for the optional-notice prompts, from one shared read under one query key. Only the band is kept (never the
- * birthday). Unknown, still loading, failed or another account's read all give undefined, which shows the adult notice. It reads
- * only when `enabled`, so nobody pays for it unless a prompt can appear.
+ * birthday). A read with no answer yet, offline included, gives `checking`. Unknown, failed or another account's read give
+ * undefined, which shows the adult notice. It reads only when `enabled`, so nobody pays for it unless a prompt can appear.
  */
-export function useAccountAudience(userId: string | undefined, enabled = true): AccountAudience | undefined {
+export function useAccountAudience(userId: string | undefined, enabled = true): NoticeAudience | undefined {
   const qc = useQueryClient();
   useEffect(() => {
     if (!userId) return undefined;
@@ -60,6 +62,7 @@ export function useAccountAudience(userId: string | undefined, enabled = true): 
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
+  if (query.isPending && query.fetchStatus !== 'idle') return 'checking';
   return query.data ?? undefined;
 }
 

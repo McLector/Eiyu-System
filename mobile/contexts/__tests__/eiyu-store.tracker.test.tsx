@@ -478,6 +478,12 @@ describe('age band for the optional-notice prompts', () => {
   });
   const open = { customConsent: false, canWriteCustom: false } as const;
 
+  it('says checking while the read is out, so nobody sees the wrong notice', async () => {
+    mockShared.fetchAccountAge.mockReturnValue(new Promise(() => undefined));
+    await mount(open);
+    await waitFor(() => expect(store?.audience).toBe('checking'));
+  });
+
   it('is teen when a birthday is present and adult is not declared', async () => {
     mockShared.fetchAccountAge.mockResolvedValue(age({ birthDate: '2012-01-01', adultDeclared: false }));
     await mount(open);
@@ -494,14 +500,14 @@ describe('age band for the optional-notice prompts', () => {
     mockShared.fetchAccountAge.mockResolvedValue(age({ birthDate: null, adultDeclared: false }));
     await mount(open);
     await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    expect(store?.audience).toBeUndefined();
+    await waitFor(() => expect(store?.audience).toBeUndefined());
   });
 
   it('stays unknown when the read fails, and the failure does not break the store', async () => {
     mockShared.fetchAccountAge.mockRejectedValue(new Error('down'));
     await mount(open);
     await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    expect(store?.audience).toBeUndefined();
+    await waitFor(() => expect(store?.audience).toBeUndefined());
     expect(store?.tracker).toBeTruthy();
   });
 
@@ -509,7 +515,7 @@ describe('age band for the optional-notice prompts', () => {
     mockShared.fetchAccountAge.mockResolvedValue(age({ userId: 'owner-b', birthDate: '2012-01-01', adultDeclared: false }));
     await mount(open);
     await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    expect(store?.audience).toBeUndefined();
+    await waitFor(() => expect(store?.audience).toBeUndefined());
   });
 
   it('does no extra read when both optional purposes are already granted', async () => {
