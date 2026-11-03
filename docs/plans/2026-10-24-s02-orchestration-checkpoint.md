@@ -143,4 +143,6 @@ Checks at `7835db5` before the batch: clean-copy CI passed (shared 1080 with 8 s
 
 The batch found that saved quests never survived a cold start, which also meant the C3 marker did nothing on a device. Fixed test-first in `62171fb`. Results are in "Emulator batch" in `2026-11-03-s02-review-clients.md`.
 
-**Next:** the Oppo font checklist with the owner, on the APK built from `62171fb` or later. After that S02 is "engineering done, release pending". It is not complete: real email delivery and rollout stay unproved.
+Three more fixes followed, in reminders and the auth screens (`1316026`, `0e2f846`, `8fa3f22`). Results are in "Three fixes after the batch" in the same document.
+
+**Next:** the Oppo font checklist with the owner, on the APK built from `8fa3f22` or later. After that S02 is "engineering done, release pending". It is not complete: real email delivery and rollout stay unproved.
