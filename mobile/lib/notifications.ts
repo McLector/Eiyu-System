@@ -15,6 +15,7 @@ const SUPPORTED = Platform.OS !== 'web';
 
 const CHANNEL_ID = 'eiyu-quest-reminders';
 const NOTIFICATION_IDS_KEY = 'eiyu:notification-ids';
+const PERMISSION_ASKED_KEY = 'eiyu:notification-permission-asked';
 
 /** What a reminder title falls back to when no name is supplied: a protected name is never reconstructed from a cache. */
 export const NEUTRAL_REMINDER_TITLE = 'Quest reminder';
@@ -55,11 +56,15 @@ export async function inspectNotificationPermissions(): Promise<boolean> {
   return existing.granted;
 }
 
-/** Android reports `undetermined` until the app has asked once, then `denied`. Never opens an OS prompt. */
+/**
+ * Never opens an OS prompt. From Android 13 the system reads `denied` with canAskAgain true both before the first prompt
+ * and after one refusal, so our own record tells them apart.
+ */
 export async function notificationPermissionNeverAsked(): Promise<boolean> {
   if (!SUPPORTED) return false;
   const existing = await Notifications.getPermissionsAsync();
-  return existing.status === Notifications.PermissionStatus.UNDETERMINED;
+  if (existing.granted || !existing.canAskAgain) return false;
+  return (await AsyncStorage.getItem(PERMISSION_ASKED_KEY).catch(() => 'unreadable')) === null;
 }
 
 /** Prompt path, used only after the person acts: turning reminders on, tapping Retry, or saving a first quest. */
@@ -67,6 +72,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   if (!SUPPORTED) return false;
   const existing = await Notifications.getPermissionsAsync();
   if (existing.granted) return true;
+  await AsyncStorage.setItem(PERMISSION_ASKED_KEY, '1').catch(() => {});
   const requested = await Notifications.requestPermissionsAsync();
   return requested.granted;
 }
