@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import {
   hasManualOrder,
   isChainFinished,
@@ -68,9 +69,9 @@ export default function ChainListScreen() {
           style={styles.cardBody}>
           <View style={styles.cardTop}>
             <StatIcon stat={chain.stat} size={16} />
-            <Text style={[styles.stat, { color, fontFamily: fonts.display }]}>{chain.stat}</Text>
-            <Text numberOfLines={2} style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{chain.name}</Text>
-            <Text style={[styles.count, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{`${done}/${total}`}</Text>
+            <AppText style={[styles.stat, { color, fontFamily: fonts.display }]}>{chain.stat}</AppText>
+            <AppText numberOfLines={2} style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{chain.name}</AppText>
+            <AppText style={[styles.count, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{`${done}/${total}`}</AppText>
           </View>
           <ChainProgressBar name={chain.name} percent={percent} color={color} />
         </Pressable>
@@ -91,8 +92,8 @@ export default function ChainListScreen() {
     <View style={[styles.root, { backgroundColor: t['page-flat'] }]}>
       <ScrollView testID="chain-scroll" scrollEnabled={!dragging} contentContainerStyle={styles.content}>
         <View style={styles.head}>
-          <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>CHAIN PROGRESSION</Text>
-          <Text style={[styles.sub, { color: t['muted-flat'], fontFamily: fonts.body }]}>20 XP per phase · 20 XP completion bonus</Text>
+          <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>CHAIN PROGRESSION</AppText>
+          <AppText style={[styles.sub, { color: t['muted-flat'], fontFamily: fonts.body }]}>20 XP per phase · 20 XP completion bonus</AppText>
         </View>
 
         {longQuestsError && !noData ? (

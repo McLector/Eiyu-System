@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { STAT_COLORS, STATS, type Stat, type UserProfile } from '@eiyu/shared';
 
 import { StatIcon } from '@/components/eiyu/icons';
@@ -23,9 +24,9 @@ export function StatBars({ stats }: { stats: UserProfile['stats'] }) {
           <View key={stat} style={[styles.row, i > 0 && { borderTopColor: t['divider-flat'], borderTopWidth: StyleSheet.hairlineWidth }]}>
             <View style={styles.head}>
               <StatIcon stat={stat} size={14} />
-              <Text style={[styles.code, { color: STAT_COLORS[stat], fontFamily: fonts.display }]}>{stat}</Text>
-              <Text style={[styles.level, { color: t.text }]}>{`Lv.${level}`}</Text>
-              <Text style={[styles.xp, { color: t['muted-flat'], fontFamily: fonts.body }]}>{`${xp}/${xpMax} XP`}</Text>
+              <AppText style={[styles.code, { color: STAT_COLORS[stat], fontFamily: fonts.display }]}>{stat}</AppText>
+              <AppText style={[styles.level, { color: t.text }]}>{`Lv.${level}`}</AppText>
+              <AppText style={[styles.xp, { color: t['muted-flat'], fontFamily: fonts.body }]}>{`${xp}/${xpMax} XP`}</AppText>
             </View>
             <View
               accessible

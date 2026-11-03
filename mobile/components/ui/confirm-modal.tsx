@@ -1,4 +1,5 @@
-import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { Button } from '@/components/ui/button';
 import { fonts } from '@/constants/eiyu-theme';
@@ -22,8 +23,8 @@ export function ConfirmModal({ visible, title, message, confirmLabel, onCancel, 
     <Modal testID={testID} visible={visible} transparent animationType="fade" onRequestClose={() => { if (!busy) onCancel(); }}>
       <View style={[styles.overlay, { backgroundColor: t.overlay }]}>
         <View accessibilityViewIsModal style={[styles.card, { backgroundColor: t.modal, borderColor: t['danger-border'] }]}>
-          <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{title}</Text>
-          <Text style={[styles.text, { color: t['muted-flat'], fontFamily: fonts.body }]}>{message}</Text>
+          <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{title}</AppText>
+          <AppText style={[styles.text, { color: t['muted-flat'], fontFamily: fonts.body }]}>{message}</AppText>
           <View style={styles.actions}>
             <Button variant="secondary" label="Cancel" disabled={busy} onPress={onCancel} />
             <Button variant="destructive" label={confirmLabel} busy={busy} onPress={onConfirm} />

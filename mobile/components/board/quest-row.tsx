@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { questGenreLabel, questWhenLabel, STAT_COLORS, type Quest } from '@eiyu/shared';
 
 import { AlertIcon, CheckIcon, ClockIcon, MoreIcon, StatIcon } from '@/components/eiyu/icons';
@@ -79,16 +80,16 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
               disabled={pending || quest.progressCount <= 0}
               onPress={() => onAdjustProgress(-1)}
               style={[styles.stepButton, { borderColor: t['accent-border'], opacity: pending || quest.progressCount <= 0 ? 0.4 : 1 }]}>
-              <Text style={[styles.stepGlyph, { color: t.text }]}>−</Text>
+              <AppText style={[styles.stepGlyph, { color: t.text }]}>−</AppText>
             </Pressable>
-            <Text style={[styles.progress, { color: completed ? t.success : t.text, fontFamily: fonts.mono }]}>{`${quest.progressCount}/${quest.targetCount}`}</Text>
+            <AppText style={[styles.progress, { color: completed ? t.success : t.text, fontFamily: fonts.mono }]}>{`${quest.progressCount}/${quest.targetCount}`}</AppText>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Increase progress for ${quest.name}`}
               disabled={pending || quest.progressCount >= quest.targetCount}
               onPress={() => onAdjustProgress(1)}
               style={[styles.stepButton, { borderColor: t['accent-border'], opacity: pending || quest.progressCount >= quest.targetCount ? 0.4 : 1 }]}>
-              <Text style={[styles.stepGlyph, { color: t.text }]}>+</Text>
+              <AppText style={[styles.stepGlyph, { color: t.text }]}>+</AppText>
             </Pressable>
           </View>
         )}
@@ -103,24 +104,24 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
         onPress={onOpen}
         onLongPress={onActions}
         style={styles.info}>
-        <Text
+        <AppText
           numberOfLines={2}
           style={[
             styles.name,
             { color: completed ? t['muted-flat'] : t.text, textDecorationLine: completed ? 'line-through' : 'none', fontFamily: fonts.bodySemi },
           ]}>
           {quest.name}
-        </Text>
+        </AppText>
         <View style={styles.meta}>
           <View style={styles.chip}>
             <StatIcon stat={quest.stat} size={12} />
-            <Text style={[styles.chipText, { color: statColor, fontFamily: fonts.display }]}>{quest.stat}</Text>
+            <AppText style={[styles.chipText, { color: statColor, fontFamily: fonts.display }]}>{quest.stat}</AppText>
           </View>
-          <Text style={[styles.when, { color: t['dim-flat'], fontFamily: fonts.body }]}>{questWhenLabel(quest, today)}</Text>
+          <AppText style={[styles.when, { color: t['dim-flat'], fontFamily: fonts.body }]}>{questWhenLabel(quest, today)}</AppText>
           {quest.streak > 0 ? (
             <View style={styles.chip}>
               <FireStreak size={12} />
-              <Text style={[styles.chipText, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{String(quest.streak)}</Text>
+              <AppText style={[styles.chipText, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{String(quest.streak)}</AppText>
             </View>
           ) : null}
           {frozen ? (
@@ -129,15 +130,15 @@ export function QuestRow({ quest, pending, onToggle, onOpen, onAdjustProgress, o
           {sync ? (
             <View testID="quest-sync-tag" style={styles.chip}>
               {syncState === 'failed' ? <AlertIcon size={12} color={syncColor} /> : <ClockIcon size={12} color={syncColor} />}
-              <Text style={[styles.syncText, { color: syncColor, fontFamily: fonts.body }]}>{sync.text}</Text>
+              <AppText style={[styles.syncText, { color: syncColor, fontFamily: fonts.body }]}>{sync.text}</AppText>
             </View>
           ) : null}
-          {genre ? <Text style={[styles.genre, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{genre}</Text> : null}
+          {genre ? <AppText style={[styles.genre, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{genre}</AppText> : null}
         </View>
       </Pressable>
 
       {xpToast != null ? (
-        <Text pointerEvents="none" style={[styles.toast, { color: t['accent-text'], fontFamily: fonts.mono }]}>{`+${xpToast} XP`}</Text>
+        <AppText pointerEvents="none" style={[styles.toast, { color: t['accent-text'], fontFamily: fonts.mono }]}>{`+${xpToast} XP`}</AppText>
       ) : null}
 
       <Pressable

@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { QUEST_TYPE_LABEL, questGenreLabel, questScheduleLabel, STAT_COLORS, type Quest } from '@eiyu/shared';
 
 import { EditIcon, StatIcon } from '@/components/eiyu/icons';
@@ -35,26 +36,26 @@ export function QuestDetailsSheet({ quest, accountToday, onClose, onEdit }: Prop
           <View style={styles.chips}>
             <View style={[styles.chip, { borderColor: t['glass-border'] }]}>
               <StatIcon stat={quest.stat} size={12} />
-              <Text style={[styles.chipText, { color: STAT_COLORS[quest.stat], fontFamily: fonts.display }]}>{quest.stat}</Text>
+              <AppText style={[styles.chipText, { color: STAT_COLORS[quest.stat], fontFamily: fonts.display }]}>{quest.stat}</AppText>
             </View>
-            <Text style={[styles.chip, styles.chipText, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{quest.difficulty}</Text>
-            {genre ? <Text style={[styles.chip, styles.chipText, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{genre}</Text> : null}
-            <Text style={[styles.chip, styles.chipText, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{QUEST_TYPE_LABEL[quest.questType]}</Text>
+            <AppText style={[styles.chip, styles.chipText, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{quest.difficulty}</AppText>
+            {genre ? <AppText style={[styles.chip, styles.chipText, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{genre}</AppText> : null}
+            <AppText style={[styles.chip, styles.chipText, { color: t['muted-flat'], borderColor: t['glass-border'], fontFamily: fonts.body }]}>{QUEST_TYPE_LABEL[quest.questType]}</AppText>
           </View>
-          <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{quest.name}</Text>
-          <Text style={[styles.schedule, { color: t['muted-flat'], fontFamily: fonts.body }]}>
+          <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{quest.name}</AppText>
+          <AppText style={[styles.schedule, { color: t['muted-flat'], fontFamily: fonts.body }]}>
             {`${questScheduleLabel(quest, accountToday)}${quest.streak > 0 ? ` · ${quest.streak}-day streak` : ''}`}
-          </Text>
+          </AppText>
           {quest.description ? (
             <View style={styles.section}>
-              <Text style={[styles.label, { color: t['dim-flat'], fontFamily: fonts.display }]}>NOTE</Text>
-              <Text style={[styles.note, { color: t.text, fontFamily: fonts.body }]}>{quest.description}</Text>
+              <AppText style={[styles.label, { color: t['dim-flat'], fontFamily: fonts.display }]}>NOTE</AppText>
+              <AppText style={[styles.note, { color: t.text, fontFamily: fonts.body }]}>{quest.description}</AppText>
             </View>
           ) : null}
           {quest.questType === 'habit' && quest.easyVersion ? (
             <View style={styles.section}>
-              <Text style={[styles.label, { color: t['dim-flat'], fontFamily: fonts.display }]}>PENALTY</Text>
-              <Text style={[styles.note, { color: t.text, fontFamily: fonts.body }]}>{quest.easyVersion}</Text>
+              <AppText style={[styles.label, { color: t['dim-flat'], fontFamily: fonts.display }]}>PENALTY</AppText>
+              <AppText style={[styles.note, { color: t.text, fontFamily: fonts.body }]}>{quest.easyVersion}</AppText>
             </View>
           ) : null}
         </View>

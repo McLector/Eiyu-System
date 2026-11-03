@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
@@ -25,9 +26,9 @@ export function StateBlock({ kind, title, onRetry, retryLabel = 'Retry', childre
     <View style={styles.block}>
       <View accessible={role !== undefined} accessibilityRole={role} accessibilityLiveRegion={live} style={styles.copy}>
         {kind === 'loading' ? <ActivityIndicator color={t.accent} accessibilityElementsHidden /> : null}
-        {title ? <Text style={[styles.title, { color: t['dim-flat'], fontFamily: fonts.display }]}>{title}</Text> : null}
+        {title ? <AppText style={[styles.title, { color: t['dim-flat'], fontFamily: fonts.display }]}>{title}</AppText> : null}
         {children ? (
-          <Text style={[styles.body, { color: kind === 'error' ? t.danger : t['dim-flat'], fontFamily: fonts.body }]}>{children}</Text>
+          <AppText style={[styles.body, { color: kind === 'error' ? t.danger : t['dim-flat'], fontFamily: fonts.body }]}>{children}</AppText>
         ) : null}
       </View>
       {kind === 'error' && onRetry ? <Button variant="secondary" label={retryLabel} onPress={onRetry} /> : null}

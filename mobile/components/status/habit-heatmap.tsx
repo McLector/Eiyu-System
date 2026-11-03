@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -102,7 +103,7 @@ export default function HabitHeatmap({ userId, timeZone }: Props) {
 
   return (
     <View>
-      <Text style={[styles.title, { color: t['dim-flat'], fontFamily: fonts.display }]}>LAST 6 MONTHS</Text>
+      <AppText style={[styles.title, { color: t['dim-flat'], fontFamily: fonts.display }]}>LAST 6 MONTHS</AppText>
       {failed ? (
         <StateBlock kind="error" onRetry={() => setAttempt(n => n + 1)}>The System couldn&apos;t load the heatmap.</StateBlock>
       ) : (
@@ -111,7 +112,7 @@ export default function HabitHeatmap({ userId, timeZone }: Props) {
             <View style={[styles.weekdayColumn, { paddingTop: MONTH_LABEL_HEIGHT }]}>
               {WEEKDAY_ROW_LABELS.map((label, i) => (
                 <View key={i} style={styles.weekdayCell}>
-                  <Text style={[styles.weekdayLabel, { color: t['dim-flat'], fontFamily: fonts.display }]}>{label}</Text>
+                  <AppText style={[styles.weekdayLabel, { color: t['dim-flat'], fontFamily: fonts.display }]}>{label}</AppText>
                 </View>
               ))}
             </View>
@@ -125,11 +126,11 @@ export default function HabitHeatmap({ userId, timeZone }: Props) {
               <View>
                 <View style={[styles.monthLabelRow, { width: gridWidth }]}>
                   {monthLabels.map(({ columnIndex, label }) => (
-                    <Text
+                    <AppText
                       key={columnIndex}
                       style={[styles.monthLabel, { left: columnIndex * (CELL_SIZE + CELL_GAP), color: t['dim-flat'], fontFamily: fonts.display }]}>
                       {label}
-                    </Text>
+                    </AppText>
                   ))}
                 </View>
                 <View style={styles.columnsRow}>
@@ -165,21 +166,21 @@ export default function HabitHeatmap({ userId, timeZone }: Props) {
               </View>
             </ScrollView>
           </View>
-          {loading ? <Text accessibilityLiveRegion="polite" style={[styles.caption, { color: t['dim-flat'], fontFamily: fonts.body }]}>Loading…</Text> : null}
+          {loading ? <AppText accessibilityLiveRegion="polite" style={[styles.caption, { color: t['dim-flat'], fontFamily: fonts.body }]}>Loading…</AppText> : null}
         </>
       )}
 
       <Sheet visible={selectedDate !== null} title={selectedDate === todayKey ? 'TODAY' : selectedDate ?? ''} closeLabel="Close day details" onClose={() => setSelectedDate(null)} testID="heatmap-day-sheet">
         {selected ? (
-          <Text style={[styles.count, { color: t['muted-flat'], fontFamily: fonts.display }]}>{`${selected.completedCount}/${selected.scheduledCount} completed`}</Text>
+          <AppText style={[styles.count, { color: t['muted-flat'], fontFamily: fonts.display }]}>{`${selected.completedCount}/${selected.scheduledCount} completed`}</AppText>
         ) : null}
         {loading ? (
-          <Text style={[styles.caption, { color: t['dim-flat'], fontFamily: fonts.body }]}>Loading…</Text>
+          <AppText style={[styles.caption, { color: t['dim-flat'], fontFamily: fonts.body }]}>Loading…</AppText>
         ) : !selected || selected.completions.length === 0 ? (
-          <Text style={[styles.caption, { color: t['dim-flat'], fontFamily: fonts.body }]}>Nothing completed this day.</Text>
+          <AppText style={[styles.caption, { color: t['dim-flat'], fontFamily: fonts.body }]}>Nothing completed this day.</AppText>
         ) : (
           selected.completions.map((completion, i) => (
-            <Text key={i} style={[styles.completion, { color: t.text, fontFamily: fonts.body }]}>{completion.habitName}</Text>
+            <AppText key={i} style={[styles.completion, { color: t.text, fontFamily: fonts.body }]}>{completion.habitName}</AppText>
           ))
         )}
       </Sheet>

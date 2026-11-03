@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { STAT_COLORS, type Stat } from '@eiyu/shared';
 
 import { StatIcon } from '@/components/eiyu/icons';
@@ -22,7 +23,7 @@ export function StatChip({ stat, selected, onPress, disabled }: { stat: Stat; se
         disabled && styles.disabled,
       ]}>
       <StatIcon stat={stat} size={13} />
-      <Text style={[styles.code, { color: selected ? color : t['dim-flat'], fontFamily: fonts.display }]}>{stat}</Text>
+      <AppText style={[styles.code, { color: selected ? color : t['dim-flat'], fontFamily: fonts.display }]}>{stat}</AppText>
     </Pressable>
   );
 }

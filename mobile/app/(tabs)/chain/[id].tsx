@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { CHAIN_ORDER_COPY, formatDisplayDate, formatError, STAT_COLORS, stageSequenceState, type LongQuest } from '@eiyu/shared';
 
 import { chainPercent, ChainProgressBar } from '@/components/chain/progress-bar';
@@ -32,8 +33,8 @@ function Stats({ chain, done, timeZone }: { chain: LongQuest; done: number; time
     <View testID="chain-stats" style={styles.stats}>
       {cells.map(cell => (
         <View key={cell.label} accessible accessibilityLabel={`${cell.label}: ${cell.value}`} style={styles.statCell}>
-          <Text style={[styles.statLabel, { color: t['dim-flat'], fontFamily: fonts.display }]}>{cell.label}</Text>
-          <Text style={[styles.statValue, { color: t.text, fontFamily: fonts.body }]}>{cell.value}</Text>
+          <AppText style={[styles.statLabel, { color: t['dim-flat'], fontFamily: fonts.display }]}>{cell.label}</AppText>
+          <AppText style={[styles.statValue, { color: t.text, fontFamily: fonts.body }]}>{cell.value}</AppText>
         </View>
       ))}
     </View>
@@ -46,9 +47,9 @@ function DeleteChainModal({ chain, pending, error, onCancel, onConfirm }: { chai
     <Modal testID="chain-delete-modal" visible={chain !== null} transparent animationType="fade" onRequestClose={() => { if (!pending) onCancel(); }}>
       <View style={[styles.overlay, { backgroundColor: t.overlay }]} accessibilityViewIsModal>
         <View style={[styles.dialog, { backgroundColor: t.modal, borderColor: t['danger-border'] }]}>
-          <Text accessibilityRole="header" style={[styles.dialogTitle, { color: t.text, fontFamily: fonts.display }]}>DELETE LONG QUEST</Text>
-          <Text style={[styles.dialogText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{`Delete ${chain?.name ?? ''} and its stages? Earned XP remains.`}</Text>
-          {error ? <Text accessibilityRole="alert" style={[styles.dialogText, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+          <AppText accessibilityRole="header" style={[styles.dialogTitle, { color: t.text, fontFamily: fonts.display }]}>DELETE LONG QUEST</AppText>
+          <AppText style={[styles.dialogText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{`Delete ${chain?.name ?? ''} and its stages? Earned XP remains.`}</AppText>
+          {error ? <AppText accessibilityRole="alert" style={[styles.dialogText, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
           <View style={styles.dialogActions}>
             <Button testID="chain-delete-cancel" variant="quiet" label="Cancel" disabled={pending} onPress={onCancel} />
             <Button testID="chain-delete-confirm" variant="destructive" label="Delete Long Quest" busy={pending} onPress={onConfirm} />
@@ -88,7 +89,7 @@ export default function ChainDetailScreen() {
       onPress={() => router.back()}
       style={styles.back}>
       <ChevronIcon direction="left" size={18} color={t['muted-flat']} />
-      <Text style={[styles.backText, { color: t['muted-flat'], fontFamily: fonts.display }]}>CHAINS</Text>
+      <AppText style={[styles.backText, { color: t['muted-flat'], fontFamily: fonts.display }]}>CHAINS</AppText>
     </Pressable>
   );
 
@@ -165,11 +166,11 @@ export default function ChainDetailScreen() {
       <ScrollView testID="chain-scroll" contentContainerStyle={styles.content}>
         {stageRewardNotice ? (
           // The XP card is itself a live region; announce the notice only when no card carries it.
-          <Text
+          <AppText
             accessibilityLiveRegion={rewardCardShown ? 'none' : 'polite'}
             style={[styles.notice, { color: t.success, fontFamily: fonts.body }]}>
             {stageRewardNotice}
-          </Text>
+          </AppText>
         ) : null}
         <RewardFeedback receipt={rewardReceipt} />
         {longQuestsError ? <StateBlock kind="error" retryLabel="Retry" onRetry={() => void retryLongQuests()}>{longQuestsError}</StateBlock> : null}
@@ -177,14 +178,14 @@ export default function ChainDetailScreen() {
         <View style={styles.titleBlock}>
           <View style={styles.statLine}>
             <StatIcon stat={chain.stat} size={16} />
-            <Text style={[styles.statCode, { color, fontFamily: fonts.display }]}>{chain.stat}</Text>
+            <AppText style={[styles.statCode, { color, fontFamily: fonts.display }]}>{chain.stat}</AppText>
           </View>
-          <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{chain.name}</Text>
+          <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{chain.name}</AppText>
         </View>
 
         {note ? (
           <View>
-            <Text numberOfLines={longNote && !fullNote ? 3 : undefined} style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{note}</Text>
+            <AppText numberOfLines={longNote && !fullNote ? 3 : undefined} style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{note}</AppText>
             {longNote ? (
               <Button variant="quiet" label={fullNote ? 'Show less' : 'Show more'} accessibilityLabel={fullNote ? 'Show less' : 'Show more'} onPress={() => setFullNote(open => !open)} />
             ) : null}
@@ -195,14 +196,14 @@ export default function ChainDetailScreen() {
 
         <View style={styles.progress}>
           <View style={styles.progressHead}>
-            <Text style={[styles.statLabel, { color: t['dim-flat'], fontFamily: fonts.display }]}>PROGRESS</Text>
-            <Text style={[styles.percent, { color: t.text, fontFamily: fonts.mono }]}>{`${percent}%`}</Text>
+            <AppText style={[styles.statLabel, { color: t['dim-flat'], fontFamily: fonts.display }]}>PROGRESS</AppText>
+            <AppText style={[styles.percent, { color: t.text, fontFamily: fonts.mono }]}>{`${percent}%`}</AppText>
           </View>
           <ChainProgressBar name={chain.name} percent={percent} color={color} />
         </View>
 
         {chain.stages.length === 0 ? (
-          <Text style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>This chain has no stages yet. Edit it to add the first one.</Text>
+          <AppText style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>This chain has no stages yet. Edit it to add the first one.</AppText>
         ) : (
           <View accessibilityLabel="Stages" style={styles.stages}>
             {statuses.map((item, index) => {
@@ -215,10 +216,10 @@ export default function ChainDetailScreen() {
                 <View key={stage.id} testID={`stage-${stage.id}`} style={[styles.stage, { borderBottomColor: t['divider-flat'] }, status === 'locked' && styles.locked]}>
                   <View style={styles.stageRow}>
                     <View style={[styles.mark, { borderColor: tint }]}>
-                      {status === 'done' ? <CheckIcon size={13} color={tint} /> : status === 'locked' ? <LockIcon size={13} color={tint} /> : <Text style={{ color: tint, fontFamily: fonts.mono, fontSize: 12 }}>{index + 1}</Text>}
+                      {status === 'done' ? <CheckIcon size={13} color={tint} /> : status === 'locked' ? <LockIcon size={13} color={tint} /> : <AppText style={{ color: tint, fontFamily: fonts.mono, fontSize: 12 }}>{index + 1}</AppText>}
                     </View>
-                    <Text style={[styles.stageName, { color: status === 'done' ? t['muted-flat'] : t.text, fontFamily: fonts.body }]}>{stage.name}</Text>
-                    <Text style={[styles.statusLabel, { color: tint, fontFamily: fonts.display }]}>{STATUS_LABEL[status]}</Text>
+                    <AppText style={[styles.stageName, { color: status === 'done' ? t['muted-flat'] : t.text, fontFamily: fonts.body }]}>{stage.name}</AppText>
+                    <AppText style={[styles.statusLabel, { color: tint, fontFamily: fonts.display }]}>{STATUS_LABEL[status]}</AppText>
                     {hasMenu ? (
                       <Pressable
                         accessibilityRole="button"
@@ -230,10 +231,10 @@ export default function ChainDetailScreen() {
                     ) : null}
                   </View>
                   {status === 'locked' ? (
-                    <Text style={[styles.reason, { color: t['dim-flat'], fontFamily: fonts.body }]}>{sequence.reason ?? 'Complete earlier stages first.'}</Text>
+                    <AppText style={[styles.reason, { color: t['dim-flat'], fontFamily: fonts.body }]}>{sequence.reason ?? 'Complete earlier stages first.'}</AppText>
                   ) : null}
                   {open && stage.description ? (
-                    <Text style={[styles.stageDescription, { color: t['muted-flat'], fontFamily: fonts.body }]}>{stage.description}</Text>
+                    <AppText style={[styles.stageDescription, { color: t['muted-flat'], fontFamily: fonts.body }]}>{stage.description}</AppText>
                   ) : null}
                   {status === 'current' ? (
                     <Button

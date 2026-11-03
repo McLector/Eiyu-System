@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type TextStyle } from 'react-native';
+import { StyleSheet, View, type StyleProp, type TextStyle } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -58,7 +59,7 @@ export function BrandMark({ children, style, testID }: { children: string; style
         ]}>
         {children}
       </Animated.Text>
-      <Text testID={testID} style={style}>{children}</Text>
+      <AppText testID={testID} style={style}>{children}</AppText>
     </View>
   );
 }

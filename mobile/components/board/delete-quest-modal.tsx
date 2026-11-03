@@ -1,5 +1,6 @@
 import { useRef } from 'react';
-import { AccessibilityInfo, Modal, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Modal, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import type { Quest } from '@eiyu/shared';
 
 import { Button } from '@/components/ui/button';
@@ -34,11 +35,11 @@ export function DeleteQuestModal({ quest, pending, error, onCancel, onConfirm, i
       onRequestClose={() => { if (!pending) onCancel(); }}>
       <View style={[styles.overlay, { backgroundColor: t.overlay }]} accessibilityViewIsModal>
         <View style={[styles.card, { backgroundColor: t.modal, borderColor: t['danger-border'] }]}>
-          <Text style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{`DELETE ${quest?.name ?? ''} PERMANENTLY?`}</Text>
-          <Text style={[styles.text, { color: t['muted-flat'], fontFamily: fonts.body }]}>
+          <AppText style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{`DELETE ${quest?.name ?? ''} PERMANENTLY?`}</AppText>
+          <AppText style={[styles.text, { color: t['muted-flat'], fontFamily: fonts.body }]}>
             This permanently removes the saved quest. Its History, Weekly Review, and earned XP remain. This cannot be undone.
-          </Text>
-          {error ? <Text accessibilityRole="alert" style={[styles.text, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+          </AppText>
+          {error ? <AppText accessibilityRole="alert" style={[styles.text, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
           <View style={styles.actions}>
             <View ref={cancelRef}>
               <Button testID={`${idPrefix}-delete-cancel`} variant="quiet" label="Cancel" disabled={pending} onPress={onCancel} />

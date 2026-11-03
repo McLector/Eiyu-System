@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { recoveryDeadlineLabel, type Quest } from '@eiyu/shared';
 
 import { FrostMark } from '@/components/ui/frost-mark';
@@ -25,12 +26,12 @@ export function RecoverySheet({ visible, quests, onComplete, onClose }: Props) {
           <View style={styles.header}>
             <View style={styles.title}>
               <FrostMark size={15} />
-              <Text style={[styles.frozen, { color: t.ice, fontFamily: fonts.display }]}>Streak frozen</Text>
+              <AppText style={[styles.frozen, { color: t.ice, fontFamily: fonts.display }]}>Streak frozen</AppText>
             </View>
-            <Text style={[styles.deadline, { color: t.ice, fontFamily: fonts.mono }]}>{recoveryDeadlineLabel(quest)}</Text>
+            <AppText style={[styles.deadline, { color: t.ice, fontFamily: fonts.mono }]}>{recoveryDeadlineLabel(quest)}</AppText>
           </View>
-          <Text style={[styles.name, { color: t.text, fontFamily: fonts.bodySemi }]}>{quest.name}</Text>
-          <Text style={[styles.penalty, { color: t['muted-flat'], fontFamily: fonts.body }]}>{`Penalty: ${quest.easyVersion}`}</Text>
+          <AppText style={[styles.name, { color: t.text, fontFamily: fonts.bodySemi }]}>{quest.name}</AppText>
+          <AppText style={[styles.penalty, { color: t['muted-flat'], fontFamily: fonts.body }]}>{`Penalty: ${quest.easyVersion}`}</AppText>
           <Button
             variant="secondary"
             label="Mark Recovery Complete"

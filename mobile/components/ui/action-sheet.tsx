@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
@@ -36,7 +37,7 @@ export function ActionSheet({ visible, title, actions, onSelect, onClose }: Prop
           onPress={() => { onSelect(action.key); onClose(); }}
           style={[styles.row, { borderBottomColor: t['divider-flat'] }, action.disabled && styles.disabled]}>
           {action.icon ? <View style={styles.icon}>{action.icon}</View> : null}
-          <Text style={[styles.label, { color: action.destructive ? t.danger : t.text, fontFamily: fonts.display }]}>{action.label}</Text>
+          <AppText style={[styles.label, { color: action.destructive ? t.danger : t.text, fontFamily: fonts.display }]}>{action.label}</AppText>
         </Pressable>
       ))}
     </Sheet>

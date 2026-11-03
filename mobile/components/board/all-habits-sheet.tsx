@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { DAYS, type Quest } from '@eiyu/shared';
 
 import { MoreIcon } from '@/components/eiyu/icons';
@@ -38,9 +39,9 @@ export function AllHabitsSheet({ visible, habits, pendingIds, onOpen, onActions,
         return (
           <View key={habit.id} style={[styles.row, { borderBottomColor: t['divider-flat'] }]}>
             <Pressable accessibilityRole="button" accessibilityLabel={`Open ${habit.name} details`} onPress={() => onOpen(habit)} style={styles.info}>
-              <Text style={[styles.name, { color: t.text, fontFamily: fonts.bodySemi }]}>{habit.name}</Text>
-              <Text style={[styles.schedule, { color: t['muted-flat'], fontFamily: fonts.body }]}>{scheduleLine(habit)}</Text>
-              <Text style={[styles.status, { color: statusColor, borderColor: t['glass-border'], fontFamily: fonts.display }]}>{status}</Text>
+              <AppText style={[styles.name, { color: t.text, fontFamily: fonts.bodySemi }]}>{habit.name}</AppText>
+              <AppText style={[styles.schedule, { color: t['muted-flat'], fontFamily: fonts.body }]}>{scheduleLine(habit)}</AppText>
+              <AppText style={[styles.status, { color: statusColor, borderColor: t['glass-border'], fontFamily: fonts.display }]}>{status}</AppText>
             </Pressable>
             <Pressable
               accessibilityRole="button"

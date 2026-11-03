@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import {
   accountDateKey, EASY_XP, FULL_XP, fetchMonthHistory, historyDayKey, historyDayStatus, historyMonthCells,
   MONTH_NAMES, shiftHistoryMonth, type HistoryByDate, type HistoryMonth,
@@ -54,9 +55,9 @@ export function HistorySheet({ visible, userId, timeZone, onClose }: Props) {
         <Pressable testID="history-prev-month" accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => step(-1)} style={styles.monthButton}>
           <ChevronIcon direction="left" size={16} color={t['muted-flat']} />
         </Pressable>
-        <Text accessibilityLiveRegion="polite" style={[styles.monthLabel, { color: t.text, fontFamily: fonts.display }]}>
+        <AppText accessibilityLiveRegion="polite" style={[styles.monthLabel, { color: t.text, fontFamily: fonts.display }]}>
           {`${MONTH_NAMES[shown.month].toUpperCase()} ${shown.year}`}
-        </Text>
+        </AppText>
         <Pressable testID="history-next-month" accessibilityRole="button" accessibilityLabel="Next month" onPress={() => step(1)} style={styles.monthButton}>
           <ChevronIcon direction="right" size={16} color={t['muted-flat']} />
         </Pressable>
@@ -64,7 +65,7 @@ export function HistorySheet({ visible, userId, timeZone, onClose }: Props) {
 
       <View style={styles.weekRow}>
         {WEEKDAYS.map((weekday, i) => (
-          <Text key={i} accessibilityLabel={weekday.full} style={[styles.weekday, { color: t['dim-flat'], fontFamily: fonts.display }]}>{weekday.short}</Text>
+          <AppText key={i} accessibilityLabel={weekday.full} style={[styles.weekday, { color: t['dim-flat'], fontFamily: fonts.display }]}>{weekday.short}</AppText>
         ))}
       </View>
 
@@ -97,7 +98,7 @@ export function HistorySheet({ visible, userId, timeZone, onClose }: Props) {
                       ? { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }
                       : isToday ? { borderColor: t['accent-border'] } : null,
                   ]}>
-                  <Text style={[styles.dayNumber, { color: isToday ? t['accent-text'] : t.text }]}>{dayNumber}</Text>
+                  <AppText style={[styles.dayNumber, { color: isToday ? t['accent-text'] : t.text }]}>{dayNumber}</AppText>
                   {mark ? <CompletionDotIcon color={mark === 'full' ? t.success : t.warning} size={8} /> : <View style={styles.dotGap} />}
                 </View>
               </Pressable>
@@ -110,25 +111,25 @@ export function HistorySheet({ visible, userId, timeZone, onClose }: Props) {
         {[[t.success, 'Full completion'], [t.warning, 'Penalty']].map(([color, label]) => (
           <View key={label} style={styles.legendItem}>
             <CompletionDotIcon color={color} size={8} />
-            <Text style={[styles.legendText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{label}</Text>
+            <AppText style={[styles.legendText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{label}</AppText>
           </View>
         ))}
       </View>
 
       <View style={[styles.list, { borderTopColor: t['divider-flat'] }]}>
-        <Text style={[styles.listTitle, { color: t['dim-flat'], fontFamily: fonts.display }]}>{selected === todayKey ? 'TODAY' : selected}</Text>
+        <AppText style={[styles.listTitle, { color: t['dim-flat'], fontFamily: fonts.display }]}>{selected === todayKey ? 'TODAY' : selected}</AppText>
         {status === 'ready' && completions.length === 0 ? (
-          <Text style={[styles.empty, { color: t['dim-flat'], fontFamily: fonts.body }]}>Nothing completed this day.</Text>
+          <AppText style={[styles.empty, { color: t['dim-flat'], fontFamily: fonts.body }]}>Nothing completed this day.</AppText>
         ) : null}
         {completions.map((completion, i) => (
           <View key={i} style={[styles.item, i > 0 && { borderTopColor: t['divider-flat'], borderTopWidth: StyleSheet.hairlineWidth }]}>
             <View style={[styles.check, { backgroundColor: t['success-glass'], borderColor: t['success-border'] }]}>
               <CheckIcon size={11} color={t.success} />
             </View>
-            <Text style={[styles.itemName, { color: t.text, fontFamily: fonts.body }]}>{completion.habitName}</Text>
-            <Text style={[styles.xp, { color: t.success, backgroundColor: t['success-glass'], borderColor: t['success-border'] }]}>
+            <AppText style={[styles.itemName, { color: t.text, fontFamily: fonts.body }]}>{completion.habitName}</AppText>
+            <AppText style={[styles.xp, { color: t.success, backgroundColor: t['success-glass'], borderColor: t['success-border'] }]}>
               {`+${completion.kind === 'full' ? FULL_XP : EASY_XP} XP`}
-            </Text>
+            </AppText>
           </View>
         ))}
       </View>

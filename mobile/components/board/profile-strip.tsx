@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { profileInitials, RANK_CONFIG, STATS, STAT_COLORS, type Rank, type UserProfile } from '@eiyu/shared';
 
@@ -63,18 +64,18 @@ export function ProfileStrip({ name, userClass, rank, stats, completed, total }:
         style={styles.trigger}>
         <View style={styles.top}>
           <View style={[styles.avatar, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
-            <Text style={[styles.avatarText, { color: t['accent-text'], fontFamily: fonts.display }]}>{profileInitials(name)}</Text>
+            <AppText style={[styles.avatarText, { color: t['accent-text'], fontFamily: fonts.display }]}>{profileInitials(name)}</AppText>
           </View>
           <View style={styles.copy}>
-            <Text testID="board-profile-name" numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{name}</Text>
-            <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.userClass, { color: t['muted-flat'], fontFamily: fonts.body }]}>{userClass}</Text>
+            <AppText testID="board-profile-name" numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{name}</AppText>
+            <AppText numberOfLines={1} ellipsizeMode="tail" style={[styles.userClass, { color: t['muted-flat'], fontFamily: fonts.body }]}>{userClass}</AppText>
           </View>
-          <Text style={[styles.rank, { color: rankConfig.color, borderColor: rankConfig.color, fontFamily: fonts.display }]}>{rank}</Text>
+          <AppText style={[styles.rank, { color: rankConfig.color, borderColor: rankConfig.color, fontFamily: fonts.display }]}>{rank}</AppText>
         </View>
         <View style={styles.today}>
           {/* The count is its own text so a flow (or a screen reader) can find "3/7" on its own. */}
-          <Text style={[styles.todayText, { color: t['dim-flat'], fontFamily: fonts.display }]}>TODAY</Text>
-          <Text style={[styles.todayText, { color: t['accent-text'], fontFamily: fonts.mono }]}>{`${completed}/${total}`}</Text>
+          <AppText style={[styles.todayText, { color: t['dim-flat'], fontFamily: fonts.display }]}>TODAY</AppText>
+          <AppText style={[styles.todayText, { color: t['accent-text'], fontFamily: fonts.mono }]}>{`${completed}/${total}`}</AppText>
           <View
             accessible
             accessibilityRole="progressbar"
@@ -94,8 +95,8 @@ export function ProfileStrip({ name, userClass, rank, stats, completed, total }:
             return (
               <View key={stat} style={styles.statRow}>
                 <StatIcon stat={stat} size={15} />
-                <Text style={[styles.statCode, { color: t['muted-flat'], fontFamily: fonts.display }]}>{stat}</Text>
-                <Text style={[styles.statLevel, { color: STAT_COLORS[stat], fontFamily: fonts.mono }]}>{String(data.level)}</Text>
+                <AppText style={[styles.statCode, { color: t['muted-flat'], fontFamily: fonts.display }]}>{stat}</AppText>
+                <AppText style={[styles.statLevel, { color: STAT_COLORS[stat], fontFamily: fonts.mono }]}>{String(data.level)}</AppText>
                 <StatXpBar pct={pct} color={STAT_COLORS[stat]} track={t['bar-track']} stat={stat} level={data.level} />
               </View>
             );

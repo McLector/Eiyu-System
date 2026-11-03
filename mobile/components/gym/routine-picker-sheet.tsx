@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import type { GymRoutine } from '@eiyu/shared';
 
 import { PlusIcon } from '@/components/eiyu/icons';
@@ -42,8 +43,8 @@ export function RoutinePickerSheet({ visible, routines, selectedId, showArchived
               onPress={() => { onSelect(routine.id); onClose(); }}
               style={[styles.row, { borderBottomColor: t['divider-flat'] }]}>
               <View style={[styles.dot, { borderColor: selected ? t.accent : t['glass-border'], backgroundColor: selected ? t.accent : 'transparent' }]} />
-              <Text numberOfLines={2} style={[styles.name, { color: selected ? t['accent-text'] : t.text, fontFamily: fonts.display }]}>{label}</Text>
-              <Text style={[styles.unit, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{routine.unit}</Text>
+              <AppText numberOfLines={2} style={[styles.name, { color: selected ? t['accent-text'] : t.text, fontFamily: fonts.display }]}>{label}</AppText>
+              <AppText style={[styles.unit, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{routine.unit}</AppText>
             </Pressable>
           );
         })}

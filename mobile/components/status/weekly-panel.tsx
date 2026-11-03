@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { fetchWeeklyReview, WEEKLY_REVIEW_COPY, type WeeklyDayDatum } from '@eiyu/shared';
 
 import { StateBlock } from '@/components/ui/state-block';
@@ -26,7 +27,7 @@ export function WeeklyPanel({ active, userId, timeZone }: { active: boolean; use
 
   return (
     <View>
-      <Text style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>LAST 7 DAYS</Text>
+      <AppText style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>LAST 7 DAYS</AppText>
       {failed ? (
         <StateBlock kind="error" onRetry={() => setAttempt(n => n + 1)}>{WEEKLY_REVIEW_COPY.error}</StateBlock>
       ) : data === null ? (

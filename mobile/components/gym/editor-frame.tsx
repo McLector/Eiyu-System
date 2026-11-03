@@ -1,6 +1,7 @@
 import { useNavigation } from 'expo-router';
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { KeyboardAvoidingView, KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NAVIGATION_GUARD_COPY } from '@eiyu/shared';
@@ -57,7 +58,7 @@ export function EditorFrame({ title, closeLabel, dirty, busy, uncertain, committ
   return (
     <KeyboardAvoidingView behavior="padding" style={[styles.root, { backgroundColor: t['page-flat'] }]}>
       <View style={[styles.header, { paddingTop: insets.top, borderBottomColor: t['divider-flat'] }]}>
-        <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{title}</Text>
+        <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{title}</AppText>
         <Pressable testID={`${testID}-close`} accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} style={styles.close}>
           <View style={styles.closeGlyph}><PlusIcon size={22} color={t['muted-flat']} /></View>
         </Pressable>
@@ -68,7 +69,7 @@ export function EditorFrame({ title, closeLabel, dirty, busy, uncertain, committ
       </View>
 
       <View testID={`${testID}-footer`} style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: Math.max(12, insets.bottom) }]}>
-        {error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+        {error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
         {footer}
       </View>
 
@@ -76,8 +77,8 @@ export function EditorFrame({ title, closeLabel, dirty, busy, uncertain, committ
       <Modal testID={`${testID}-busy-modal`} visible={prompt === 'busy'} transparent animationType="fade" onRequestClose={() => setPrompt(null)}>
         <View style={[styles.overlay, { backgroundColor: t.overlay }]} accessibilityViewIsModal>
           <View style={[styles.dialog, { backgroundColor: t.modal, borderColor: t['accent-border'] }]}>
-            <Text accessibilityRole="header" style={[styles.dialogTitle, { color: t.text, fontFamily: fonts.display }]}>{NAVIGATION_GUARD_COPY.busyTitle}</Text>
-            <Text style={[styles.dialogText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{NAVIGATION_GUARD_COPY.busyBody}</Text>
+            <AppText accessibilityRole="header" style={[styles.dialogTitle, { color: t.text, fontFamily: fonts.display }]}>{NAVIGATION_GUARD_COPY.busyTitle}</AppText>
+            <AppText style={[styles.dialogText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{NAVIGATION_GUARD_COPY.busyBody}</AppText>
             <View style={styles.dialogActions}>
               {uncertain ? <Button variant="quiet" label="Leave without confirming" onPress={() => { onLeaveUnconfirmed(); release(); }} /> : null}
               <Button variant="secondary" label="Stay" onPress={() => setPrompt(null)} />

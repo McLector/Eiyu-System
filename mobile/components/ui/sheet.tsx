@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,7 +51,7 @@ export function Sheet({ visible, title, onClose, children, footer, dismissible =
           style={[styles.panel, { backgroundColor: t.modal, borderColor: t['accent-border'], maxHeight: height * 0.9 }]}>
           <View style={styles.header}>
             {title ? (
-              <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{title}</Text>
+              <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>{title}</AppText>
             ) : <View style={styles.titleSpacer} />}
             {dismissible ? (
               <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} style={styles.close}>

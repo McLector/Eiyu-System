@@ -1,5 +1,6 @@
 import { useRef } from 'react';
-import { AccessibilityInfo, findNodeHandle, Modal, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, findNodeHandle, Modal, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { Button } from '@/components/ui/button';
 import { fonts } from '@/constants/eiyu-theme';
@@ -28,8 +29,8 @@ export function DiscardChangesModal({ visible, message, onKeep, onDiscard, testI
     <Modal visible={visible} transparent animationType="fade" testID={testID} onShow={focusKeep} onRequestClose={onKeep}>
       <View style={[styles.overlay, { backgroundColor: t.overlay }]}>
         <View accessibilityViewIsModal style={[styles.card, { backgroundColor: t.modal, borderColor: t['accent-border'] }]}>
-          <Text accessibilityRole="alert" accessibilityLabel="Discard changes?" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>Discard changes?</Text>
-          <Text style={[styles.text, { color: t['muted-flat'], fontFamily: fonts.body }]}>{message}</Text>
+          <AppText accessibilityRole="alert" accessibilityLabel="Discard changes?" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>Discard changes?</AppText>
+          <AppText style={[styles.text, { color: t['muted-flat'], fontFamily: fonts.body }]}>{message}</AppText>
           <View style={styles.actions}>
             <View ref={keepRef}>
               <Button variant="secondary" label="Keep Editing" onPress={onKeep} />

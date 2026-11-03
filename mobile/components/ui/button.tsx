@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { MOTION } from '@eiyu/shared';
 
 import { fonts } from '@/constants/eiyu-theme';
@@ -55,7 +56,7 @@ export function Button({ variant, label, onPress, onPressIn, onPressOut, disable
         style,
       ]}>
       {busy ? <ActivityIndicator size="small" color={c.text} accessibilityElementsHidden /> : icon ? <View>{icon}</View> : null}
-      <Text style={[styles.label, { color: c.text, fontFamily: fonts.display }]}>{label}</Text>
+      <AppText style={[styles.label, { color: c.text, fontFamily: fonts.display }]}>{label}</AppText>
     </Pressable>
   );
 }

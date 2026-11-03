@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import PagerView from 'react-native-pager-view';
 
 import HabitHeatmap from '@/components/status/habit-heatmap';
@@ -65,7 +66,7 @@ export default function StatusScreen() {
         {page('stats', (
           <>
             <View>
-              <Text style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>ATTRIBUTE PROGRESS</Text>
+              <AppText style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>ATTRIBUTE PROGRESS</AppText>
               <StatBars stats={user.stats} />
             </View>
             <HabitHeatmap userId={userId} timeZone={user.timeZone} />

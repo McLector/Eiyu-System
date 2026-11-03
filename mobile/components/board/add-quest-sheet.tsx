@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { Sheet } from '@/components/ui/sheet';
 import { fonts } from '@/constants/eiyu-theme';
@@ -25,7 +26,7 @@ export function AddQuestSheet({ visible, types, onChoose, onClose }: Props) {
   const t = useTokens();
   return (
     <Sheet visible={visible} title="NEW QUEST" onClose={onClose} testID="board-type-chooser">
-      <Text style={[styles.sub, { color: t['muted-flat'], fontFamily: fonts.body }]}>What kind of quest is this?</Text>
+      <AppText style={[styles.sub, { color: t['muted-flat'], fontFamily: fonts.body }]}>What kind of quest is this?</AppText>
       {types.map((type, index) => (
         <Pressable
           key={type}
@@ -38,8 +39,8 @@ export function AddQuestSheet({ visible, types, onChoose, onClose }: Props) {
               ? { borderColor: t['accent-border'], backgroundColor: t['accent-glass'] }
               : { borderColor: t['glass-border'], backgroundColor: 'transparent' },
           ]}>
-          <Text style={[styles.optionTitle, { color: index === 0 ? t['accent-text'] : t.text, fontFamily: fonts.display }]}>{CHOICES[type].title}</Text>
-          <Text style={[styles.optionHint, { color: t['muted-flat'], fontFamily: fonts.body }]}>{CHOICES[type].hint}</Text>
+          <AppText style={[styles.optionTitle, { color: index === 0 ? t['accent-text'] : t.text, fontFamily: fonts.display }]}>{CHOICES[type].title}</AppText>
+          <AppText style={[styles.optionHint, { color: t['muted-flat'], fontFamily: fonts.body }]}>{CHOICES[type].hint}</AppText>
         </Pressable>
       ))}
     </Sheet>

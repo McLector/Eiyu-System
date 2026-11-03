@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Modal, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { formatError, partitionBoardQuests, type Quest } from '@eiyu/shared';
 
 import { Button } from '@/components/ui/button';
@@ -51,7 +52,7 @@ export default function ArchivedHabitsSheet({ visible, onClose }: { visible: boo
   return (
     <>
       <Sheet visible={visible} title="ARCHIVED HABITS" closeLabel="Close Archived habits" onClose={onClose} testID="archived-sheet">
-        {error ? <Text accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+        {error ? <AppText accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
         {archived.length === 0 ? (
           <View testID="archived-empty">
             <StateBlock kind="empty">No archived quests. Archived definitions will stay here with their history.</StateBlock>
@@ -61,8 +62,8 @@ export default function ArchivedHabitsSheet({ visible, onClose }: { visible: boo
           return (
             <View key={quest.id} style={[styles.row, { borderBottomColor: t['divider-flat'] }]}>
               <View style={styles.copy}>
-                <Text style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{quest.name}</Text>
-                <Text style={[styles.kind, { color: t['muted-flat'], fontFamily: fonts.body }]}>{kindLabel(quest)}</Text>
+                <AppText style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{quest.name}</AppText>
+                <AppText style={[styles.kind, { color: t['muted-flat'], fontFamily: fonts.body }]}>{kindLabel(quest)}</AppText>
               </View>
               <View style={styles.actions}>
                 <Button variant="secondary" label="Restore" accessibilityLabel={`Restore ${quest.name}`} busy={busy && !deleting} disabled={busy && deleting} onPress={() => void restore(quest)} />
@@ -81,10 +82,10 @@ export default function ArchivedHabitsSheet({ visible, onClose }: { visible: boo
         onRequestClose={() => { if (!deleting) setConfirm(null); }}>
         <View style={[styles.overlay, { backgroundColor: t.overlay }]}>
           <View accessibilityViewIsModal style={[styles.card, { backgroundColor: t.modal, borderColor: t['danger-border'] }]}>
-            <Text accessibilityRole="header" style={[styles.cardTitle, { color: t.text, fontFamily: fonts.display }]}>Delete permanently?</Text>
-            <Text style={[styles.cardText, { color: t['muted-flat'], fontFamily: fonts.body }]}>
+            <AppText accessibilityRole="header" style={[styles.cardTitle, { color: t.text, fontFamily: fonts.display }]}>Delete permanently?</AppText>
+            <AppText style={[styles.cardText, { color: t['muted-flat'], fontFamily: fonts.body }]}>
               {`"${confirm?.name ?? ''}" and its history will be deleted. This cannot be undone.`}
-            </Text>
+            </AppText>
             <View style={styles.cardActions}>
               <Button variant="quiet" label="Cancel" disabled={deleting} onPress={() => setConfirm(null)} />
               <Button variant="destructive" label="Confirm permanent delete" busy={deleting} onPress={() => void confirmDelete()} />

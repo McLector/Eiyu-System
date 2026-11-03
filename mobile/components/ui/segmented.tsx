@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
@@ -30,7 +31,7 @@ export function Segmented<T extends string>({ options, value, onChange, accessib
                 ? { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }
                 : { backgroundColor: 'transparent', borderColor: t['glass-border'] },
             ]}>
-            <Text style={[styles.label, { color: selected ? t['accent-text'] : t['dim-flat'], fontFamily: fonts.display }]}>{option.label}</Text>
+            <AppText style={[styles.label, { color: selected ? t['accent-text'] : t['dim-flat'], fontFamily: fonts.display }]}>{option.label}</AppText>
           </Pressable>
         );
       })}

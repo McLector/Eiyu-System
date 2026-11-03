@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
@@ -35,7 +36,7 @@ export function Chip({ label, selected, onPress, kind = 'radio', disabled, compa
           : { backgroundColor: 'transparent', borderColor: t['glass-border'] },
         disabled && styles.disabled,
       ]}>
-      <Text style={[styles.label, { color: selected ? t['accent-text'] : t['dim-flat'], fontFamily: fonts.display }]}>{label}</Text>
+      <AppText style={[styles.label, { color: selected ? t['accent-text'] : t['dim-flat'], fontFamily: fonts.display }]}>{label}</AppText>
     </Pressable>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { levelProgress, STAT_COLORS, type RewardReceipt } from '@eiyu/shared';
 
 import { fonts } from '@/constants/eiyu-theme';
@@ -34,9 +35,9 @@ function StatGain({ total }: { total: Total }) {
   const color = STAT_COLORS[total.stat];
   return (
     <View style={styles.stat}>
-      <Text style={[styles.gain, { color, fontFamily: fonts.display }]}>{`${total.stat} ${signed(total.delta)} XP`}</Text>
-      <Text style={[styles.level, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{`Level ${now.level} · ${now.xpIntoLevel} / ${now.xpForNextLevel} XP`}</Text>
-      {leveledUp ? <Text style={[styles.levelUp, { color: t['accent-text'], fontFamily: fonts.display }]}>Level up</Text> : null}
+      <AppText style={[styles.gain, { color, fontFamily: fonts.display }]}>{`${total.stat} ${signed(total.delta)} XP`}</AppText>
+      <AppText style={[styles.level, { color: t['muted-flat'], fontFamily: fonts.mono }]}>{`Level ${now.level} · ${now.xpIntoLevel} / ${now.xpForNextLevel} XP`}</AppText>
+      {leveledUp ? <AppText style={[styles.levelUp, { color: t['accent-text'], fontFamily: fonts.display }]}>Level up</AppText> : null}
       <View
         accessible
         accessibilityRole="progressbar"
@@ -78,9 +79,9 @@ export function RewardFeedback({ receipt }: { receipt?: RewardReceipt | null }) 
       style={[styles.card, { backgroundColor: t['panel-flat'], borderColor: t['success-border'] }]}>
       {receipt.totals.map(total => <StatGain key={`${receipt.id}-${total.stat}`} total={total} />)}
       {receipt.components.filter(c => c.kind === 'bonus').map(c => (
-        <Text key={`${receipt.id}-bonus-${c.stat}`} style={[styles.bonus, { color: t['dim-flat'], fontFamily: fonts.body }]}>
+        <AppText key={`${receipt.id}-bonus-${c.stat}`} style={[styles.bonus, { color: t['dim-flat'], fontFamily: fonts.body }]}>
           {`Completion bonus: ${c.stat} ${signed(c.delta)} XP`}
-        </Text>
+        </AppText>
       ))}
     </View>
   );

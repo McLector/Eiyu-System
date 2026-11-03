@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { PALETTES } from '@eiyu/shared';
@@ -47,8 +48,8 @@ function SwitchRow({ label, sub, value, onChange, disabled, testID, lead, trail 
       onPress={() => onChange(!value)}
       style={[styles.row, disabled && styles.disabled]}>
       <View style={styles.rowCopy}>
-        <Text style={[styles.rowLabel, { color: t.text, fontFamily: fonts.body }]}>{label}</Text>
-        {sub ? <Text style={[styles.rowSub, { color: t['dim-flat'], fontFamily: fonts.body }]}>{sub}</Text> : null}
+        <AppText style={[styles.rowLabel, { color: t.text, fontFamily: fonts.body }]}>{label}</AppText>
+        {sub ? <AppText style={[styles.rowSub, { color: t['dim-flat'], fontFamily: fonts.body }]}>{sub}</AppText> : null}
       </View>
       <View style={styles.rowEnd}>
         {lead}
@@ -61,7 +62,7 @@ function SwitchRow({ label, sub, value, onChange, disabled, testID, lead, trail 
 
 function SectionLabel({ children }: { children: string }) {
   const t = useTokens();
-  return <Text accessibilityRole="header" style={[styles.section, { color: t['dim-flat'], fontFamily: fonts.display }]}>{children}</Text>;
+  return <AppText accessibilityRole="header" style={[styles.section, { color: t['dim-flat'], fontFamily: fonts.display }]}>{children}</AppText>;
 }
 
 /** Settings as a bottom sheet from the account menu: appearance, reminders, sound, history. Logout stays in the menu. */
@@ -92,8 +93,8 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
         trail={<MoonIcon size={16} color={dark ? t.accent : t['dim-flat']} />}
       />
       <View style={styles.paletteBlock}>
-        <Text style={[styles.rowLabel, { color: t.text, fontFamily: fonts.body }]}>Colour palette</Text>
-        <Text style={[styles.rowSub, { color: t['dim-flat'], fontFamily: fonts.body }]}>Tints the whole app, in light and dark</Text>
+        <AppText style={[styles.rowLabel, { color: t.text, fontFamily: fonts.body }]}>Colour palette</AppText>
+        <AppText style={[styles.rowSub, { color: t['dim-flat'], fontFamily: fonts.body }]}>Tints the whole app, in light and dark</AppText>
         <View accessibilityRole="radiogroup" accessibilityLabel="Colour palette" style={styles.palettes}>
           {PALETTES.map(({ id, label, swatch }) => {
             const selected = palette === id;
@@ -111,7 +112,7 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
                     : { backgroundColor: 'transparent', borderColor: t['glass-border'] },
                 ]}>
                 <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.swatch, { backgroundColor: swatch, borderColor: t['glass-border'] }]} />
-                <Text style={[styles.paletteLabel, { color: selected ? t['accent-text'] : t['muted-flat'], fontFamily: fonts.body }]}>{label}</Text>
+                <AppText style={[styles.paletteLabel, { color: selected ? t['accent-text'] : t['muted-flat'], fontFamily: fonts.body }]}>{label}</AppText>
               </Pressable>
             );
           })}
@@ -123,7 +124,7 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
       <SwitchRow label="Quest Reminders" sub="Notify when quest time arrives" value={notificationsEnabled} onChange={setNotificationsEnabled} />
       {reminderWarning ? (
         <View style={styles.warning}>
-          <Text accessibilityRole="alert" style={[styles.warningText, { color: t.warning, fontFamily: fonts.body }]}>{reminderWarning}</Text>
+          <AppText accessibilityRole="alert" style={[styles.warningText, { color: t.warning, fontFamily: fonts.body }]}>{reminderWarning}</AppText>
           <View style={styles.warningActions}>
             <Button variant="secondary" label="Retry" onPress={() => void retryReminders()} />
             {isPermissionWarning(reminderWarning) ? <Button variant="quiet" label="Open phone settings" onPress={openPhoneSettings} /> : null}
@@ -143,13 +144,13 @@ export function SettingsSheet({ visible, onClose }: { visible: boolean; onClose:
       <SectionLabel>PROGRESS</SectionLabel>
       <Pressable accessibilityRole="button" accessibilityLabel="Quest History" onPress={openHistory} style={styles.row}>
         <View style={styles.rowCopy}>
-          <Text style={[styles.rowLabel, { color: t.text, fontFamily: fonts.body }]}>Quest History</Text>
-          <Text style={[styles.rowSub, { color: t['dim-flat'], fontFamily: fonts.body }]}>Calendar of past completions</Text>
+          <AppText style={[styles.rowLabel, { color: t.text, fontFamily: fonts.body }]}>Quest History</AppText>
+          <AppText style={[styles.rowSub, { color: t['dim-flat'], fontFamily: fonts.body }]}>Calendar of past completions</AppText>
         </View>
         <ChevronRight size={16} color={t['dim-flat']} />
       </Pressable>
 
-      <Text style={[styles.version, { color: t['dim-flat'], fontFamily: fonts.mono }]}>{version ? `Eiyu System v${version}` : 'Eiyu System'}</Text>
+      <AppText style={[styles.version, { color: t['dim-flat'], fontFamily: fonts.mono }]}>{version ? `Eiyu System v${version}` : 'Eiyu System'}</AppText>
     </Sheet>
   );
 }

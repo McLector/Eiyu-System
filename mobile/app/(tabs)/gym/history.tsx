@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { fetchGymHistory, formatError, GYM_COPY } from '@eiyu/shared';
 
 import { ChevronIcon } from '@/components/eiyu/icons';
@@ -33,7 +34,7 @@ export default function GymHistoryScreen() {
         <Pressable accessibilityRole="button" accessibilityLabel="Back to Gym" onPress={() => router.back()} style={styles.back}>
           <ChevronIcon direction="left" size={20} color={t['muted-flat']} />
         </Pressable>
-        <Text accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>WORKOUT HISTORY</Text>
+        <AppText accessibilityRole="header" style={[styles.title, { color: t.text, fontFamily: fonts.display }]}>WORKOUT HISTORY</AppText>
       </View>
 
       <View accessibilityRole="radiogroup" accessibilityLabel="Workouts" style={styles.filters}>
@@ -63,20 +64,20 @@ export default function GymHistoryScreen() {
                   accessibilityState={{ expanded }}
                   onPress={() => setOpen(expanded ? null : session.id)}
                   style={styles.sessionHead}>
-                  <Text style={[styles.sessionText, { color: t.text, fontFamily: fonts.display }]}>{title}</Text>
+                  <AppText style={[styles.sessionText, { color: t.text, fontFamily: fonts.display }]}>{title}</AppText>
                   <ChevronIcon direction={expanded ? 'down' : 'right'} size={16} color={t['muted-flat']} />
                 </Pressable>
                 {expanded ? query.data.entries.filter(e => e.session_id === session.id).map(entry => (
-                  <Text key={entry.id} style={[styles.entry, { color: t['muted-flat'], fontFamily: fonts.mono }]}>
+                  <AppText key={entry.id} style={[styles.entry, { color: t['muted-flat'], fontFamily: fonts.mono }]}>
                     {`${entry.prescription.name} · ${entry.prescription.sets} × ${entry.prescription.reps} · ${entry.weight ?? '—'} ${session.unit}`}
-                  </Text>
+                  </AppText>
                 )) : null}
               </View>
             );
           })}
           <View testID="gym-history-pages" accessibilityLabel="Workout history pages" style={styles.pages}>
             <Button variant="secondary" label="Previous" accessibilityLabel="Previous page" disabled={page === 0} onPress={() => setPage(p => p - 1)} />
-            <Text style={[styles.pageNo, { color: t.text, fontFamily: fonts.mono }]}>{page + 1}</Text>
+            <AppText style={[styles.pageNo, { color: t.text, fontFamily: fonts.mono }]}>{page + 1}</AppText>
             <Button variant="secondary" label="Next" accessibilityLabel="Next page" disabled={!query.data.hasNext} onPress={() => setPage(p => p + 1)} />
           </View>
         </>

@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { RANK_CONFIG, STATS, type Stat, type UserProfile } from '@eiyu/shared';
 
 import { RadarChart } from '@/components/eiyu/radar-chart';
@@ -16,16 +17,16 @@ export function HeroPanel({ user }: { user: Pick<UserProfile, 'name' | 'userClas
   return (
     <View style={styles.wrap}>
       <SignaturePanel style={styles.panel}>
-        <Text style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>HERO RANK</Text>
+        <AppText style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>HERO RANK</AppText>
         <View style={[styles.badge, { backgroundColor: rank.bg, borderColor: rank.color }]}>
-          <Text style={[styles.badgeText, { color: rank.color, fontFamily: fonts.display }]}>{user.rank}</Text>
+          <AppText style={[styles.badgeText, { color: rank.color, fontFamily: fonts.display }]}>{user.rank}</AppText>
         </View>
-        <Text testID="status-hero-name" numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{user.name}</Text>
-        <Text numberOfLines={1} style={[styles.class, { color: t['muted-flat'], fontFamily: fonts.body }]}>{user.userClass}</Text>
+        <AppText testID="status-hero-name" numberOfLines={2} ellipsizeMode="tail" style={[styles.name, { color: t.text, fontFamily: fonts.display }]}>{user.name}</AppText>
+        <AppText numberOfLines={1} style={[styles.class, { color: t['muted-flat'], fontFamily: fonts.body }]}>{user.userClass}</AppText>
       </SignaturePanel>
 
       <View>
-        <Text style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>STAT OVERVIEW</Text>
+        <AppText style={[styles.eyebrow, { color: t['dim-flat'], fontFamily: fonts.display }]}>STAT OVERVIEW</AppText>
         <View accessible accessibilityLabel={summary} style={styles.radar}>
           <RadarChart values={levels} maxValue={50} size={240} accent={t.accent} fill={t['accent-glass']} gridStroke={t['divider-flat']} />
         </View>

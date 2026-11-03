@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { STATS, STAT_COLORS, type WeeklyDayDatum } from '@eiyu/shared';
 
@@ -42,7 +43,7 @@ export default function WeeklyReviewMatrix({ data, colors }: Props) {
     <View testID="weekly-matrix" onLayout={onLayout} style={styles.table}>
       <View style={styles.row}>
         <View style={[styles.statHeader, { borderBottomColor: colors.track }]}>
-          <Text numberOfLines={1} style={[styles.headerText, { color: colors.muted }]}>STAT</Text>
+          <AppText numberOfLines={1} style={[styles.headerText, { color: colors.muted }]}>STAT</AppText>
         </View>
         {data.map(day => (
           <View
@@ -51,15 +52,15 @@ export default function WeeklyReviewMatrix({ data, colors }: Props) {
             accessibilityLabel={`${day.day}, ${formatDateKey(day.dateKey)}`}
             style={[styles.headerCell, dayCell, { borderBottomColor: colors.track }]}
           >
-            <Text numberOfLines={1} style={[styles.headerDay, { color: colors.accent }]}>{day.day.slice(0, 2)}</Text>
-            <Text numberOfLines={1} style={[styles.headerDate, { color: colors.muted }]}>{dayOfMonth(day.dateKey)}</Text>
+            <AppText numberOfLines={1} style={[styles.headerDay, { color: colors.accent }]}>{day.day.slice(0, 2)}</AppText>
+            <AppText numberOfLines={1} style={[styles.headerDate, { color: colors.muted }]}>{dayOfMonth(day.dateKey)}</AppText>
           </View>
         ))}
       </View>
       {STATS.map(stat => (
         <View key={stat} style={styles.row}>
           <View style={[styles.statHeader, { borderBottomColor: colors.track }]}>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.statText, { color: STAT_COLORS[stat] }]}>{stat}</Text>
+            <AppText numberOfLines={1} adjustsFontSizeToFit style={[styles.statText, { color: STAT_COLORS[stat] }]}>{stat}</AppText>
           </View>
           {data.map(day => {
             const value = day[stat];
@@ -78,7 +79,7 @@ export default function WeeklyReviewMatrix({ data, colors }: Props) {
                   },
                 ]}
               >
-                <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.valueText, { color: colors.text }]}>{value}</Text>
+                <AppText numberOfLines={1} adjustsFontSizeToFit style={[styles.valueText, { color: colors.text }]}>{value}</AppText>
               </View>
             );
           })}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { UndoIcon } from '@/components/eiyu/icons';
 import { fonts } from '@/constants/eiyu-theme';
@@ -70,7 +71,7 @@ export function UndoBar({ message, actionLabel = 'Undo', onAction, secondaryLabe
 
   return (
     <View testID="undo-bar" style={[styles.bar, { backgroundColor: t['panel-flat'], borderColor: t['warning-border'] }]}>
-      <Text accessibilityLiveRegion="polite" style={[styles.message, { color: t.text, fontFamily: fonts.body }]}>{message}</Text>
+      <AppText accessibilityLiveRegion="polite" style={[styles.message, { color: t.text, fontFamily: fonts.body }]}>{message}</AppText>
       <View style={styles.actions}>
         {onAction ? (
           <Button

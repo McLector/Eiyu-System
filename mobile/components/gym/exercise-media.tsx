@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { formatError, signGymMedia, type GymExercise } from '@eiyu/shared';
 
@@ -94,7 +95,7 @@ export function ExerciseMedia({ exercise, canEdit, onEdit, active }: Props) {
     return (
       <View style={[box, styles.empty]}>
         <PlayIcon size={20} color={t['dim-flat']} />
-        <Text style={[styles.text, { color: t['dim-flat'], fontFamily: fonts.body }]}>No video guide attached.</Text>
+        <AppText style={[styles.text, { color: t['dim-flat'], fontFamily: fonts.body }]}>No video guide attached.</AppText>
         {canEdit ? <Button variant="secondary" label="Attach a video guide" onPress={onEdit} /> : null}
       </View>
     );
@@ -102,7 +103,7 @@ export function ExerciseMedia({ exercise, canEdit, onEdit, active }: Props) {
   if (error) {
     return (
       <View style={[box, styles.empty]}>
-        <Text accessibilityRole="alert" style={[styles.text, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text>
+        <AppText accessibilityRole="alert" style={[styles.text, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText>
         <Button variant="secondary" label="Reload video guide" onPress={() => setRetry(n => n + 1)} />
       </View>
     );
@@ -110,7 +111,7 @@ export function ExerciseMedia({ exercise, canEdit, onEdit, active }: Props) {
   if (!url) {
     return (
       <View style={[box, styles.empty]}>
-        <Text accessibilityRole="progressbar" accessibilityLiveRegion="polite" style={[styles.text, { color: t['dim-flat'], fontFamily: fonts.body }]}>Loading video guide…</Text>
+        <AppText accessibilityRole="progressbar" accessibilityLiveRegion="polite" style={[styles.text, { color: t['dim-flat'], fontFamily: fonts.body }]}>Loading video guide…</AppText>
       </View>
     );
   }
