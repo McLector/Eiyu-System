@@ -33,6 +33,7 @@ async function fillSignup() {
   await fireEvent.changeText(screen.getByLabelText('Email address'), 'kaito@example.com');
   await fireEvent.changeText(screen.getByLabelText('Password'), 'StrongPass1!');
   await fireEvent.changeText(screen.getByLabelText('Confirm password'), 'StrongPass1!');
+  await fireEvent.changeText(screen.getByLabelText('Birthday'), '2000-01-01');
 }
 
 const CONSENT = { name: 'I agree to the Privacy Policy & Terms' };
@@ -138,6 +139,34 @@ describe('mobile auth: flat card', () => {
   });
 
   describe('registration', () => {
+    it('does not submit birthday data when only generic Terms are accepted', async () => {
+      await openSignup(); await fillSignup();
+      await fireEvent.press(screen.getByRole('checkbox', CONSENT));
+      await fireEvent.press(screen.getByRole('button', {name: 'BEGIN JOURNEY'}));
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(screen.getByRole('checkbox', {name: /I agree.*birthday/i})).not.toBeChecked();
+    });
+    it('rejects new under12 signup before calling Auth, even with both choices', async () => {
+      await openSignup(); await fillSignup();
+      await fireEvent.changeText(screen.getByLabelText('Birthday'), '2020-01-01');
+      await fireEvent.press(screen.getByRole('checkbox', CONSENT));
+      await fireEvent.press(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
+      await fireEvent.press(screen.getByRole('button', {name: 'BEGIN JOURNEY'}));
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(screen.getByText('New Eiyu accounts are for ages 12 and above.')).toBeOnTheScreen();
+    });
+    it('requires an unprefilled birthday and blocks invalid civil dates', async () => {
+      await openSignup();
+      await fillSignup();
+      await fireEvent.changeText(screen.getByLabelText('Birthday'), '');
+      expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('');
+      await fireEvent.press(screen.getByRole('checkbox', CONSENT));
+      await fireEvent.press(screen.getByRole('button', { name: 'BEGIN JOURNEY' }));
+      expect(screen.getByText('Enter your birthday.')).toBeOnTheScreen();
+      await fireEvent.changeText(screen.getByLabelText('Birthday'), '2023-02-29');
+      await fireEvent.press(screen.getByRole('button', { name: 'BEGIN JOURNEY' }));
+      expect(mockSignUp).not.toHaveBeenCalled();
+    });
     it('keeps the email but clears password, confirmation and consent when switching mode', async () => {
       await openSignup();
       await fillSignup();
@@ -164,10 +193,11 @@ describe('mobile auth: flat card', () => {
       expect(screen.getByText('Accept the Privacy Policy and Terms to continue.')).toBeOnTheScreen();
       expect(mockSignUp).not.toHaveBeenCalled();
 
+      await fireEvent.press(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
       await fireEvent.press(screen.getByRole('checkbox', CONSENT));
       await fireEvent.press(screen.getByRole('button', { name: 'BEGIN JOURNEY' }));
       await waitFor(() => expect(mockSignUp).toHaveBeenCalledTimes(1));
-      expect(mockSignUp).toHaveBeenCalledWith('kaito@example.com', 'StrongPass1!', 'Kaito');
+      expect(mockSignUp).toHaveBeenCalledWith('kaito@example.com', 'StrongPass1!', 'Kaito', '2000-01-01', true);
     });
 
     it('gives the consent checkbox a 48dp target', async () => {
@@ -180,6 +210,7 @@ describe('mobile auth: flat card', () => {
     it('shows the check badge with the web title and message when a confirmation mail is needed', async () => {
       await openSignup();
       await fillSignup();
+      await fireEvent.press(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
       await fireEvent.press(screen.getByRole('checkbox', CONSENT));
       await fireEvent.press(screen.getByRole('button', { name: 'BEGIN JOURNEY' }));
       expect(await screen.findByText('ALMOST THERE')).toBeOnTheScreen();
@@ -192,6 +223,7 @@ describe('mobile auth: flat card', () => {
       mockSignUp.mockResolvedValue({ error: null, needsEmailConfirmation: false });
       await openSignup();
       await fillSignup();
+      await fireEvent.press(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
       await fireEvent.press(screen.getByRole('checkbox', CONSENT));
       await fireEvent.press(screen.getByRole('button', { name: 'BEGIN JOURNEY' }));
       await waitFor(() => expect(mockSignUp).toHaveBeenCalled());
@@ -203,6 +235,7 @@ describe('mobile auth: flat card', () => {
       mockSignUp.mockResolvedValue({ error: 'User already registered' });
       await openSignup();
       await fillSignup();
+      await fireEvent.press(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
       await fireEvent.press(screen.getByRole('checkbox', CONSENT));
       await fireEvent.press(screen.getByRole('button', { name: 'BEGIN JOURNEY' }));
       expect(await screen.findByText(authErrorMessage('signup', 'User already registered'))).toBeOnTheScreen();
@@ -220,7 +253,8 @@ describe('mobile auth: flat card', () => {
       const sheet = screen.getByTestId('legal-sheet');
       expect(within(sheet).getByText('Privacy Policy')).toBeOnTheScreen();
       expect(within(sheet).getByText('DATA WE COLLECT')).toBeOnTheScreen();
-      expect(within(sheet).getByText(/Your account email, display name/)).toHaveProp('selectable', true);
+      expect(within(sheet).getByText(/Your account email/)).toHaveProp('selectable', true);
+      expect(within(sheet).getByText(/Groq.*openai\/gpt-oss-20b/)).toHaveProp('selectable', true);
       expect(screen.getByRole('button', { name: 'Close Privacy Policy' })).toBeOnTheScreen();
       expect(consent).not.toBeChecked();
       await fireEvent.press(screen.getByRole('button', { name: 'Close Privacy Policy' }));

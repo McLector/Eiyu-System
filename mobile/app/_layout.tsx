@@ -17,7 +17,8 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/contexts/auth-store';
-import { EiyuProvider, persister, queryClient } from '@/contexts/eiyu-store';
+import { FontScaleNudgeProvider } from '@/contexts/font-scale-nudge';
+import { EiyuProvider, persister, queryClient, shouldPersistQuery } from '@/contexts/eiyu-store';
 import { GymProvider } from '@/contexts/gym-store';
 import { AppThemeProvider } from '@/contexts/theme-store';
 import { DevBall } from '@/components/eiyu/dev-ball';
@@ -49,7 +50,10 @@ export default function RootLayout() {
         persister,
         // A week of local-first reads; stale data still revalidates on mount.
         maxAge: 7 * 24 * 60 * 60 * 1000,
+        // The tracker capability is read from the server on every start; a stored grant is never restored.
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
       }}>
+      <FontScaleNudgeProvider>
       <AuthProvider>
         <AppThemeProvider>
           <EiyuProvider>
@@ -67,6 +71,7 @@ export default function RootLayout() {
           </EiyuProvider>
         </AppThemeProvider>
       </AuthProvider>
+      </FontScaleNudgeProvider>
     </PersistQueryClientProvider>
   );
 }
@@ -109,6 +114,7 @@ function AppNavigator() {
           options={{ presentation: 'card', headerShown: false, animation: 'slide_from_bottom' }}
         />
       </Stack.Protected>
+      <Stack.Screen name="auth/recovery" options={{headerShown: false}} />
     </Stack>
   );
 }

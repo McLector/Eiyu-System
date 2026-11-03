@@ -1,0 +1,34 @@
+import {render, screen} from '@testing-library/react-native';
+import RootLayout from '../../app/_layout';
+let mockSignedIn = false;
+jest.mock('expo-router', () => {
+ const React = require('react'); const {View, Text} = require('react-native');
+ const Stack = ({children}: {children: unknown}) => React.createElement(View, {}, children);
+ Stack.displayName = 'Stack';
+ const Screen = ({name}: {name: string}) => React.createElement(Text, {testID: 'available-route'}, name);
+ Screen.displayName = 'Stack.Screen';
+ Stack.Screen = Screen;
+ const Protected = ({guard, children}: {guard: boolean; children: unknown}) => guard ? children : null;
+ Protected.displayName = 'Stack.Protected';
+ Stack.Protected = Protected;
+ return {Stack};
+});
+jest.mock('expo-font', () => ({useFonts: () => [true]}));
+jest.mock('expo-splash-screen', () => ({preventAutoHideAsync: jest.fn(), hideAsync: jest.fn()}));
+jest.mock('@tanstack/react-query-persist-client', () => ({PersistQueryClientProvider: ({children}: {children: unknown}) => children}));
+jest.mock('@/contexts/auth-store', () => ({AuthProvider: ({children}: {children: unknown}) => children, useAuth: () => ({loading: false, session: mockSignedIn ? {user: {id: 'owner'}} : null})}));
+jest.mock('@/contexts/eiyu-store', () => ({EiyuProvider: ({children}: {children: unknown}) => children, queryClient: {}, persister: {}}));
+jest.mock('@/contexts/gym-store', () => ({GymProvider: ({children}: {children: unknown}) => children}));
+jest.mock('@/contexts/theme-store', () => ({AppThemeProvider: ({children}: {children: unknown}) => children}));
+jest.mock('@/components/eiyu/themed-shell', () => ({ThemedShell: ({children}: {children: unknown}) => children}));
+jest.mock('@/components/eiyu/dev-ball', () => ({DevBall: () => null}));
+jest.mock('@/lib/app-focus', () => ({installAppFocus: jest.fn()}));
+jest.mock('@/lib/notification-taps', () => ({useNotificationTaps: jest.fn()}));
+
+it.each([false, true])('keeps recovery reachable without making it the auth fallback (signed in: %s)', async signedIn => {
+ mockSignedIn = signedIn; await render(<RootLayout/>);
+ const names = screen.getAllByTestId('available-route').map(node => node.props.children);
+ expect(names).toContain('auth/recovery');
+ expect(names[0]).toBe(signedIn ? '(tabs)' : 'auth');
+ expect(names).not.toContain(signedIn ? 'auth' : '(tabs)');
+});

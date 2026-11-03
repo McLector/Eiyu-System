@@ -1,6 +1,7 @@
 import type { AuthError, Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { deviceTimeZone } from '@eiyu/shared';
+import { deviceTimeZone, formatError, initialBirthdayMetadata } from '@eiyu/shared';
 
 import { supabase } from '@/lib/supabase';
 
@@ -14,7 +15,7 @@ interface AuthStore {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
-  signUp: (email: string, password: string, displayName: string) => Promise<AuthResult>;
+  signUp: (email: string, password: string, displayName: string, birthday: string, ageConsent: boolean) => Promise<AuthResult>;
   signOut: () => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<AuthResult>;
 }
@@ -46,11 +47,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         return { error: error?.message ?? null };
       },
-      signUp: async (email, password, displayName) => {
+      signUp: async (email, password, displayName, birthday, ageConsent) => {
+        let birthdayMetadata: ReturnType<typeof initialBirthdayMetadata>;
+        try {birthdayMetadata = initialBirthdayMetadata(birthday, ageConsent);}
+        catch (err) {return {error: formatError(err)};}
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { display_name: displayName, time_zone: deviceTimeZone() } },
+          options: { data: { display_name: displayName, time_zone: deviceTimeZone(), ...birthdayMetadata } },
         });
         if (error) return { error: error.message };
         return { error: null, needsEmailConfirmation: !data.session };
@@ -60,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error };
       },
       resetPassword: async email => {
-        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: Linking.createURL('auth/recovery'),
+        });
         return { error: error?.message ?? null };
       },
     }),

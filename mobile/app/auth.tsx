@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   authErrorMessage,
@@ -10,6 +11,9 @@ import {
   passwordStrength,
   resetLinkSentMessage,
   validateConfirmPassword,
+  validateSignupBirthday,
+  CHILD_PRIVACY_NOTICE,
+  PROCESSING_NOTICES,
   validateDisplayName,
   validateEmail,
   validatePassword,
@@ -50,8 +54,10 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [confirm, setConfirm] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [ageConsent, setAgeConsent] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,20 +75,24 @@ export default function AuthScreen() {
     setAttempted(false);
     setPassword('');
     setConfirm('');
+    setBirthday('');
     setAcceptedTerms(false);
+    setAgeConsent(false);
   };
 
   const fieldErrors = useMemo(
     () => ({
       name: mode === 'signup' ? validateDisplayName(name) : null,
+      birthday: mode === 'signup' ? validateSignupBirthday(birthday) : null,
       email: validateEmail(email),
       password: mode !== 'forgot' ? validatePassword(password) : null,
       confirm: mode === 'signup' ? validateConfirmPassword(password, confirm) : null,
     }),
-    [mode, name, email, password, confirm],
+    [mode, name, birthday, email, password, confirm],
   );
   const termsMissing = mode === 'signup' && !acceptedTerms;
-  const valid = !Object.values(fieldErrors).some(Boolean) && !termsMissing;
+  const ageConsentMissing = mode === 'signup' && !ageConsent;
+  const valid = !Object.values(fieldErrors).some(Boolean) && !termsMissing && !ageConsentMissing;
   const shown = (key: keyof typeof fieldErrors) => (attempted ? fieldErrors[key] ?? undefined : undefined);
 
   const score = passwordStrength(mode === 'signup' ? password : '');
@@ -103,7 +113,7 @@ export default function AuthScreen() {
         return;
       }
       if (mode === 'signup') {
-        const { error: err, needsEmailConfirmation } = await signUp(email.trim(), password, normalizeNameBoundaries(name));
+        const { error: err, needsEmailConfirmation } = await signUp(email.trim(), password, normalizeNameBoundaries(name), birthday, ageConsent);
         if (err) setError(authErrorMessage('signup', err));
         // With no confirmation needed the session arrives and the protected stack moves to the tabs by itself.
         else if (needsEmailConfirmation) setNotice({ icon: 'check', title: 'ALMOST THERE', message: confirmEmailMessage(email.trim()) });
@@ -135,8 +145,8 @@ export default function AuthScreen() {
             ]}>
             <BrandMark testID="auth-brand-mark" style={[styles.logoGlyph, { fontSize: density.logoGlyph, color: t['accent-text'], fontFamily: fonts.display }]}>英</BrandMark>
           </View>
-          <Text accessibilityRole="header" style={[styles.title, { fontSize: density.titleSize, color: t.text, fontFamily: fonts.display }]}>EIYU SYSTEM</Text>
-          <Text style={[styles.subtitle, { color: t['muted-flat'], fontFamily: fonts.body }]}>{SUBTITLES[mode]}</Text>
+          <AppText accessibilityRole="header" style={[styles.title, { fontSize: density.titleSize, color: t.text, fontFamily: fonts.display }]}>EIYU SYSTEM</AppText>
+          <AppText style={[styles.subtitle, { color: t['muted-flat'], fontFamily: fonts.body }]}>{SUBTITLES[mode]}</AppText>
         </View>
 
         <SignaturePanel
@@ -156,14 +166,27 @@ export default function AuthScreen() {
                   ? <MailIcon size={24} color={t['accent-text']} />
                   : <CheckIcon size={24} color={t.success} />}
               </View>
-              <Text accessibilityRole="header" style={[styles.noticeTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{notice.title}</Text>
-              <Text style={[styles.noticeBody, { color: t['muted-flat'], fontFamily: fonts.body }]}>{notice.message}</Text>
+              <AppText accessibilityRole="header" style={[styles.noticeTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{notice.title}</AppText>
+              <AppText style={[styles.noticeBody, { color: t['muted-flat'], fontFamily: fonts.body }]}>{notice.message}</AppText>
               <Button variant="secondary" label="BACK TO LOGIN" onPress={backToLogin} style={styles.full} />
             </View>
           ) : (
             <View testID="auth-form" style={[styles.form, { gap: density.formGap }]}>
               {mode === 'signup' ? (
                 <Field label="Display name" placeholder="Kaito Mizuru" autoCapitalize="words" value={name} onChangeText={setName} error={shown('name')} />
+              ) : null}
+              {mode === 'signup' ? (
+                <View style={{gap: 8}}>
+                  <AppText selectable style={[styles.noticeBody, {color: t['muted-flat'], fontFamily: fonts.body}]}>{CHILD_PRIVACY_NOTICE}</AppText>
+                  <AppText selectable style={[styles.noticeBody, {color: t['muted-flat'], fontFamily: fonts.body}]}>{PROCESSING_NOTICES['age-screening'].body}</AppText>
+                  <Pressable accessibilityRole="checkbox" accessibilityLabel={PROCESSING_NOTICES['age-screening'].label}
+                    accessibilityState={{checked: ageConsent}} onPress={() => setAgeConsent(v => !v)} style={[styles.terms, {minHeight: 48, alignItems: 'center'}]}>
+                    <AppText aria-hidden style={{color: t['accent-text'], fontSize: 22}}>{ageConsent ? '☑' : '☐'}</AppText>
+                    <AppText style={[styles.termsText, {flex: 1, color: t['muted-flat'], fontFamily: fonts.body}]}>{PROCESSING_NOTICES['age-screening'].label}</AppText>
+                  </Pressable>
+                  {attempted && ageConsentMissing ? <AppText accessibilityRole="alert" style={[styles.note, {color: t.danger}]}>Review the birthday notice and give specific permission before signup.</AppText> : null}
+                <Field label="Birthday" placeholder="YYYY-MM-DD" autoCapitalize="none" value={birthday} onChangeText={setBirthday} error={shown('birthday')} />
+                </View>
               ) : null}
               <Field
                 label="Email address"
@@ -193,9 +216,9 @@ export default function AuthScreen() {
                           <View key={seg} style={[styles.strengthSeg, { backgroundColor: seg <= score ? strengthColor : t['glass-border'] }]} />
                         ))}
                       </View>
-                      <Text style={[styles.strengthLabel, { color: strengthColor, fontFamily: fonts.body }]}>
+                      <AppText style={[styles.strengthLabel, { color: strengthColor, fontFamily: fonts.body }]}>
                         {tooShort ? 'Too short' : STRENGTH_LABELS[score]}
-                      </Text>
+                      </AppText>
                     </View>
                   ) : null}
                 </View>
@@ -231,31 +254,31 @@ export default function AuthScreen() {
                       </View>
                     </Pressable>
                     <View style={styles.termsCopy}>
-                      <Text style={[styles.termsText, { color: t['muted-flat'], fontFamily: fonts.body }]}>I agree to the</Text>
+                      <AppText style={[styles.termsText, { color: t['muted-flat'], fontFamily: fonts.body }]}>I agree to the</AppText>
                       <View style={styles.links}>
                         <Pressable role="link" aria-label="Privacy Policy" onPress={() => setLegalDocument('privacy')} style={styles.linkTarget}>
-                          <Text style={linkStyle}>Privacy Policy</Text>
+                          <AppText style={linkStyle}>Privacy Policy</AppText>
                         </Pressable>
-                        <Text style={[styles.termsText, { color: t['muted-flat'], fontFamily: fonts.body }]}>and</Text>
+                        <AppText style={[styles.termsText, { color: t['muted-flat'], fontFamily: fonts.body }]}>and</AppText>
                         <Pressable role="link" aria-label="Terms of Use" onPress={() => setLegalDocument('terms')} style={styles.linkTarget}>
-                          <Text style={linkStyle}>Terms of Use</Text>
+                          <AppText style={linkStyle}>Terms of Use</AppText>
                         </Pressable>
                       </View>
                     </View>
                   </View>
                   {attempted && termsMissing ? (
-                    <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>
+                    <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>
                       Accept the Privacy Policy and Terms to continue.
-                    </Text>
+                    </AppText>
                   ) : null}
                 </View>
               ) : null}
               {mode === 'login' ? (
                 <Pressable accessibilityRole="button" accessibilityLabel="Forgot password?" onPress={() => switchMode('forgot')} style={styles.forgot}>
-                  <Text style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>Forgot password?</Text>
+                  <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>Forgot password?</AppText>
                 </Pressable>
               ) : null}
-              {error ? <Text accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</Text> : null}
+              {error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
               <Button
                 variant="primary"
                 label={submitting ? 'WORKING…' : SUBMIT_LABELS[mode]}
@@ -270,13 +293,13 @@ export default function AuthScreen() {
         {!notice ? (
           <View style={[styles.switchRow, { marginTop: density.switchGap }]}>
             {mode !== 'forgot' ? (
-              <Text style={[styles.switchText, { color: t['dim-flat'], fontFamily: fonts.body }]}>{mode === 'login' ? 'New adventurer?' : 'Already enrolled?'}</Text>
+              <AppText style={[styles.switchText, { color: t['dim-flat'], fontFamily: fonts.body }]}>{mode === 'login' ? 'New adventurer?' : 'Already enrolled?'}</AppText>
             ) : null}
             <Pressable
               accessibilityRole="button"
               onPress={() => switchMode(mode === 'login' ? 'signup' : 'login')}
               style={styles.linkTarget}>
-              <Text style={linkStyle}>{mode === 'login' ? 'Register' : mode === 'signup' ? 'Sign in' : 'Back to login'}</Text>
+              <AppText style={linkStyle}>{mode === 'login' ? 'Register' : mode === 'signup' ? 'Sign in' : 'Back to login'}</AppText>
             </Pressable>
           </View>
         ) : null}
@@ -290,8 +313,8 @@ export default function AuthScreen() {
         testID="legal-sheet">
         {activeLegalDocument?.sections.map(section => (
           <View key={section.heading} style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{section.heading}</Text>
-            <Text selectable style={[styles.sectionBody, { color: t['muted-flat'], fontFamily: fonts.body }]}>{section.body}</Text>
+            <AppText style={[styles.sectionTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{section.heading}</AppText>
+            <AppText selectable style={[styles.sectionBody, { color: t['muted-flat'], fontFamily: fonts.body }]}>{section.body}</AppText>
           </View>
         ))}
       </Sheet>
