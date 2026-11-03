@@ -1,13 +1,16 @@
 import { accountDateKey } from '@eiyu/shared';
-import type { Quest } from '@eiyu/shared';
+import type { Quest, TrackerAccess, TrackerRevision, TrackerTarget, TrackerTargetSnapshot } from '@eiyu/shared';
 import {
   FAILURE_MESSAGES,
+  HELD_ACTION_DAY_ENDED_MESSAGE,
   classifyError,
   decodeQueue,
   encodeQueue,
   enqueue as enqueueEntry,
   expireEntries,
+  expireHeldEntries,
   isExpired,
+  isHeld,
   resolveUncertain,
   reviveEntries,
   type FailureReason,
@@ -37,6 +40,11 @@ export interface WriteQueueDeps {
   timeZone: () => string | null;
   /** null = unknown, which is treated as "try". */
   isOnline: () => boolean | null;
+  /**
+   * Fresh owner-bound read of the account's tracker permission and of the entry's habit. Throws when permission
+   * cannot be established; a habit that no longer exists is reported by leaving it out of `targets`.
+   */
+  checkProcessingAccess: (entry: QueueEntry) => Promise<{ access: TrackerAccess; targets: TrackerTarget[] }>;
   newId: () => string;
   /** Performs the RPC for one entry and returns what it answered (the progress count). Throws on any failure. */
   send: (entry: QueueEntry) => Promise<unknown>;
@@ -55,22 +63,41 @@ export interface EnqueueRequest {
   /** Progress only: the count shown when the user tapped. */
   base?: number;
   label?: string;
+  /** What the user was allowed to do when acting. Only its revision is stored. */
+  trackerAccess: TrackerAccess;
+  /** The input kind of the habit as the user saw it. */
+  trackerTargets: TrackerTargetSnapshot[];
 }
 
 export interface WriteQueueEngine {
   load(): Promise<void>;
   getEntries(): QueueEntry[];
   subscribe(listener: (entries: QueueEntry[]) => void): () => void;
-  enqueue(request: EnqueueRequest): void;
+  /** true = accepted and persisted; false = refused (a known denial or an unusable request): nothing is stored. */
+  enqueue(request: EnqueueRequest): boolean;
   flush(): Promise<void>;
   /** Expires entries from an earlier account day (the midnight tick). */
   sweep(): void;
-  retry(id: string): boolean;
+  /**
+   * Puts a failed entry back in line. A held one is first checked against current owner, date and permission and
+   * reconciled before it is resent. False when it cannot be retried; the entry is then left exactly as it was.
+   */
+  retry(id: string): Promise<boolean>;
   dismiss(id: string): QueueEntry | undefined;
   dispose(): void;
 }
 
 export const writeQueueKey = (userId: string) => `eiyu.writeQueue.v1.${userId}`;
+
+/** A fresh four-field copy: only the revision is stored, never the capability it came from. */
+const revisionOf = (r: TrackerRevision): TrackerRevision =>
+  ({ userId: r.userId, ageVersion: r.ageVersion, consentVersion: r.consentVersion, authorityVersion: r.authorityVersion });
+const snapshotOf = (t: TrackerTargetSnapshot): TrackerTargetSnapshot => ({ kind: t.kind, id: t.id, inputKind: t.inputKind });
+const habitSnapshot = (entry: { habitId: string; trackerTargets?: TrackerTargetSnapshot[] }) =>
+  entry.trackerTargets?.find(t => t.kind === 'habit' && t.id === entry.habitId);
+/** Holds with these reasons keep later actions for the same habit waiting; a held one that merely expired does not. */
+const isActiveHold = (entry: QueueEntry) =>
+  entry.status === 'failed' && (entry.failure?.reason === 'tracker-paused' || entry.failure?.reason === 'purpose-paused');
 
 export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
   const key = writeQueueKey(deps.userId);
@@ -91,10 +118,13 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     } catch {
       raw = null;
     }
-    const revived = reviveEntries(decodeQueue(raw, deps.userId), deps.now(), deps.timeZone());
+    // Held entries without a stamp get one now, so an old queue never expires the moment it is first read.
+    const loaded = expireHeldEntries(decodeQueue(raw, deps.userId, deps.now().getTime()), deps.now().getTime());
+    const revived = reviveEntries(loaded.entries, deps.now(), deps.timeZone());
     const known = new Set(revived.map(entry => entry.id));
     entries = [...revived, ...entries.filter(entry => !known.has(entry.id))];
     emit();
+    for (const notice of loaded.expired) deps.onFailed?.(notice);
   })();
   void loading.then(() => persist());
 
@@ -131,7 +161,8 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
 
   const remove = (id: string) => commit(entries.filter(entry => entry.id !== id));
 
-  const fail = (entry: QueueEntry, reason: FailureReason, message: string = FAILURE_MESSAGES[reason]) => {
+  const fail = (entry: QueueEntry, reason: FailureReason, message: string =
+    reason === 'day-passed' && isHeld(entry) ? HELD_ACTION_DAY_ENDED_MESSAGE : FAILURE_MESSAGES[reason]) => {
     patch(entry.id, { status: 'failed', failure: { reason, message } });
     deps.onFailed?.({ ...entry, status: 'failed', failure: { reason, message } });
   };
@@ -145,8 +176,42 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     remove(entry.id);
   };
 
-  const nextEligible = (): QueueEntry | undefined =>
-    entries.find(entry => entry.status === 'pending' || entry.status === 'uncertain');
+  // Nothing jumps over an earlier held action of the same habit: it would be applied out of order after Retry.
+  const nextEligible = (): QueueEntry | undefined => {
+    const heldHabits = new Set<string>();
+    for (const entry of entries) {
+      if (isActiveHold(entry)) heldHabits.add(entry.habitId);
+      else if ((entry.status === 'pending' || entry.status === 'uncertain') && !heldHabits.has(entry.habitId)) return entry;
+    }
+    return undefined;
+  };
+
+  /** Holds one entry for a purpose, revision or target reason. Its captured revision is left untouched. */
+  const holdForProcessing = (entry: QueueEntry) => {
+    const failure = { reason: 'purpose-paused' as const, message: FAILURE_MESSAGES['purpose-paused'] };
+    const heldAt = entry.heldAt ?? deps.now().getTime();
+    patch(entry.id, { status: 'failed', heldForProcessingPause: true, heldAt, failure });
+    deps.onFailed?.({ ...entry, status: 'failed', heldForProcessingPause: true, heldAt, failure });
+  };
+
+  /** True when the habit is gone, was reclassified, cannot be written, or custom permission is missing for it. */
+  const targetBlocked = (entry: QueueEntry, access: TrackerAccess, targets: readonly TrackerTarget[]): boolean => {
+    const captured = habitSnapshot(entry);
+    const live = targets.find(t => t.kind === 'habit' && t.id === entry.habitId);
+    if (!captured || !live || live.inputKind !== captured.inputKind || !live.canWrite) return true;
+    return captured.inputKind === 'custom' && !access.canWriteCustom;
+  };
+
+  const holdForTrackerPause = () => {
+    const held = entries.filter(entry => entry.status !== 'failed');
+    const stamp = deps.now().getTime();
+    commit(entries.map(entry => entry.status !== 'failed' ? {
+      ...entry, status: 'failed' as const, heldForTrackerPause: true as const, heldAt: entry.heldAt ?? stamp,
+      failure: { reason: 'tracker-paused' as const, message: FAILURE_MESSAGES['tracker-paused'] },
+    } : entry));
+    for (const entry of held) deps.onFailed?.({ ...entry, status: 'failed', heldForTrackerPause: true, heldAt: entry.heldAt ?? stamp,
+      failure: { reason: 'tracker-paused', message: FAILURE_MESSAGES['tracker-paused'] } });
+  };
 
   /** Returns false when the run should stop (offline or auth), true to carry on with the next entry. */
   const process = async (entry: QueueEntry): Promise<boolean> => {
@@ -169,12 +234,18 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
       }
     }
 
+    const zone = deps.timeZone();
+    if (zone === null) return false;
+    if (isExpired(entry, deps.now(), zone)) { fail(entry, 'day-passed'); return true; }
     const attempts = entry.attempts + 1;
     patch(entry.id, { status: 'sending', attempts });
     await persist();
     // Signed out or switched account while the write was being recorded: it stays `sending` on disk, which the next
     // launch settles as uncertain, and nothing goes out under whoever is signed in now.
     if (disposed) return false;
+    const sendZone = deps.timeZone();
+    if (sendZone === null || deps.isOnline() === false) { patch(entry.id, { status: 'uncertain' }); return false; }
+    if (isExpired(entry, deps.now(), sendZone)) { fail(entry, 'day-passed'); return true; }
     const sending: QueueEntry = { ...entry, status: 'sending', attempts };
     let result: unknown;
     try {
@@ -193,6 +264,14 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
           await applied(sending);
           return true;
         case 'failed':
+          if (outcome.reason === 'tracker-paused') {
+            holdForTrackerPause();
+            return false;
+          }
+          if (outcome.reason === 'purpose-paused') {
+            holdForProcessing(sending);
+            return true;
+          }
           fail(sending, outcome.reason, outcome.message);
           return true;
         case 'retry':
@@ -212,7 +291,21 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
       if (deps.timeZone() === null || deps.isOnline() === false) return;
       const entry = nextEligible();
       if (!entry) return;
-      if (!(await process(entry))) return;
+      // An action with no captured revision or target has no permission to rely on, and is never stamped with a new one.
+      if (!entry.trackerRevision || !habitSnapshot(entry)) { holdForProcessing(entry); continue; }
+      let fresh: Awaited<ReturnType<WriteQueueDeps['checkProcessingAccess']>>;
+      try { fresh = await deps.checkProcessingAccess(entry); } catch { return; }
+      if (disposed) return;
+      // Access that is not this account's is never adopted.
+      if (fresh?.access?.revision?.userId !== deps.userId) return;
+      if (!fresh.access.canWriteBasic) { holdForTrackerPause(); return; }
+      // The status request may cross midnight or a timezone change.
+      sweep();
+      if (deps.timeZone() === null || deps.isOnline() === false) return;
+      const current = entries.find(candidate => candidate.id === entry.id && (candidate.status === 'pending' || candidate.status === 'uncertain'));
+      if (!current) continue;
+      if (targetBlocked(current, fresh.access, fresh.targets)) { holdForProcessing(current); continue; }
+      if (!(await process(current))) return;
     }
   };
 
@@ -235,8 +328,11 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
   }
 
   function sweep() {
-    const next = expireEntries(entries, deps.now(), deps.timeZone());
+    // Held copies leave the device after 30 days; this needs no account zone, so it runs even before the profile loads.
+    const held = expireHeldEntries(entries, deps.now().getTime());
+    const next = expireEntries(held.entries, deps.now(), deps.timeZone());
     if (next !== entries) commit(next);
+    for (const notice of held.expired) deps.onFailed?.(notice);
   }
 
   return {
@@ -248,7 +344,14 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
     },
     enqueue(request) {
       const timeZone = deps.timeZone();
-      if (timeZone === null) return;
+      if (timeZone === null) return false;
+      const access = request.trackerAccess;
+      // A known denial stores nothing, not even the label. Another account's grant is never adopted.
+      if (!access || access.revision?.userId !== deps.userId || !access.canWriteBasic) return false;
+      const targets = Array.isArray(request.trackerTargets) ? request.trackerTargets : [];
+      const habit = targets.find(t => t.kind === 'habit' && t.id === request.habitId);
+      if (!habit) return false;
+      if (targets.some(t => t.inputKind === 'custom') && !access.canWriteCustom) return false;
       commit(enqueueEntry(entries, {
         id: deps.newId(),
         userId: deps.userId,
@@ -259,16 +362,44 @@ export function createWriteQueueEngine(deps: WriteQueueDeps): WriteQueueEngine {
         base: request.base,
         label: request.label,
         now: deps.now().getTime(),
+        trackerRevision: revisionOf(access.revision),
+        trackerTargets: [snapshotOf(habit)],
       }));
+      return true;
     },
     flush,
     sweep,
-    retry(id) {
+    async retry(id) {
+      const retryable = (candidate: QueueEntry | undefined): candidate is QueueEntry =>
+        !!candidate && candidate.userId === deps.userId && candidate.status === 'failed' && candidate.failure?.reason !== 'day-passed';
+      const pastDay = (candidate: QueueEntry) => {
+        const zone = deps.timeZone();
+        return zone !== null && isExpired(candidate, deps.now(), zone);
+      };
+      sweep();
       const entry = entries.find(candidate => candidate.id === id);
-      if (!entry || entry.status !== 'failed' || entry.failure?.reason === 'day-passed') return false;
-      const timeZone = deps.timeZone();
-      if (timeZone !== null && isExpired(entry, deps.now(), timeZone)) return false;
-      patch(id, { status: 'pending', attempts: 0, failure: undefined });
+      if (!retryable(entry) || pastDay(entry)) return false;
+      let fresh: Awaited<ReturnType<WriteQueueDeps['checkProcessingAccess']>>;
+      try { fresh = await deps.checkProcessingAccess(entry); } catch { return false; }
+      if (disposed) return false;
+      // The check can take a while: judge the entry as it is now, and the day as it is now.
+      const current = entries.find(candidate => candidate.id === id);
+      if (!retryable(current) || pastDay(current)) return false;
+      const access = fresh?.access;
+      if (access?.revision?.userId !== deps.userId || !access.canWriteBasic) return false;
+      const live = fresh.targets?.find(t => t.kind === 'habit' && t.id === current.habitId);
+      if (!live || !live.canWrite) return false;
+      // Renewing is only for an unchanged kind. A record that became custom needs review, never adoption; an entry
+      // that never captured a kind can only be renewed as basic.
+      const captured = habitSnapshot(current);
+      if ((captured ? captured.inputKind : 'basic') !== live.inputKind) return false;
+      if (live.inputKind === 'custom' && !access.canWriteCustom) return false;
+      // A held request may already have committed before the pause. Reconcile
+      // even apparently pending entries rather than losing that uncertainty.
+      patch(id, {
+        status: isHeld(current) ? 'uncertain' : 'pending', attempts: 0, failure: undefined,
+        trackerRevision: revisionOf(access.revision), trackerTargets: [snapshotOf(live)],
+      });
       return true;
     },
     dismiss(id) {

@@ -87,3 +87,34 @@ describe('SyncNotice', () => {
     expect(screen.queryByText('Synced')).toBeNull();
   });
 });
+
+describe('SyncNotice expired-change notice', () => {
+  const MESSAGE = 'A change that was kept while permission was paused has expired after 30 days and was removed from this device. It was not saved.';
+
+  it('shows the message as an alert with a Dismiss button, even with nothing waiting or failed', async () => {
+    const props = await show({ expiredNotice: MESSAGE, onDismissExpired: jest.fn() });
+    expect(screen.getByText(MESSAGE)).toBeOnTheScreen();
+    expect(screen.getByTestId('sync-notice').props.accessibilityRole).toBe('alert');
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Dismiss expired change notice' }));
+    expect(props.onDismissExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows it beside the waiting and not-saved lines', async () => {
+    await show({ expiredNotice: MESSAGE, onDismissExpired: jest.fn(), waiting: 2, failed: 1 });
+    expect(screen.getByText(MESSAGE)).toBeOnTheScreen();
+    expect(screen.getByText('1 change not saved')).toBeOnTheScreen();
+    expect(screen.getByText('2 changes waiting to sync')).toBeOnTheScreen();
+  });
+
+  it('renders nothing for a null or empty notice', async () => {
+    await show({ expiredNotice: null });
+    expect(screen.queryByTestId('sync-notice')).toBeNull();
+    await show({ expiredNotice: '' });
+    expect(screen.queryByTestId('sync-notice')).toBeNull();
+  });
+
+  it('does not show a Dismiss button without a notice', async () => {
+    await show({ waiting: 1 });
+    expect(screen.queryByRole('button', { name: 'Dismiss expired change notice' })).toBeNull();
+  });
+});

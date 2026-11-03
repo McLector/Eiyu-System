@@ -1,10 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { AppState } from 'react-native';
-import type { Quest } from '@eiyu/shared';
+import { fetchTrackerAccess, fetchTrackerTargets, type Quest, type TrackerAccess, type TrackerTarget } from '@eiyu/shared';
 
 import { encodeQueue, type QueueEntry } from '../write-queue';
 import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
+
+jest.mock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'), fetchTrackerAccess: jest.fn(), fetchTrackerTargets: jest.fn() }));
+const mockAccess = fetchTrackerAccess as jest.Mock;
+const mockTargets = fetchTrackerTargets as jest.Mock;
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,13 +24,27 @@ let appStateSpy: jest.SpyInstance;
 
 const quest = { id: 'h1', completed: false, targetCount: null, progressCount: 0 } as Quest;
 
+const REVISION = { userId: 'user-1', ageVersion: 1, consentVersion: 1, authorityVersion: 1 };
+const snap = (id: string, inputKind: 'basic' | 'custom' = 'basic') => ({ kind: 'habit' as const, id, inputKind });
+function access(overrides: Partial<TrackerAccess> = {}): TrackerAccess {
+  return {
+    contractVersion: 1, revision: REVISION, canWriteBasic: true, customConsent: false, fitnessConsent: false,
+    customAuthorityState: 'not-required', fitnessAuthorityState: 'not-required', canWriteCustom: false, canWriteFitness: false,
+    ...overrides,
+  };
+}
+const target = (id: string, overrides: Partial<TrackerTarget> = {}): TrackerTarget => ({ kind: 'habit', id, inputKind: 'basic', canWrite: true, ...overrides });
+/** A request as the store would build it: the user acted on a writable basic quest. */
+const req = (request: { kind: 'complete' | 'undo' | 'progress' | 'recovery'; habitId: string; delta?: number; base?: number; label?: string }) =>
+  ({ trackerAccess: access(), trackerTargets: [snap(request.habitId)], ...request });
+
 /** The hook finishes its async setup (connectivity read, queue load) after mount; a loaded machine can take seconds. */
 const WAIT = { timeout: 5000 };
 
 function stored(overrides: Partial<QueueEntry> = {}): QueueEntry {
   return {
     id: 'stored-1', userId: 'user-1', kind: 'complete', habitId: 'h1', accountDate: new Date().toISOString().slice(0, 10),
-    createdAt: 1, attempts: 0, status: 'pending', ...overrides,
+    createdAt: 1, attempts: 0, status: 'pending', trackerRevision: REVISION, trackerTargets: [snap('h1')], ...overrides,
   };
 }
 
@@ -42,6 +60,8 @@ function options(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(async () => {
+  mockAccess.mockReset().mockImplementation(async (owner: string) => access({ revision: { ...REVISION, userId: owner } }));
+  mockTargets.mockReset().mockImplementation(async (_kind: string, ids: string[]) => ids.map(id => target(id)));
   networkHandlers = [];
   appStateHandlers = [];
   removeNetwork.mockClear();
@@ -60,11 +80,108 @@ beforeEach(async () => {
 afterEach(() => { appStateSpy.mockRestore(); });
 
 describe('useWriteQueue', () => {
+  it.each([
+    ['access cannot be read', () => mockAccess.mockRejectedValue(new Error('Tracker access unavailable.'))],
+    ['access belongs to someone else', () => mockAccess.mockResolvedValue(access({ revision: { ...REVISION, userId: 'someone-else' } }))],
+    ['the target read is unavailable', () => mockTargets.mockRejectedValue(new Error('Tracker access unavailable.'))],
+  ])('sends nothing and keeps the entry when %s', async (_name, arrange) => {
+    const opts = options();
+    const { result } = await renderHook(() => useWriteQueue(opts));
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); });
+    arrange();
+    await act(async () => { await result.current.flush(); });
+    expect(mockAccess).toHaveBeenCalled();
+    expect(opts.send).not.toHaveBeenCalled();
+    expect(result.current.entries).toEqual([expect.objectContaining({ status: 'pending' })]);
+  });
+
+  it('reads access and the habit for the signed-in owner, fresh for each entry', async () => {
+    const opts = options();
+    const { result } = await renderHook(() => useWriteQueue(opts));
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); await result.current.flush(); });
+    expect(mockAccess).toHaveBeenCalledWith('user-1');
+    expect(mockTargets).toHaveBeenCalledWith('habit', ['h1'], 'user-1');
+    expect(opts.send).toHaveBeenCalledWith(expect.objectContaining({ trackerRevision: REVISION, trackerTargets: [snap('h1')] }));
+  });
+
+  it('shows a retained failed action when the server reports the under12 pause', async () => {
+    const opts = options();
+    const { result } = await renderHook(() => useWriteQueue(opts));
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); });
+    mockAccess.mockResolvedValue(access({ canWriteBasic: false }));
+    await act(async () => { await result.current.flush(); });
+    expect(opts.send).not.toHaveBeenCalled();
+    expect(result.current.entries[0]).toEqual(expect.objectContaining({ status: 'failed', failure: expect.objectContaining({ reason: 'tracker-paused' }) }));
+  });
+
+  it('holds an entry whose habit no longer exists, but only for the server refusal that says so', async () => {
+    const opts = options();
+    const { result } = await renderHook(() => useWriteQueue(opts));
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); });
+    mockTargets.mockRejectedValue(Object.assign(new Error('Tracker target unavailable.'), { code: '42501' }));
+    await act(async () => { await result.current.flush(); });
+    expect(opts.send).not.toHaveBeenCalled();
+    expect(result.current.entries[0]).toEqual(expect.objectContaining({ status: 'failed', heldForProcessingPause: true,
+      failure: expect.objectContaining({ reason: 'purpose-paused' }) }));
+  });
+
+  it('returns whether a request was accepted, and refuses a known denial without storing it', async () => {
+    const opts = options();
+    const { result } = await renderHook(() => useWriteQueue(opts));
+    let accepted: boolean | undefined; let refused: boolean | undefined;
+    await act(async () => {
+      accepted = result.current.enqueue(req({ kind: 'complete', habitId: 'h1' }));
+      refused = result.current.enqueue({ ...req({ kind: 'complete', habitId: 'h2', label: 'Private' }), trackerAccess: access({ canWriteBasic: false }) });
+    });
+    expect([accepted, refused]).toEqual([true, false]);
+    expect(result.current.entries.map(e => e.habitId)).toEqual(['h1']);
+  });
+
+  it('retry resolves true and drains the renewed entry, but does not drain a refused one', async () => {
+    const held: QueueEntry = stored({ status: 'failed', heldForProcessingPause: true, failure: { reason: 'purpose-paused', message: 'x' } });
+    await AsyncStorage.setItem('eiyu.writeQueue.v1.user-1', encodeQueue([held]));
+    const opts = options();
+    const { result } = await renderHook(() => useWriteQueue(opts));
+    await waitFor(() => expect(result.current.entries).toHaveLength(1), WAIT);
+    expect(opts.send).not.toHaveBeenCalled();
+    mockTargets.mockResolvedValue([target('h1', { inputKind: 'custom' })]);
+    let refused: boolean | undefined;
+    await act(async () => { refused = await result.current.retry('stored-1'); });
+    expect(refused).toBe(false);
+    expect(opts.send).not.toHaveBeenCalled();
+    mockTargets.mockResolvedValue([target('h1')]);
+    let accepted: boolean | undefined;
+    await act(async () => { accepted = await result.current.retry('stored-1'); });
+    expect(accepted).toBe(true);
+    await waitFor(() => expect(opts.send).toHaveBeenCalledTimes(1), WAIT);
+    await waitFor(() => expect(result.current.entries).toEqual([]), WAIT);
+  });
+
+  it('resolves retry to false when signed out', async () => {
+    const { result } = await renderHook(() => useWriteQueue(options({ userId: undefined })));
+    await expect(result.current.retry('nope')).resolves.toBe(false);
+  });
+
+  it('asks for permission as the current user after an A to B to A switch, never as the previous one', async () => {
+    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false });
+    const opts = options();
+    const { result, rerender } = await renderHook((props: { userId: string }) => useWriteQueue({ ...opts, userId: props.userId }), { initialProps: { userId: 'user-1' } });
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); });
+    await rerender({ userId: 'user-2' });
+    await rerender({ userId: 'user-1' });
+    mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: true });
+    mockAccess.mockClear(); mockTargets.mockClear();
+    await act(async () => { networkHandlers.forEach(handler => handler({ isConnected: true })); });
+    await waitFor(() => expect(opts.send).toHaveBeenCalledTimes(1), WAIT);
+    expect(mockAccess.mock.calls.every(call => call[0] === 'user-1')).toBe(true);
+    expect(mockTargets.mock.calls.every(call => call[2] === 'user-1')).toBe(true);
+    expect(opts.send).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1' }));
+  });
   it('exposes no entries and no engine when signed out', async () => {
     const opts = options({ userId: undefined });
     const { result } = await renderHook(() => useWriteQueue(opts));
     expect(result.current.entries).toEqual([]);
-    expect(() => result.current.enqueue({ kind: 'complete', habitId: 'h1' })).not.toThrow();
+    expect(() => result.current.enqueue(req({ kind: 'complete', habitId: 'h1' }))).not.toThrow();
     expect(opts.send).not.toHaveBeenCalled();
   });
 
@@ -84,7 +201,7 @@ describe('useWriteQueue', () => {
   it('sends an enqueued write and shows it until the server confirms', async () => {
     const opts = options();
     const { result } = await renderHook(() => useWriteQueue(opts));
-    await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h1' }); await result.current.flush(); });
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); await result.current.flush(); });
     expect(opts.send).toHaveBeenCalledWith(expect.objectContaining({ kind: 'complete', habitId: 'h1' }));
     expect(opts.onApplied).toHaveBeenCalledTimes(1);
     expect(result.current.entries).toEqual([]);
@@ -96,7 +213,7 @@ describe('useWriteQueue', () => {
     const opts = options();
     const { result } = await renderHook(() => useWriteQueue(opts));
     await waitFor(() => expect(result.current.offline).toBe(true), WAIT);
-    await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h1' }); await result.current.flush(); });
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); await result.current.flush(); });
     expect(opts.send).not.toHaveBeenCalled();
     expect(result.current.entries).toHaveLength(1);
     await act(async () => { networkHandlers.forEach(handler => handler({ isConnected: true })); });
@@ -108,7 +225,7 @@ describe('useWriteQueue', () => {
     mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: true });
     const opts = options({ send: jest.fn().mockRejectedValueOnce({ message: 'JWT expired', code: 'PGRST301' }).mockResolvedValue(undefined) });
     const { result } = await renderHook(() => useWriteQueue(opts));
-    await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h1' }); await result.current.flush(); });
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); await result.current.flush(); });
     expect(opts.send).toHaveBeenCalledTimes(1);
     await act(async () => { appStateHandlers.forEach(handler => handler('background')); });
     expect(opts.send).toHaveBeenCalledTimes(1);
@@ -121,7 +238,7 @@ describe('useWriteQueue', () => {
     const second = options();
     const { result, rerender } = await renderHook((props: { opts: ReturnType<typeof options> }) => useWriteQueue(props.opts), { initialProps: { opts: first } });
     await rerender({ opts: second });
-    await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h1' }); await result.current.flush(); });
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); await result.current.flush(); });
     expect(first.send).not.toHaveBeenCalled();
     expect(second.send).toHaveBeenCalledTimes(1);
   });
@@ -130,7 +247,7 @@ describe('useWriteQueue', () => {
     mockNetwork.getNetworkStateAsync.mockResolvedValue({ isConnected: false });
     const opts = options();
     const { result, rerender } = await renderHook((props: { userId: string }) => useWriteQueue({ ...opts, userId: props.userId }), { initialProps: { userId: 'user-1' } });
-    await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h1' }); });
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h1' })); });
     expect(result.current.entries).toHaveLength(1);
     const realGet = AsyncStorage.getItem as jest.Mock;
     const original = realGet.getMockImplementation();
@@ -163,7 +280,7 @@ describe('useWriteQueue', () => {
   it('passes what the request returned to the applied hook', async () => {
     const opts = options({ send: jest.fn(async () => 4) });
     const { result } = await renderHook(() => useWriteQueue(opts));
-    await act(async () => { result.current.enqueue({ kind: 'progress', habitId: 'h1', delta: 1, base: 3 }); await result.current.flush(); });
+    await act(async () => { result.current.enqueue(req({ kind: 'progress', habitId: 'h1', delta: 1, base: 3 })); await result.current.flush(); });
     expect(opts.onApplied).toHaveBeenCalledWith(expect.objectContaining({ kind: 'progress' }), 4);
   });
 
@@ -177,7 +294,7 @@ describe('useWriteQueue', () => {
     realGet.mockImplementation((async (key: string) => { await new Promise<void>(resolve => { release = resolve; }); return original?.(key); }) as never);
     const { result } = await renderHook(() => useWriteQueue(options()));
     await waitFor(() => expect(result.current.offline).toBe(true), WAIT);
-    await act(async () => { result.current.enqueue({ kind: 'complete', habitId: 'h-new' }); });
+    await act(async () => { result.current.enqueue(req({ kind: 'complete', habitId: 'h-new' })); });
     realGet.mockImplementation(original as never);
     await act(async () => { release(); });
     await waitFor(() => expect(result.current.entries.map(e => e.habitId)).toEqual(['h-old', 'h-new']), WAIT);

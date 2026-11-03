@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Network from 'expo-network';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import type { Quest } from '@eiyu/shared';
+import { fetchTrackerAccess, fetchTrackerTargets, type Quest, type TrackerTarget } from '@eiyu/shared';
 
 import { newRequestId } from '@/lib/request-id';
 import { createWriteQueueEngine, type EnqueueRequest, type WriteQueueEngine } from '@/lib/write-queue-engine';
@@ -22,12 +22,16 @@ export interface WriteQueue {
   entries: QueueEntry[];
   /** True only when the device is known to be offline; unknown counts as online. */
   offline: boolean;
-  enqueue: (request: EnqueueRequest) => void;
+  /** True = accepted and stored; false = refused on a known denial (nothing stored) or while signed out. */
+  enqueue: (request: EnqueueRequest) => boolean;
   flush: () => Promise<void>;
   /** Fails entries from an earlier account day (the midnight tick). */
   sweep: () => void;
-  /** Puts a failed entry back in line and sends it. False when it cannot be retried (its day passed). */
-  retry: (id: string) => boolean;
+  /**
+   * Checks owner, original day and current permission, puts a failed entry back in line and sends it. False when it
+   * cannot be retried (its day passed, permission is missing, or its record became custom); nothing is sent then.
+   */
+  retry: (id: string) => Promise<boolean>;
   dismiss: (id: string) => QueueEntry | undefined;
 }
 
@@ -59,6 +63,18 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
       now: () => new Date(),
       timeZone: () => latest.current.timeZone(),
       isOnline: () => online,
+      checkProcessingAccess: async entry => {
+        const access = await fetchTrackerAccess(userId);
+        let targets: TrackerTarget[];
+        try {
+          targets = await fetchTrackerTargets('habit', [entry.habitId], userId);
+        } catch (error) {
+          // Only the server's own "target unavailable" means the habit is gone; any other failure is not an answer.
+          if (!isTargetUnavailable(error)) throw error;
+          targets = [];
+        }
+        return { access, targets };
+      },
       newId: newRequestId,
       send: entry => latest.current.send(entry),
       readQuest: habitId => latest.current.readQuest(habitId),
@@ -96,12 +112,12 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
     };
   }, [userId]);
 
-  const enqueue = useCallback((request: EnqueueRequest) => engine?.enqueue(request), [engine]);
+  const enqueue = useCallback((request: EnqueueRequest) => engine?.enqueue(request) ?? false, [engine]);
   const flush = useCallback(() => engine?.flush() ?? Promise.resolve(), [engine]);
   const sweep = useCallback(() => engine?.sweep(), [engine]);
   const retry = useCallback(
-    (id: string) => {
-      const retried = engine?.retry(id) ?? false;
+    async (id: string) => {
+      const retried = (await engine?.retry(id)) ?? false;
       if (retried) void engine?.flush();
       return retried;
     },
@@ -114,3 +130,9 @@ export function useWriteQueue(options: UseWriteQueueOptions): WriteQueue {
 }
 
 const EMPTY: QueueEntry[] = [];
+
+function isTargetUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return code === '42501' && typeof message === 'string' && /tracker target unavailable/i.test(message);
+}

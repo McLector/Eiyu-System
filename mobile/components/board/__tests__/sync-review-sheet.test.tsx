@@ -1,4 +1,4 @@
-import { screen, userEvent } from '@testing-library/react-native';
+import { act, screen, userEvent, waitFor } from '@testing-library/react-native';
 
 import type { QueueEntry } from '@/lib/write-queue';
 import { renderWithTheme } from '../../ui/test-theme';
@@ -19,7 +19,7 @@ function failed(overrides: Partial<QueueEntry> = {}): QueueEntry {
   };
 }
 const open = (entries: QueueEntry[], visible = true) => {
-  const props = { visible, entries, onRetry: jest.fn(), onDismiss: jest.fn(), onClose: jest.fn() };
+  const props = { visible, entries, onRetry: jest.fn().mockResolvedValue(true), onDismiss: jest.fn(), onClose: jest.fn() };
   return renderWithTheme(<SyncReviewSheet {...props} />).then(() => props);
 };
 
@@ -55,6 +55,38 @@ describe('SyncReviewSheet', () => {
     expect(props.onRetry).toHaveBeenCalledWith('e2');
     await user.press(screen.getByRole('button', { name: 'Dismiss Morning run' }));
     expect(props.onDismiss).toHaveBeenCalledWith('e1');
+  });
+
+  it('awaits the retry answer: a second press is ignored until it settles', async () => {
+    const props = await open([failed()]);
+    let settle!: (value: boolean) => void;
+    props.onRetry.mockReturnValue(new Promise<boolean>(resolve => { settle = resolve; }));
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: 'Retry Morning run' }));
+    expect(screen.getByRole('button', { name: 'Retry Morning run' })).toBeDisabled();
+    await user.press(screen.getByRole('button', { name: 'Retry Morning run' }));
+    expect(props.onRetry).toHaveBeenCalledTimes(1);
+    await act(async () => { settle(true); });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry Morning run' })).toBeEnabled());
+  });
+
+  it('says so when a retry is refused, and keeps the write for review or dismissal', async () => {
+    const props = await open([failed()]);
+    props.onRetry.mockResolvedValue(false);
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: 'Retry Morning run' }));
+    expect(await screen.findByText(/was not retried/i)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Retry Morning run' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Dismiss Morning run' })).toBeOnTheScreen();
+  });
+
+  it('shows a message instead of an unhandled rejection when the retry throws', async () => {
+    const props = await open([failed()]);
+    props.onRetry.mockRejectedValue(new Error('boom'));
+    const user = userEvent.setup();
+    await user.press(screen.getByRole('button', { name: 'Retry Morning run' }));
+    expect(await screen.findByText(/could not be retried/i)).toBeOnTheScreen();
+    expect(screen.getByRole('button', { name: 'Retry Morning run' })).toBeEnabled();
   });
 
   it('offers no Retry for a write whose day has passed, only Dismiss', async () => {

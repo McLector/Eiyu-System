@@ -1,5 +1,6 @@
 // Deep imports: the widget's headless task reaches this file, and the @eiyu/shared barrel loads the Supabase library.
 import { accountDateKey } from '@eiyu/shared/src/logic/date-utils';
+import type { TrackerRevision, TrackerTargetSnapshot } from '@eiyu/shared/src/data/tracker-access';
 import type { Quest } from '@eiyu/shared/src/types/eiyu';
 
 /**
@@ -13,7 +14,8 @@ import type { Quest } from '@eiyu/shared/src/types/eiyu';
 
 export type QueueKind = 'complete' | 'undo' | 'progress' | 'recovery';
 export type QueueStatus = 'pending' | 'sending' | 'uncertain' | 'failed';
-export type FailureReason = 'day-passed' | 'recovery-closed' | 'not-on-board' | 'progress-changed' | 'server';
+export type FailureReason = 'day-passed' | 'recovery-closed' | 'not-on-board' | 'progress-changed' | 'server'
+  | 'tracker-paused' | 'purpose-paused' | 'hold-expired';
 
 export interface QueueFailure {
   reason: FailureReason;
@@ -37,6 +39,16 @@ export interface QueueEntry {
   attempts: number;
   status: QueueStatus;
   failure?: QueueFailure;
+  /** Retained after Retry so an age-held action never moves beyond its original account day. */
+  heldForTrackerPause?: true;
+  /** Held for a purpose or revision reason. Retained after Retry like `heldForTrackerPause`. */
+  heldForProcessingPause?: true;
+  /** When the entry was first held (ms). A held copy of protected data is removed from the device 30 days after this. */
+  heldAt?: number;
+  /** The revision the user acted under. Only this projection is stored, never the full capability. */
+  trackerRevision?: TrackerRevision;
+  /** The targets and their input kind as the user saw them when acting. */
+  trackerTargets?: TrackerTargetSnapshot[];
 }
 
 export interface EnqueueInput {
@@ -49,15 +61,24 @@ export interface EnqueueInput {
   base?: number;
   label?: string;
   now: number;
+  trackerRevision?: TrackerRevision;
+  trackerTargets?: TrackerTargetSnapshot[];
 }
 
 export const FAILURE_MESSAGES: Record<FailureReason, string> = {
+  'tracker-paused': 'Tracker updates are paused for accounts declared under 12. Your actions are kept. Correct your birthday in Profile or contact privacy@eiyusystem.app. After access returns, choose Retry; original dates still apply.',
   'day-passed': 'Not saved: the day ended while you were offline.',
   'recovery-closed': 'Not saved: the recovery window closed.',
   'not-on-board': "Not saved: this quest is no longer on today's board.",
   'progress-changed': 'Not saved: the progress changed somewhere else.',
   server: 'Not saved: the server refused this update.',
+  'purpose-paused': 'This action is kept but not sent: permission for it, or the quest itself, changed. Choose Retry after permission returns. The original date still applies.',
+  'hold-expired': 'A change that was kept while permission was paused has expired after 30 days and was removed from this device. It was not saved.',
 };
+export const HELD_ACTION_DAY_ENDED_MESSAGE = "Retry unavailable: this action's original account day has ended. Its original date is kept.";
+
+/** Held entries are retained copies of protected data; they leave the device after the same 30 days as server-side read-only retention. */
+export const HELD_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 const KINDS: readonly QueueKind[] = ['complete', 'undo', 'progress', 'recovery'];
 const STATUSES: readonly QueueStatus[] = ['pending', 'sending', 'uncertain', 'failed'];
@@ -83,6 +104,12 @@ function sameSlot(a: QueueEntry, input: EnqueueInput): boolean {
   return a.habitId === input.habitId && a.accountDate === input.accountDate;
 }
 
+function sameRevision(a: TrackerRevision | undefined, b: TrackerRevision | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.userId === b.userId && a.ageVersion === b.ageVersion && a.consentVersion === b.consentVersion
+    && a.authorityVersion === b.authorityVersion;
+}
+
 /** Adds a write, folding it into the habit's newest pending entry where the two cancel or merge. Never mutates. */
 export function enqueue(entries: readonly QueueEntry[], input: EnqueueInput): QueueEntry[] {
   if (input.kind === 'progress' && (typeof input.delta !== 'number' || !Number.isFinite(input.delta))) {
@@ -96,6 +123,8 @@ export function enqueue(entries: readonly QueueEntry[], input: EnqueueInput): Qu
     accountDate: input.accountDate,
     ...(input.kind === 'progress' ? { delta: input.delta, base: input.base } : {}),
     ...(input.label !== undefined ? { label: input.label } : {}),
+    ...(input.trackerRevision !== undefined ? { trackerRevision: input.trackerRevision } : {}),
+    ...(input.trackerTargets !== undefined ? { trackerTargets: input.trackerTargets } : {}),
     createdAt: input.now,
     attempts: 0,
     status: 'pending',
@@ -112,7 +141,8 @@ export function enqueue(entries: readonly QueueEntry[], input: EnqueueInput): Qu
     const opposite = (last.kind === 'complete' && input.kind === 'undo') || (last.kind === 'undo' && input.kind === 'complete');
     if (opposite) return entries.filter((_, index) => index !== lastIndex);
     if (last.kind === 'recovery' && input.kind === 'recovery') return [...entries];
-    if (last.kind === 'progress' && input.kind === 'progress') {
+    // Progress made under a different captured revision starts its own entry: a merged one would be sent under the older.
+    if (last.kind === 'progress' && input.kind === 'progress' && sameRevision(last.trackerRevision, input.trackerRevision)) {
       const delta = (last.delta ?? 0) + (input.delta ?? 0);
       if (delta === 0) return entries.filter((_, index) => index !== lastIndex);
       return entries.map((entry, index) => (index === lastIndex ? { ...entry, delta } : entry));
@@ -121,9 +151,14 @@ export function enqueue(entries: readonly QueueEntry[], input: EnqueueInput): Qu
   return [...entries, fresh];
 }
 
-/** A write made on an earlier account day cannot land (the server only accepts today). Recovery has no client date. */
+/** True when an entry was held for a tracker reason, so it may never move beyond its original account day. */
+export function isHeld(entry: QueueEntry): boolean {
+  return entry.heldForTrackerPause === true || entry.heldForProcessingPause === true;
+}
+
+/** Keep original dates. Ordinary recoveries have no server client-date check; held recoveries still expire. */
 export function isExpired(entry: QueueEntry, now: Date, timeZone: string): boolean {
-  if (entry.kind === 'recovery') return false;
+  if (entry.kind === 'recovery' && !isHeld(entry)) return false;
   return entry.accountDate !== accountDateKey(now, timeZone);
 }
 
@@ -138,11 +173,21 @@ function failed(reason: FailureReason): ErrorOutcome {
   return { type: 'failed', reason, message: FAILURE_MESSAGES[reason] };
 }
 
-export function classifyError(kind: QueueKind, error: unknown): ErrorOutcome {
+/**
+ * `kind` also accepts `delete`: the queue does not carry deletes today, but a delete retried after its own earlier
+ * attempt that now meets "Tracker target unavailable." (the row is gone) is settled, not a new failure.
+ */
+export function classifyError(kind: QueueKind | 'delete', error: unknown, priorAttempt = false): ErrorOutcome {
   if (isOfflineNetworkFailure(error)) return { type: 'network' };
   const message = errorMessage(error);
   const code = errorCode(error);
-  if (kind === 'complete' && code === '23505') return { type: 'applied' };
+  if (code === 'ET001') return failed('tracker-paused');
+  if (code === 'ET002' || code === 'ET003') return failed('purpose-paused');
+  if (code === '42501' && /tracker target unavailable/i.test(message)) {
+    return kind === 'delete' && priorAttempt ? { type: 'applied' } : failed('not-on-board');
+  }
+  // The write boundary reports a duplicate completion for the same habit and day as 22023: already recorded.
+  if (kind === 'complete' && (code === '23505' || code === '22023')) return { type: 'applied' };
   if (/authentication required|jwt expired|invalid jwt/i.test(message) || code === 'PGRST301') return { type: 'auth' };
   if (/current account date/i.test(message)) return failed('day-passed');
   if (kind === 'recovery' && /expired|no recovery window/i.test(message)) return failed('recovery-closed');
@@ -274,22 +319,77 @@ function isEntry(value: unknown): value is QueueEntry {
     typeof e.attempts === 'number' &&
     KINDS.includes(e.kind as QueueKind) &&
     STATUSES.includes(e.status as QueueStatus) &&
+    (e.heldForTrackerPause === undefined || e.heldForTrackerPause === true) &&
+    (e.heldForProcessingPause === undefined || e.heldForProcessingPause === true) &&
     (e.kind !== 'progress' || typeof e.delta === 'number')
   );
 }
 
+const isCount = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value);
+
+/** A revision is kept only when it is well formed and belongs to the entry's owner; anything else counts as absent. */
+function cleanRevision(value: unknown, userId: string): TrackerRevision | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const r = value as Record<string, unknown>;
+  if (r.userId !== userId || !isCount(r.ageVersion) || !isCount(r.consentVersion) || !isCount(r.authorityVersion)) return undefined;
+  return { userId, ageVersion: r.ageVersion, consentVersion: r.consentVersion, authorityVersion: r.authorityVersion };
+}
+
+function cleanTargets(value: unknown): TrackerTargetSnapshot[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: TrackerTargetSnapshot[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return undefined;
+    const t = item as Record<string, unknown>;
+    if ((t.kind !== 'habit' && t.kind !== 'chain') || typeof t.id !== 'string' || (t.inputKind !== 'basic' && t.inputKind !== 'custom')) return undefined;
+    result.push({ kind: t.kind, id: t.id, inputKind: t.inputKind });
+  }
+  return result;
+}
+
+/** Keeps the stored projection and nothing else; an unreadable revision or target list is treated as never captured. */
+function normalizeEntry(entry: QueueEntry, loadedAt?: number): QueueEntry {
+  const { trackerRevision, trackerTargets, heldAt, ...rest } = entry;
+  // A held entry with no readable stamp starts its 30 days now: it must never expire merely because the stamp is missing.
+  const stamp = isHeld(entry) ? (typeof heldAt === 'number' && Number.isFinite(heldAt) ? heldAt : loadedAt) : undefined;
+  const stamped = stamp !== undefined ? { ...rest, heldAt: stamp } : rest;
+  const revision = cleanRevision(trackerRevision, entry.userId);
+  const targets = cleanTargets(trackerTargets);
+  return { ...stamped, ...(revision ? { trackerRevision: revision } : {}), ...(targets ? { trackerTargets: targets } : {}) };
+}
+
 /** Never throws: anything unreadable is an empty queue. Entries of another user are dropped. */
-export function decodeQueue(raw: string | null | undefined, userId: string): QueueEntry[] {
+export function decodeQueue(raw: string | null | undefined, userId: string, loadedAt?: number): QueueEntry[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return [];
     const { v, entries } = parsed as { v?: unknown; entries?: unknown };
     if (v !== STORAGE_VERSION || !Array.isArray(entries)) return [];
-    return entries.filter(isEntry).filter(entry => entry.userId === userId);
+    return entries.filter(isEntry).filter(entry => entry.userId === userId).map(entry => normalizeEntry(entry, loadedAt));
   } catch {
     return [];
   }
+}
+
+/** What is reported for a held entry that expired: identity and the reason only, never the label, payload or permission. */
+function expiredNotice(entry: QueueEntry): QueueEntry {
+  return {
+    id: entry.id, userId: entry.userId, kind: entry.kind, habitId: entry.habitId, accountDate: entry.accountDate,
+    createdAt: entry.createdAt, attempts: entry.attempts, status: 'failed',
+    failure: { reason: 'hold-expired', message: FAILURE_MESSAGES['hold-expired'] },
+  };
+}
+
+/**
+ * Removes held entries more than 30 days past their hold stamp (exactly 30 days is kept). Only entries still sitting in
+ * the held state go: one released by Retry is back in line and the ordinary day rules govern it. Needs no account zone.
+ */
+export function expireHeldEntries(entries: readonly QueueEntry[], nowMs: number): { entries: QueueEntry[]; expired: QueueEntry[] } {
+  const gone = (entry: QueueEntry) =>
+    entry.status === 'failed' && isHeld(entry) && typeof entry.heldAt === 'number' && nowMs - entry.heldAt > HELD_RETENTION_MS;
+  if (!entries.some(gone)) return { entries: entries as QueueEntry[], expired: [] };
+  return { entries: entries.filter(entry => !gone(entry)), expired: entries.filter(gone).map(expiredNotice) };
 }
 
 /** Fails every pending or uncertain entry from an earlier account day. A sending one is left for its in-flight request. */
@@ -298,9 +398,12 @@ export function expireEntries(entries: readonly QueueEntry[], now: Date, timeZon
   if (timeZone === null) return entries as QueueEntry[];
   let changed = false;
   const next = entries.map(entry => {
-    if ((entry.status !== 'pending' && entry.status !== 'uncertain') || !isExpired(entry, now, timeZone)) return entry;
+    const expirable = entry.status === 'pending' || entry.status === 'uncertain' ||
+      (entry.status === 'failed' && isHeld(entry) && entry.failure?.reason !== 'day-passed');
+    if (!expirable || !isExpired(entry, now, timeZone)) return entry;
     changed = true;
-    return { ...entry, status: 'failed' as const, failure: { reason: 'day-passed' as const, message: FAILURE_MESSAGES['day-passed'] } };
+    return { ...entry, status: 'failed' as const, failure: { reason: 'day-passed' as const,
+      message: isHeld(entry) ? HELD_ACTION_DAY_ENDED_MESSAGE : FAILURE_MESSAGES['day-passed'] } };
   });
   return changed ? next : (entries as QueueEntry[]);
 }

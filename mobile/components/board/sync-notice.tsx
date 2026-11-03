@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 
 import { AlertIcon, CheckIcon, ClockIcon } from '@/components/eiyu/icons';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,9 @@ interface Props {
   failed: number;
   offline: boolean;
   onReview: () => void;
+  /** A held change that expired after 30 days and was removed from this device. Plain wording with no quest name. */
+  expiredNotice?: string | null;
+  onDismissExpired?: () => void;
 }
 
 const SYNCED_MS = 2000;
@@ -23,7 +27,7 @@ const changes = (count: number) => `${count} ${count === 1 ? 'change' : 'changes
  * Review button), and a brief "Synced" once the last waiting one lands. It is quiet when there is nothing to say, and a
  * live region so a screen reader hears the count change.
  */
-export function SyncNotice({ waiting, failed, offline, onReview }: Props) {
+export function SyncNotice({ waiting, failed, offline, onReview, expiredNotice, onDismissExpired }: Props) {
   const t = useTokens();
   const [synced, setSynced] = useState(false);
   const previousWaiting = useRef(0);
@@ -38,36 +42,44 @@ export function SyncNotice({ waiting, failed, offline, onReview }: Props) {
   }, [waiting, failed]);
 
   const showSynced = synced && waiting === 0 && failed === 0;
-  if (waiting === 0 && failed === 0 && !showSynced) return null;
+  const expired = expiredNotice ? expiredNotice : null;
+  if (waiting === 0 && failed === 0 && !showSynced && !expired) return null;
 
   return (
     <View
       testID="sync-notice"
-      accessibilityRole={failed > 0 ? 'alert' : undefined}
-      accessibilityLiveRegion={failed > 0 ? 'assertive' : 'polite'}
-      style={[styles.card, { borderColor: failed > 0 ? t['danger-border'] : t['accent-border'], backgroundColor: t['panel-flat'] }]}>
+      accessibilityRole={failed > 0 || expired ? 'alert' : undefined}
+      accessibilityLiveRegion={failed > 0 || expired ? 'assertive' : 'polite'}
+      style={[styles.card, { borderColor: failed > 0 || expired ? t['danger-border'] : t['accent-border'], backgroundColor: t['panel-flat'] }]}>
       {failed > 0 ? (
         <View style={styles.row}>
           <AlertIcon size={16} color={t.danger} />
-          <Text style={[styles.text, { color: t.danger, fontFamily: fonts.bodySemi }]}>{`${changes(failed)} not saved`}</Text>
+          <AppText style={[styles.text, { color: t.danger, fontFamily: fonts.bodySemi }]}>{`${changes(failed)} not saved`}</AppText>
           <Button variant="secondary" label="Review" accessibilityLabel="Review changes that were not saved" onPress={onReview} />
+        </View>
+      ) : null}
+      {expired ? (
+        <View style={styles.row}>
+          <AlertIcon size={16} color={t.danger} />
+          <AppText style={[styles.text, { color: t.danger, fontFamily: fonts.bodySemi }]}>{expired}</AppText>
+          <Button variant="secondary" label="Dismiss" accessibilityLabel="Dismiss expired change notice" onPress={() => onDismissExpired?.()} />
         </View>
       ) : null}
       {waiting > 0 ? (
         <View>
           <View style={styles.row}>
             <ClockIcon size={16} color={t['muted-flat']} />
-            <Text style={[styles.text, { color: t.text, fontFamily: fonts.bodySemi }]}>{`${changes(waiting)} waiting to sync`}</Text>
+            <AppText style={[styles.text, { color: t.text, fontFamily: fonts.bodySemi }]}>{`${changes(waiting)} waiting to sync`}</AppText>
           </View>
           {offline ? (
-            <Text style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{"You're offline. They will send when you reconnect."}</Text>
+            <AppText style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{"You're offline. They will send when you reconnect."}</AppText>
           ) : null}
         </View>
       ) : null}
       {showSynced ? (
         <View style={styles.row}>
           <CheckIcon size={16} color={t.success} />
-          <Text style={[styles.text, { color: t.success, fontFamily: fonts.bodySemi }]}>Synced</Text>
+          <AppText style={[styles.text, { color: t.success, fontFamily: fonts.bodySemi }]}>Synced</AppText>
         </View>
       ) : null}
     </View>

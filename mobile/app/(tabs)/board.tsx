@@ -1,6 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { AppText } from '@/components/ui/app-text';
 import PagerView from 'react-native-pager-view';
 import {
   accountDateKey,
@@ -70,6 +71,8 @@ export default function BoardScreen() {
     failedSyncs,
     retrySync,
     dismissSync,
+    expiredHoldNotice,
+    dismissExpiredHoldNotice,
     archiveQuest,
     restoreQuest,
     deleteQuest,
@@ -240,7 +243,7 @@ export default function BoardScreen() {
     />
   );
 
-  const empty = (text: string) => <Text style={[styles.empty, { color: t['muted-flat'], fontFamily: fonts.body }]}>{text}</Text>;
+  const empty = (text: string) => <AppText style={[styles.empty, { color: t['muted-flat'], fontFamily: fonts.body }]}>{text}</AppText>;
 
   // A lane with a manual order lists its unfinished quests with grips, then the finished ones below.
   const laneRows = (type: QuestType, quests: Quest[]): ReactNode => {
@@ -273,7 +276,7 @@ export default function BoardScreen() {
       <View style={styles.top}>
         {reminderWarning ? (
           <View style={[styles.notice, { backgroundColor: t['accent-glass'], borderColor: t['accent-border'] }]}>
-            <Text accessibilityRole="alert" style={[styles.noticeText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{reminderWarning}</Text>
+            <AppText accessibilityRole="alert" style={[styles.noticeText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{reminderWarning}</AppText>
             <Button variant="secondary" label="Retry" accessibilityLabel="Retry reminders" onPress={() => void retryReminders()} />
           </View>
         ) : null}
@@ -287,8 +290,8 @@ export default function BoardScreen() {
             onPress={() => setRecoveryOpen(true)}
             style={[styles.recovery, { borderColor: t['ice-border'], backgroundColor: t['panel-flat'] }]}>
             <SnowflakeIcon size={15} color={t.ice} />
-            <Text style={[styles.recoveryText, { color: t.ice, fontFamily: fonts.display }]}>RECOVERY REQUIRED</Text>
-            <Text style={[styles.recoveryCount, { color: t.ice, fontFamily: fonts.mono }]}>{String(recoveryRequired.length)}</Text>
+            <AppText style={[styles.recoveryText, { color: t.ice, fontFamily: fonts.display }]}>RECOVERY REQUIRED</AppText>
+            <AppText style={[styles.recoveryCount, { color: t.ice, fontFamily: fonts.mono }]}>{String(recoveryRequired.length)}</AppText>
           </Pressable>
         ) : null}
 
@@ -308,19 +311,20 @@ export default function BoardScreen() {
                   { borderColor: selected ? t['accent-border'] : t['glass-border'] },
                   selected && { backgroundColor: t['accent-glass'] },
                 ]}>
-                <Text style={[styles.tabText, { color: selected ? t['accent-text'] : t['muted-flat'], fontFamily: fonts.display }]}>
-                  {lane.label} <Text style={{ color: selected ? t['accent-text'] : t['dim-flat'] }}>{counts[lane.id]}</Text>
-                </Text>
+                <AppText style={[styles.tabText, { color: selected ? t['accent-text'] : t['muted-flat'], fontFamily: fonts.display }]}>
+                  {lane.label} <AppText style={{ color: selected ? t['accent-text'] : t['dim-flat'] }}>{counts[lane.id]}</AppText>
+                </AppText>
               </Pressable>
             );
           })}
         </View>
 
-        <SyncNotice waiting={syncWaiting} failed={failedSyncs.length} offline={syncOffline} onReview={() => setReviewOpen(true)} />
+        <SyncNotice waiting={syncWaiting} failed={failedSyncs.length} offline={syncOffline} onReview={() => setReviewOpen(true)}
+          expiredNotice={expiredHoldNotice} onDismissExpired={dismissExpiredHoldNotice} />
 
         {questsError && questsHaveCachedData ? (
           <View style={styles.notice}>
-            <Text accessibilityRole="alert" style={[styles.noticeText, { color: t.danger, fontFamily: fonts.body }]}>{questsError}</Text>
+            <AppText accessibilityRole="alert" style={[styles.noticeText, { color: t.danger, fontFamily: fonts.body }]}>{questsError}</AppText>
             <Button variant="secondary" label="Retry quests" onPress={retryQuests} />
           </View>
         ) : null}

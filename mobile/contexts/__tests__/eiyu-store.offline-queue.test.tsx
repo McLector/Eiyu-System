@@ -6,6 +6,7 @@ import { Text } from 'react-native';
 
 import { encodeQueue, type QueueEntry } from '@/lib/write-queue';
 import { installExpoNetworkMock } from '@/test-support/install-expo-network-mock';
+import { basicTarget, CLASSIFIED, createTrackerMocks, resetTrackerMocks, revisionOf } from '@/test-support/tracker-fixtures';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 // Each step here crosses several async hops (storage, engine, query refetch); a full parallel run is slower than one suite alone.
@@ -21,6 +22,7 @@ const mockShared = {
   fetchLongQuests: jest.fn(),
   fetchProfile: jest.fn(),
   fetchStats: jest.fn(),
+  fetchAccountAge: jest.fn(),
   fetchTodayHabits: jest.fn(),
   fetchTodayOneTimeHabits: jest.fn(),
   fetchUpcomingOneTimeHabits: jest.fn(),
@@ -44,13 +46,16 @@ const mockSoundPreference = { getSoundEffectsEnabled: jest.fn(), setSoundEffects
 const mockAudioPlayer = { seekTo: jest.fn(), play: jest.fn(), volume: 1 };
 const mockNetwork = { getNetworkStateAsync: jest.fn(), addNetworkStateListener: jest.fn() };
 
+const mockTracker = createTrackerMocks();
 jest.doMock('@eiyu/shared', () => ({
   ...jest.requireActual('@eiyu/shared'),
   ...mockShared,
+  ...mockTracker,
   completeHabit: mockCompleteHabit,
 }));
 jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user: { id: 'user-1' } } }) }));
-jest.doMock('@/lib/notifications', () => mockNative);
+// The store filters reminder rows with the real, pure helper; native scheduling stays mocked.
+jest.doMock('@/lib/notifications', () => ({ ...mockNative, filterReminderRows: jest.requireActual('@/lib/notifications').filterReminderRows }));
 jest.doMock('@/lib/notification-prefs', () => mockPreference);
 jest.doMock('@/lib/sound-effects-prefs', () => mockSoundPreference);
 installExpoNetworkMock(mockNetwork);
@@ -66,7 +71,7 @@ const KEY = 'eiyu.writeQueue.v1.user-1';
 const quest: Quest = {
   id: 'habit-1', name: 'Read', stat: 'WIS', difficulty: 'Easy', easyVersion: 'Read one page',
   description: null, questType: 'habit', archived: false, time: '08:00', days: [1, 2, 3, 4, 5],
-  streak: 0, frozen: false, completed: false, targetCount: null, progressCount: 0,
+  streak: 0, frozen: false, completed: false, targetCount: null, progressCount: 0, ...CLASSIFIED,
 };
 const water: Quest = { ...quest, id: 'water', name: 'Drink water', targetCount: 4, progressCount: 0 };
 
@@ -103,11 +108,15 @@ async function startOffline() {
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 const storedEntry = (overrides: Partial<QueueEntry> = {}): QueueEntry => ({
   id: 'old-1', userId: 'user-1', kind: 'complete', habitId: 'habit-1', accountDate: TODAY,
-  createdAt: 1, attempts: 0, status: 'pending', ...overrides,
+  createdAt: 1, attempts: 0, status: 'pending',
+  // What the previous session captured when the write was made; without it the queue holds the write for review.
+  trackerRevision: revisionOf(), trackerTargets: basicTarget(overrides.habitId ?? 'habit-1'),
+  ...overrides,
 });
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  resetTrackerMocks(mockTracker);
   jest.useFakeTimers({
     now: DAY1,
     doNotFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'requestIdleCallback', 'cancelIdleCallback'],
@@ -124,6 +133,7 @@ beforeEach(async () => {
   mockShared.fetchLongQuests.mockResolvedValue([]);
   mockShared.fetchProfile.mockResolvedValue({ displayName: 'Test', userClass: 'Ranger', timeZone: 'UTC' });
   mockShared.fetchStats.mockResolvedValue(initialUser.stats);
+  mockShared.fetchAccountAge.mockResolvedValue({ userId: 'user-1', trackerWritesPaused: false });
   mockShared.fetchTodayHabits.mockResolvedValue([quest, water]);
   mockShared.fetchTodayOneTimeHabits.mockResolvedValue([]);
   mockShared.fetchUpcomingOneTimeHabits.mockResolvedValue([]);
@@ -169,7 +179,7 @@ describe('online writes go through the queue', () => {
     await waitFor(() => expect(quests()).toHaveLength(2));
 
     await act(async () => { currentStore!.toggleQuest('habit-1'); });
-    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', 'full', TODAY, 'UTC'));
+    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', 'full', revisionOf(), basicTarget('habit-1'), TODAY, 'UTC'));
     expect(byId('habit-1')?.completed).toBe(true);
     expect(mockAudioPlayer.play).not.toHaveBeenCalled();
 
@@ -200,7 +210,7 @@ describe('online writes go through the queue', () => {
     await waitFor(() => expect(currentStore?.soundEffectsLoaded).toBe(true));
     mockShared.fetchTodayHabits.mockResolvedValue([quest, water]);
     await act(async () => { currentStore!.toggleQuest('habit-1'); });
-    await waitFor(() => expect(mockShared.undoCompletion).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', 'UTC', TODAY));
+    await waitFor(() => expect(mockShared.undoCompletion).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', revisionOf(), basicTarget('habit-1'), 'UTC', TODAY));
     await waitFor(() => expect(currentStore?.syncEntries).toEqual([]));
     expect(mockAudioPlayer.play).not.toHaveBeenCalled();
   });
@@ -270,7 +280,7 @@ describe('writes made offline', () => {
     mockShared.fetchTodayHabits.mockResolvedValue([quest, { ...water, progressCount: 2 }]);
     await goOnline();
     await waitFor(() => expect(mockShared.incrementHabitProgress).toHaveBeenCalledTimes(1));
-    expect(mockShared.incrementHabitProgress).toHaveBeenCalledWith('water', TODAY, 2);
+    expect(mockShared.incrementHabitProgress).toHaveBeenCalledWith('water', TODAY, 2, revisionOf(), basicTarget('water'));
     await waitFor(() => expect(currentStore?.syncEntries).toEqual([]));
     expect(byId('water')?.progressCount).toBe(2);
   });
@@ -356,7 +366,7 @@ describe('across app launches', () => {
     await mountStore();
     await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledTimes(1));
     // The server resolves the stat itself, and the board may not have loaded yet on a cold start.
-    expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', expect.any(String), 'full', TODAY, 'UTC');
+    expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', expect.any(String), 'full', revisionOf(), basicTarget('habit-1'), TODAY, 'UTC');
   });
 
   it('waits for the account zone before judging or sending, so a write made on the account day is not mistaken for an old one', async () => {
@@ -365,7 +375,7 @@ describe('across app launches', () => {
     await AsyncStorage.setItem(KEY, encodeQueue([storedEntry({ accountDate: '2026-10-06' })]));
     await mountStore();
     await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledTimes(1));
-    expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', expect.any(String), 'full', '2026-10-06', 'Pacific/Auckland');
+    expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', expect.any(String), 'full', revisionOf(), basicTarget('habit-1'), '2026-10-06', 'Pacific/Auckland');
     expect(currentStore?.failedSyncs).toEqual([]);
   });
 

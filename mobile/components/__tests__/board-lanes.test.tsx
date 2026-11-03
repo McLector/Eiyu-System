@@ -66,6 +66,8 @@ function setup() {
     syncWaiting: 0,
     syncOffline: false,
     failedSyncs: [],
+    expiredHoldNotice: null,
+    dismissExpiredHoldNotice: jest.fn(),
     retrySync: jest.fn(),
     dismissSync: jest.fn(),
     archiveQuest: jest.fn().mockResolvedValue(undefined),
@@ -604,5 +606,22 @@ describe('mobile BoardScreen offline sync', () => {
     mockStoreValue.failedSyncs = [];
     await view.rerender(<TestThemeProvider><BoardScreen /></TestThemeProvider>);
     expect(screen.queryByText('NOT SAVED')).toBeNull();
+  });
+});
+
+describe('Board expired-change notice', () => {
+  it('shows the store notice with the sync notices and dismisses it through the store', async () => {
+    setup();
+    mockStoreValue.expiredHoldNotice = 'A change that was kept while permission was paused has expired after 30 days and was removed from this device. It was not saved.';
+    await board();
+    expect(screen.getByText(/expired after 30 days/)).toBeOnTheScreen();
+    await userEvent.setup().press(screen.getByRole('button', { name: 'Dismiss expired change notice' }));
+    expect(mockStoreValue.dismissExpiredHoldNotice).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows nothing about it when the store has no notice', async () => {
+    setup();
+    await board();
+    expect(screen.queryByText(/expired after 30 days/)).toBeNull();
   });
 });

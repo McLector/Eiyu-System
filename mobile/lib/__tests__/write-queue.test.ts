@@ -6,7 +6,10 @@ import {
   decodeQueue,
   encodeQueue,
   expireEntries,
+  expireHeldEntries,
+  HELD_RETENTION_MS,
   enqueue,
+  FAILURE_MESSAGES,
   isExpired,
   reviveEntries,
   resolveUncertain,
@@ -412,5 +415,217 @@ describe('describeEntry', () => {
   it('shows the size and direction of a progress change', () => {
     expect(describeEntry(entry({ kind: 'progress', delta: 2, base: 0 }))).toBe('Progress +2');
     expect(describeEntry(entry({ kind: 'progress', delta: -3, base: 5 }))).toBe('Progress −3');
+  });
+});
+
+const REVISION = { userId: USER, ageVersion: 1, consentVersion: 2, authorityVersion: 3 };
+const TARGETS = [{ kind: 'habit' as const, id: 'h1', inputKind: 'basic' as const }];
+
+describe('tracker consent in the queue model', () => {
+  it('has a purpose-paused message that keeps the entry, names the original date, and points to Retry', () => {
+    const message = FAILURE_MESSAGES['purpose-paused'];
+    expect(message).toMatch(/kept/i);
+    expect(message).toMatch(/Retry/);
+    expect(message).toMatch(/original date/i);
+  });
+
+  it('stores the captured revision and targets on a new entry', () => {
+    const [created] = enqueue([], input({ trackerRevision: REVISION, trackerTargets: TARGETS }));
+    expect(created.trackerRevision).toEqual(REVISION);
+    expect(created.trackerTargets).toEqual(TARGETS);
+  });
+
+  it('folds progress under the same captured revision into one entry', () => {
+    const first = enqueue([], input({ id: 'a', kind: 'progress', delta: 1, base: 0, trackerRevision: REVISION, trackerTargets: TARGETS }));
+    const next = enqueue(first, input({ id: 'b', kind: 'progress', delta: 2, base: 1, trackerRevision: { ...REVISION }, trackerTargets: TARGETS }));
+    expect(next).toHaveLength(1);
+    expect(next[0].delta).toBe(3);
+  });
+
+  it('does not fold progress made under a newer revision into an older entry', () => {
+    const first = enqueue([], input({ id: 'a', kind: 'progress', delta: 1, base: 0, trackerRevision: REVISION, trackerTargets: TARGETS }));
+    const next = enqueue(first, input({ id: 'b', kind: 'progress', delta: 2, base: 1, trackerRevision: { ...REVISION, consentVersion: 3 }, trackerTargets: TARGETS }));
+    expect(next.map(e => [e.id, e.delta])).toEqual([['a', 1], ['b', 2]]);
+    expect(next[0].trackerRevision).toEqual(REVISION);
+  });
+
+  it('classifies ET002 and ET003 as purpose-paused and leaves ET001 as tracker-paused', () => {
+    expect(classifyError('complete', { code: 'ET002', message: 'x' })).toEqual(expect.objectContaining({ type: 'failed', reason: 'purpose-paused' }));
+    expect(classifyError('progress', { code: 'ET003', message: 'x' })).toEqual(expect.objectContaining({ type: 'failed', reason: 'purpose-paused' }));
+    expect(classifyError('complete', { code: 'ET001', message: 'x' })).toEqual(expect.objectContaining({ type: 'failed', reason: 'tracker-paused' }));
+  });
+
+  it('counts a duplicate completion (22023) as already recorded, but only for complete', () => {
+    expect(classifyError('complete', { code: '22023', message: 'Invalid tracker input.' })).toEqual({ type: 'applied' });
+    expect(classifyError('undo', { code: '22023', message: 'Invalid tracker input.' }).type).not.toBe('applied');
+    expect(classifyError('progress', { code: '22023', message: 'Invalid tracker input.' }).type).not.toBe('applied');
+  });
+
+  it('settles a 42501 target-unavailable refusal after the delete own earlier attempt, never retrying it', () => {
+    const error = { code: '42501', message: 'Tracker target unavailable.' };
+    expect(classifyError('delete', error, true)).toEqual({ type: 'applied' });
+    expect(classifyError('delete', error, false)).toEqual(expect.objectContaining({ type: 'failed', reason: 'not-on-board' }));
+    expect(classifyError('complete', error, true)).toEqual(expect.objectContaining({ type: 'failed', reason: 'not-on-board' }));
+  });
+
+  it('keeps either held flag on the original date, recoveries included', () => {
+    const later = new Date('2026-10-06T12:00:00Z');
+    expect(isExpired(entry({ kind: 'recovery', heldForProcessingPause: true }), later, 'UTC')).toBe(true);
+    expect(isExpired(entry({ kind: 'recovery', heldForTrackerPause: true }), later, 'UTC')).toBe(true);
+    expect(isExpired(entry({ kind: 'recovery' }), later, 'UTC')).toBe(false);
+  });
+
+  it('expires a failed processing-held entry that reaches a later day, with the original-day wording', () => {
+    const held = entry({ status: 'failed', heldForProcessingPause: true, failure: { reason: 'purpose-paused', message: 'x' } });
+    const [result] = expireEntries([held], new Date('2026-10-06T12:00:00Z'), 'UTC');
+    expect(result.failure?.reason).toBe('day-passed');
+    expect(result.failure?.message).toContain('original account day');
+  });
+
+  describe('decoding', () => {
+    const full = entry({ trackerRevision: REVISION, trackerTargets: TARGETS, heldForProcessingPause: true, status: 'failed', failure: { reason: 'purpose-paused', message: 'm' } });
+
+    it('round-trips entries with the new optional fields untouched', () => {
+      expect(decodeQueue(encodeQueue([full]), USER)).toEqual([full]);
+    });
+
+    it('accepts an old v1 entry without the new fields and does not relabel or stamp it', () => {
+      const old = entry({ id: 'old' });
+      const [decoded] = decodeQueue(encodeQueue([old]), USER);
+      expect(decoded).toEqual(old);
+      expect(decoded.trackerRevision).toBeUndefined();
+      expect(decoded.trackerTargets).toBeUndefined();
+      expect(decoded.heldForProcessingPause).toBeUndefined();
+    });
+
+    it('rejects a heldForProcessingPause value other than true', () => {
+      const raw = JSON.stringify({ v: 1, entries: [{ ...entry({ id: 'x' }), heldForProcessingPause: false }, entry({ id: 'ok' })] });
+      expect(decodeQueue(raw, USER).map(e => e.id)).toEqual(['ok']);
+    });
+
+    it.each([
+      ['a revision missing a field', { userId: USER, ageVersion: 1, consentVersion: 1 }],
+      ['a revision with a string version', { ...REVISION, consentVersion: '2' }],
+      ['a revision belonging to another account', { ...REVISION, userId: 'someone-else' }],
+      ['a non-object revision', 'rev'],
+    ])('keeps the entry but drops %s, so it is treated as having no captured grant', (_name, revision) => {
+      const raw = JSON.stringify({ v: 1, entries: [{ ...entry({ id: 'keep' }), trackerRevision: revision, trackerTargets: TARGETS }] });
+      const [decoded] = decodeQueue(raw, USER);
+      expect(decoded.id).toBe('keep');
+      expect(decoded.trackerRevision).toBeUndefined();
+    });
+
+    it('drops malformed target lists but keeps the entry and its valid revision', () => {
+      for (const targets of ['x', [{ kind: 'habit', id: 'h1' }], [{ kind: 'weekly', id: 'h1', inputKind: 'basic' }], [null]]) {
+        const raw = JSON.stringify({ v: 1, entries: [{ ...entry({ id: 'keep' }), trackerRevision: REVISION, trackerTargets: targets }] });
+        const [decoded] = decodeQueue(raw, USER);
+        expect(decoded.id).toBe('keep');
+        expect(decoded.trackerRevision).toEqual(REVISION);
+        expect(decoded.trackerTargets).toBeUndefined();
+      }
+    });
+
+    it('does not carry the full capability through storage', () => {
+      const withCapability = { ...entry(), trackerRevision: { ...REVISION, canWriteBasic: true, canWriteCustom: true } };
+      const [decoded] = decodeQueue(JSON.stringify({ v: 1, entries: [withCapability] }), USER);
+      expect(decoded.trackerRevision).toEqual(REVISION);
+    });
+  });
+});
+
+describe('held-entry retention (30 days)', () => {
+  const T0 = Date.UTC(2026, 8, 1);
+  const held = (overrides: Partial<QueueEntry> = {}): QueueEntry => entry({
+    id: 'h', status: 'failed', heldForProcessingPause: true, heldAt: T0, label: 'Secret quest', delta: 2, base: 1,
+    kind: 'progress', failure: { reason: 'purpose-paused', message: 'x' }, ...overrides,
+  });
+
+  it('is exactly thirty days', () => {
+    expect(HELD_RETENTION_MS).toBe(30 * 24 * 60 * 60 * 1000);
+  });
+
+  it('keeps a hold at 30 days minus 1 ms and exactly 30 days, and expires it at plus 1 ms', () => {
+    const list = [held()];
+    expect(expireHeldEntries(list, T0 + HELD_RETENTION_MS - 1).expired).toEqual([]);
+    expect(expireHeldEntries(list, T0 + HELD_RETENTION_MS).expired).toEqual([]);
+    const result = expireHeldEntries(list, T0 + HELD_RETENTION_MS + 1);
+    expect(result.entries).toEqual([]);
+    expect(result.expired.map(e => e.id)).toEqual(['h']);
+  });
+
+  it('returns the same array when nothing expired', () => {
+    const list = [held()];
+    expect(expireHeldEntries(list, T0 + 1).entries).toBe(list);
+  });
+
+  it('expires tracker-paused holds and holds that already ended as day-passed', () => {
+    const list = [
+      held({ id: 'a', heldForProcessingPause: undefined, heldForTrackerPause: true, failure: { reason: 'tracker-paused', message: 'x' } }),
+      held({ id: 'b', failure: { reason: 'day-passed', message: 'x' } }),
+    ];
+    expect(expireHeldEntries(list, T0 + HELD_RETENTION_MS + 1).entries).toEqual([]);
+  });
+
+  it('never touches ordinary entries, however old, or a hold released by Retry', () => {
+    const list = [
+      entry({ id: 'p', createdAt: 1 }),
+      entry({ id: 'u', status: 'uncertain', createdAt: 1 }),
+      entry({ id: 'f', status: 'failed', createdAt: 1, failure: { reason: 'server', message: 'x' } }),
+      held({ id: 'released', status: 'uncertain', failure: undefined }),
+    ];
+    const far = T0 + 10 * HELD_RETENTION_MS;
+    expect(expireHeldEntries(list, far).entries).toBe(list);
+  });
+
+  it('expires only the held entries of a mixed list', () => {
+    const result = expireHeldEntries([entry({ id: 'p' }), held()], T0 + HELD_RETENTION_MS + 1);
+    expect(result.entries.map(e => e.id)).toEqual(['p']);
+  });
+
+  it('keeps a hold when the clock moved backwards or the stamp is missing', () => {
+    expect(expireHeldEntries([held()], T0 - 5).expired).toEqual([]);
+    expect(expireHeldEntries([held({ heldAt: undefined })], T0 + 10 * HELD_RETENTION_MS).expired).toEqual([]);
+  });
+
+  it('reports each expired entry without its label, payload or captured permission', () => {
+    const [notice] = expireHeldEntries([held({
+      trackerRevision: { userId: USER, ageVersion: 1, consentVersion: 1, authorityVersion: 1 },
+      trackerTargets: [{ kind: 'habit', id: 'h1', inputKind: 'custom' }],
+    })], T0 + HELD_RETENTION_MS + 1).expired;
+    expect(notice.failure?.reason).toBe('hold-expired');
+    expect(notice.failure?.message).toBe(FAILURE_MESSAGES['hold-expired']);
+    expect(notice).toEqual(expect.objectContaining({ id: 'h', habitId: 'h1', status: 'failed' }));
+    expect(JSON.stringify(notice)).not.toContain('Secret quest');
+    for (const key of ['label', 'delta', 'base', 'trackerRevision', 'trackerTargets']) expect(notice).not.toHaveProperty(key);
+  });
+
+  describe('decoding', () => {
+    it('round-trips heldAt', () => {
+      const e = held();
+      expect(decodeQueue(encodeQueue([e]), USER, T0 + 5)).toEqual([e]);
+    });
+
+    it('stamps a held entry that has no timestamp with the load time, so it is never expired at once', () => {
+      const old = held({ heldAt: undefined });
+      const loadedAt = T0 + 40 * 24 * 60 * 60 * 1000;
+      const [decoded] = decodeQueue(encodeQueue([old]), USER, loadedAt);
+      expect(decoded.heldAt).toBe(loadedAt);
+      expect(expireHeldEntries([decoded], loadedAt).expired).toEqual([]);
+    });
+
+    it('replaces an unreadable timestamp with the load time and still decodes the entry', () => {
+      const raw = JSON.stringify({ v: 1, entries: [{ ...held(), heldAt: 'yesterday' }, { ...held({ id: 'n' }), heldAt: Number.NaN }] });
+      expect(decodeQueue(raw, USER, 77).map(e => e.heldAt)).toEqual([77, 77]);
+    });
+
+    it('does not stamp entries that are not held, and does not invent a stamp without a load time', () => {
+      expect(decodeQueue(encodeQueue([entry()]), USER, 77)[0]).not.toHaveProperty('heldAt');
+      expect(decodeQueue(encodeQueue([held({ heldAt: undefined })]), USER)[0]).not.toHaveProperty('heldAt');
+    });
+
+    it('still decodes a valid old (pre-heldAt) entry', () => {
+      const raw = JSON.stringify({ v: 1, entries: [entry({ id: 'old' })] });
+      expect(decodeQueue(raw, USER, 5).map(e => e.id)).toEqual(['old']);
+    });
   });
 });
