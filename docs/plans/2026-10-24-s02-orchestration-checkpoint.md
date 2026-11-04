@@ -146,3 +146,9 @@ The batch found that saved quests never survived a cold start, which also meant 
 Three more fixes followed, in reminders and the auth screens (`1316026`, `0e2f846`, `8fa3f22`). Results are in "Three fixes after the batch" in the same document.
 
 **Next:** the Oppo font checklist with the owner, on the APK built from `8fa3f22` or later. After that S02 is "engineering done, release pending". It is not complete: real email delivery and rollout stay unproved.
+
+## Update 2026-11-05, Oppo font checklist run
+
+Ran on the physical Oppo with the APK from `8fa3f22`. Results are in "Oppo batch, 2026-11-05" in `2026-11-03-s02-review-clients.md`. Cold launch at 1.6, editor and sign-in drafts, a multiline selection and typing after the cycles all passed. One miss in the first change after a cold launch at 1.6 (editor gone, stale heights) is unexplained and did not repeat. The helper scripts can read a stale UI dump, so those results rest on screenshots.
+
+S02 is "engineering done, release pending". Handoff 028 lists what is unproved.

@@ -111,3 +111,28 @@ The first attempt at fix 1 was wrong in a way only a device could show. It looke
 **Seen and left alone:** offline with a queued change, the Board stacks the "1 change waiting" line above the red offline message. The Gym and tracker consent choices read like plain text links. Empty password fields show placeholder dots that look prefilled. `privacy@eiyusystem.app` wraps oddly at font scale 1.6.
 
 **Emulator trap:** the first run of the first-quest check showed no prompt because the emulator's Android system died at that moment. The PC had 428 MB of memory free, with a finished Gradle daemon holding 1.3 GB. Stop the daemon after a build, and check `dumpsys` answers before believing a missing dialog.
+
+### Oppo batch, 2026-11-05
+
+A physical Oppo phone (CPH2113, Android 12, API 31) over USB, against the local stack through `adb reverse`, on the release APK from `8fa3f22`. The phone already held that exact build: its installed `base.apk` and the archived APK have the same SHA-256, so nothing was reinstalled. The font size was changed through the phone's own Settings slider, with the app left and resumed each time. `adb shell settings put system font_scale` is refused on this phone (`WRITE_SETTINGS` denied to the shell). The largest slider stop reports `font_scale` 1.6.
+
+| Check | Result |
+| --- | --- |
+| Step 0: version 1.3.0 and `fontScale` in the installed MainActivity | Passed: configChanges `0x400007b0` includes `0x40000000` |
+| Cold launch at 1.6: Board, Status, Chain, Gym, the quest-type chooser, the habit editor | Passed: text complete, nothing clipped |
+| Editor draft across 1.0 to 1.6 and 1.6 to 1.0, several cycles | Passed on five of six changes (see below): same Activity and process, route and draft kept, focus and keyboard back, text grows and every box re-sizes |
+| Multiline Note with text selected, both directions | Passed: the selection and its toolbar stayed, and the toolbar re-laid itself out at the new size |
+| Typing, Return and cursor in the multiline Note after the cycles | Passed (the case the font-gate handoff listed as unproved) |
+| Sign-in form with an unsent email draft, both directions | Passed: same process, text kept, focus and keyboard back, fields and labels fit at 1.6 |
+| No duplicate writes from the font change | Passed: `habit_completions` 6 before, 6 after. The write queue was not inspected |
+| Text really grows at 1.6 | Passed |
+
+**One failure, not explained.** The first change after a cold launch at 1.6 (1.6 to 1.0, with a word selected in the multiline Note, driven by hand) returned to the same Activity and process, but the screenshot showed the Board with no editor open. The Board rows and the quest-type chooser cards kept their 1.6 heights around 1.0 text. Later changes did not reproduce it: a leave-and-return with no font change, 1.0 to 1.6, 1.6 to 1.0, both again with a selection, and a repeat of the same set-up (cold launch at 1.6, editor with a two-line draft, first change to 1.0; the selection was not confirmed in that last run). The stale Board spacing was gone afterwards. The cause is open. Treat the font gate as passed on the evidence above with this one unexplained miss recorded, not as proof it cannot happen.
+
+**Evidence caveat.** The helper scripts (`oppo-snap.ps1`, `font-wait.ps1`, `ui-oppo.ps1`) read `uiautomator dump` output. On a screen with continuous animation the dump fails with "could not get idle state" and the scripts then read the previous dump file. Their "draft present" and "focus" lines after a font change are therefore not evidence. Every result above rests on screenshots. The scripts should delete the file before dumping and fail loudly.
+
+**Seen and left alone:** Status shows "The System couldn't load the heatmap." in red for the test account. It is not a font matter and was not investigated, so it may be specific to the local stack. The Board's second quest meta line sits under the floating buttons at 1.6, which looks like scroll overlap and was not scrolled to confirm.
+
+**Not covered:** a selection made by a person's finger (the long-press was made with `adb`), the sign-up form at 1.6, the Register and recovery screens, Android versions other than 12, reminders across a reboot, and the write queue contents.
+
+**Cleanup:** the five disposable test accounts were deleted (0 remain, 22 other accounts untouched), the reverse rules were removed, font size is back to Default and the display size override is unchanged.
