@@ -161,7 +161,16 @@ External setup is surfaced before dependent work: Google Console access/configur
 
 For later Vercel environment, deployment, and log work, the Vercel CLI is currently absent. Recommend installing it with `npm i -g vercel` to enable `vercel env pull`, `vercel deploy`, and `vercel logs`; this brainstorming session does not install it or authorize deployment.
 
-Model routing for an automode implementor: use `gpt-6-luna` at medium effort for bounded UI/tests/docs and high effort when a well-defined shared change needs more reasoning. Escalate to a stronger currently available model for unresolved authentication, quota concurrency, migration, or sync architecture, or repeated failed verification. Use current tool allowlists, not historical model names. Record delegated tasks and results in the handoff. Agent orchestration does not override the slice stop rule.
+Agents and models (owner rules, 2026-11-05; replace the earlier Luna-first routing):
+
+- The implementor is Sonnet 5.5 on automode, started by the owner on that model. It may launch and orchestrate subagents suited to the task.
+- The orchestrator picks the model that fits each subagent task best. Haiku 5.5 is an option, not the default, so quality does not suffer.
+- Context limits: Opus and Sonnet 250k each, Haiku 100k. At the limit the agent writes a continuation prompt and work resumes in a new session. A mid-slice stop uses an `...-INCOMPLETE.md` checkpoint, never a numbered handoff.
+- Effort limits: Haiku has no cap, Sonnet goes up to high, Opus up to medium.
+- Exceptions: past 250k, or Opus at high effort, only when a task really demands it. The orchestrator records the reason in the handoff.
+- Slice sizing: the owner will ask for slices and continuation prompts to be reviewed and split further when they would not fit these limits.
+- Use current tool allowlists, not historical model names. Record delegated tasks and results in the handoff. Agent orchestration does not override the slice stop rule.
+- A slice the owner has explicitly accepted as "engineering done, release pending" may take a numbered handoff labelled that way, never COMPLETE, listing its unproved gates.
 
 ## Handoff contract
 
@@ -178,7 +187,7 @@ Each completed-slice handoff must include:
 - Known limitations that do not invalidate completion; unresolved decisions and risks for the next slice.
 - Exact next slice, prerequisites, first concrete task, and a copy-paste continuation prompt embedded in the handoff.
 
-Keep handoffs local/uncommitted under the existing preference unless the user changes it. This roadmap also remains uncommitted; no public-repository documentation commit is authorized here.
+Keep numbered handoffs local/uncommitted under the existing preference unless the user changes it. Since 2026-11-03 the owner allows `docs/plans/**`, including this roadmap, to be committed to the public repository; scan for secrets and personal emails first.
 
 Continuation prompt template (fill all bracketed values from actual completed state):
 
@@ -194,8 +203,10 @@ Completed: [slice ID/title and key contracts].
 Next: [slice ID/title], with these prerequisites: [exact prerequisites].
 Begin with [first concrete task]. Implement ONLY this next slice using
 tests first and the currently available tools/models. Use Expo SDK 54
-docs before mobile code. Subagents may help within the slice using the
-documented Luna-first routing; escalate when justified.
+docs before mobile code. Subagents may help within the slice under the
+agent and model rules in the roadmap (250k Opus/Sonnet, 100k Haiku
+context limits); at a limit, write an INCOMPLETE checkpoint and a
+continuation prompt.
 
 Completion requires [exact acceptance/tests/device/live gates]. Do not
 count blocked or partially verified work as a completed slice. Do not
