@@ -1,0 +1,102 @@
+# S03 design: Google sign-in on web and mobile (2026-11-05)
+
+Status: design for review, written before implementation. Roadmap row S03 and lines 65-75 give the scope. Handoff 028 records the S02 state this builds on. Nothing here has been run; every mechanism below is marked "to prove" until a test on the local stack shows it.
+
+## Owner decisions (fixed inputs)
+
+1. Google links to the existing account with the same email only when Google reports the email verified AND that account holds the S02 mailbox proof. Either login then works.
+2. Same email, existing account without mailbox proof: no link and no new account. The user is told to sign in with the password, verify the email, then use Google.
+3. A Google `email_verified` claim, checked on the server and bound to the current email, counts as mailbox proof for debriefs. An email change drops it, like the existing proof.
+4. Mobile uses the browser flow: `signInWithOAuth` with PKCE through `expo-web-browser` and each variant's scheme. No new native module, so OTA is possible.
+5. Real Google login is tested on the local stack first. One hosted smoke check only with the owner's yes. iOS and Sign in with Apple are out of scope (Google Play, Philippines first). Fable is never used.
+
+## Why Supabase's default is not enough
+
+Read from supabase/auth v2.196.0, the version the local stack runs (`internal/models/linking.go`, `internal/api/external.go`):
+
+- `DetermineAccountLinking` links a new Google identity to the one existing user with a matching email whenever Google's email is `Verified`, **or `Mailer.Autoconfirm` is on**. Local `enable_confirmations = false` means autoconfirm is on, so locally even an unverified Google email counts as verified.
+- It never reads the existing user's `email_confirmed_at`. A password account created with confirmations off is "confirmed" without anyone proving the mailbox, so it would be linked. That is the pre-account takeover the decision-1 rule forbids: someone registers a victim's address with a password, the victim later signs in with Google, and both parties now hold the merged account.
+- No config switch turns automatic linking off. The only related setting is `GOTRUE_EXPERIMENTAL_PROVIDER_LINKING_DOMAINS`, which is marked experimental and would also isolate Google from legitimate linking, so it is not used.
+- If no link happens and no user matches, a new account is created. A refusal therefore has to be an explicit rejection, not a side effect.
+- `before_user_created` runs at the top of the OAuth callback for every login that is not manual linking or an invite. That includes a would-be link to an existing user and a returning Google user. An error from it aborts the callback before any linking or token issue. (The hook body itself, `triggerBeforeUserCreatedExternal`, was not read; whether it skips existing users is **to prove**.)
+
+## Mechanism
+
+### A. Gate: a `before_user_created` hook (Postgres function)
+
+A pg-functions hook, `pg-functions://postgres/public/s03_before_user_created`, enabled in `supabase/config.toml` (and later on hosted with the owner's yes). Logic, for a payload whose provider is `google`:
+
+1. Read the Google `email` and `email_verified` from the payload's provider data, not from anything the client sent.
+2. If `email_verified` is not true: reject (no link, no create).
+3. If a user already exists with that email (case-insensitive, trimmed) and `private.mailbox_verified(that user)` is false: reject with the message "Sign in with your password and verify your email first, then use Google."
+4. Otherwise allow. Brand-new Google users have no existing user, so they pass step 3.
+
+Non-Google providers and email/password signups pass through unchanged. The function reads `auth.users` and `private.mailbox_state` only; it writes nothing.
+
+**To prove first (red tests):** the hook fires for the link case on v2.196.0; the payload exposes the provider and `email_verified`; a rejection surfaces to the client as a callback error the app can recognise. If the hook does not fire for existing users, fall back to **B2** below.
+
+### B. Fallbacks, in order
+
+- **B1, post-check:** if the hook cannot see the claim but fires, read `auth.identities.identity_data` in the hook after a lookup. Same rule.
+- **B2, manual linking only:** disable Google sign-up as a way in for existing emails by routing the link through a signed-in session (`linkIdentity`, needs manual linking enabled). Worse UX, no hook dependency. Choose only if A fails.
+
+### C. Proof: a trigger on `auth.identities`
+
+New migration (next free number after 062; read the directory, do not assume). A `security definer` trigger on insert or update of `auth.identities`: when `provider = 'google'`, `identity_data->>'email_verified'` is true, and `lower(trim(identity_data->>'email'))` equals `lower(trim(auth.users.email))` for that user, set in `private.mailbox_state`: `verified_version = version`, `verified_at = now()`. This is entirely server-side. No client input, no new RPC, and it reuses the table 048 defines. GoTrue rewrites `identity_data` on each login, so a returning Google user keeps the proof fresh. An email change already bumps `version` and clears the proof (`private.track_mailbox_version`), so decision 3's "dropped on change" holds without extra code.
+
+Edge to test: the user's email changes after Google was linked. The identity email no longer matches `auth.users.email`, so the trigger must not re-grant the proof.
+
+### D. Linked accounts
+
+A proved password account that links Google gets one user, one profile, unchanged quests and history, password still working (GoTrue adds an identity; it does not touch the password for a confirmed user). The Google proof then also covers that account. No unlinking UI in S03.
+
+## Client design
+
+### Web
+
+- A "Continue with Google" button on sign-in and sign-up calls `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: <origin>/auth/callback, scopes: 'openid email profile' } })`. Use the least scopes needed; check the current Supabase Google doc before fixing the list (queryParams `prompt=select_account` is a candidate so a shared browser does not silently reuse an account).
+- A callback route exchanges the PKCE code and then loads the session. It must handle: `error` and `error_description` parameters, a missing or replayed code, and the hook rejection (map it to the S03 message above, not the raw text).
+- Cancel (user closes Google's consent) lands on sign-in with a neutral "Google sign-in was cancelled" line and no retry loop.
+
+### Mobile
+
+- `signInWithOAuth` with `skipBrowserRedirect: true`, open the returned URL with `WebBrowser.openAuthSessionAsync(url, redirectTo)`, then exchange the code from the returned URL. Check the SDK 54 pages for `expo-web-browser` and AuthSession before coding (`AGENTS.md` requires it).
+- `redirectTo` is built with `Linking.createURL('auth/callback')`, so it follows the variant scheme (`eiyusystem`, `-dev`, preview). Each scheme's URL goes on the Supabase redirect allowlist; add them to local `additional_redirect_urls` only (hosted needs the owner's yes).
+- The existing `+native-intent` already routes recovery links and holds fragments in memory. Add the callback path there rather than a second mechanism, and never persist the code or tokens.
+- `openAuthSessionAsync` results `cancel` and `dismiss` map to the same neutral cancel state as web. A stale `Linking` URL arriving later must be ignored when no flow is pending.
+
+### Messages
+
+One shared mapping in `packages/shared` from callback errors to user text: cancelled, rejected-unproved ("sign in with your password and verify first"), unverified Google email ("Google says this email is not verified"), and a generic failure. Both clients use it; tests live next to it.
+
+## Privacy and terms deltas
+
+Google becomes a recipient of sign-in data (the identity request goes browser to Google, and Google sees that the user signs in to Eiyu). Update the data-flow inventory and the Privacy Policy text in `packages/shared/src/logic/legal-content.ts`: which claims Eiyu stores (email, name, avatar URL, Google subject ID), purpose, and that Google's own terms apply. S14 does the final audit; S03 only adds the Google entry and keeps the legal-content test that allows only the operator contact address.
+
+## Configuration (names only, no values)
+
+- Local `supabase/config.toml`: `[auth.external.google]` with `enabled = true`, `client_id = "env(...)"`, `secret = "env(...)"`; the hook block; Google redirect URIs for the local stack. Secrets live in an ignored env file.
+- The disposable stack is on 54321/54322 per the config's own caveat; the personal stack is 55321/55322. The implementation session names which one it uses.
+- Hosted: Google provider settings, the redirect allowlist and the hook need the owner's yes. The hosted `enable_confirmations` setting must be read before any claim about hosted behaviour (it decides whether autoconfirm counts unverified provider emails there). Record the value in the handoff, not the project ID.
+
+## Test strategy (tests first)
+
+Negative cases come first:
+
+1. Unproved password account plus verified Google with the same email: rejected, still exactly one user, no new row in `auth.users` or `auth.identities`.
+2. Google `email_verified = false` (with autoconfirm on, as locally): rejected.
+3. Proved password account plus verified Google: one user, same id, quests and profile intact, password still signs in, two identities.
+4. New Google-only user: created, proof granted by the trigger, debrief gate (`current_mailbox_verified()`) true.
+5. Email change after linking: proof cleared, not re-granted by the old identity.
+6. Case and whitespace differences in the email match.
+7. Hook ignores non-Google providers and email/password signups.
+8. Client: cancel, dismiss, error parameter, replayed or missing code, stale URL with no pending flow, rejection-to-message mapping.
+
+Levels: SQL tests in `backend/supabase/tests` style (read the runner and the 048 test for conventions); a real GoTrue integration test against the local stack for the hook and linking behaviour, because mocks cannot show what the hook receives; shared, web and mobile unit tests; then real Google login on web, the emulator and the Oppo.
+
+## Out of scope / risks
+
+- Unlinking, Apple login, hosted rollout, store listing changes.
+- Autoconfirm hides the "unverified Google email" case locally. The hook, not GoTrue, must carry that rule, which is why test 2 matters.
+- Google test-user limits while the consent screen is in Testing mode; a real user outside the list will see Google's block page. Note it for release.
+- If A fails on v2.196.0 the spec changes to B2 and the UX loses the single-tap link. Decide then, with the evidence.
