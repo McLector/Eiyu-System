@@ -149,3 +149,41 @@ Spike run against the disposable local stack (GoTrue v2.196.0) with real Google 
 - **Open: hosted.** Whether the hosted project allows triggers on `auth.identities` is unverified. Mechanism C and any trigger-based gate depend on it. A read-only check needs the owner's yes.
 - **Open for re-plan:** the linking gate, and how Google sign-up collects birth date and consent given EP003.
 - B2 (manual linking) does not close the takeover by itself, because GoTrue still links on a verified email.
+
+## Re-plan (2026-11-06)
+
+Settles the two open questions from T1. Sections A and B above and the "Why" bullet about the hook are superseded by this section. Nothing hosted was changed.
+
+### Decisions
+
+1. **Linking gate: a `BEFORE INSERT` trigger on `auth.identities`** (owner's choice). It is scoped to `provider = 'google'` and refuses only when the user already has a non-Google identity and `private.mailbox_verified(user)` is false. A brand-new Google user has no other identity, so it is not refused; a plain proof check would block every Google sign-up, so this is a red test. A proved account passes. An `UPDATE` (a returning login) is never blocked.
+2. **Proof grant (mechanism C) is `AFTER INSERT OR UPDATE`**, so by timing it can never grant proof before the gate looks. Do not rely on trigger name order.
+3. **The hook stays, narrowed:** `s03_before_user_created` rejects an unverified Google email on the create path with a readable 403 message. It plays no part in linking.
+4. **EP003: finish sign-up right after Google** (owner delegated the choice). A Google-created account may start with no age consent; the app then shows a required "finish sign-up" screen (birthday notice, consent, birth date) before anything else.
+   - `signInWithOAuth` cannot carry metadata (only `redirectTo`, `scopes`, `queryParams`, `skipBrowserRedirect`; `auth-js` `types.d.ts:601-616`), so birthday and consent cannot ride along on the Google step. On web the redirect reloads the page, so asking first would mean keeping a birth date in browser storage across it.
+   - "Existing accounts only" would drop the new Google-only user case. "Anonymous account first" needs hosted anonymous sign-ins, manual linking, CAPTCHA and its own spike.
+   - Policy trade-off, stated in the privacy text: for Google sign-ups only, S02's "consent before account" becomes "consent before any birthday processing". Until the user finishes, the account holds email, name, avatar URL and Google ID.
+5. **EP003 exception keys on `raw_app_meta_data->>'provider' = 'google'`**, which only GoTrue sets. `raw_user_meta_data` is client-controlled and is never used for the exception. Every other path, including a password sign-up that claims Google in user metadata, still raises EP003.
+6. **One client message for the lost trigger text** (R3 loses the refusal text, and `Error creating identity` can have other causes): "Google couldn't connect to this email. If you already have an Eiyu account, sign in with your password and verify your email first, then use Google." Hook 403 texts map to their own messages.
+7. **Finish screen scope:** `needsGoogleSignupFinish(user, processing status)` is true only for Google-created accounts without age consent, so legacy password accounts are not pushed into it. Both apps already treat `birthDate: null` as an unknown audience with age-gated features off (`web/src/store/__tests__/account-audience.test.tsx:50`, `mobile/contexts/__tests__/account-audience.test.tsx:49`), and the consent and birthday RPCs from 050 already exist after sign-up.
+
+### Hosted read-only checks (2026-11-06, SELECT only, project ID omitted)
+
+| Check | Result |
+|---|---|
+| Owner of `auth.identities` | `supabase_auth_admin` |
+| `has_table_privilege('postgres', 'auth.identities', 'TRIGGER')` | `true` (also `true` for `auth.users`) |
+| Non-internal triggers on `auth.users` and `auth.identities` | one: `on_auth_user_created`, AFTER, enabled, on `auth.users` |
+| `private.capture_initial_processing_consent` (migration 050) | **not present** |
+| `private.mailbox_verified` (migration 048) | **not present** |
+
+- The privilege check is a signal, not proof. Creating a trigger on `auth.identities` hosted is a hosted change and needs its own yes; the first real attempt may still be refused because the table belongs to `supabase_auth_admin`.
+- **Hosted does not have S02's mailbox proof or EP003 yet** (048 and 050 are missing there), consistent with "engineering done, release pending". The S03 migration depends on 048, and the EP003 change depends on 050, so S03 cannot reach hosted before S02's SQL does. This does not block local work.
+- The hosted `enable_confirmations` ("Confirm email") value cannot be read from SQL. The owner reads it in the dashboard; it must be recorded before any claim about hosted behaviour.
+
+### Risks and open items
+
+- If hosted turns out to refuse a trigger on `auth.identities`, Google must not be enabled there: GoTrue would auto-link unproved accounts. Stop and re-plan; local work can continue.
+- Abandoned Google accounts hold a profile and no consent. Check whether in-app account deletion can be offered on the finish screen; otherwise sign-out is available and the privacy text covers it.
+- The unverified-Google-email path cannot be produced with a real Google account, so it is covered at SQL level only; the handoff must say so.
+- Before the web and mobile client tasks, read the Expo SDK 54 pages for `expo-web-browser` and AuthSession (`AGENTS.md`).
