@@ -19,10 +19,13 @@ Read from supabase/auth v2.196.0, the version the local stack runs (`internal/mo
 - No config switch turns automatic linking off. The only related setting is `GOTRUE_EXPERIMENTAL_PROVIDER_LINKING_DOMAINS`, which is marked experimental and would also isolate Google from legitimate linking, so it is not used.
 - If no link happens and no user matches, a new account is created. A refusal therefore has to be an explicit rejection, not a side effect.
 - `before_user_created` runs at the top of the OAuth callback for every login that is not manual linking or an invite. That includes a would-be link to an existing user and a returning Google user. An error from it aborts the callback before any linking or token issue. (The hook body itself, `triggerBeforeUserCreatedExternal`, was not read; whether it skips existing users is **to prove**.)
+- **Superseded by the T1 findings below:** the hook is skipped for a link to an existing user, so it cannot gate linking.
 
 ## Mechanism
 
 ### A. Gate: a `before_user_created` hook (Postgres function)
+
+> **Disproved in T1 (see Findings below):** this hook never runs for a link to an existing account, so it cannot carry the linking rule. The text is kept as written for the record.
 
 A pg-functions hook, `pg-functions://postgres/public/s03_before_user_created`, enabled in `supabase/config.toml` (and later on hosted with the owner's yes). Logic, for a payload whose provider is `google`:
 
@@ -100,3 +103,49 @@ Levels: SQL tests in `backend/supabase/tests` style (read the runner and the 048
 - Autoconfirm hides the "unverified Google email" case locally. The hook, not GoTrue, must carry that rule, which is why test 2 matters.
 - Google test-user limits while the consent screen is in Testing mode; a real user outside the list will see Google's block page. Note it for release.
 - If A fails on v2.196.0 the spec changes to B2 and the UX loses the single-tap link. Decide then, with the evidence.
+
+## Findings (T1, 2026-11-06)
+
+Spike run against the disposable local stack (GoTrue v2.196.0) with real Google logins from a test user on a consent screen in Testing mode. Scratch objects only (a logging hook function and a logging trigger on `auth.identities`); all dropped afterwards, counts back to baseline. The script is `scripts/s03-google-linking-local.test.mjs`. Nothing hosted was touched.
+
+### Source facts (read from the v2.196.0 tag)
+
+- `triggerBeforeUserCreatedExternal` returns early unless the account decision is `CreateAccount`. The hook is skipped for `LinkAccount`, `AccountExists` and `MultipleAccounts`.
+- Linking happens when the provider email is verified, or `Mailer.Autoconfirm` is on. No setting turns automatic linking off.
+- Google's issuer is hardcoded outside test code, so a fake Google is not an option; real logins are needed.
+- A hook rejects by returning `{"error":{"http_code":403,"message":"..."}}`; the client then sees `error=access_denied` with the message. `RAISE` gives a 500 and loses the text. An empty message counts as success.
+- In the hook payload `user.id` is a throwaway id, and `email_verified` is under `user.user_metadata`. An unverified Google email that matches an existing user still takes the create path, with the email blanked, so an "unverified email" rule is still needed.
+
+### R1: new Google user (hook fires, S02 refuses the account)
+
+- The hook fired once. Payload: `user.app_metadata.provider = "google"`, `user.user_metadata.email_verified = true`, `user.user_metadata.sub`, `user.email`, `user.identities = []`, `metadata.name = "before-user-created"`.
+- The account was not created. `private.capture_initial_processing_consent` (`backend/supabase/050_processing_access.sql`, EP003) needs `raw_user_meta_data.birth_date` and `processing_consent.age_screening` granted for the current notice version. A Google-created user has neither. The browser received `error=server_error&error_code=unexpected_failure&error_description=Database error saving new user`.
+- **A Google-only sign-up cannot work today.** The birth date and consent have to be collected before or after the Google step. The design does not cover this yet; it is an owner decision.
+
+### R2: existing password account, then Google with the same verified email
+
+- The hook made **0 calls** for the login. Creating the password user through the admin API also made 0 hook calls.
+- The identities trigger fired once: `INSERT`, provider `google`, `email_verified = true`, attached to the **existing** user. Still one user; the browser received a session.
+- The login linked with no further check. The script did not read `private.mailbox_state`, so this run shows the link happens, not what the S02 proof state was. It is the path the owner's decision 2 must block.
+- The first run passed all assertions. A rerun stopped at a faulty script guard before its checks; the stored state matched (no hook rows, one Google `INSERT` with `verified = true`, one user with `email` and `google` identities).
+
+### R2b: returning login for the linked account
+
+- 0 hook calls and no identity `INSERT`.
+- One identity `UPDATE` with `email_verified = true`. A returning login rewrites the identity row, so a trigger-based proof (mechanism C) would run on every Google login and keep the proof fresh.
+- Deleting the user removed its profile and both identities (counts back to the pre-test values).
+- An earlier attempt reported a stale landing page and proved nothing; the script now requires a `/callback` in the auth log.
+
+### R3: the identities trigger raises
+
+- No link was made: no Google identity kept, still one user.
+- The browser received `error=server_error&error_code=unexpected_failure&error_description=Error+creating+identity`. The auth log showed the trigger's exception as the cause. The refusal text is lost, so the client cannot tell this from any other failure.
+- The trigger's own log insert is rolled back with the transaction, so the evidence comes from the auth log, not from a log table.
+
+### Consequences for the design
+
+- **Mechanism A cannot gate linking.** It stays useful for rejecting an unverified Google email on the create path only. This supersedes the "Why" bullet on the hook and section A above.
+- **A `BEFORE INSERT` trigger on `auth.identities` can stop a link** (R3), and sees the existing `user_id`. It was not tested here against `private.mailbox_state`. Its error is a generic 500 to the client.
+- **Open: hosted.** Whether the hosted project allows triggers on `auth.identities` is unverified. Mechanism C and any trigger-based gate depend on it. A read-only check needs the owner's yes.
+- **Open for re-plan:** the linking gate, and how Google sign-up collects birth date and consent given EP003.
+- B2 (manual linking) does not close the takeover by itself, because GoTrue still links on a verified email.
