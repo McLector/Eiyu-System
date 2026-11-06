@@ -98,6 +98,10 @@ describe('Google sign-in (S03)', () => {
     expect(google()).toMatch(/birthday[^.]*only after[^.]*specific permission/i);
   });
 
+  it('says the finish step also asks for the Terms of Use, as password sign-up does', () => {
+    expect(google()).toMatch(/finish[^.]*Terms of Use/i);
+  });
+
   it('says what happens to an abandoned sign-up and how to ask for removal', () => {
     expect(google()).toMatch(/stop[^.]*account stays/i);
     expect(google()).toContain('privacy@eiyusystem.app');
