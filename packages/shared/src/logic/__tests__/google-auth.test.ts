@@ -1,16 +1,43 @@
 import {
   GOOGLE_CANCELLED_MESSAGE,
   GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
+  GOOGLE_EXPIRED_MESSAGE,
   GOOGLE_GENERIC_MESSAGE,
   GOOGLE_LINK_REFUSED_MESSAGE,
   classifyGoogleSignInError,
   googleSignInErrorMessage,
   needsGoogleSignupFinish,
+  readExpiredGoogleSignIn,
   readOAuthErrorParams,
 } from '../google-auth';
 
 // The exact shape GoTrue v2.196.0 sent when the identities trigger refused a link (T4, real login).
 const REFUSAL = {error: 'server_error', error_code: 'unexpected_failure', error_description: 'Error creating identity'};
+// What GoTrue sent to the site URL when Google's account chooser was left open too long (2026-11-07, real login).
+const EXPIRED = {error: 'invalid_request', error_code: 'bad_oauth_state', error_description: 'OAuth state has expired'};
+const EXPIRED_QUERY = '?error=invalid_request&error_code=bad_oauth_state&error_description=OAuth+state+has+expired';
+
+describe('readExpiredGoogleSignIn', () => {
+  it('finds the expired shape in the query of the site URL', () => {
+    expect(readExpiredGoogleSignIn(`https://eiyu-system.vercel.app/auth${EXPIRED_QUERY}`)).toBe(true);
+  });
+
+  it('finds it in the hash too', () => {
+    expect(readExpiredGoogleSignIn(`https://eiyu-system.vercel.app/auth#${EXPIRED_QUERY.slice(1)}`)).toBe(true);
+  });
+
+  it('ignores other errors that can land on the sign-in page, such as an expired email link', () => {
+    expect(readExpiredGoogleSignIn('https://eiyu-system.vercel.app/auth#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired')).toBe(false);
+    expect(readExpiredGoogleSignIn('https://eiyu-system.vercel.app/auth?error=access_denied')).toBe(false);
+    expect(readExpiredGoogleSignIn('https://eiyu-system.vercel.app/auth?error=server_error&error_code=unexpected_failure')).toBe(false);
+  });
+
+  it('is false for a plain URL, empty and non-string input', () => {
+    expect(readExpiredGoogleSignIn('https://eiyu-system.vercel.app/auth')).toBe(false);
+    expect(readExpiredGoogleSignIn('')).toBe(false);
+    expect(readExpiredGoogleSignIn(undefined as unknown as string)).toBe(false);
+  });
+});
 
 describe('readOAuthErrorParams', () => {
   it('reads error parameters from the query', () => {
@@ -73,6 +100,21 @@ describe('classifyGoogleSignInError', () => {
     expect(classifyGoogleSignInError({error: 'access_denied', error_description: 'The user denied access'})).toBe('cancelled');
   });
 
+  it('recognises an expired sign-in by its code, as GoTrue sent it on 2026-11-07', () => {
+    expect(classifyGoogleSignInError(EXPIRED)).toBe('expired');
+    expect(classifyGoogleSignInError({error_code: 'bad_oauth_state'})).toBe('expired');
+  });
+
+  it('recognises an expired sign-in by its description alone, ignoring case', () => {
+    expect(classifyGoogleSignInError({error: 'invalid_request', error_description: 'oauth state has expired'})).toBe('expired');
+  });
+
+  it('does not call other invalid_request errors expired', () => {
+    expect(classifyGoogleSignInError({error: 'invalid_request', error_code: 'bad_oauth_callback'})).toBe('generic');
+    expect(classifyGoogleSignInError({error: 'access_denied', error_code: 'otp_expired', error_description: 'Email link is invalid or has expired'}))
+      .not.toBe('expired');
+  });
+
   it('falls back to generic for unknown codes, empty objects and nullish input', () => {
     expect(classifyGoogleSignInError({error: 'temporarily_unavailable'})).toBe('generic');
     expect(classifyGoogleSignInError({})).toBe('generic');
@@ -94,6 +136,12 @@ describe('googleSignInErrorMessage', () => {
     expect(googleSignInErrorMessage({error: 'access_denied', error_description: 'Google says this email is not verified. Verify it with Google, then try again.'}))
       .toBe(GOOGLE_EMAIL_UNVERIFIED_MESSAGE);
     expect(googleSignInErrorMessage({error: 'nope'})).toBe(GOOGLE_GENERIC_MESSAGE);
+  });
+
+  it('tells an expired sign-in to try again, without the raw text', () => {
+    expect(GOOGLE_EXPIRED_MESSAGE).toBe('Google sign-in took too long. Try again.');
+    expect(googleSignInErrorMessage(EXPIRED)).toBe(GOOGLE_EXPIRED_MESSAGE);
+    expect(googleSignInErrorMessage('expired')).toBe(GOOGLE_EXPIRED_MESSAGE);
   });
 
   it('accepts an already-classified failure', () => {

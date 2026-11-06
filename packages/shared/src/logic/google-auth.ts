@@ -11,8 +11,9 @@ export const GOOGLE_LINK_REFUSED_MESSAGE =
 export const GOOGLE_EMAIL_UNVERIFIED_MESSAGE = 'Google says this email is not verified. Verify it with Google, then try again.';
 export const GOOGLE_CANCELLED_MESSAGE = 'Google sign-in was cancelled.';
 export const GOOGLE_GENERIC_MESSAGE = 'Google sign-in did not work. Try again, or sign in with your email and password.';
+export const GOOGLE_EXPIRED_MESSAGE = 'Google sign-in took too long. Try again.';
 
-export type GoogleSignInFailure = 'cancelled' | 'link-refused' | 'email-unverified' | 'generic';
+export type GoogleSignInFailure = 'cancelled' | 'link-refused' | 'email-unverified' | 'expired' | 'generic';
 
 export interface OAuthErrorParams {
   error?: string | null;
@@ -39,9 +40,25 @@ export function readOAuthErrorParams(rawUrl: string): OAuthErrorParams | null {
   return any ? found : null;
 }
 
+/**
+ * GoTrue refuses a callback whose state is too old (Google's account chooser left open a few minutes) with
+ * `error=invalid_request&error_code=bad_oauth_state&error_description=OAuth+state+has+expired`. It cannot know
+ * the app's redirect then, so it sends that to the site URL instead of the callback page.
+ */
+function isExpired(params: OAuthErrorParams | null | undefined): boolean {
+  return params?.error_code === 'bad_oauth_state'
+    || (params?.error_description ?? '').toLowerCase().includes('oauth state has expired');
+}
+
+/** True only when a URL carries the expired-sign-in error; other errors that reach the sign-in page are left alone. */
+export function readExpiredGoogleSignIn(rawUrl: string): boolean {
+  return isExpired(readOAuthErrorParams(rawUrl));
+}
+
 /** The hook's 403 text and a refused link both come back as errors; only the description tells them apart. */
 export function classifyGoogleSignInError(params: OAuthErrorParams | null | undefined): GoogleSignInFailure {
   const description = (params?.error_description ?? '').toLowerCase();
+  if (isExpired(params)) return 'expired';
   if (description.includes('error creating identity')) return 'link-refused';
   if (description.includes('email is not verified')) return 'email-unverified';
   if (params?.error === 'access_denied') return 'cancelled';
@@ -52,6 +69,7 @@ const MESSAGES: Record<GoogleSignInFailure, string> = {
   'cancelled': GOOGLE_CANCELLED_MESSAGE,
   'link-refused': GOOGLE_LINK_REFUSED_MESSAGE,
   'email-unverified': GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
+  'expired': GOOGLE_EXPIRED_MESSAGE,
   'generic': GOOGLE_GENERIC_MESSAGE,
 };
 
