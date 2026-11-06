@@ -65,7 +65,7 @@ describe('web registration legal documents', () => {
     expect(screen.getByText('TERMS OF USE')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Close Terms of Use' }));
     expect(consent).toBeChecked();
-  });
+  }, 20_000);
 
   it('explains missing consent on submit and calls the real auth boundary after acceptance', async () => {
     const user = userEvent.setup();

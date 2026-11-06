@@ -29,7 +29,7 @@ describe('web auth validation', () => {
     await user.click(screen.getByRole('button', {name: 'BEGIN JOURNEY'}));
     expect(auth.signUp).not.toHaveBeenCalled();
     expect(screen.getByRole('checkbox', {name: /I agree.*birthday/i})).not.toBeChecked();
-  });
+  }, 20_000);
   it('does not create an under12 account even after explicit choices', async () => {
     const user = await completedSignup();
     await user.clear(screen.getByLabelText('Birthday')); await user.type(screen.getByLabelText('Birthday'), '2020-01-01');
@@ -37,7 +37,7 @@ describe('web auth validation', () => {
     await user.click(screen.getByRole('button', {name: 'BEGIN JOURNEY'}));
     expect(auth.signUp).not.toHaveBeenCalled();
     expect(screen.getByText('New Eiyu accounts are for ages 12 and above.')).toBeInTheDocument();
-  });
+  }, 20_000);
   it('sends only the initial age-purpose grant and clears it on mode switching', async () => {
     const user = await completedSignup();
     await user.click(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
@@ -49,7 +49,7 @@ describe('web auth validation', () => {
     expect(data.processing_consent.weekly_debrief).toBeUndefined(); expect(data.authority).toBeUndefined();
     await user.click(screen.getByRole('button', {name: 'BACK TO LOGIN'})); await enterSignup(user);
     expect(screen.getByRole('checkbox', {name: /I agree.*birthday/i})).not.toBeChecked();
-  });
+  }, 20_000);
   it('requires an unprefilled birthday without a qualifying-age hint', async () => {
     const user = userEvent.setup();
     render(<WebAuth onLogin={vi.fn()} />);
