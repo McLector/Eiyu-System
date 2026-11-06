@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Text } from 'react-native';
+import { Dimensions, Text } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { PROCESSING_NOTICES } from '@eiyu/shared';
 
@@ -227,5 +227,24 @@ describe('finishing', () => {
     await screen.findByText('App content');
     expect(setItem.mock.calls.map(call => `${call[0]}=${call[1]}`).join('|')).not.toContain('1999-07-04');
     setItem.mockRestore();
+  });
+});
+
+describe('at font scale 1.6', () => {
+  const original = Dimensions.get('window');
+  beforeEach(() => {
+    Dimensions.set({ window: { ...original, width: 360, height: 640, fontScale: 1.6 }, screen: { ...original, width: 360, height: 640, fontScale: 1.6 } });
+  });
+  afterEach(() => Dimensions.set({ window: original, screen: original }));
+
+  it('shows every control untruncated and finishes', async () => {
+    await mount();
+    expect(await screen.findByRole('header', { name: 'Finish signing up' })).toBeOnTheScreen();
+    for (const text of [PROCESSING_NOTICES['age-screening'].body, LABEL, 'FINISH SIGN-UP', 'Sign out']) {
+      expect(screen.getByText(text).props.numberOfLines).toBeUndefined();
+    }
+    expect(screen.getByLabelText('Birthday')).toBeOnTheScreen();
+    await fillAndSubmit();
+    expect(await screen.findByText('App content')).toBeOnTheScreen();
   });
 });

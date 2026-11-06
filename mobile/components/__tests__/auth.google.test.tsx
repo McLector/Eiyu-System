@@ -1,3 +1,4 @@
+import { Dimensions } from 'react-native';
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { GOOGLE_LINK_REFUSED_MESSAGE } from '@eiyu/shared';
 
@@ -111,5 +112,24 @@ describe('mobile auth: Continue with Google', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'ENTER SYSTEM' }));
     await waitFor(() => expect(mockSignIn).toHaveBeenCalledWith('kaito@example.com', 'StrongPass1!'));
     expect(mockGoogle).not.toHaveBeenCalled();
+  });
+});
+
+describe('mobile auth: Continue with Google at font scale 1.6', () => {
+  const original = Dimensions.get('window');
+  beforeEach(() => {
+    Dimensions.set({ window: { ...original, width: 360, height: 640, fontScale: 1.6 }, screen: { ...original, width: 360, height: 640, fontScale: 1.6 } });
+  });
+  afterEach(() => Dimensions.set({ window: original, screen: original }));
+
+  it('keeps the button, its label and the birthday line whole and pressable on sign-up', async () => {
+    await renderWithTheme(<AuthScreen />);
+    await fireEvent.press(screen.getByText('Register'));
+    const label = screen.getByText('CONTINUE WITH GOOGLE');
+    expect(label.props.numberOfLines).toBeUndefined();
+    const note = screen.getByText("You'll confirm your birthday right after Google.");
+    expect(note.props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByRole('button', GOOGLE));
+    expect(mockGoogle).toHaveBeenCalledTimes(1);
   });
 });
