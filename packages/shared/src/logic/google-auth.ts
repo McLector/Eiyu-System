@@ -62,14 +62,22 @@ export function googleSignInErrorMessage(input: OAuthErrorParams | GoogleSignInF
 }
 
 /**
- * True only for an account GoTrue created through Google that has no age consent yet.
+ * True only for an account GoTrue created through Google that has not finished: no age consent yet, or
+ * (when the birthday status is given) consent but no birthday, which the earlier two-call screen could leave.
+ * A malformed birthday status is ignored, so the answer falls back to consent alone.
  * Keys on `app_metadata.provider`, which only GoTrue sets and is not changed by a later link, so a
  * password account that adds Google, or one whose user_metadata claims Google, is never pushed in.
  */
 export function needsGoogleSignupFinish(
   user: {app_metadata?: {provider?: unknown; [key: string]: unknown} | null} | null | undefined,
   access: {ageConsent?: unknown} | null | undefined,
+  age?: {birthDate?: unknown; pendingBirthDate?: unknown} | null,
 ): boolean {
   if (!user || !access) return false;
-  return user.app_metadata?.provider === 'google' && access.ageConsent === false;
+  if (user.app_metadata?.provider !== 'google') return false;
+  if (access.ageConsent === false) return true;
+  if (access.ageConsent !== true || !age) return false;
+  const known = (value: unknown) => value === null || typeof value === 'string';
+  if (!known(age.birthDate) || !known(age.pendingBirthDate)) return false;
+  return age.birthDate === null && age.pendingBirthDate === null;
 }

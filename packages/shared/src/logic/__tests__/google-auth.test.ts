@@ -151,4 +151,35 @@ describe('needsGoogleSignupFinish', () => {
     expect(needsGoogleSignupFinish(google, {} as never)).toBe(false);
     expect(needsGoogleSignupFinish(google, {ageConsent: 'false'} as never)).toBe(false);
   });
+
+  describe('with the birthday status', () => {
+    const noBirthday = {birthDate: null, pendingBirthDate: null};
+    const withBirthday = {birthDate: '2000-01-01', pendingBirthDate: null};
+
+    it('is true for a half-finished account: permission saved, no birthday', () => {
+      expect(needsGoogleSignupFinish(google, {ageConsent: true}, noBirthday)).toBe(true);
+    });
+
+    it('is false once permission and birthday are both saved', () => {
+      expect(needsGoogleSignupFinish(google, {ageConsent: true}, withBirthday)).toBe(false);
+    });
+
+    it('treats a pending birthday as a saved one', () => {
+      expect(needsGoogleSignupFinish(google, {ageConsent: true}, {birthDate: null, pendingBirthDate: '2000-01-01'})).toBe(false);
+    });
+
+    it('is still true without permission even when a birthday exists', () => {
+      expect(needsGoogleSignupFinish(google, {ageConsent: false}, withBirthday)).toBe(true);
+    });
+
+    it('never pushes a password account in, even with no birthday', () => {
+      expect(needsGoogleSignupFinish(password, {ageConsent: true}, noBirthday)).toBe(false);
+      expect(needsGoogleSignupFinish(password, {ageConsent: false}, noBirthday)).toBe(false);
+    });
+
+    it('ignores a malformed birthday status rather than throwing', () => {
+      expect(needsGoogleSignupFinish(google, {ageConsent: true}, {} as never)).toBe(false);
+      expect(needsGoogleSignupFinish(google, {ageConsent: true}, {birthDate: 5} as never)).toBe(false);
+    });
+  });
 });
