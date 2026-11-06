@@ -57,3 +57,4 @@ export * from './logic/quest-labels';
 export * from './logic/password-recovery';
 export * from './logic/processing-consent';
 export * from './logic/google-auth';
+export * from './logic/google-callback';
