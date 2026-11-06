@@ -8,6 +8,7 @@ describe('registration legal content', () => {
     expect(LEGAL_DOCUMENTS.privacy.sections.map(section => section.heading)).toEqual([
       'DATA WE COLLECT',
       "HOW IT'S USED",
+      'SIGNING IN WITH GOOGLE',
       'AI FEATURES',
       'CUSTOM TRACKER AND FITNESS',
       'HOW LONG WE KEEP THINGS',
@@ -79,6 +80,47 @@ describe('registration legal content', () => {
   });
 });
 
+describe('Google sign-in (S03)', () => {
+  const google = () => LEGAL_DOCUMENTS.privacy.sections.find(s => s.heading === 'SIGNING IN WITH GOOGLE')?.body ?? '';
+
+  it('names what Google gives us and that we never receive the Google password', () => {
+    expect(google()).toMatch(/email address/i);
+    expect(google()).toMatch(/verified/i);
+    expect(google()).toMatch(/name/i);
+    expect(google()).toMatch(/profile picture address/i);
+    expect(google()).toMatch(/Google account ID/i);
+    expect(google()).toMatch(/never receive your Google password/i);
+  });
+
+  it('says the account exists before the birthday step and what it holds until the user finishes', () => {
+    expect(google()).toMatch(/creates your account before you confirm your birthday/i);
+    expect(google()).toMatch(/until you finish[^.]*email[^.]*name[^.]*profile picture address[^.]*Google account ID/i);
+    expect(google()).toMatch(/birthday[^.]*only after[^.]*specific permission/i);
+  });
+
+  it('says what happens to an abandoned sign-up and how to ask for removal', () => {
+    expect(google()).toMatch(/stop[^.]*account stays/i);
+    expect(google()).toContain('privacy@eiyusystem.app');
+  });
+
+  it('explains that an existing account is linked only after its email is verified, and what to do otherwise', () => {
+    expect(google()).toMatch(/same email/i);
+    expect(google()).toMatch(/only when you have verified that email/i);
+    expect(google()).toMatch(/sign in with your password and verify your email first/i);
+  });
+
+  it('names Google as a processor without ads or selling claims being weakened', () => {
+    expect(google()).toMatch(/Google's own privacy policy/i);
+    const privacy = LEGAL_DOCUMENTS.privacy.sections.map(s => s.body).join(' ');
+    expect(privacy).toContain('No ads, no data selling, no third-party trackers.');
+  });
+
+  it('adds no new contact address', () => {
+    const addresses = google().match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [];
+    expect([...new Set(addresses)]).toEqual(['privacy@eiyusystem.app']);
+  });
+});
+
 describe('approved tracker notices and policy additions (S02 decisions 5-9, 13)', () => {
   const purposes = ['custom-tracker', 'fitness-tracking'] as const;
   it('carries no draft marker and keeps the notice versions unchanged', () => {
@@ -125,7 +167,7 @@ describe('approved tracker notices and policy additions (S02 decisions 5-9, 13)'
   });
   it('adds a purposes section and a keeping-things section to the privacy policy', () => {
     const headings = LEGAL_DOCUMENTS.privacy.sections.map(s => s.heading);
-    expect(headings).toEqual(['DATA WE COLLECT', "HOW IT'S USED", 'AI FEATURES', 'CUSTOM TRACKER AND FITNESS', 'HOW LONG WE KEEP THINGS', 'YOUR CONTROL']);
+    expect(headings).toEqual(['DATA WE COLLECT', "HOW IT'S USED", 'SIGNING IN WITH GOOGLE', 'AI FEATURES', 'CUSTOM TRACKER AND FITNESS', 'HOW LONG WE KEEP THINGS', 'YOUR CONTROL']);
     const text = LEGAL_DOCUMENTS.privacy.sections.map(s => s.body).join(' ');
     expect(text).toMatch(/30 days/);
     expect(text).toMatch(/12 months/);
