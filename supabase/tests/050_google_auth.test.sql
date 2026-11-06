@@ -176,5 +176,64 @@ update auth.identities set identity_data=identity_data||'{"email":"proof-ok-new@
  where provider='google' and provider_id='g-sub-12';
 select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000012'),true,'a verified Google claim for the new address grants proof for it');
 
+-- T3b: a Google-created account may start without age consent; every other path may not.
+-- The exception keys on raw_app_meta_data (GoTrue sets it, the client cannot), never on
+-- raw_user_meta_data. Users are inserted as supabase_auth_admin, the role real Auth uses,
+-- so the privileged-import shortcut in 050 cannot hide the result.
+grant usage on schema extensions to supabase_auth_admin;
+set local role supabase_auth_admin;
+select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000020','ep3-password@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}')$$,
+ 'EP003',null,'password sign-up without consent still raises EP003');
+select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000021','ep3-forged@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01","provider":"google"}')$$,
+ 'EP003',null,'user metadata claiming Google does not open the exception');
+select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000022','ep3-no-provider@example.invalid','{}','{"birth_date":"2000-01-01"}')$$,
+ 'EP003',null,'an account with no provider in app metadata still raises EP003');
+select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000023','ep3-google-bad-choice@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01","processing_consent":{"age_screening":{"granted":"true","notice_version":"2026-10-20-age-v1"}}}')$$,
+ 'EP003',null,'a Google account that sends a malformed consent choice is still refused');
+select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000024','ep3-google@example.invalid','{"provider":"google","providers":["google"]}','{"full_name":"Test Person"}')$$,
+ 'a Google-created account with no consent and no birthday is accepted');
+select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000025','ep3-google-consent@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01","processing_consent":{"age_screening":{"granted":true,"notice_version":"2026-10-20-age-v1"}}}')$$,
+ 'a Google-created account that does send valid consent is accepted');
+reset role;
+select is((select count(*) from auth.users where id in ('d5000000-0000-4000-8000-000000000020','d5000000-0000-4000-8000-000000000021',
+  'd5000000-0000-4000-8000-000000000022','d5000000-0000-4000-8000-000000000023')),0::bigint,'refused sign-ups leave no account behind');
+select is((select count(*) from private.processing_consent where user_id='d5000000-0000-4000-8000-000000000024'),0::bigint,
+  'a Google-created account without consent has no consent row');
+select is((select count(*) from private.processing_consent_events where user_id='d5000000-0000-4000-8000-000000000024'),0::bigint,
+  'and no consent event');
+select is((select count(*) from private.account_age where user_id='d5000000-0000-4000-8000-000000000024'),0::bigint,
+  'and no birthday record, so the audience stays unknown');
+select is((select age_granted from private.processing_consent where user_id='d5000000-0000-4000-8000-000000000025'),true,
+  'valid consent sent with a Google sign-up is still recorded');
+
+-- T3b: the narrowed before-user-created hook. Create path only; it never touches linking.
+select ok(to_regprocedure('public.s03_before_user_created(jsonb)') is not null,'hook function exists');
+select ok(coalesce((select p.proconfig @> array['search_path=""'] from pg_proc p
+  where p.oid=to_regprocedure('public.s03_before_user_created(jsonb)')),false),'hook has an empty search_path');
+select ok(coalesce(has_function_privilege('supabase_auth_admin',to_regprocedure('public.s03_before_user_created(jsonb)'),'EXECUTE')
+  and not has_function_privilege('anon',to_regprocedure('public.s03_before_user_created(jsonb)'),'EXECUTE')
+  and not has_function_privilege('authenticated',to_regprocedure('public.s03_before_user_created(jsonb)'),'EXECUTE')
+  and not has_function_privilege('service_role',to_regprocedure('public.s03_before_user_created(jsonb)'),'EXECUTE'),false),
+  'only the Auth role can execute the hook');
+select is(public.s03_before_user_created('{"user":{"app_metadata":{"provider":"google"},"user_metadata":{"email_verified":true}}}'::jsonb),
+  '{}'::jsonb,'verified Google email is allowed');
+select is(public.s03_before_user_created('{"user":{"app_metadata":{"provider":"google"},"user_metadata":{"email_verified":false}}}'::jsonb)#>>'{error,http_code}',
+  '403','unverified Google email is rejected with 403');
+select is(public.s03_before_user_created('{"user":{"app_metadata":{"provider":"google"},"user_metadata":{"email_verified":false}}}'::jsonb)#>>'{error,message}',
+  'Google says this email is not verified. Verify it with Google, then try again.','and the message is readable');
+select is(public.s03_before_user_created('{"user":{"app_metadata":{"provider":"google"},"user_metadata":{}}}'::jsonb)#>>'{error,http_code}',
+  '403','a missing email_verified claim is rejected');
+select is(public.s03_before_user_created('{"user":{"app_metadata":{"provider":"google"},"user_metadata":{"email_verified":"false"}}}'::jsonb)#>>'{error,http_code}',
+  '403','a text false claim is rejected');
+select is(public.s03_before_user_created('{"user":{"app_metadata":{"provider":"email"},"user_metadata":{"email_verified":false}}}'::jsonb),
+  '{}'::jsonb,'a non-Google sign-up passes through unchanged');
+select is(public.s03_before_user_created('{}'::jsonb),'{}'::jsonb,'an empty event passes through unchanged');
+
 select * from finish();
 rollback;

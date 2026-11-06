@@ -187,6 +187,13 @@ Decision 1 said to refuse only when the user already has a non-Google identity a
 
 Migration 063 therefore allows a Google identity INSERT only when `private.mailbox_verified(user)` is true, or the user has no identity rows yet and `raw_app_meta_data->>'provider' = 'google'` (the create path; GoTrue sets it, the client cannot). Everything decision 1 refused is still refused, plus two gaps: an identity-less unproved user, and a Google-created user whose proof was cleared by an email change taking a second Google identity. The test file is `supabase/tests/050_google_auth.test.sql`. The refusal is SQLSTATE `EG001`; per R3 the client only sees the generic identity error.
 
+### T3 and T3b notes (2026-11-06)
+
+- The proof trigger (`grant_google_mailbox_proof`, AFTER INSERT OR UPDATE) also takes the account row lock, as 048's `mailbox_finish` does. A verified Google claim for the account's new address grants proof for it after an email change; a stale identity does not.
+- The EP003 exception skips only an absent consent choice for a Google-created account. A malformed choice still raises, and a valid one is still recorded.
+- Local ownership mismatch: on the disposable stack, 050's consent trigger function and the two consent tables were owned by `supabase_admin` (hand-applied), while 048 objects are `postgres`. Hosted will have everything owned by `postgres` when S02's SQL is applied through the SQL editor. The local runner aligns those three objects to `postgres` before applying 063 so it behaves like hosted. Without the table alignment, a Google sign-up that sends valid consent fails with permission denied.
+- Rollback of 063 is not just dropping its objects: the 050 trigger function body must be restored from `backend/supabase/050_processing_access.sql`.
+
 ### Risks and open items
 
 - If hosted turns out to refuse a trigger on `auth.identities`, Google must not be enabled there: GoTrue would auto-link unproved accounts. Stop and re-plan; local work can continue.

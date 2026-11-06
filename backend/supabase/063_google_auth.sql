@@ -42,4 +42,49 @@ $$;
 revoke all on function private.grant_google_mailbox_proof() from public,anon,authenticated,service_role;
 create trigger grant_google_mailbox_proof after insert or update on auth.identities
  for each row when (new.provider='google') execute function private.grant_google_mailbox_proof();
+
+-- EP003 exception (replaces the 050 body, one added line). signInWithOAuth cannot carry
+-- metadata, so a Google sign-up cannot send the birthday notice choice; the app collects
+-- it on a required finish screen right after. The exception keys on raw_app_meta_data,
+-- which only GoTrue sets; raw_user_meta_data is client-controlled and is never used for
+-- it. A choice that is present but malformed still raises, and every other path still
+-- requires prior specific consent.
+create or replace function private.capture_initial_processing_consent() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare choice jsonb:=new.raw_user_meta_data#>'{processing_consent,age_screening}';
+ privileged_import boolean:=session_user in ('supabase_admin','postgres')
+  and coalesce(nullif(current_setting('role',true),''),'none') in ('none','supabase_admin','postgres');
+begin
+ if choice is null and new.raw_app_meta_data->>'provider'='google' then return new; end if;
+ -- Explicit privileged legacy/test imports can preserve missing declarations
+ -- and grants. Real Auth connections (including Admin Auth APIs) cannot use it.
+ if choice is null and privileged_import then return new; end if;
+ if jsonb_typeof(choice) is distinct from 'object' or choice->'granted' is distinct from 'true'::jsonb
+  or choice->>'notice_version' is distinct from '2026-10-20-age-v1'
+  or new.raw_user_meta_data->>'birth_date' is null then
+  raise exception 'Review the birthday notice and give specific permission before signup.' using errcode='EP003';
+ end if;
+ insert into private.processing_consent(user_id,age_granted,age_notice)
+  values(new.id,true,'2026-10-20-age-v1');
+ insert into private.processing_consent_events(user_id,purpose,granted,notice_version,version)
+  values(new.id,'age-screening',true,'2026-10-20-age-v1',1);
+ return new;
+end;$$;
+
+-- Narrowed before-user-created hook: the create path only. T1 showed it never runs for a
+-- link to an existing user, so it plays no part in linking. A Google email that is not
+-- verified is refused with a readable 403 (an empty message would count as success).
+create function public.s03_before_user_created(event jsonb) returns jsonb
+language plpgsql stable set search_path='' as $$
+begin
+ if event#>>'{user,app_metadata,provider}'='google'
+  and coalesce(event#>>'{user,user_metadata,email_verified}','')<>'true' then
+  return pg_catalog.jsonb_build_object('error',pg_catalog.jsonb_build_object('http_code',403,
+   'message','Google says this email is not verified. Verify it with Google, then try again.'));
+ end if;
+ return '{}'::jsonb;
+end;
+$$;
+revoke all on function public.s03_before_user_created(jsonb) from public,anon,authenticated,service_role;
+grant execute on function public.s03_before_user_created(jsonb) to supabase_auth_admin;
 commit;
