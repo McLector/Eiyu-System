@@ -30,7 +30,7 @@ authorize hosted application or activation. See
 
 062 follows 061: fixes from the admin console and retention review. A review request records the age version it was made under and cannot be approved after a birthday correction; one failing account no longer stops the retention job and shows as `failed` in the console; removal always comes at least 30 full days after withdrawal; a missed reminder is sent before any removal; `operator_resume_purpose` lifts a pause without granting anything. It also wraps the export manifest.
 
-063 is S03 groundwork (needs 048): a `BEFORE INSERT` trigger on `auth.identities` that refuses a Google identity (SQLSTATE `EG001`) unless the account holds the mailbox proof or is on the create path (no identity rows yet and `raw_app_meta_data.provider = 'google'`). Local only: a trigger on `auth.identities` has not been tried on a hosted project, and if hosted refuses it, Google must not be enabled there.
+063 is S03 groundwork (needs 048): a `BEFORE INSERT` trigger on `auth.identities` that refuses a Google identity (SQLSTATE `EG001`) unless the account holds the mailbox proof or is on the create path (no identity rows yet and `raw_app_meta_data.provider = 'google'`). An `AFTER INSERT OR UPDATE` trigger then grants the mailbox proof when Google reports the email verified and it matches the account's current email. Local only: a trigger on `auth.identities` has not been tried on a hosted project, and if hosted refuses it, Google must not be enabled there.
 
 051 adds default-closed AI admission and separate execution accounting. Legacy
 generation RPCs deny even after reopening; refunds do not settle executions.

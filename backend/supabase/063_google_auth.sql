@@ -21,4 +21,25 @@ $$;
 revoke all on function private.gate_google_identity_link() from public,anon,authenticated,service_role;
 create trigger gate_google_identity_link before insert on auth.identities
  for each row when (new.provider='google') execute function private.gate_google_identity_link();
+
+-- Proof: a Google claim that the email is verified, for the address the account holds
+-- now, counts as mailbox proof. AFTER insert or update so by timing it runs after the
+-- gate and can never grant proof before the gate looks; do not rely on trigger names.
+-- GoTrue rewrites identity_data on every login, so a returning login keeps it fresh.
+-- An email change already bumps the mailbox version (048), so an old identity whose
+-- stored email no longer matches cannot re-grant. Row lock as in 048's mailbox_finish.
+create function private.grant_google_mailbox_proof() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if lower(coalesce(new.identity_data->>'email_verified',''))<>'true' then return new; end if;
+ perform 1 from auth.users where id=new.user_id for update;
+ update private.mailbox_state m set verified_version=m.version,verified_at=pg_catalog.clock_timestamp()
+  from auth.users u where u.id=new.user_id and m.user_id=u.id and coalesce(trim(u.email),'')<>''
+   and lower(trim(new.identity_data->>'email'))=lower(trim(u.email));
+ return new;
+end;
+$$;
+revoke all on function private.grant_google_mailbox_proof() from public,anon,authenticated,service_role;
+create trigger grant_google_mailbox_proof after insert or update on auth.identities
+ for each row when (new.provider='google') execute function private.grant_google_mailbox_proof();
 commit;

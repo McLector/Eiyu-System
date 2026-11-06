@@ -72,10 +72,12 @@ select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data
  ('g-sub-05','d5000000-0000-4000-8000-000000000005','{"sub":"g-sub-05","email":"gate-noident-null@example.invalid","email_verified":true}','google')$$,
  'EG001',null,'identity-less unproved user with no provider refuses a Google link');
 
--- 5. A Google-created user that already has a Google identity and no proof (for example after
--- an email change) cannot take a second Google identity.
+-- 5. A Google-created user that already has a Google identity and no proof (here the proof
+-- is cleared by an email change, which bumps the mailbox version) cannot take a second
+-- Google identity.
 insert into auth.identities(provider_id,user_id,identity_data,provider) values
  ('g-sub-06a','d5000000-0000-4000-8000-000000000006','{"sub":"g-sub-06a","email":"gate-google-twice@example.invalid","email_verified":true}','google');
+update auth.users set email='gate-google-twice-new@example.invalid' where id='d5000000-0000-4000-8000-000000000006';
 select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
  ('g-sub-06b','d5000000-0000-4000-8000-000000000006','{"sub":"g-sub-06b","email":"gate-google-twice@example.invalid","email_verified":true}','google')$$,
  'EG001',null,'unproved Google-created user refuses a second Google identity');
@@ -107,6 +109,72 @@ update private.mailbox_state set verified_version=version,verified_at=now() wher
 select lives_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
  ('g-sub-11','d5000000-0000-4000-8000-000000000011','{"sub":"g-sub-11","email":"  Gate-Case-Proved@Example.Invalid ","email_verified":true}','google')$$,
  'mixed-case padded email on a proved account is still allowed');
+
+-- T3: a verified Google email that matches the account's current email counts as mailbox
+-- proof. The trigger runs AFTER insert or update, so by timing it can never grant proof
+-- before the gate above has looked.
+select ok(to_regprocedure('private.grant_google_mailbox_proof()') is not null,'proof function exists');
+select is((select t.tgtype::integer from pg_trigger t where t.tgrelid='auth.identities'::regclass
+  and t.tgname='grant_google_mailbox_proof' and not t.tgisinternal),21,
+  'proof is a row-level AFTER INSERT OR UPDATE trigger, so it runs after the gate');
+select ok(coalesce((select p.prosecdef and p.proconfig @> array['search_path=""'] from pg_proc p
+  where p.oid=to_regprocedure('private.grant_google_mailbox_proof()')),false),
+  'proof function is security definer with an empty search_path');
+select ok(coalesce(not has_function_privilege('anon',to_regprocedure('private.grant_google_mailbox_proof()'),'EXECUTE')
+  and not has_function_privilege('authenticated',to_regprocedure('private.grant_google_mailbox_proof()'),'EXECUTE')
+  and not has_function_privilege('service_role',to_regprocedure('private.grant_google_mailbox_proof()'),'EXECUTE'),false),
+  'clients cannot execute the proof function');
+
+insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data,email_confirmed_at) values
+ ('d5000000-0000-4000-8000-000000000012','proof-ok@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000013','proof-unverified@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000014','proof-noclaim@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000015','proof-mismatch@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000016','proof-nongoogle@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000017','proof-repeat@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now());
+
+-- Verified claim with a matching email (case and padding ignored) grants proof.
+insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-12','d5000000-0000-4000-8000-000000000012','{"sub":"g-sub-12","email":"  Proof-OK@Example.Invalid ","email_verified":true}','google');
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000012'),true,'verified matching Google email grants mailbox proof');
+set local role authenticated;
+select set_config('request.jwt.claims','{"sub":"d5000000-0000-4000-8000-000000000012","role":"authenticated"}',true);
+select is(public.current_mailbox_verified(),true,'the debrief gate sees the Google proof');
+reset role;
+
+-- Unverified, absent and mismatched claims grant nothing.
+insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-13','d5000000-0000-4000-8000-000000000013','{"sub":"g-sub-13","email":"proof-unverified@example.invalid","email_verified":false}','google'),
+ ('g-sub-14','d5000000-0000-4000-8000-000000000014','{"sub":"g-sub-14","email":"proof-noclaim@example.invalid"}','google'),
+ ('g-sub-15','d5000000-0000-4000-8000-000000000015','{"sub":"g-sub-15","email":"someone-else@example.invalid","email_verified":true}','google');
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000013'),false,'email_verified false grants no proof');
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000014'),false,'a missing email_verified claim grants no proof');
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000015'),false,'a Google email that differs from the account email grants no proof');
+
+-- A non-Google identity never grants proof, even when it carries a verified claim.
+insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('gh-sub-16','d5000000-0000-4000-8000-000000000016','{"sub":"gh-sub-16","email":"proof-nongoogle@example.invalid","email_verified":true}','github');
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000016'),false,'a non-Google identity grants no proof');
+
+-- A returning login (UPDATE) keeps the proof.
+insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-17','d5000000-0000-4000-8000-000000000017','{"sub":"g-sub-17","email":"proof-repeat@example.invalid","email_verified":true}','google');
+update auth.identities set identity_data=identity_data||'{"email_verified":true}'::jsonb,last_sign_in_at=now()
+ where provider='google' and provider_id='g-sub-17';
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000017'),true,'a returning Google login keeps the proof');
+select is((select verified_version=version from private.mailbox_state where user_id='d5000000-0000-4000-8000-000000000017'),true,
+  'the proof is bound to the current mailbox version');
+
+-- An email change clears the proof, and the old identity (old email in identity_data) does
+-- not re-grant it on its next login. A Google claim for the new address does grant it.
+update auth.users set email='proof-ok-new@example.invalid' where id='d5000000-0000-4000-8000-000000000012';
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000012'),false,'an email change clears the Google proof');
+update auth.identities set identity_data=identity_data||'{"email_verified":true}'::jsonb,last_sign_in_at=now()
+ where provider='google' and provider_id='g-sub-12';
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000012'),false,'the old Google identity does not re-grant proof after an email change');
+update auth.identities set identity_data=identity_data||'{"email":"proof-ok-new@example.invalid","email_verified":true}'::jsonb
+ where provider='google' and provider_id='g-sub-12';
+select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000012'),true,'a verified Google claim for the new address grants proof for it');
 
 select * from finish();
 rollback;
