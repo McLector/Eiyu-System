@@ -18,7 +18,7 @@ const mockSignUp = jest.fn();
 const mockResetPassword = jest.fn();
 
 jest.mock('@/contexts/auth-store', () => ({
-  useAuth: () => ({ signIn: mockSignIn, signUp: mockSignUp, resetPassword: mockResetPassword }),
+  useAuth: () => ({ signIn: mockSignIn, signUp: mockSignUp, resetPassword: mockResetPassword, googleMessage: null, clearGoogleMessage: jest.fn() }),
 }));
 
 const render = (ui = <AuthScreen />) => renderWithTheme(ui);

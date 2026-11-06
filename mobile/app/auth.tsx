@@ -50,7 +50,7 @@ export default function AuthScreen() {
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const density = authDensity(windowHeight - insets.top - insets.bottom, fontScale);
-  const { signIn, signUp, resetPassword, signInWithGoogle } = useAuth();
+  const { signIn, signUp, resetPassword, signInWithGoogle, googleMessage, clearGoogleMessage } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,6 +74,7 @@ export default function AuthScreen() {
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
+    clearGoogleMessage();
     setAttempted(false);
     setPassword('');
     setConfirm('');
@@ -121,6 +122,7 @@ export default function AuthScreen() {
     setAttempted(true);
     if (!valid) return;
     setError(null);
+    clearGoogleMessage();
     setSubmitting(true);
     try {
       if (mode === 'forgot') {
@@ -295,7 +297,7 @@ export default function AuthScreen() {
                   <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>Forgot password?</AppText>
                 </Pressable>
               ) : null}
-              {error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
+              {error ?? googleMessage ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error ?? googleMessage}</AppText> : null}
               <Button
                 variant="primary"
                 label={submitting ? 'WORKING…' : SUBMIT_LABELS[mode]}

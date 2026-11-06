@@ -11,7 +11,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock('@/contexts/auth-store', () => ({
-  useAuth: () => ({ signIn: jest.fn(), signUp: jest.fn(), resetPassword: jest.fn() }),
+  useAuth: () => ({ signIn: jest.fn(), signUp: jest.fn(), resetPassword: jest.fn(), googleMessage: null, clearGoogleMessage: jest.fn() }),
 }));
 
 function Harness({ error }: { error?: string }) {

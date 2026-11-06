@@ -81,3 +81,71 @@ it('turns a thrown flow into the generic message instead of rejecting', async ()
   expect(result.error).toMatch(/Google sign-in did not work/);
   expect(result.error).not.toContain('boom');
 });
+
+// The callback link is routed to `/`, which can put a second sign-in screen on top of the one that started the flow.
+// The message therefore lives in the store, not in a screen's own state.
+function Shown({ label }: { label: string }) {
+  const { googleMessage } = useAuth();
+  return <Text accessibilityLabel={label}>{googleMessage ?? 'none'}</Text>;
+}
+function Controls() {
+  const { signInWithGoogle, clearGoogleMessage } = useAuth();
+  return (
+    <>
+      <Pressable accessibilityRole="button" onPress={() => { last = signInWithGoogle(); }}><Text>Start</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={clearGoogleMessage}><Text>Clear</Text></Pressable>
+    </>
+  );
+}
+
+describe('the Google message held in the store', () => {
+  it('is null until a flow ends with a message', async () => {
+    await render(<AuthProvider><Shown label="first" /></AuthProvider>);
+    expect(screen.getByLabelText('first')).toHaveTextContent('none');
+  });
+
+  it('is shown to every consumer, including one mounted after the flow started', async () => {
+    let release: (value: unknown) => void = () => {};
+    mockRun.mockReturnValue(new Promise(resolve => { release = resolve; }));
+    const { rerender } = await render(<AuthProvider><Controls /><Shown label="first" /></AuthProvider>);
+    await fireEvent.press(screen.getByRole('button', { name: 'Start' }));
+    await rerender(<AuthProvider><Controls /><Shown label="first" /><Shown label="second" /></AuthProvider>);
+    await act(async () => { release({ error: 'Refused.', cancelled: false }); });
+    expect(screen.getByLabelText('first')).toHaveTextContent('Refused.');
+    expect(screen.getByLabelText('second')).toHaveTextContent('Refused.');
+  });
+
+  it('is cleared when a new flow starts and by clearGoogleMessage', async () => {
+    mockRun.mockResolvedValueOnce({ error: 'Refused.', cancelled: false });
+    await render(<AuthProvider><Controls /><Shown label="first" /></AuthProvider>);
+    await fireEvent.press(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(screen.getByLabelText('first')).toHaveTextContent('Refused.'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByLabelText('first')).toHaveTextContent('none');
+
+    mockRun.mockResolvedValueOnce({ error: 'Refused.', cancelled: false });
+    await fireEvent.press(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(screen.getByLabelText('first')).toHaveTextContent('Refused.'));
+    let release: (value: unknown) => void = () => {};
+    mockRun.mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Start' }));
+    expect(screen.getByLabelText('first')).toHaveTextContent('none');
+    await act(async () => { release({ error: null, cancelled: true }); });
+  });
+
+  it('stays empty after a cancel', async () => {
+    mockRun.mockResolvedValueOnce({ error: null, cancelled: true });
+    await render(<AuthProvider><Controls /><Shown label="first" /></AuthProvider>);
+    await fireEvent.press(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(mockRun).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText('first')).toHaveTextContent('none');
+  });
+
+  it('holds the generic message when the flow throws', async () => {
+    mockRun.mockRejectedValueOnce(new Error('boom: raw detail'));
+    await render(<AuthProvider><Controls /><Shown label="first" /></AuthProvider>);
+    await fireEvent.press(screen.getByRole('button', { name: 'Start' }));
+    await waitFor(() => expect(screen.getByLabelText('first')).toHaveTextContent(/Google sign-in did not work/));
+    expect(screen.getByLabelText('first')).not.toHaveTextContent('boom');
+  });
+});

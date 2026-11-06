@@ -15,8 +15,13 @@ const mockSignIn = jest.fn();
 const mockSignUp = jest.fn();
 const mockResetPassword = jest.fn();
 const mockGoogle = jest.fn();
+const mockClearGoogleMessage = jest.fn();
+let mockGoogleMessage: string | null = null;
 jest.mock('@/contexts/auth-store', () => ({
-  useAuth: () => ({ signIn: mockSignIn, signUp: mockSignUp, resetPassword: mockResetPassword, signInWithGoogle: mockGoogle }),
+  useAuth: () => ({
+    signIn: mockSignIn, signUp: mockSignUp, resetPassword: mockResetPassword, signInWithGoogle: mockGoogle,
+    googleMessage: mockGoogleMessage, clearGoogleMessage: mockClearGoogleMessage,
+  }),
 }));
 
 const GOOGLE = { name: 'CONTINUE WITH GOOGLE' };
@@ -26,6 +31,8 @@ beforeEach(() => {
   mockSignUp.mockReset();
   mockResetPassword.mockReset();
   mockGoogle.mockReset().mockResolvedValue({ error: null, cancelled: false });
+  mockClearGoogleMessage.mockReset();
+  mockGoogleMessage = null;
 });
 
 describe('mobile auth: Continue with Google', () => {
@@ -131,5 +138,29 @@ describe('mobile auth: Continue with Google at font scale 1.6', () => {
     expect(note.props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByRole('button', GOOGLE));
     expect(mockGoogle).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('mobile auth: a Google message held by the store', () => {
+  it('is shown by a screen that did not start the flow (the screen was rebuilt by the callback route)', async () => {
+    mockGoogleMessage = GOOGLE_LINK_REFUSED_MESSAGE;
+    await renderWithTheme(<AuthScreen />);
+    expect(await screen.findByRole('alert')).toHaveTextContent(GOOGLE_LINK_REFUSED_MESSAGE);
+  });
+
+  it('shows one alert, not two, when the screen that started the flow also has the message', async () => {
+    mockGoogle.mockResolvedValue({ error: GOOGLE_LINK_REFUSED_MESSAGE, cancelled: false });
+    mockGoogleMessage = GOOGLE_LINK_REFUSED_MESSAGE;
+    await renderWithTheme(<AuthScreen />);
+    await fireEvent.press(screen.getByRole('button', GOOGLE));
+    await waitFor(() => expect(mockGoogle).toHaveBeenCalled());
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+  });
+
+  it('is cleared when the user switches to another form', async () => {
+    mockGoogleMessage = GOOGLE_LINK_REFUSED_MESSAGE;
+    await renderWithTheme(<AuthScreen />);
+    await fireEvent.press(screen.getByText('Register'));
+    expect(mockClearGoogleMessage).toHaveBeenCalled();
   });
 });

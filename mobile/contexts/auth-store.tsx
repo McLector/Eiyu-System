@@ -22,6 +22,12 @@ interface AuthStore {
   resetPassword: (email: string) => Promise<AuthResult>;
   /** Opens Google in an in-app browser. `cancelled` means the user backed out: signed out, nothing to show. */
   signInWithGoogle: () => Promise<{ error: string | null; cancelled: boolean }>;
+  /**
+   * The message the last Google flow ended with, or null. It lives here, not in a screen, because the callback link is
+   * routed to `/` and can put a second sign-in screen on top of the one that started the flow.
+   */
+  googleMessage: string | null;
+  clearGoogleMessage: () => void;
 }
 
 const AuthContext = createContext<AuthStore | null>(null);
@@ -30,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const googleRunning = useRef(false);
+  const [googleMessage, setGoogleMessage] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -78,21 +85,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // The browser can stay open for a while; a second tap must not start a second flow.
         if (googleRunning.current) return { error: null, cancelled: true };
         googleRunning.current = true;
+        setGoogleMessage(null);
         try {
-          return await runGoogleSignIn({
+          const result = await runGoogleSignIn({
             oauth: getGoogleOAuthClient(),
             main: supabase.auth,
             openAuthSession: (url, redirectUrl) => WebBrowser.openAuthSessionAsync(url, redirectUrl),
             redirectTo: googleRedirectUrl(),
           });
+          if (result.error) setGoogleMessage(result.error);
+          return result;
         } catch {
+          setGoogleMessage(GOOGLE_GENERIC_MESSAGE);
           return { error: GOOGLE_GENERIC_MESSAGE, cancelled: false };
         } finally {
           googleRunning.current = false;
         }
       },
+      googleMessage,
+      clearGoogleMessage: () => setGoogleMessage(null),
     }),
-    [session, loading]
+    [session, loading, googleMessage]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
