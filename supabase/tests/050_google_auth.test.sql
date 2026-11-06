@@ -1,0 +1,112 @@
+begin;
+-- S03: the Google identity link gate (migration 063). GoTrue links a new Google
+-- identity to any existing user with a matching email (identity match first, then a
+-- user row with no identity at all). This gate refuses that link unless the user holds
+-- the S02 mailbox proof, or this is the create path: no identity rows yet and
+-- raw_app_meta_data.provider = 'google' (GoTrue sets it; the client cannot).
+-- Fixtures are inserted as supabase_admin with no role set, the 050 privileged-import
+-- path, so EP003 is skipped. auth.identities.email is generated from identity_data.
+create extension if not exists pgtap with schema extensions;
+set local search_path=public,extensions;
+select no_plan();
+
+-- Structure first, written so a missing function fails the assertion instead of erroring.
+select ok(to_regprocedure('private.gate_google_identity_link()') is not null,'gate function exists');
+select is((select t.tgtype::integer from pg_trigger t where t.tgrelid='auth.identities'::regclass
+  and t.tgname='gate_google_identity_link' and not t.tgisinternal),7,
+  'gate is a row-level BEFORE INSERT trigger only, so a returning login (UPDATE) is never gated');
+select ok(coalesce((select p.prosecdef and p.proconfig @> array['search_path=""'] from pg_proc p
+  where p.oid=to_regprocedure('private.gate_google_identity_link()')),false),
+  'gate is security definer with an empty search_path');
+select ok(coalesce(not has_function_privilege('anon',to_regprocedure('private.gate_google_identity_link()'),'EXECUTE')
+  and not has_function_privilege('authenticated',to_regprocedure('private.gate_google_identity_link()'),'EXECUTE')
+  and not has_function_privilege('service_role',to_regprocedure('private.gate_google_identity_link()'),'EXECUTE'),false),
+  'clients cannot execute the gate function');
+
+insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data,email_confirmed_at) values
+ ('d5000000-0000-4000-8000-000000000001','gate-unproved@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000003','gate-created@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000004','gate-noident-email@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000005','gate-noident-null@example.invalid','{}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000006','gate-google-twice@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000007','gate-forged@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01","provider":"google"}',now()),
+ ('d5000000-0000-4000-8000-000000000008','gate-nongoogle@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000009','gate-returning@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000010','Gate-Case-Unproved@Example.Invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
+ ('d5000000-0000-4000-8000-000000000011','Gate-Case-Proved@Example.Invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now());
+insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('d5000000-0000-4000-8000-000000000001','d5000000-0000-4000-8000-000000000001','{"sub":"d5000000-0000-4000-8000-000000000001","email":"gate-unproved@example.invalid"}','email'),
+ ('d5000000-0000-4000-8000-000000000008','d5000000-0000-4000-8000-000000000008','{"sub":"d5000000-0000-4000-8000-000000000008","email":"gate-nongoogle@example.invalid"}','email'),
+ ('d5000000-0000-4000-8000-000000000009','d5000000-0000-4000-8000-000000000009','{"sub":"d5000000-0000-4000-8000-000000000009","email":"gate-returning@example.invalid"}','email'),
+ ('d5000000-0000-4000-8000-000000000010','d5000000-0000-4000-8000-000000000010','{"sub":"d5000000-0000-4000-8000-000000000010","email":"gate-case-unproved@example.invalid"}','email'),
+ ('d5000000-0000-4000-8000-000000000011','d5000000-0000-4000-8000-000000000011','{"sub":"d5000000-0000-4000-8000-000000000011","email":"gate-case-proved@example.invalid"}','email');
+
+-- 1. Unproved password account plus a Google identity: refused, nothing kept, no proof.
+select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-01','d5000000-0000-4000-8000-000000000001','{"sub":"g-sub-01","email":"gate-unproved@example.invalid","email_verified":true}','google')$$,
+ 'EG001',null,'unproved password account refuses a Google link');
+select is((select count(*) from auth.identities where user_id='d5000000-0000-4000-8000-000000000001' and provider='google'),0::bigint,
+  'no Google identity remains on the refused account');
+select is((select verified_version from private.mailbox_state where user_id='d5000000-0000-4000-8000-000000000001'),null,
+  'the refused link grants no proof');
+
+-- 2. The same account once proof is granted: the link is allowed.
+update private.mailbox_state set verified_version=version,verified_at=now() where user_id='d5000000-0000-4000-8000-000000000001';
+select lives_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-02','d5000000-0000-4000-8000-000000000001','{"sub":"g-sub-02","email":"gate-unproved@example.invalid","email_verified":true}','google')$$,
+ 'proved account accepts a Google link');
+select is((select count(*) from auth.identities where user_id='d5000000-0000-4000-8000-000000000001'),2::bigint,
+  'the linked account keeps its email identity and gains the Google identity');
+
+-- 3. Create path: GoTrue-set google provider, no identity rows, no proof. A plain proof
+-- check would block every Google sign-up, so this must pass and must fail against it.
+select lives_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-03','d5000000-0000-4000-8000-000000000003','{"sub":"g-sub-03","email":"gate-created@example.invalid","email_verified":true}','google')$$,
+ 'create path: a new Google-created user gets its first Google identity');
+
+-- 4. Users with no identity rows but a password provider (or none) are link targets in GoTrue.
+select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-04','d5000000-0000-4000-8000-000000000004','{"sub":"g-sub-04","email":"gate-noident-email@example.invalid","email_verified":true}','google')$$,
+ 'EG001',null,'identity-less unproved user with an email provider refuses a Google link');
+select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-05','d5000000-0000-4000-8000-000000000005','{"sub":"g-sub-05","email":"gate-noident-null@example.invalid","email_verified":true}','google')$$,
+ 'EG001',null,'identity-less unproved user with no provider refuses a Google link');
+
+-- 5. A Google-created user that already has a Google identity and no proof (for example after
+-- an email change) cannot take a second Google identity.
+insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-06a','d5000000-0000-4000-8000-000000000006','{"sub":"g-sub-06a","email":"gate-google-twice@example.invalid","email_verified":true}','google');
+select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-06b','d5000000-0000-4000-8000-000000000006','{"sub":"g-sub-06b","email":"gate-google-twice@example.invalid","email_verified":true}','google')$$,
+ 'EG001',null,'unproved Google-created user refuses a second Google identity');
+
+-- 6. raw_user_meta_data is client-controlled and must never open the create path.
+select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-07','d5000000-0000-4000-8000-000000000007','{"sub":"g-sub-07","email":"gate-forged@example.invalid","email_verified":true}','google')$$,
+ 'EG001',null,'user metadata claiming Google does not exempt an email-provider account');
+
+-- 7. Non-Google identities are untouched, even for an unproved user.
+select lives_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('gh-sub-08','d5000000-0000-4000-8000-000000000008','{"sub":"gh-sub-08","email":"gate-nongoogle@example.invalid"}','github')$$,
+ 'a non-Google identity insert is not gated');
+
+-- 8. A returning login is an UPDATE of the Google identity and is never blocked, even when
+-- the proof has since been cleared.
+update private.mailbox_state set verified_version=version,verified_at=now() where user_id='d5000000-0000-4000-8000-000000000009';
+insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-09','d5000000-0000-4000-8000-000000000009','{"sub":"g-sub-09","email":"gate-returning@example.invalid","email_verified":true}','google');
+update private.mailbox_state set verified_version=null,verified_at=null where user_id='d5000000-0000-4000-8000-000000000009';
+select lives_ok($$update auth.identities set identity_data=identity_data||'{"email_verified":true}'::jsonb,last_sign_in_at=now()
+ where provider='google' and provider_id='g-sub-09'$$,'returning Google login (UPDATE) is not gated without proof');
+
+-- 9. Case and whitespace in the identity email do not change either outcome.
+select throws_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-10','d5000000-0000-4000-8000-000000000010','{"sub":"g-sub-10","email":"  Gate-Case-Unproved@Example.Invalid ","email_verified":true}','google')$$,
+ 'EG001',null,'mixed-case padded email on an unproved account is still refused');
+update private.mailbox_state set verified_version=version,verified_at=now() where user_id='d5000000-0000-4000-8000-000000000011';
+select lives_ok($$insert into auth.identities(provider_id,user_id,identity_data,provider) values
+ ('g-sub-11','d5000000-0000-4000-8000-000000000011','{"sub":"g-sub-11","email":"  Gate-Case-Proved@Example.Invalid ","email_verified":true}','google')$$,
+ 'mixed-case padded email on a proved account is still allowed');
+
+select * from finish();
+rollback;

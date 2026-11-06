@@ -181,6 +181,12 @@ Settles the two open questions from T1. Sections A and B above and the "Why" bul
 - **Hosted does not have S02's mailbox proof or EP003 yet** (048 and 050 are missing there), consistent with "engineering done, release pending". The S03 migration depends on 048, and the EP003 change depends on 050, so S03 cannot reach hosted before S02's SQL does. This does not block local work.
 - The hosted `enable_confirmations` ("Confirm email") value cannot be read from SQL. The owner reads it in the dashboard; it must be recorded before any claim about hosted behaviour.
 
+### T2 note: the gate rule is tighter than decision 1 (2026-11-06)
+
+Decision 1 said to refuse only when the user already has a non-Google identity and no proof. Reading `internal/models/linking.go` at v2.196.0 showed `DetermineAccountLinking` also searches `auth.users` by email: when no identity matches and exactly one user does, it returns `LinkAccount` to that user ("no similarIdentities but a user with the same email exists so we link this new identity to the user"). Two accounts on the disposable stack were of that kind (password set, no identity rows, no `provider` in `raw_app_meta_data`). Under the literal rule an unproved link to such an account would pass.
+
+Migration 063 therefore allows a Google identity INSERT only when `private.mailbox_verified(user)` is true, or the user has no identity rows yet and `raw_app_meta_data->>'provider' = 'google'` (the create path; GoTrue sets it, the client cannot). Everything decision 1 refused is still refused, plus two gaps: an identity-less unproved user, and a Google-created user whose proof was cleared by an email change taking a second Google identity. The test file is `supabase/tests/050_google_auth.test.sql`. The refusal is SQLSTATE `EG001`; per R3 the client only sees the generic identity error.
+
 ### Risks and open items
 
 - If hosted turns out to refuse a trigger on `auth.identities`, Google must not be enabled there: GoTrue would auto-link unproved accounts. Stop and re-plan; local work can continue.

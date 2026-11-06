@@ -1,6 +1,6 @@
 # Supabase migrations
 
-**047–062 are local, incomplete S02 groundwork/drafts. Do not apply them to a deployed project yet.**
+**047–063 are local, incomplete S02/S03 groundwork/drafts. Do not apply them to a deployed project yet.**
 S01 investigation is COMPLETE under `../../docs/handoff/027-handoff.md`;
 S02 and public release remain INCOMPLETE. See that handoff and
 `../../docs/plans/2026-10-20-s02-continuation.md` for current contracts and
@@ -29,6 +29,8 @@ authorize hosted application or activation. See
 060 follows 059: operator accounts (added by hand, no RPC adds one), the MFA-gated (AAL2) teen review queue and dispute pause, with a content-free audit; it also wraps the export manifest. 061 follows 060: automated 30-day retention after full withdrawal of custom-tracker or fitness permission (day-23 reminder, runbook-scope removal by `private.run_tracker_retention`), plus the operator retention list. Both local-only; not approved for deployment. pg_cron is scheduled on the local stack only and is not enabled on the live project; enabling it is a release step.
 
 062 follows 061: fixes from the admin console and retention review. A review request records the age version it was made under and cannot be approved after a birthday correction; one failing account no longer stops the retention job and shows as `failed` in the console; removal always comes at least 30 full days after withdrawal; a missed reminder is sent before any removal; `operator_resume_purpose` lifts a pause without granting anything. It also wraps the export manifest.
+
+063 is S03 groundwork (needs 048): a `BEFORE INSERT` trigger on `auth.identities` that refuses a Google identity (SQLSTATE `EG001`) unless the account holds the mailbox proof or is on the create path (no identity rows yet and `raw_app_meta_data.provider = 'google'`). Local only: a trigger on `auth.identities` has not been tried on a hosted project, and if hosted refuses it, Google must not be enabled there.
 
 051 adds default-closed AI admission and separate execution accounting. Legacy
 generation RPCs deny even after reopening; refunds do not settle executions.
