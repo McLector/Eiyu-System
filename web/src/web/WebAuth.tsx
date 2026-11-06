@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Dialog from '../components/Dialog';
 
 import { supabase } from '../lib/supabase';
+import { getGoogleOAuthClient, startGoogleSignIn } from '../lib/google-oauth';
 import {
   authErrorMessage,
   confirmEmailMessage,
@@ -27,7 +28,8 @@ import { CheckIcon, MailIcon } from '../Icons';
 import { PasswordInput } from '../components/PasswordInput';
 import SignaturePanel from '../SignaturePanel';
 
-interface Props { onLogin: () => void; logoutWarning?: string | null; onDismissLogoutWarning?: () => void; }
+export interface GoogleMessage { text: string; cancelled: boolean; }
+interface Props { onLogin: () => void; logoutWarning?: string | null; onDismissLogoutWarning?: () => void; googleMessage?: GoogleMessage | null; }
 
 interface Notice { icon: 'mail' | 'check'; title: string; message: string; }
 
@@ -70,7 +72,7 @@ function NoticeBadge({ icon }: { icon: Notice['icon'] }) {
   );
 }
 
-export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning }: Props) {
+export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning, googleMessage }: Props) {
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -84,6 +86,26 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
   const [submitting, setSubmitting] = useState(false);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleNote, setGoogleNote] = useState<GoogleMessage | null>(googleMessage ?? null);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  // Coming back with the browser's Back button must not leave the button stuck on "Opening Google…".
+  useEffect(() => {
+    const onShow = (event: PageTransitionEvent) => { if (event.persisted) setGoogleBusy(false); };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+  const startGoogle = async () => {
+    if (googleBusy) return;
+    setGoogleNote(null);
+    setError(null);
+    setGoogleBusy(true);
+    try {
+      await startGoogleSignIn(getGoogleOAuthClient(), window.location.origin);
+    } catch (err) {
+      setGoogleNote({ text: err instanceof Error ? err.message : 'Google sign-in did not work.', cancelled: false });
+      setGoogleBusy(false);
+    }
+  };
   const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
   const openLegalDocument = (id: LegalDocumentId) => setLegalDocument(id);
 
@@ -98,6 +120,7 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
   const switchMode = (next: AuthMode) => {
     setMode(next);
     setError(null);
+    setGoogleNote(null);
     setAttempted(false);
     setPassword('');
     setConfirmPw('');
@@ -292,6 +315,19 @@ export default function WebAuth({ onLogin, logoutWarning, onDismissLogoutWarning
                 {submitting ? 'WORKING…' : mode === 'login' ? 'ENTER SYSTEM' : mode === 'signup' ? 'BEGIN JOURNEY' : 'SEND RECOVERY LINK'}
               </button>
             </form>
+          )}
+          {!notice && mode !== 'forgot' && (
+            <div className="auth-google" style={{ display: 'grid', gap: 8, marginTop: 14 }}>
+              {googleNote && (googleNote.cancelled
+                ? <p role="status" style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', margin: 0 }}>{googleNote.text}</p>
+                : <p role="alert" style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-danger)', margin: 0 }}>{googleNote.text}</p>)}
+              <button type="button" className="btn-secondary" disabled={googleBusy} onClick={() => void startGoogle()} style={{ width: '100%', minHeight: 46 }}>
+                {googleBusy ? 'Opening Google…' : 'Continue with Google'}
+              </button>
+              {mode === 'signup' && (
+                <p style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-muted-flat)', margin: 0, textAlign: 'center' }}>You&apos;ll confirm your birthday right after Google.</p>
+              )}
+            </div>
           )}
         </SignaturePanel>
 

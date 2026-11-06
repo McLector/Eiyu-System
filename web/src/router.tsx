@@ -5,6 +5,7 @@ import RequireAuth from './RequireAuth';
 import ProtectedLayout from './ProtectedLayout';
 import AuthPage from './pages/AuthPage';
 import PasswordRecoveryPage from './pages/PasswordRecoveryPage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import BoardPage from './pages/BoardPage';
 import StatusPage from './pages/StatusPage';
 import WebLongQuests from './web/WebLongQuests';
@@ -18,6 +19,7 @@ export const router = createBrowserRouter([
   { path: '/', element: <RootPage /> },
   { path: '/auth', element: <AuthPage /> },
   { path: '/auth/recovery', element: <PasswordRecoveryPage /> },
+  { path: '/auth/callback', element: <AuthCallbackPage /> },
   {
     element: <RequireAuth />,
     children: [
