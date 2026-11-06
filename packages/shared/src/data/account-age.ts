@@ -19,7 +19,7 @@ export function subscribeAccountAgeChanges(listener: () => void): () => void {
   return () => { ageListeners.delete(listener); };
 }
 
-function parseAccountAge(data: unknown): AccountAge {
+export function parseAccountAge(data: unknown): AccountAge {
   if (!data || typeof data !== 'object') throw new Error('Birthday status is unavailable.');
   const value = data as AccountAge;
   if (typeof value.userId !== 'string' || !value.userId ||
@@ -45,8 +45,12 @@ export async function setAccountBirthday(birthDate: string, expectedUserId?: str
   });
   if (error) throw error;
   const status = parseAccountAge(data);
-  ageListeners.forEach(listener => { try { listener(); } catch { /* A UI observer cannot undo the server save. */ } });
+  notifyAccountAgeChanged();
   return status;
+}
+/** Tells birthday observers about a save made elsewhere (the Google finish call). */
+export function notifyAccountAgeChanged(): void {
+  ageListeners.forEach(listener => { try { listener(); } catch { /* A UI observer cannot undo the server save. */ } });
 }
 export async function requireAdultDeclaration(expected?: Pick<AccountAge, 'userId' | 'version'>): Promise<AccountAge> {
   const status = await fetchAccountAge();

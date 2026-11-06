@@ -525,6 +525,18 @@ export interface Database {
         Args: { p_birth_date: string; p_expected_user_id?: string };
         Returns: Json;
       };
+      finish_google_signup: {
+        Args: {
+          p_birth_date: string;
+          p_notice_version: string;
+          p_expected_user_id: string;
+          p_expected_age_version: number;
+          p_expected_consent_version: number;
+          p_expected_authority_version: number;
+          p_expected_mailbox_version: number;
+        };
+        Returns: Json;
+      };
       set_profile_palette: {
         Args: { p_palette: string };
         Returns: string;

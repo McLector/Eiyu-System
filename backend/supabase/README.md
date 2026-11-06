@@ -1,6 +1,6 @@
 # Supabase migrations
 
-**047–063 are local, incomplete S02/S03 groundwork/drafts. Do not apply them to a deployed project yet.**
+**047–064 are local, incomplete S02/S03 groundwork/drafts. Do not apply them to a deployed project yet.**
 S01 investigation is COMPLETE under `../../docs/handoff/027-handoff.md`;
 S02 and public release remain INCOMPLETE. See that handoff and
 `../../docs/plans/2026-10-20-s02-continuation.md` for current contracts and
@@ -31,6 +31,8 @@ authorize hosted application or activation. See
 062 follows 061: fixes from the admin console and retention review. A review request records the age version it was made under and cannot be approved after a birthday correction; one failing account no longer stops the retention job and shows as `failed` in the console; removal always comes at least 30 full days after withdrawal; a missed reminder is sent before any removal; `operator_resume_purpose` lifts a pause without granting anything. It also wraps the export manifest.
 
 063 is S03 groundwork (needs 048): a `BEFORE INSERT` trigger on `auth.identities` that refuses a Google identity (SQLSTATE `EG001`) unless the account holds the mailbox proof or is on the create path (no identity rows yet and `raw_app_meta_data.provider = 'google'`). An `AFTER INSERT OR UPDATE` trigger then grants the mailbox proof when Google reports the email verified and it matches the account's current email. It also replaces the 050 consent trigger so a Google-created account (`raw_app_meta_data.provider = 'google'`, never user metadata) may start with no age consent, and adds `public.s03_before_user_created`, a hook that rejects an unverified Google email on sign-up (not enabled in config yet). Local only: a trigger on `auth.identities` has not been tried on a hosted project, and if hosted refuses it, Google must not be enabled there.
+
+064 is S03 groundwork (needs 047, 050 and 063): `public.finish_google_signup` saves the birthday-notice permission and the birthday in one transaction, so the Google finish screen can never leave an account with permission but no birthday. It calls the existing `set_processing_consent` and `set_account_birthday`, so their checks all still apply. Once a birthday is saved it accepts only the same date (a retry); a different one is refused with SQLSTATE `EG002`, so corrections still go through Profile. Local only.
 
 051 adds default-closed AI admission and separate execution accounting. Legacy
 generation RPCs deny even after reopening; refunds do not settle executions.
