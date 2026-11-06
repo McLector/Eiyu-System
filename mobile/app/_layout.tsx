@@ -22,6 +22,7 @@ import { EiyuProvider, persister, queryClient, shouldPersistQuery } from '@/cont
 import { GymProvider } from '@/contexts/gym-store';
 import { AppThemeProvider } from '@/contexts/theme-store';
 import { DevBall } from '@/components/eiyu/dev-ball';
+import { GoogleFinishGate } from '@/components/eiyu/google-finish-gate';
 import { ThemedShell } from '@/components/eiyu/themed-shell';
 import { installAppFocus } from '@/lib/app-focus';
 import { useNotificationTaps } from '@/lib/notification-taps';
@@ -78,7 +79,7 @@ export default function RootLayout() {
 }
 
 function AppNavigator() {
-  const { session, loading } = useAuth();
+  const { session, loading, signOut } = useAuth();
 
   useEffect(() => {
     if (!loading) SplashScreen.hideAsync();
@@ -87,7 +88,7 @@ function AppNavigator() {
 
   if (loading) return null;
 
-  return (
+  const stack = (
     <Stack>
       <Stack.Protected guard={!session}>
         <Stack.Screen name="auth" options={{ headerShown: false }} />
@@ -118,4 +119,7 @@ function AppNavigator() {
       <Stack.Screen name="auth/recovery" options={{headerShown: false}} />
     </Stack>
   );
+
+  // A Google-created account that has not confirmed its birthday sees the finish screen before anything else.
+  return session ? <GoogleFinishGate user={session.user} onSignOut={signOut}>{stack}</GoogleFinishGate> : stack;
 }

@@ -1,9 +1,11 @@
 import type { AuthError, Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { deviceTimeZone, formatError, initialBirthdayMetadata } from '@eiyu/shared';
+import * as WebBrowser from 'expo-web-browser';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { GOOGLE_GENERIC_MESSAGE, deviceTimeZone, formatError, initialBirthdayMetadata } from '@eiyu/shared';
 
-import { supabase } from '@/lib/supabase';
+import { googleRedirectUrl, runGoogleSignIn } from '@/lib/google-oauth';
+import { getGoogleOAuthClient, supabase } from '@/lib/supabase';
 
 interface AuthResult {
   error: string | null;
@@ -18,6 +20,8 @@ interface AuthStore {
   signUp: (email: string, password: string, displayName: string, birthday: string, ageConsent: boolean) => Promise<AuthResult>;
   signOut: () => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<AuthResult>;
+  /** Opens Google in an in-app browser. `cancelled` means the user backed out: signed out, nothing to show. */
+  signInWithGoogle: () => Promise<{ error: string | null; cancelled: boolean }>;
 }
 
 const AuthContext = createContext<AuthStore | null>(null);
@@ -25,6 +29,7 @@ const AuthContext = createContext<AuthStore | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const googleRunning = useRef(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -68,6 +73,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           redirectTo: Linking.createURL('auth/recovery'),
         });
         return { error: error?.message ?? null };
+      },
+      signInWithGoogle: async () => {
+        // The browser can stay open for a while; a second tap must not start a second flow.
+        if (googleRunning.current) return { error: null, cancelled: true };
+        googleRunning.current = true;
+        try {
+          return await runGoogleSignIn({
+            oauth: getGoogleOAuthClient(),
+            main: supabase.auth,
+            openAuthSession: (url, redirectUrl) => WebBrowser.openAuthSessionAsync(url, redirectUrl),
+            redirectTo: googleRedirectUrl(),
+          });
+        } catch {
+          return { error: GOOGLE_GENERIC_MESSAGE, cancelled: false };
+        } finally {
+          googleRunning.current = false;
+        }
       },
     }),
     [session, loading]

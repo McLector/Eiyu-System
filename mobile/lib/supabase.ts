@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import 'react-native-url-polyfill/auto';
 
-import { initSupabaseClient, initCacheAdapter, initOwnerExportTransport, type CacheAdapter, type Database } from '@eiyu/shared';
+import { createVerifierOnlyStorage, initSupabaseClient, initCacheAdapter, initOwnerExportTransport, type CacheAdapter, type Database } from '@eiyu/shared';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -50,6 +50,34 @@ const asyncStorageAdapter: CacheAdapter = {
 };
 
 initCacheAdapter(asyncStorageAdapter);
+
+const verifierStore = new Map<string, string>();
+let googleOAuthClient: ReturnType<typeof createClient<Database>>['auth'] | null = null;
+/**
+ * A PKCE client used only for Google. The app client keeps the default flow because password recovery
+ * (`resetPasswordForEmail`) depends on it: under PKCE the emailed link would carry a code and no tokens.
+ * Only the PKCE verifier is kept, in memory; no session is ever written here, because after the code
+ * exchange the tokens go to the app client with `setSession`.
+ */
+export function getGoogleOAuthClient() {
+  if (!googleOAuthClient) {
+    googleOAuthClient = createClient<Database>(supabaseUrl!, supabaseAnonKey!, {
+      auth: {
+        flowType: 'pkce',
+        storageKey: 'eiyu-google-oauth',
+        storage: createVerifierOnlyStorage({
+          getItem: key => verifierStore.get(key) ?? null,
+          setItem: (key, value) => { verifierStore.set(key, value); },
+          removeItem: key => { verifierStore.delete(key); },
+        }),
+        persistSession: true,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    }).auth;
+  }
+  return googleOAuthClient;
+}
 
 let recoveryClientId = 0;
 /** Recovery credentials stay in memory and never replace the normal quest session. */

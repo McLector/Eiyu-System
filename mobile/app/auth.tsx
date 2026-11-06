@@ -13,6 +13,7 @@ import {
   validateConfirmPassword,
   validateSignupBirthday,
   CHILD_PRIVACY_NOTICE,
+  GOOGLE_GENERIC_MESSAGE,
   PROCESSING_NOTICES,
   validateDisplayName,
   validateEmail,
@@ -49,7 +50,7 @@ export default function AuthScreen() {
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const density = authDensity(windowHeight - insets.top - insets.bottom, fontScale);
-  const { signIn, signUp, resetPassword } = useAuth();
+  const { signIn, signUp, resetPassword, signInWithGoogle } = useAuth();
   const [mode, setMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,6 +63,7 @@ export default function AuthScreen() {
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
 
@@ -99,8 +101,23 @@ export default function AuthScreen() {
   const tooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
   const strengthColor = tooShort ? t.danger : score === 0 ? t.danger : score === 1 ? t.warning : t.success;
 
+  /** Google needs no typed fields or ticked boxes here: the birthday and consent come on the finish screen. */
+  const handleGoogle = async () => {
+    if (googleBusy || submitting) return;
+    setError(null);
+    setGoogleBusy(true);
+    try {
+      const { error: err } = await signInWithGoogle();
+      if (err) setError(err);
+    } catch {
+      setError(GOOGLE_GENERIC_MESSAGE);
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (submitting) return;
+    if (submitting || googleBusy) return;
     setAttempted(true);
     if (!valid) return;
     setError(null);
@@ -286,6 +303,28 @@ export default function AuthScreen() {
                 onPress={() => void handleSubmit()}
                 style={styles.full}
               />
+              {mode !== 'forgot' ? (
+                <View style={styles.google}>
+                  <View style={styles.orRow} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                    <View style={[styles.orLine, { backgroundColor: t['glass-border'] }]} />
+                    <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>or</AppText>
+                    <View style={[styles.orLine, { backgroundColor: t['glass-border'] }]} />
+                  </View>
+                  <Button
+                    variant="secondary"
+                    label="CONTINUE WITH GOOGLE"
+                    busy={googleBusy}
+                    disabled={submitting}
+                    onPress={() => void handleGoogle()}
+                    style={styles.full}
+                  />
+                  {mode === 'signup' ? (
+                    <AppText style={[styles.note, styles.googleNote, { color: t['muted-flat'], fontFamily: fonts.body }]}>
+                      You&apos;ll confirm your birthday right after Google.
+                    </AppText>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
           )}
         </SignaturePanel>
@@ -334,6 +373,10 @@ const styles = StyleSheet.create({
   accentLine: { height: 2, borderRadius: 1, opacity: 0.7, marginBottom: 20 },
   form: { gap: 14 },
   full: { width: '100%' },
+  google: { gap: 10 },
+  orRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  orLine: { flex: 1, height: 1 },
+  googleNote: { textAlign: 'center' },
   strength: { marginTop: 8, gap: 4 },
   strengthBars: { flexDirection: 'row', gap: 3 },
   strengthSeg: { flex: 1, height: 3, borderRadius: 2 },
