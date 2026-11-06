@@ -163,7 +163,15 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+additional_redirect_urls = [
+  "https://127.0.0.1:3000",
+  # S03 Google sign-in callbacks: web dev server, then each mobile variant's scheme (see mobile/app.config.js).
+  "http://127.0.0.1:5173/auth/callback",
+  "http://localhost:5173/auth/callback",
+  "eiyusystem://auth/callback",
+  "eiyusystem-dev://auth/callback",
+  "eiyusystem-preview://auth/callback",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -279,9 +287,11 @@ max_frequency = "5s"
 # inactivity_timeout = "8h"
 
 # This hook runs before a new user is created and allows developers to reject the request based on the incoming user object.
-# [auth.hook.before_user_created]
-# enabled = true
-# uri = "pg-functions://postgres/auth/before-user-created-hook"
+# S03: rejects a Google sign-up whose email Google has not verified. It needs migration 063
+# (backend/supabase/063_google_auth.sql); apply that BEFORE starting a stack with this block, or sign-ups fail.
+[auth.hook.before_user_created]
+enabled = true
+uri = "pg-functions://postgres/public/s03_before_user_created"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
 # [auth.hook.custom_access_token]
@@ -336,6 +346,16 @@ url = ""
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
+
+# S03 Google sign-in. Values live in the ignored supabase/.env (SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID and
+# SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET); the CLI will not start the stack with this block enabled if they are unset.
+# The authorized redirect URI in Google Cloud is this stack's /auth/v1/callback.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+# DO NOT commit the secret. Use environment variable substitution:
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+skip_nonce_check = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
