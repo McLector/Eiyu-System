@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   session: { value: null as unknown },
   signOut: vi.fn(),
   fetchProcessingAccess: vi.fn(),
+  fetchAccountAge: vi.fn(),
 }));
 
 vi.mock('../store/session-context', () => ({
@@ -17,6 +18,7 @@ vi.mock('../store/session-context', () => ({
 vi.mock('@eiyu/shared', async importOriginal => ({
   ...(await importOriginal<typeof import('@eiyu/shared')>()),
   fetchProcessingAccess: api.fetchProcessingAccess,
+  fetchAccountAge: api.fetchAccountAge,
 }));
 
 import RequireAuth from '../RequireAuth';
@@ -37,10 +39,15 @@ function mount() {
   );
 }
 
+function age(birthDate: string | null) {
+  return { userId: 'u1', birthDate, pendingBirthDate: null, correctionPending: false, adultDeclared: false, trackerWritesPaused: false, version: birthDate ? 1 : 0 };
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   api.signOut.mockResolvedValue({ error: null });
   api.fetchProcessingAccess.mockResolvedValue(access(false));
+  api.fetchAccountAge.mockResolvedValue(age(null));
 });
 afterEach(cleanup);
 
@@ -66,6 +73,7 @@ it('uses the real sign-out from the session from the finish screen', async () =>
 
 it('opens the app for a Google account that has consent', async () => {
   api.fetchProcessingAccess.mockResolvedValue(access(true));
+  api.fetchAccountAge.mockResolvedValue(age('2000-01-01'));
   api.session.value = { user: { id: 'u1', app_metadata: { provider: 'google' } } };
   mount();
   expect(await screen.findByText('Board content')).toBeInTheDocument();

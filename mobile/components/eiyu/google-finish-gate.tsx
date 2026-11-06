@@ -2,13 +2,15 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import {
   CHILD_PRIVACY_NOTICE,
+  LEGAL_DOCUMENTS,
   PROCESSING_NOTICES,
+  fetchAccountAge,
   fetchProcessingAccess,
+  finishGoogleSignup,
   formatError,
   needsGoogleSignupFinish,
-  setAccountBirthday,
-  setProcessingConsent,
   validateSignupBirthday,
+  type LegalDocumentId,
   type ProcessingAccess,
 } from '@eiyu/shared';
 
@@ -16,6 +18,7 @@ import { Screen } from '@/components/eiyu/screen';
 import { Button } from '@/components/ui/button';
 import { AppText } from '@/components/ui/app-text';
 import { Field } from '@/components/ui/field';
+import { Sheet } from '@/components/ui/sheet';
 import { SignaturePanel } from '@/components/ui/signature-panel';
 import { fonts } from '@/constants/eiyu-theme';
 import { useTokens } from '@/contexts/theme-store';
@@ -40,15 +43,19 @@ function SignOutButton({ onSignOut }: { onSignOut: () => Promise<unknown> }) {
   return <Button variant="quiet" label="Sign out" onPress={() => { void Promise.resolve(onSignOut()).catch(() => {}); }} />;
 }
 
-function FinishSignup({ userId, initialAccess, onDone, onSignOut }: {
-  userId: string; initialAccess: ProcessingAccess; onDone: () => void; onSignOut: () => Promise<unknown>;
+function FinishSignup({ initialAccess, onDone, onSignOut }: {
+  initialAccess: ProcessingAccess; onDone: () => void; onSignOut: () => Promise<unknown>;
 }) {
   const t = useTokens();
   const notice = PROCESSING_NOTICES['age-screening'];
   // Kept in memory only. A birth date is never written to device storage.
   const [birthday, setBirthday] = useState('');
   const [consent, setConsent] = useState(false);
-  const [access, setAccess] = useState(initialAccess);
+  // Never pre-ticked, even for an account that already gave the birthday permission.
+  const [terms, setTerms] = useState(false);
+  const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
+  const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
+  const access = initialAccess;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
@@ -57,21 +64,18 @@ function FinishSignup({ userId, initialAccess, onDone, onSignOut }: {
 
   const consented = consent || access.ageConsent;
   const body = [styles.body, { color: t['muted-flat'], fontFamily: fonts.body }];
+  const link = [styles.body, styles.link, { color: t['accent-text'], fontFamily: fonts.body }];
 
   const submit = async () => {
     if (saving.current) return;
     const birthdayError = validateSignupBirthday(birthday);
     if (!consented) { setError('Review the birthday notice and give specific permission before finishing.'); return; }
+    if (!terms) { setError('Accept the Privacy Policy and Terms to continue.'); return; }
     if (birthdayError) { setError(birthdayError); return; }
     saving.current = true; setBusy(true); setError(null);
     try {
-      let current = access;
-      // Consent first: the birthday save refuses an account without it. A retry skips what already saved.
-      if (!current.ageConsent) {
-        current = await setProcessingConsent('age-screening', true, notice.version, current);
-        if (mounted.current) setAccess(current);
-      }
-      await setAccountBirthday(birthday, userId);
+      // One call saves the permission and the birthday together: a failure keeps neither, and a retry is the same call.
+      await finishGoogleSignup(birthday, access);
       if (mounted.current) onDone();
     } catch (err) {
       if (mounted.current) setError(formatError(err));
@@ -97,18 +101,53 @@ function FinishSignup({ userId, initialAccess, onDone, onSignOut }: {
         <AppText aria-hidden style={{ color: t['accent-text'], fontSize: 22 }}>{consented ? '☑' : '☐'}</AppText>
         <AppText style={[body, styles.checkLabel]}>{notice.label}</AppText>
       </Pressable>
+      <View style={styles.check}>
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityLabel="I agree to the Privacy Policy & Terms"
+          accessibilityState={{ checked: terms, disabled: busy }}
+          disabled={busy}
+          onPress={() => setTerms(v => !v)}
+          style={styles.box}>
+          <AppText aria-hidden style={{ color: t['accent-text'], fontSize: 22 }}>{terms ? '☑' : '☐'}</AppText>
+        </Pressable>
+        <View style={styles.termsCopy}>
+          <AppText style={body}>I agree to the</AppText>
+          <Pressable role="link" aria-label="Privacy Policy" onPress={() => setLegalDocument('privacy')} style={styles.linkTarget}>
+            <AppText style={link}>Privacy Policy</AppText>
+          </Pressable>
+          <AppText style={body}>and</AppText>
+          <Pressable role="link" aria-label="Terms of Use" onPress={() => setLegalDocument('terms')} style={styles.linkTarget}>
+            <AppText style={link}>Terms of Use</AppText>
+          </Pressable>
+        </View>
+      </View>
       <Field label="Birthday" placeholder="YYYY-MM-DD" autoCapitalize="none" value={birthday} onChangeText={setBirthday} editable={!busy} />
       {error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
       <Button variant="primary" label={busy ? 'SAVING…' : 'FINISH SIGN-UP'} busy={busy} onPress={() => void submit()} />
       <SignOutButton onSignOut={onSignOut} />
+      <Sheet
+        visible={activeLegalDocument !== null}
+        title={activeLegalDocument?.title}
+        closeLabel={`Close ${activeLegalDocument?.title ?? 'document'}`}
+        onClose={() => setLegalDocument(null)}
+        testID="legal-sheet">
+        {activeLegalDocument?.sections.map(section => (
+          <View key={section.heading} style={styles.section}>
+            <AppText style={[styles.sectionTitle, { color: t['accent-text'], fontFamily: fonts.display }]}>{section.heading}</AppText>
+            <AppText selectable style={body}>{section.body}</AppText>
+          </View>
+        ))}
+      </Sheet>
     </Shell>
   );
 }
 
 /**
  * Blocks the app for an account Google created that has not yet confirmed its birthday. A password
- * account never reaches the lookup. The screen stays up until both saves succeed, so a half-finished
- * save cannot let the user past it. Sign-out is always available.
+ * account never reaches the lookup. Permission and birthday are saved in one call, and an account that
+ * has the permission but no birthday (left by the earlier two-call screen) is shown the screen again.
+ * Sign-out is always available.
  */
 export function GoogleFinishGate({ user, onSignOut, children }: Props) {
   const t = useTokens();
@@ -126,11 +165,11 @@ export function GoogleFinishGate({ user, onSignOut, children }: Props) {
     if (!isGoogle) return;
     let active = true;
     setStatus({ kind: 'loading' }); setFinishing(false); setAccess(null);
-    fetchProcessingAccess().then(next => {
+    Promise.all([fetchProcessingAccess(), fetchAccountAge()]).then(([next, age]) => {
       if (!active) return;
-      if (next.userId !== userId) throw new Error('Account status belongs to another account.');
+      if (next.userId !== userId || age.userId !== userId) throw new Error('Account status belongs to another account.');
       setAccess(next);
-      setFinishing(needsGoogleSignupFinish(latestUser.current, next));
+      setFinishing(needsGoogleSignupFinish(latestUser.current, next, age));
       setStatus({ kind: 'ready' });
     }).catch(() => { if (active) setStatus({ kind: 'error' }); });
     return () => { active = false; };
@@ -149,7 +188,7 @@ export function GoogleFinishGate({ user, onSignOut, children }: Props) {
       </Shell>
     );
   }
-  if (finishing && access) return <FinishSignup userId={userId} initialAccess={access} onDone={() => setFinishing(false)} onSignOut={onSignOut} />;
+  if (finishing && access) return <FinishSignup initialAccess={access} onDone={() => setFinishing(false)} onSignOut={onSignOut} />;
   return <>{children}</>;
 }
 
@@ -162,4 +201,10 @@ const styles = StyleSheet.create({
   note: { fontSize: 12, lineHeight: 17 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48 },
   checkLabel: { flex: 1 },
+  box: { minHeight: 48, minWidth: 48, justifyContent: 'center' },
+  termsCopy: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 4 },
+  linkTarget: { minHeight: 48, justifyContent: 'center' },
+  link: { textDecorationLine: 'underline' },
+  section: { marginBottom: 18, gap: 6 },
+  sectionTitle: { fontSize: 13, letterSpacing: 1.3 },
 });
