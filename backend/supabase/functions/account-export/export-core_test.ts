@@ -7,7 +7,7 @@ function document(){
  const spec=manifest.tables.find(s=>s.table==='public.habits')!;
  sections['public.habits']=[Object.fromEntries(spec.export.map(k=>[k,k==='user_id'?uid:k==='name'?'SYNTHETIC_EXPORT_MARKER':null]))];
  return {schemaVersion:1,generatedAt:'2026-10-22T05:00:00.000Z',accountId:uid,
-  account:{email:'synthetic-export@example.invalid',createdAt:'2026-10-22T05:00:00.000Z',signup:{displayName:null,timeZone:null,birthDate:null,ageScreening:{granted:null,noticeVersion:null}}},
+  account:{email:'synthetic-export@example.invalid',createdAt:'2026-10-22T05:00:00.000Z',signup:{displayName:null,timeZone:null}},
   mailboxVersion:1,sections,omissions:['Security fields excluded.']};
 }
 const authHeaders={Authorization:'Bearer synthetic-only','Content-Type':'application/json'};

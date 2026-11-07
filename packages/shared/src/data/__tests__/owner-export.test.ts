@@ -10,7 +10,7 @@ function doc():OwnerExportDocument{
  const sections:OwnerExportDocument['sections']={};for(const table of Object.keys(OWNER_EXPORT_SECTION_FIELDS))sections[table]=[];
  sections['public.habits']=[Object.fromEntries(OWNER_EXPORT_SECTION_FIELDS['public.habits'].map(k=>[k,k==='user_id'?uid:k==='name'?'Synthetic owned export':null]))];
  return {schemaVersion:1,generatedAt:'2026-10-22T05:00:00.000Z',accountId:uid,mailboxVersion:1,
-  account:{email:'synthetic-export@example.invalid',createdAt:'2026-10-22T05:00:00.000Z',signup:{displayName:null,timeZone:null,birthDate:null,ageScreening:{granted:null,noticeVersion:null}}},sections,omissions:[]};
+  account:{email:'synthetic-export@example.invalid',createdAt:'2026-10-22T05:00:00.000Z',signup:{displayName:null,timeZone:null}},sections,omissions:[]};
 }
 function response(value:unknown,status=200){return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'private, no-store'}});}
 function emit(id:string|null,event='SIGNED_IN'){

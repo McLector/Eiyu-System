@@ -1,0 +1,152 @@
+{
+ "account": {
+  "email": "synthetic-export@example.invalid",
+  "signup": {
+   "timeZone": "Asia/Manila",
+   "displayName": "Synthetic Person"
+  },
+  "createdAt": "2026-11-07T18:18:13.352201+00:00"
+ },
+ "sections": {
+  "public.stats": [
+   {
+    "xp": 0,
+    "stat": "CHA",
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "updated_at": "2026-11-07T18:18:13.352201+00:00"
+   },
+   {
+    "xp": 0,
+    "stat": "DEX",
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "updated_at": "2026-11-07T18:18:13.352201+00:00"
+   },
+   {
+    "xp": 0,
+    "stat": "INT",
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "updated_at": "2026-11-07T18:18:13.352201+00:00"
+   },
+   {
+    "xp": 0,
+    "stat": "STR",
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "updated_at": "2026-11-07T18:18:13.352201+00:00"
+   },
+   {
+    "xp": 0,
+    "stat": "WIS",
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "updated_at": "2026-11-07T18:18:13.352201+00:00"
+   }
+  ],
+  "public.habits": [
+   {
+    "id": "e5200000-0000-4000-8000-0000000000a3",
+    "days": [
+     1
+    ],
+    "name": "Synthetic quest",
+    "stat": "INT",
+    "genre": null,
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "archived": false,
+    "position": -1,
+    "time_set": true,
+    "created_at": "2026-11-07T18:18:13.352201+00:00",
+    "difficulty": "Medium",
+    "quest_type": "habit",
+    "updated_at": "2026-11-07T18:18:13.352201+00:00",
+    "description": null,
+    "easy_version": "A small step",
+    "target_count": null,
+    "reminder_time": "08:00:00",
+    "scheduled_date": null,
+    "schedule_start_on": "2026-11-08"
+   }
+  ],
+  "public.streaks": [],
+  "public.profiles": [
+   {
+    "theme": "dark",
+    "palette": null,
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "time_zone": "Asia/Manila",
+    "created_at": "2026-11-07T18:18:13.352201+00:00",
+    "updated_at": "2026-11-07T18:18:13.352201+00:00",
+    "user_class": "Developer",
+    "target_role": null,
+    "display_name": "Synthetic Person",
+    "time_zone_changed_at": "2026-11-07T18:18:13.354805+00:00"
+   }
+  ],
+  "public.gym_entries": [],
+  "public.long_quests": [],
+  "private.account_age": [],
+  "public.gym_routines": [],
+  "public.gym_sessions": [],
+  "public.gym_exercises": [],
+  "public.weekly_quests": [],
+  "private.mailbox_state": [
+   {
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "version": 1,
+    "verified_at": "2026-11-07T18:18:13.352201+00:00",
+    "verified_version": 1
+   }
+  ],
+  "public.habit_progress": [],
+  "public.weekly_summaries": [],
+  "private.terms_acceptance": [
+   {
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "version": "2026-11-08-terms-v2",
+    "accepted_at": "2026-11-07T18:18:13.354805+00:00"
+   }
+  ],
+  "public.gym_media_cleanup": [],
+  "public.habit_completions": [],
+  "public.habit_occurrences": [],
+  "public.long_quest_stages": [],
+  "public.long_quest_rewards": [],
+  "private.processing_consent": [],
+  "private.ai_logical_requests": [],
+  "private.ai_user_daily_usage": [],
+  "private.ai_execution_details": [],
+  "private.ai_provider_attempts": [],
+  "private.processing_authority": [],
+  "public.deleted_habit_history": [],
+  "public.habit_recovery_windows": [],
+  "public.habit_archive_intervals": [],
+  "public.habit_schedule_versions": [
+   {
+    "days": [
+     1
+    ],
+    "user_id": "e5200000-0000-4000-8000-0000000000a1",
+    "habit_id": "e5200000-0000-4000-8000-0000000000a3",
+    "created_at": "2026-11-07T18:18:13.352201+00:00",
+    "effective_from": "2026-11-08"
+   }
+  ],
+  "private.tracker_retention_state": [],
+  "private.tracker_input_provenance": [],
+  "private.authority_review_requests": [],
+  "private.processing_consent_events": [],
+  "private.tracker_purpose_authority": [],
+  "private.long_quest_reward_receipts": [],
+  "private.processing_authority_events": [],
+  "private.long_quest_definition_receipts": [],
+  "private.ai_pending_weekly_regenerations": []
+ },
+ "accountId": "e5200000-0000-4000-8000-0000000000a1",
+ "omissions": [
+  "Authentication secrets, live verification and administrative references are excluded.",
+  "Redundant internal replay payloads and account-unlinked project counters are excluded.",
+  "This is an account-data export, not an administrator backup or deletion confirmation.",
+  "Profile details a sign-in provider such as Google supplied (name and picture) are not repeated here."
+ ],
+ "generatedAt": "2026-11-07T18:18:13.480267+00:00",
+ "schemaVersion": 1,
+ "mailboxVersion": 1
+}

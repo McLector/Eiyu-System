@@ -670,6 +670,16 @@
         "unblocked_at"
       ],
       "scope": "global"
+    },
+    {
+      "table": "private.terms_acceptance",
+      "export": [
+        "user_id",
+        "version",
+        "accepted_at"
+      ],
+      "exclude": [],
+      "scope": "owner"
     }
   ],
   "foreignKeys": [
@@ -735,6 +745,10 @@
     },
     {
       "source": "private.processing_consent_events",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "source": "private.terms_acceptance",
       "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
     },
     {

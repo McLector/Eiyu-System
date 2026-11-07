@@ -1,7 +1,7 @@
 // Pure export contract; no Auth, cache, provider or native imports.
 export interface OwnerExportDocument {
  schemaVersion:1;generatedAt:string;accountId:string;mailboxVersion:number;
- account:{email:string|null;createdAt:string;signup:{displayName:string|null;timeZone:string|null;birthDate:string|null;ageScreening:{granted:boolean|null;noticeVersion:string|null}}};
+ account:{email:string|null;createdAt:string;signup:{displayName:string|null;timeZone:string|null}};
  sections:Record<string,Record<string,unknown>[]>;omissions:string[];
 }
 function record(value:unknown):value is Record<string,unknown>{return value!==null&&typeof value==='object'&&!Array.isArray(value);}
@@ -16,10 +16,8 @@ export function isOwnerExportDocument(value:unknown,owner:string):value is Owner
   ||!Number.isSafeInteger(value.mailboxVersion)||(value.mailboxVersion as number)<1
   ||!record(value.account)||!keys(value.account,['email','createdAt','signup'])||!nullableString(value.account.email)||!timestamp(value.account.createdAt))return false;
  const signup=value.account.signup;
- if(!record(signup)||!keys(signup,['displayName','timeZone','birthDate','ageScreening'])
-  ||![signup.displayName,signup.timeZone,signup.birthDate].every(nullableString)||!record(signup.ageScreening)
-  ||!keys(signup.ageScreening,['granted','noticeVersion'])||!(signup.ageScreening.granted===null||typeof signup.ageScreening.granted==='boolean')
-  ||!nullableString(signup.ageScreening.noticeVersion)||!Array.isArray(value.omissions)||!value.omissions.every(v=>typeof v==='string'))return false;
+ if(!record(signup)||!keys(signup,['displayName','timeZone'])||![signup.displayName,signup.timeZone].every(nullableString)
+  ||!Array.isArray(value.omissions)||!value.omissions.every(v=>typeof v==='string'))return false;
  if(!record(value.sections)||!keys(value.sections,Object.keys(OWNER_EXPORT_SECTION_FIELDS)))return false;
  let count=1;
  for(const [table,fields] of Object.entries(OWNER_EXPORT_SECTION_FIELDS)){
@@ -403,5 +401,10 @@ export const OWNER_EXPORT_SECTION_FIELDS:Readonly<Record<string,readonly string[
     "reminded_at",
     "removed_at",
     "last_failed_at"
+  ],
+  "private.terms_acceptance": [
+    "user_id",
+    "version",
+    "accepted_at"
   ]
 };
