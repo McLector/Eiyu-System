@@ -55,6 +55,8 @@ async function draft() {
   const user = userEvent.setup();
   await renderWithTheme(<WeeklyDebrief userId="owner" timeZone="Asia/Manila" />);
   await user.press(await screen.findByRole('button', {name: 'Send verification email'}));
+  // From here the server holds the code that was just sent, so later status reads report it (as the real one does).
+  mockStatus.mockResolvedValue({userId: 'owner', version: 1, verified: false, challenge: {id: 'challenge', expiresAt: '2026-11-08T12:10:00+00:00', resendAfter: 50}});
   await user.type(await screen.findByLabelText('Verification code'), '12345678');
 }
 it('keeps the current mailbox challenge and draft when returning from reading email', async () => {
