@@ -23,7 +23,35 @@ Written 2026-11-07 from read-only checks. Nothing hosted was changed. This docum
 - Redirect allow-list additions for Google: `https://eiyu-system.vercel.app/auth/callback` and the shipped scheme callback(s) (`eiyusystem://auth/callback`; preview/dev only if those builds point at hosted). Plus the recovery callbacks already listed in the old checklist.
 - Pre-release fix (local, small): an expired Google sign-in (`error_code=bad_oauth_state`) lands on the site URL `/auth` and showed nothing. **Done 2026-11-07**: `/auth` now shows "Google sign-in took too long. Try again." and clears the address bar; other errors there (such as an expired email link) are left alone. If the site URL ever stops being `/auth`, this message moves with it.
 
-## Order
+## Backup and rehearsal (done 2026-11-07)
+
+- Backup taken by the owner (roles, schema, data; git-ignored, `.superpowers/hosted-backup/2026-11-07-0735/`): 11 users, 11 identities, 11 profiles, 61 habits, 37 tables with data.
+- Rehearsal stack `eiyu-rehearsal-047` (58321/58322) restored as a faithful copy of live, real data included with the owner's yes. Three dump gaps were made up from live reads: local default grants switched off during the restore (otherwise `anon` gains EXECUTE live never had), the one live trigger on `auth.users`, and live's three `storage.objects` policies. Live is on a newer Auth/Storage version: 6 empty tables and 1 pending sign-in token were left out, plus two new `storage.buckets` columns.
+- **README marker query on the copy: 46/46** — the live schema for 001-046 matches committed SQL (closes the old "drift of 001-045" unknown).
+- **047-064 applied cleanly on the copy** (each ~0.3 s, no warnings); no rows lost (172 completions, 371 occurrences, 16 gym sessions kept); 048 backfilled 11 mailbox rows. Existing accounts keep basic quests (`canWriteBasic` true); AI review and custom/fitness trackers (Gym) wait for each person's birthday and permission.
+- SQL suite on the copy: 2019/2025 pass; the 6 failures (`044_tracker_lint_fixes`) pin the function owner to `supabase_admin`, the role the local stacks used. Live applies as `postgres`, as the rehearsal did; grants are identical apart from that name. Test follow-up only.
+- The exact live procedure is a script, `.superpowers/rehearsal-047/apply.ps1 -Target live` (git-ignored): precheck that the target is the 046 base, 047-052 one by one, **053-056 as one transaction**, 057-064 one by one, stop at the first error, then pg_cron, schedules (`ai-admission-prune` every 15 min, `tracker-retention` 18:15 UTC daily), first prune, open AI admission, postcheck. Run end to end on a fresh copy; a second run is refused by the precheck.
+
+## Why the order below changed
+
+Live today still lets signed-in users write `habits` (insert/update), `long_quests` and `weekly_quests` directly, and the live site (`origin/main`) does exactly that. After 047-064 those writes are refused. So from the database step until the new site is live, creating or editing quests on the old site fails. Everything that does not need the new database goes first; the database step, the `ai-proxy` deploy and the push to `main` run back to back.
+
+## Order (revised)
+
+A. **YES: push `feat/s03-google-auth` to GitHub** (public repo) so GitHub CI runs on it. No deploy: only `main` deploys.
+B. **Auth settings (owner in the dashboard, Claude guides)**: Google provider on with client ID/secret; Google Cloud OAuth client gets the hosted callback URI; consent screen to In production; redirect allow-list additions. Harmless to the old site (it has no Google button).
+C. **YES: deploy `account-export` and `mailbox-verification`** (JWT verification on). Old clients never call them.
+D. **One sitting, minutes apart:**
+   1. owner runs `apply.ps1 -Target live` (the database step);
+   2. **YES:** deploy `ai-proxy` (it needs 051's functions);
+   3. **YES:** fast-forward `main` to the release commit and push → Vercel Production;
+   4. smoke test on the live site with a disposable account, then delete it.
+E. Mobile: new EAS build (runtime 1.3.0), owner installs.
+F. After release: watch `ai-proxy` logs; keep the backup.
+
+The original order below is kept for reference.
+
+## Original order
 
 Each step names who does it. Steps 4-9 should run in one sitting: between the migrations (4) and the push (9) the live web is the old client talking to the new database.
 
