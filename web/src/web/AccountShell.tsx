@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
 import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
-import {DebriefConsent} from './DebriefConsent';
 import OwnerExport from './OwnerExport';
 
 import { BoardIcon, DumbbellIcon, GearIcon, ScrollIcon, SignOutIcon, StatusIcon } from '../Icons';
@@ -120,12 +119,10 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
         </label>
         {error && <p className="phase4-error" role="alert">{error}</p>}
         <p>{CHILD_PRIVACY_NOTICE}</p>
-        {processing && userId && <DebriefConsent userId={userId} access={processing} purpose="age-screening" onChanged={setProcessing}/>}
         <label>Birthday
           <input aria-label="Birthday" placeholder="YYYY-MM-DD" value={birthday} disabled={!ageLoaded || pending} onChange={event => setBirthday(event.target.value)} />
         </label>
         {birthdayNote && <p role="status">{birthdayNote}</p>}
-        {processing && userId && <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/>}
         {processingError && <p role="alert">{processingError}</p>}
         {userId && <OwnerExport key={`${userId}-export`} userId={userId}/>}
         <div className="phase4-dialog-actions">

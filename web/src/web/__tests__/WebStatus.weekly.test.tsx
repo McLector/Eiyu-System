@@ -19,7 +19,9 @@ const store = vi.hoisted(() => ({
   fetchMailboxStatus: vi.fn(async () => ({ userId: 'user-1', version: 1, verified: false })),
   sendMailboxCode: vi.fn(),
   verifyMailboxCode: vi.fn(),
-  onAgeChanged: null as null | (() => void),
+  setProcessingConsent: vi.fn(),
+  listeners: new Set<() => void>(),
+  fireAccessChanged() { store.listeners.forEach(listener => listener()); },
 }));
 
 vi.mock('../../store/eiyu-store', () => ({ useEiyu: store.useEiyu }));
@@ -42,17 +44,18 @@ vi.mock('@eiyu/shared', async importActual => {
     regenerateWeeklySummary: store.regenerateWeeklySummary,
     fetchProcessingAccess: store.fetchProcessingAccess,
     fetchSavedWeeklySummary: store.fetchSavedWeeklySummary,
-    subscribeProcessingAccessChanges: () => () => {},
+    setProcessingConsent: store.setProcessingConsent,
+    subscribeProcessingAccessChanges: (listener: () => void) => { store.listeners.add(listener); return () => { store.listeners.delete(listener); }; },
     fetchMailboxStatus: store.fetchMailboxStatus,
     sendMailboxCode: store.sendMailboxCode,
     verifyMailboxCode: store.verifyMailboxCode,
-    subscribeAccountAgeChanges: (listener: () => void) => { store.onAgeChanged = listener; return () => { store.onAgeChanged = null; }; },
   };
 });
 
 import WebStatus from '../WebStatus';
 
-afterEach(() => { cleanup(); focusManager.setFocused(undefined); });
+const NEEDS_AI_BOXES = 'Weekly review needs the 18+ box, the AI agreement and a verified email. Turn it on from the Status page.';
+afterEach(() => { cleanup(); focusManager.setFocused(undefined); store.listeners.clear(); });
 
 function renderStatus(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
@@ -133,11 +136,11 @@ describe('web Status weekly review', () => {
     expect(store.fetchOrCreateWeeklySummary).toHaveBeenCalledTimes(2);
     expect(screen.queryByLabelText('Verification code')).not.toBeInTheDocument();
   });
-  it('removes mailbox entry when the foreground eligibility check denies adult AI', async () => {
+  it('removes mailbox entry when the foreground check says the AI boxes are needed', async () => {
     await mailboxDraft();
-    store.fetchOrCreateWeeklySummary.mockRejectedValue(new Error('Adult AI eligibility required.'));
+    store.fetchOrCreateWeeklySummary.mockRejectedValue(new Error(NEEDS_AI_BOXES));
     await act(async () => { focusManager.setFocused(false); focusManager.setFocused(true); });
-    await screen.findByText(/Adult AI eligibility required/);
+    await screen.findByText(/Weekly review needs the 18\+ box/);
     expect(screen.queryByLabelText('Verification code')).not.toBeInTheDocument();
     expect(screen.getByRole('table', {name: /weekly activity/i})).toBeInTheDocument();
   });
@@ -156,7 +159,7 @@ describe('web Status weekly review', () => {
     store.regenerateWeeklySummary.mockReturnValue(new Promise<string>(done => { resolve = done; }));
     const user = userEvent.setup(); renderStatus(); await user.click(screen.getByRole('tab', { name: 'WEEKLY REVIEW' }));
     await screen.findByText('A cached weekly reading.'); await user.click(screen.getByRole('button', { name: 'Regenerate weekly summary' }));
-    store.fetchOrCreateWeeklySummary.mockRejectedValue(new Error('Adult AI eligibility required.')); store.onAgeChanged?.();
+    store.fetchOrCreateWeeklySummary.mockRejectedValue(new Error(NEEDS_AI_BOXES)); store.fireAccessChanged();
     await waitFor(() => expect(screen.queryByText('A cached weekly reading.')).not.toBeInTheDocument());
     resolve('Late private content');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Regenerate weekly summary' })).not.toHaveTextContent('REGENERATING'));
@@ -170,12 +173,12 @@ describe('web Status weekly review', () => {
     expect(screen.getByRole('table', { name: /weekly activity/i })).toBeInTheDocument();
     expect(screen.queryByText('A cached weekly reading.')).not.toBeInTheDocument();
   });
-  it('hides a previously loaded AI summary after a birthday change while keeping the weekly review', async () => {
+  it('hides a previously loaded AI summary after the AI permission changes while keeping the weekly review', async () => {
     const interaction = userEvent.setup(); renderStatus();
     await interaction.click(screen.getByRole('tab', { name: 'WEEKLY REVIEW' }));
     expect(await screen.findByText('A cached weekly reading.')).toBeInTheDocument();
-    store.fetchOrCreateWeeklySummary.mockRejectedValue(new Error('Adult AI eligibility required.'));
-    store.onAgeChanged?.();
+    store.fetchOrCreateWeeklySummary.mockRejectedValue(new Error(NEEDS_AI_BOXES));
+    store.fireAccessChanged();
     await waitFor(() => expect(screen.queryByText('A cached weekly reading.')).not.toBeInTheDocument());
     expect(screen.getByRole('table', { name: /weekly activity/i })).toBeInTheDocument();
   });
@@ -188,6 +191,7 @@ describe('web Status weekly review', () => {
     store.fetchProcessingAccess.mockReset().mockResolvedValue({contractVersion: 1, userId: 'user-1', ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
       ageEligible: true, ageConsent: true, aiConsent: true, canReadDebrief: true, canGenerateDebrief: true, authorityState: 'not-required'});
     store.fetchSavedWeeklySummary.mockReset().mockResolvedValue(null);
+    store.setProcessingConsent.mockReset();
     store.fetchMailboxStatus.mockReset().mockResolvedValue({userId: 'user-1', version: 1, verified: false});
     store.sendMailboxCode.mockReset().mockResolvedValue({challengeId: 'challenge', retryAfter: 60});
     store.verifyMailboxCode.mockReset().mockResolvedValue({userId: 'user-1', version: 1, verified: true});
@@ -221,5 +225,85 @@ describe('web Status weekly review', () => {
     await interaction.click(screen.getByRole('button', { name: 'Regenerate weekly summary' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent("You've used both regenerations for today");
+  });
+  describe('the Turn on AI weekly review card', () => {
+    const off = {contractVersion: 1, userId: 'user-1', ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
+      ageEligible: false, ageConsent: false, aiConsent: false, canReadDebrief: false, canGenerateDebrief: false, authorityState: 'not-required'};
+    const afterAge = {...off, ageEligible: true, ageConsent: true, ageVersion: 2};
+    const afterAi = {...afterAge, aiConsent: true, canReadDebrief: true, canGenerateDebrief: true, consentVersion: 2};
+    it('is not shown when both boxes are already on', async () => {
+      const interaction = userEvent.setup(); renderStatus();
+      await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
+      await screen.findByText('A cached weekly reading.');
+      expect(screen.queryByRole('heading', {name: 'Turn on AI weekly review'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+    it('is shown with both boxes when AI is off, and the old "AI permission is off" line and archive error stay away', async () => {
+      store.fetchProcessingAccess.mockResolvedValue(off);
+      store.fetchMailboxStatus.mockResolvedValue({userId: 'user-1', version: 1, verified: true});
+      const interaction = userEvent.setup(); renderStatus();
+      await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
+      expect(await screen.findByRole('heading', {name: 'Turn on AI weekly review'})).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', {name: /I'm 18 or older/i})).not.toBeChecked();
+      expect(screen.getByRole('checkbox', {name: /Groq/})).not.toBeChecked();
+      expect(screen.queryByText(/couldn.t reach the archive/)).not.toBeInTheDocument();
+      expect(store.fetchOrCreateWeeklySummary).not.toHaveBeenCalled();
+    });
+    it('shows exactly one email verification box when AI is off and the email is unverified', async () => {
+      store.fetchProcessingAccess.mockResolvedValue(off);
+      const interaction = userEvent.setup(); renderStatus();
+      await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
+      await screen.findByRole('heading', {name: 'Turn on AI weekly review'});
+      expect(await screen.findAllByRole('button', {name: 'Send verification email'})).toHaveLength(1);
+      expect(screen.getAllByRole('button', {name: 'Check verification status'})).toHaveLength(1);
+    });
+    it('shows the card above saved history when AI was turned off but reading is still allowed', async () => {
+      store.fetchProcessingAccess.mockResolvedValue({...afterAge, canReadDebrief: true});
+      store.fetchSavedWeeklySummary.mockResolvedValue('Saved history after withdrawal.');
+      store.fetchMailboxStatus.mockResolvedValue({userId: 'user-1', version: 1, verified: true});
+      const interaction = userEvent.setup(); renderStatus();
+      await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
+      await screen.findByText('Saved history after withdrawal.');
+      expect(screen.getByRole('heading', {name: 'Turn on AI weekly review'})).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', {name: /I'm 18 or older/i})).not.toBeInTheDocument();
+      expect(screen.getByRole('checkbox', {name: /Groq/})).not.toBeChecked();
+    });
+    it('keeps the card and the ticked AI box on screen between the two saves', async () => {
+      let server: typeof off = off, release!: (value: typeof afterAi) => void;
+      store.fetchProcessingAccess.mockImplementation(async () => server);
+      store.fetchMailboxStatus.mockResolvedValue({userId: 'user-1', version: 1, verified: true});
+      store.setProcessingConsent.mockImplementationOnce(async () => { server = afterAge; store.fireAccessChanged(); return afterAge; })
+        .mockImplementationOnce(() => new Promise(resolve => { release = value => { server = value; store.fireAccessChanged(); resolve(value); }; }));
+      const interaction = userEvent.setup(); renderStatus();
+      await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
+      await interaction.click(await screen.findByRole('checkbox', {name: /I'm 18 or older/i}));
+      await interaction.click(screen.getByRole('checkbox', {name: /Groq/}));
+      await interaction.click(await screen.findByRole('button', {name: 'Turn on'}));
+      await waitFor(() => expect(store.setProcessingConsent).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(screen.queryByRole('checkbox', {name: /I'm 18 or older/i})).not.toBeInTheDocument());
+      expect(screen.getByRole('checkbox', {name: /Groq/})).toBeChecked();
+      expect(screen.getByRole('heading', {name: 'Turn on AI weekly review'})).toBeInTheDocument();
+      await act(async () => { release(afterAi); });
+    });
+    it('finishes both saves and then writes the review even though each save tells the screen to re-read access', async () => {
+      let server: typeof off = off;
+      store.fetchProcessingAccess.mockImplementation(async () => server);
+      store.fetchMailboxStatus.mockResolvedValue({userId: 'user-1', version: 1, verified: true});
+      // The real setProcessingConsent tells every listener before it returns; so does this stand-in.
+      store.setProcessingConsent.mockImplementation(async (purpose: string) => {
+        server = purpose === 'age-screening' ? afterAge : afterAi; store.fireAccessChanged();
+        return server;
+      });
+      store.fetchOrCreateWeeklySummary.mockResolvedValue('A fresh review after turning on.');
+      const interaction = userEvent.setup(); renderStatus();
+      await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
+      await interaction.click(await screen.findByRole('checkbox', {name: /I'm 18 or older/i}));
+      await interaction.click(screen.getByRole('checkbox', {name: /Groq/}));
+      await interaction.click(await screen.findByRole('button', {name: 'Turn on'}));
+      expect(await screen.findByText('A fresh review after turning on.')).toBeInTheDocument();
+      expect(store.setProcessingConsent).toHaveBeenCalledTimes(2);
+      expect(store.setProcessingConsent).toHaveBeenNthCalledWith(2, 'weekly-debrief', true, '2026-11-08-weekly-debrief-v2', afterAge);
+      expect(screen.queryByRole('heading', {name: 'Turn on AI weekly review'})).not.toBeInTheDocument();
+    });
   });
 });

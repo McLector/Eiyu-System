@@ -4,7 +4,7 @@ import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, Tool
 import {
   STAT_COLORS, STATS, RANK_CONFIG, tintSecondaryText, type Stat, type UserProfile,
   fetchWeeklyReview, fetchOrCreateWeeklySummary, regenerateWeeklySummary, formatError,
-  subscribeAccountAgeChanges, subscribeMailboxChanges, MAILBOX_MESSAGE,
+  subscribeMailboxChanges, MAILBOX_MESSAGE,
   fetchProcessingAccess, fetchSavedWeeklySummary, fetchMailboxStatus,
   subscribeProcessingAccessChanges, PROCESSING_ACCESS_MESSAGE, type ProcessingAccess,
 } from '@eiyu/shared';
@@ -52,20 +52,20 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
   useEffect(() => {
     if (!rechecking) setMailboxGate(mailboxError);
   }, [rechecking, mailboxError]);
-  useEffect(() => subscribeAccountAgeChanges(() => {
-    revision.current++;
-    void queryClient.resetQueries({ queryKey: ['weeklySummary', userId] });
-  }), [queryClient, userId]);
   useEffect(() => subscribeMailboxChanges(() => {
     revision.current++;
     void queryClient.resetQueries({ queryKey: ['weeklySummary', userId] });
   }), [queryClient, userId]);
+  // Keep the last access while it is re-read: the Turn on card saves in two steps and each step lands here, so
+  // clearing it would remove the card between the steps. The re-read replaces it a moment later.
   useEffect(() => subscribeProcessingAccessChanges(() => {
     revision.current++;
-    setProcessing(null);
     void queryClient.resetQueries({queryKey: ['weeklySummary', userId]});
   }), [queryClient, userId]);
   const SHORT_LIMIT = 160;
+  // While the two boxes are not both on, the card is the one thing to act on. Saved history still shows under it.
+  const showCard = !!processing && !(processing.ageConsent && processing.aiConsent);
+  const cardOnly = showCard && !processing?.canReadDebrief;
 
   const text = summary ?? '';
   const isLong = text.length > SHORT_LIMIT;
@@ -108,7 +108,7 @@ function AiSummary({ userId, timeZone }: { userId: string; timeZone: string }) {
         </button>
       </div>
       {processing && <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/>}
-      {mailboxError || (mailboxGate && rechecking) ? (
+      {cardOnly ? null : mailboxError || (mailboxGate && rechecking) ? (
         <MailboxVerification key={userId} userId={userId} refreshRevision={errorUpdatedAt} onVerified={() => { void refetch(); }} />
       ) : rechecking ? (
         <p style={{ fontFamily: 'Inter', fontSize: 13, color: 'var(--c-muted-flat)', lineHeight: 1.6, margin: 0 }}>Reading the week&apos;s signs…</p>
