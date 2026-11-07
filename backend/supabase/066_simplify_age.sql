@@ -9,8 +9,9 @@
 -- authorityVersion is 0 and authorityState is 'not-required'; ageEligible and ageConsent both mean "the 18+ box is
 -- ticked under the current notice". private.account_age stays as an empty table (the export manifest names it).
 --
--- Sections: 1 Terms table and backfill, 2 Terms functions, 3 the access rule, 4 the sign-up trigger, 5 the birthday
--- functions and triggers go, 6 the stored birthdays are removed.
+-- Sections: 1 Terms table and backfill, 2 Terms functions, 3 the access rule, 4 the sign-up triggers (Terms, and the
+-- birthday strip), 5 the birthday functions and triggers go, 6 the stored birthdays are removed, 7 the export (manifest
+-- and snapshot: no birthday, the Terms table, Terms metadata and Google's profile keys accepted).
 --
 -- Apply note: section 6 deletes every stored birthday. It stops, rather than guess, unless the session first did
 --   set eiyu.birthdays_counted = 'yes';
@@ -139,8 +140,6 @@ begin
 end;$$;
 
 -- 4. Sign-up records the Terms that the client sent and never refuses a sign-up. The birthday-consent trigger goes.
--- An app version from before this change may still send a birthday and the old consent keys; they are removed from
--- the new account's metadata right away, so a birthday is never kept and the export never meets one.
 drop trigger capture_initial_processing_consent on auth.users;
 drop function private.capture_initial_processing_consent();
 
@@ -148,28 +147,34 @@ create function private.capture_initial_terms() returns trigger
 language plpgsql security definer set search_path='' as $$
 declare t jsonb:=new.raw_user_meta_data->'terms';
 begin
- begin
-  if pg_catalog.jsonb_typeof(t)='object' and pg_catalog.jsonb_typeof(t->'version')='string'
-   and t->>'version'='2026-11-08-terms-v2' then
-   insert into private.terms_acceptance(user_id,version) values(new.id,'2026-11-08-terms-v2')
-    on conflict (user_id) do nothing;
-  end if;
- exception when others then
-  -- A Terms record must never block a sign-up; the person is asked on the next screen instead.
-  null;
- end;
- begin
-  if new.raw_user_meta_data ?| array['birth_date','processing_consent'] then
-   update auth.users set raw_user_meta_data=raw_user_meta_data-'birth_date'-'processing_consent' where id=new.id;
-  end if;
- exception when others then
-  null;
- end;
+ if pg_catalog.jsonb_typeof(t)='object' and pg_catalog.jsonb_typeof(t->'version')='string'
+  and t->>'version'='2026-11-08-terms-v2' then
+  insert into private.terms_acceptance(user_id,version) values(new.id,'2026-11-08-terms-v2')
+   on conflict (user_id) do nothing;
+ end if;
+ return new;
+exception when others then
+ -- A Terms record must never block a sign-up; the person is asked on the next screen instead.
  return new;
 end;$$;
 revoke all on function private.capture_initial_terms() from public,anon,authenticated,service_role;
 create trigger capture_initial_terms after insert on auth.users
  for each row execute function private.capture_initial_terms();
+
+-- An app version from before this change may still send a birthday and the old consent keys, and real Auth (GoTrue)
+-- rewrites the whole metadata from its own copy right after the insert, so an insert-only strip comes back. This
+-- trigger removes both keys from every row written with them, on insert and on update, so a birthday is never kept
+-- and the export never meets one. It touches nothing else and does nothing to a row without those keys.
+create function private.strip_birthday_metadata() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ new.raw_user_meta_data:=new.raw_user_meta_data-'birth_date'-'processing_consent';
+ return new;
+end;$$;
+revoke all on function private.strip_birthday_metadata() from public,anon,authenticated,service_role;
+create trigger strip_birthday_metadata before insert or update on auth.users
+ for each row when (new.raw_user_meta_data ?| array['birth_date','processing_consent'])
+ execute function private.strip_birthday_metadata();
 
 -- 5. The birthday functions and the sign-up triggers that read a birthday are removed. A sign-up that still sends a
 -- birthday (an old client) succeeds and the value is ignored. private.account_age stays as an empty table.

@@ -127,11 +127,15 @@ update auth.users set raw_user_meta_data=raw_user_meta_data||'{"terms":{"version
 select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'a Terms version that is not text stops for review');
 update auth.users set raw_user_meta_data=raw_user_meta_data||'{"terms":{"version":"2026-11-08-terms-v2"}}' where id='e3600000-0000-4000-8000-0000000000c1';
 select lives_ok($$select pg_temp.export_c()$$,'valid Terms metadata is accepted again');
+-- The sign-up strip trigger keeps these keys out of new writes, so a row that still has them is one that predates it.
+-- The trigger is switched off to write such a row, and the snapshot has to stop for review rather than leave it out.
+alter table auth.users disable trigger strip_birthday_metadata;
 update auth.users set raw_user_meta_data=raw_user_meta_data||'{"birth_date":"2000-01-01"}' where id='e3600000-0000-4000-8000-0000000000c1';
 select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'a leftover birthday in the metadata stops for review instead of being left out');
 update auth.users set raw_user_meta_data=raw_user_meta_data-'birth_date'||'{"processing_consent":{"age_screening":{"granted":true}}}' where id='e3600000-0000-4000-8000-0000000000c1';
 select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'and so does leftover old consent metadata');
 update auth.users set raw_user_meta_data=raw_user_meta_data-'processing_consent' where id='e3600000-0000-4000-8000-0000000000c1';
+alter table auth.users enable trigger strip_birthday_metadata;
 update auth.users set raw_user_meta_data=raw_user_meta_data||'{"picture":{"deep":1}}' where id='e3600000-0000-4000-8000-0000000000c2';
 select throws_ok($$select pg_temp.export_d()$$,'EX003',null,'a provider key holding an object stops for review');
 update auth.users set raw_user_meta_data=raw_user_meta_data||'{"picture":"https://example.invalid/d.png"}' where id='e3600000-0000-4000-8000-0000000000c2';

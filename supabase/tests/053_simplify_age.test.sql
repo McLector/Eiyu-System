@@ -24,7 +24,9 @@ update private.mailbox_state set verified_version=version,verified_at=now()
 -- A legacy account: a stored birthday and permissions given under the October notices.
 -- The sign-up trigger strips a birthday from a new account, so a legacy one gets its metadata key by update, the way
 -- accounts created before this change have it.
+alter table auth.users disable trigger strip_birthday_metadata;
 update auth.users set raw_user_meta_data=raw_user_meta_data||'{"birth_date":"2000-01-01"}'::jsonb where id='da270000-0000-4000-8000-000000000001';
+alter table auth.users enable trigger strip_birthday_metadata;
 insert into private.account_age(user_id,birth_date) values
  ('da270000-0000-4000-8000-000000000001','2000-01-01'),
  ('da270000-0000-4000-8000-000000000003','2020-01-01')
@@ -261,6 +263,18 @@ select is((select raw_user_meta_data from auth.users where id='da270000-0000-400
  '{"display_name":"Old client","time_zone":"Asia/Manila","terms":{"version":"2026-11-08-terms-v2"}}'::jsonb,
  'only the birthday and old consent keys are stripped; the name, time zone and Terms stay');
 select is((select count(*)::integer from private.terms_acceptance where user_id='da270000-0000-4000-8000-000000000110'),1,'and the Terms row is still recorded');
+-- Real Auth (GoTrue) inserts the user and then rewrites the whole metadata from its own copy, which brought the
+-- birthday back after an insert-only strip. So the strip also covers every later write that still carries the keys.
+select is((select count(*)::integer from pg_trigger where tgname='strip_birthday_metadata' and tgrelid='auth.users'::regclass and not tgisinternal),1,'the metadata strip is a trigger on auth.users');
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"birth_date":"2000-01-01","processing_consent":{"age_screening":{"granted":true}},"time_zone":"UTC"}'::jsonb
+ where id='da270000-0000-4000-8000-000000000110';
+select is((select raw_user_meta_data from auth.users where id='da270000-0000-4000-8000-000000000110'),
+ '{"display_name":"Old client","time_zone":"UTC","terms":{"version":"2026-11-08-terms-v2"}}'::jsonb,
+ 'a later update that writes the birthday back is stripped, and the other keys it changes still change');
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"display_name":"Renamed"}'::jsonb where id='da270000-0000-4000-8000-000000000110';
+select is((select raw_user_meta_data->>'display_name' from auth.users where id='da270000-0000-4000-8000-000000000110'),'Renamed','an ordinary metadata update is untouched');
+update auth.users set raw_user_meta_data=null where id='da270000-0000-4000-8000-000000000110';
+select is((select raw_user_meta_data from auth.users where id='da270000-0000-4000-8000-000000000110'),null,'and a null metadata value is left alone (no error, nothing to strip)');
 
 -- M. The one-time cleanup. It stops unless the owner counted the birthdays first.
 select ok(not has_function_privilege('authenticated','private.remove_stored_birthdays()','execute'),'clients cannot run the cleanup');
