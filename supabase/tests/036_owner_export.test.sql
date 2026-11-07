@@ -40,7 +40,7 @@ select throws_ok($$select public.owner_export_snapshot('e3600000-0000-4000-8000-
  'EX001',null,'foreign session cannot select another owner');
 select throws_ok($$select public.owner_export_snapshot('e3600000-0000-4000-8000-000000000099','e3600000-0000-4000-8000-000000000011')$$,
  'EX001',null,'nonexistent owner denied');
-select lives_ok($$select pg_temp.export_a()$$,'unknown age and pending authority do not gate owned data access');
+select lives_ok($$select pg_temp.export_a()$$,'an account with no Terms row and no 18+ box can still export its data');
 select is(pg_temp.export_a()->>'schemaVersion','1','versioned export document');
 select is(pg_temp.export_a()->>'accountId','e3600000-0000-4000-8000-000000000001','subject is the verified owner');
 select is(pg_temp.export_a()->'account'->>'email','export-a@example.invalid','only explicit account email projection');
@@ -53,8 +53,8 @@ select is(pg_temp.export_a()->'sections'->'private.processing_consent_events'->0
 -- 34 sections before S02, plus private.tracker_input_provenance and
 -- private.tracker_purpose_authority added by the tracker export manifest, plus
 -- private.authority_review_requests (the owner's own review requests, 060) and
--- private.tracker_retention_state (the owner's own retention dates, 061).
-select is((select count(*) from jsonb_object_keys(pg_temp.export_a()->'sections')),38::bigint,'all owner and indirect sections explicitly classified');
+-- private.tracker_retention_state (the owner's own retention dates, 061), plus private.terms_acceptance (066).
+select is((select count(*) from jsonb_object_keys(pg_temp.export_a()->'sections')),39::bigint,'all owner and indirect sections explicitly classified');
 select is(public.owner_export_check('e3600000-0000-4000-8000-000000000001','e3600000-0000-4000-8000-000000000011',1),true,'fresh same-session proof permits confirmation');
 select is(public.owner_export_check('e3600000-0000-4000-8000-000000000001','e3600000-0000-4000-8000-000000000011',2),false,'mismatched mailbox revision refuses confirmation');
 update private.mailbox_state set verified_version=null where user_id='e3600000-0000-4000-8000-000000000001';
@@ -79,9 +79,63 @@ alter table public.habits add constraint export_dependency_drift foreign key(id)
 select throws_ok($$select pg_temp.export_a()$$,'EX003',null,'new foreign-key dependency requires review even without column drift');
 alter table public.habits drop constraint export_dependency_drift;
 insert into private.account_age(user_id,birth_date) values('e3600000-0000-4000-8000-000000000001','2020-01-01');
-select lives_ok($$select pg_temp.export_a()$$,'retained under12 owner can obtain their data without AI consent');
+select is(jsonb_array_length(pg_temp.export_a()->'sections'->'private.account_age'),1,'a stray birthday row (the table is kept, empty by design) is exported, never hidden');
 delete from private.account_age where user_id='e3600000-0000-4000-8000-000000000001';
 select is(public.owner_export_check('e3600000-0000-4000-8000-000000000001','e3600000-0000-4000-8000-000000000011',null),false,'missing proof revision is an explicit refusal');
+
+-- S03b: an account created after 066 carries the Terms version in its metadata, has a Terms row and no birthday.
+-- C is a password sign-up of the current app; D has the profile keys Google puts in the metadata. Both are inserted
+-- through the Auth role, so the sign-up trigger runs as it does for a real sign-up.
+grant usage on schema extensions to supabase_auth_admin;
+set local role supabase_auth_admin;
+insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data,created_at) values
+ ('e3600000-0000-4000-8000-0000000000c1','export-c@example.invalid','{"provider":"email","providers":["email"]}',
+  '{"display_name":"Export synthetic C","time_zone":"UTC","terms":{"version":"2026-11-08-terms-v2"}}',now()),
+ ('e3600000-0000-4000-8000-0000000000c2','export-d@example.invalid','{"provider":"google","providers":["google"]}',
+  '{"iss":"https://accounts.google.com","sub":"synthetic-sub-4","email":"export-d@example.invalid","email_verified":true,"name":"Export synthetic D","full_name":"Export synthetic D","avatar_url":"https://example.invalid/d.png","picture":"https://example.invalid/d.png","provider_id":"synthetic-sub-4"}',now());
+reset role;
+insert into auth.sessions(id,user_id,created_at,updated_at,not_after) values
+ ('e3600000-0000-4000-8000-0000000000d1','e3600000-0000-4000-8000-0000000000c1',now(),now(),now()+interval '1 hour'),
+ ('e3600000-0000-4000-8000-0000000000d2','e3600000-0000-4000-8000-0000000000c2',now(),now(),now()+interval '1 hour');
+update private.mailbox_state set verified_version=version,verified_at=now()
+ where user_id in('e3600000-0000-4000-8000-0000000000c1','e3600000-0000-4000-8000-0000000000c2');
+insert into private.terms_acceptance(user_id,version) values('e3600000-0000-4000-8000-000000000002','FOREIGN_TERMS_SENTINEL');
+create function pg_temp.export_c() returns jsonb language sql as $$
+ select public.owner_export_snapshot('e3600000-0000-4000-8000-0000000000c1','e3600000-0000-4000-8000-0000000000d1');
+$$;
+create function pg_temp.export_d() returns jsonb language sql as $$
+ select public.owner_export_snapshot('e3600000-0000-4000-8000-0000000000c2','e3600000-0000-4000-8000-0000000000d2');
+$$;
+select lives_ok($$select pg_temp.export_c()$$,'an account created after 066 (Terms in its metadata, no birthday) exports');
+select is((select array_agg(k order by k) from jsonb_object_keys(pg_temp.export_c()->'account'->'signup') k),array['displayName','timeZone'],'signup has exactly a name and a time zone, no birthday and no age screening');
+select is(pg_temp.export_c()->'account'->'signup'->>'displayName','Export synthetic C','and the name is the one the person gave');
+select is(jsonb_array_length(pg_temp.export_c()->'sections'->'private.terms_acceptance'),1,'the Terms row is exported');
+select is((select array_agg(k order by k) from jsonb_object_keys(pg_temp.export_c()->'sections'->'private.terms_acceptance'->0) k),array['accepted_at','user_id','version'],'with exactly user_id, version and accepted_at');
+select is(pg_temp.export_c()->'sections'->'private.terms_acceptance'->0->>'version','2026-11-08-terms-v2','and the version the person accepted');
+select ok(pg_temp.export_c()::text not like '%FOREIGN_TERMS_SENTINEL%','another account''s Terms row is not disclosed');
+select lives_ok($$select pg_temp.export_d()$$,'a Google account (name, picture and provider keys in its metadata) exports');
+select is(pg_temp.export_d()->'account'->'signup'->>'displayName',null,'and its signup name is whatever the person chose in the app, not Google''s');
+select is(pg_temp.export_d()->'sections'->'private.terms_acceptance','[]'::jsonb,'a Google account that has not accepted the Terms has an empty Terms section');
+select ok((pg_temp.export_d()->'omissions') @> '["Profile details a sign-in provider such as Google supplied (name and picture) are not repeated here."]'::jsonb,'the export says that the provider profile details are left out');
+select ok(pg_temp.export_d()::text not like '%Export synthetic D%' and pg_temp.export_d()::text not like '%d.png%','and they really are left out');
+-- Anything else stays a stop-for-review, never a silent omission.
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"terms":"yes"}' where id='e3600000-0000-4000-8000-0000000000c1';
+select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'Terms metadata that is not an object stops for review');
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"terms":{"version":"2026-11-08-terms-v2","extra":1}}' where id='e3600000-0000-4000-8000-0000000000c1';
+select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'Terms metadata with an extra key stops for review');
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"terms":{"version":5}}' where id='e3600000-0000-4000-8000-0000000000c1';
+select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'a Terms version that is not text stops for review');
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"terms":{"version":"2026-11-08-terms-v2"}}' where id='e3600000-0000-4000-8000-0000000000c1';
+select lives_ok($$select pg_temp.export_c()$$,'valid Terms metadata is accepted again');
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"birth_date":"2000-01-01"}' where id='e3600000-0000-4000-8000-0000000000c1';
+select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'a leftover birthday in the metadata stops for review instead of being left out');
+update auth.users set raw_user_meta_data=raw_user_meta_data-'birth_date'||'{"processing_consent":{"age_screening":{"granted":true}}}' where id='e3600000-0000-4000-8000-0000000000c1';
+select throws_ok($$select pg_temp.export_c()$$,'EX003',null,'and so does leftover old consent metadata');
+update auth.users set raw_user_meta_data=raw_user_meta_data-'processing_consent' where id='e3600000-0000-4000-8000-0000000000c1';
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"picture":{"deep":1}}' where id='e3600000-0000-4000-8000-0000000000c2';
+select throws_ok($$select pg_temp.export_d()$$,'EX003',null,'a provider key holding an object stops for review');
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"picture":"https://example.invalid/d.png"}' where id='e3600000-0000-4000-8000-0000000000c2';
+select lives_ok($$select pg_temp.export_d()$$,'and a plain string is accepted again');
 
 -- Nonempty indirectly owned records, with a second owner's sentinel receipt.
 insert into private.ai_logical_requests(request_id,user_id,action,request_class,account_date,week_start) values

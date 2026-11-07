@@ -202,4 +202,122 @@ end;$$;
 revoke all on function private.remove_stored_birthdays() from public,anon,authenticated,service_role;
 select private.remove_stored_birthdays();
 
+-- 7. Export. The Terms table joins the owner's data (inventory plus its foreign key, in the sort order the snapshot
+-- compares), and the snapshot loses the birthday and age-screening fields. It still stops for review, rather than
+-- leave data out silently, on anything it has not been shown. Two things it now accepts: the Terms version that a
+-- sign-up stores in the metadata, and the profile keys Google puts there (name, picture and so on). The Google keys
+-- are not repeated in the export, and the export says so.
+alter function private.owner_export_manifest() rename to owner_export_manifest_before_terms;
+create function private.owner_export_manifest() returns jsonb
+language sql immutable set search_path='' as $$
+ with base as (select private.owner_export_manifest_before_terms() m)
+ select jsonb_build_object(
+  'tables',(select jsonb_agg(e order by ord) from base,jsonb_array_elements(base.m->'tables') with ordinality t(e,ord))
+   ||'[{"table":"private.terms_acceptance","export":["user_id","version","accepted_at"],"exclude":[],"scope":"owner"}]'::jsonb,
+  'foreignKeys',(select jsonb_agg(f order by f->>'source',f->>'definition')
+   from base,jsonb_array_elements(base.m->'foreignKeys'
+    ||'[{"source":"private.terms_acceptance","definition":"FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"}]'::jsonb) f));
+$$;
+revoke all on function private.owner_export_manifest_before_terms(),private.owner_export_manifest() from public,anon,authenticated,service_role;
+alter function private.owner_export_manifest_before_terms() owner to postgres;
+alter function private.owner_export_manifest() owner to postgres;
+
+create or replace function public.owner_export_snapshot(p_user_id uuid,p_session_id uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare
+ manifest jsonb:=private.owner_export_manifest(); spec jsonb; fields text[]; actual text[];
+ expected_tables text[]; actual_tables text[]; actual_foreign_keys jsonb; schema_name text; table_name text;
+ col text; expr text; source_sql text; row_sql text; value_expr text;
+ n bigint; bytes bigint; total_rows bigint:=1; total_bytes bigint:=0;
+ sections jsonb:='{}'::jsonb; rows jsonb; doc jsonb; account jsonb; meta jsonb;
+ u record; version integer;
+begin
+ perform private.require_owner_export_service();
+ version:=private.owner_export_version(p_user_id,p_session_id);
+ select id,email,created_at,raw_user_meta_data into u from auth.users where id=p_user_id;
+ meta:=coalesce(u.raw_user_meta_data,'{}'::jsonb);
+ -- Keys we know: ours (name, time zone, Terms), Auth's own, and the profile keys Google adds. Anything else, and the
+ -- old birthday and consent keys, stop the export for assisted review.
+ if jsonb_typeof(meta)<>'object' or exists(select 1 from jsonb_object_keys(meta) k
+  where k<>all(array['display_name','time_zone','terms','email','email_verified','phone_verified','sub',
+   'iss','name','full_name','avatar_url','picture','provider_id']))
+ then raise exception 'Account metadata needs assisted review.' using errcode='EX003'; end if;
+ foreach col in array array['display_name','time_zone'] loop
+  if meta ? col and jsonb_typeof(meta->col) not in('string','null') then
+   raise exception 'Account metadata needs assisted review.' using errcode='EX003'; end if;
+ end loop;
+ foreach col in array array['email','email_verified','phone_verified','sub','iss','name','full_name','avatar_url','picture','provider_id'] loop
+  if meta ? col and jsonb_typeof(meta->col) not in('string','boolean','null') then
+   raise exception 'Account metadata needs assisted review.' using errcode='EX003'; end if;
+ end loop;
+ -- (CASE keeps jsonb_object_keys from running on a value that is not an object; the brackets keep PL/pgSQL from
+ -- taking the CASE's THEN for the end of the condition.)
+ if (meta ? 'terms' and (case when jsonb_typeof(meta->'terms')<>'object' then true
+   else exists(select 1 from jsonb_object_keys(meta->'terms') k where k<>'version')
+    or coalesce(jsonb_typeof(meta->'terms'->'version') not in('string','null'),false) end))
+ then raise exception 'Account metadata needs assisted review.' using errcode='EX003'; end if;
+
+ select array_agg(x->>'table' order by x->>'table') into expected_tables from jsonb_array_elements(manifest->'tables') x;
+ select array_agg(n.nspname||'.'||c.relname order by n.nspname||'.'||c.relname) into actual_tables
+  from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in('public','private') and c.relkind in('r','p');
+ if actual_tables is distinct from expected_tables then raise exception 'Export schema needs review.' using errcode='EX003'; end if;
+ select coalesce(jsonb_agg(jsonb_build_object('source',sn.nspname||'.'||s.relname,
+  'definition',pg_get_constraintdef(con.oid)) order by sn.nspname||'.'||s.relname,pg_get_constraintdef(con.oid)),'[]'::jsonb)
+  into actual_foreign_keys from pg_constraint con join pg_class s on s.oid=con.conrelid
+  join pg_namespace sn on sn.oid=s.relnamespace where con.contype='f' and sn.nspname in('public','private');
+ if actual_foreign_keys is distinct from manifest->'foreignKeys' then
+  raise exception 'Export dependencies need review.' using errcode='EX003'; end if;
+ for spec in select * from jsonb_array_elements(manifest->'tables') loop
+  schema_name:=split_part(spec->>'table','.',1);table_name:=split_part(spec->>'table','.',2);
+  select array_agg(v order by v) into fields from jsonb_array_elements_text((spec->'export')||(spec->'exclude')) v;
+  select array_agg(a.attname::text order by a.attname::text) into actual
+   from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
+   where n.nspname=schema_name and c.relname=table_name and a.attnum>0 and not a.attisdropped;
+  if actual is distinct from fields then raise exception 'Export columns need review.' using errcode='EX003'; end if;
+ end loop;
+ if exists(select 1 from storage.objects o where o.owner_id=p_user_id::text
+   or (o.bucket_id='gym-exercise-media' and split_part(o.name,'/',1)=p_user_id::text))
+  or exists(select 1 from public.gym_media_cleanup where user_id=p_user_id)
+  or exists(select 1 from public.gym_exercises where user_id=p_user_id and media_path is not null)
+ then raise exception 'Media export requires assisted handling.' using errcode='EX005'; end if;
+
+ account:=jsonb_build_object('email',u.email,'createdAt',u.created_at,'signup',jsonb_build_object(
+  'displayName',meta->'display_name','timeZone',meta->'time_zone'));
+ total_bytes:=octet_length(account::text);
+ for spec in select * from jsonb_array_elements(manifest->'tables') loop
+  if spec->>'scope'='global' then continue;end if;
+  schema_name:=split_part(spec->>'table','.',1);table_name:=split_part(spec->>'table','.',2);expr:='';
+  for col in select * from jsonb_array_elements_text(spec->'export') loop
+   value_expr:=format('r.%I',col);
+   if exists(select 1 from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname=schema_name and c.relname=table_name and a.attname=col and a.atttypid='int8'::regtype)
+   then value_expr:=value_expr||'::text';end if;
+   expr:=expr||case when expr='' then '' else ',' end||format('%L,%s',col,value_expr);
+  end loop;
+  source_sql:=format('%I.%I r',schema_name,table_name);
+  if spec->>'scope'='indirect' then
+   source_sql:=source_sql||' join private.ai_logical_requests q on q.request_id=r.request_id where q.user_id=$1';
+  else source_sql:=source_sql||' where r.user_id=$1';end if;
+  row_sql:='select jsonb_build_object('||expr||') projected from '||source_sql||' limit 10001';
+  execute 'select count(*),coalesce(sum(octet_length(projected::text)),0) from ('||row_sql||') bounded'
+   into n,bytes using p_user_id;
+  total_rows:=total_rows+n;total_bytes:=total_bytes+bytes;
+  if total_rows>10000 or total_bytes>5242880 then raise exception 'Export exceeds automatic delivery limits.' using errcode='EX004';end if;
+  execute 'select coalesce(jsonb_agg(projected order by projected::text),''[]''::jsonb) from ('||row_sql||') bounded'
+   into rows using p_user_id;
+  sections:=sections||jsonb_build_object(spec->>'table',rows);
+ end loop;
+ doc:=jsonb_build_object('schemaVersion',1,'generatedAt',statement_timestamp(),'accountId',p_user_id,
+  'account',account,'mailboxVersion',version,'sections',sections,'omissions',jsonb_build_array(
+  'Authentication secrets, live verification and administrative references are excluded.',
+  'Redundant internal replay payloads and account-unlinked project counters are excluded.',
+  'This is an account-data export, not an administrator backup or deletion confirmation.',
+  'Profile details a sign-in provider such as Google supplied (name and picture) are not repeated here.'));
+ if octet_length(doc::text)>5242880 then raise exception 'Export exceeds automatic delivery limits.' using errcode='EX004';end if;
+ return doc;
+end;$$;
+revoke all on function public.owner_export_snapshot(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.owner_export_snapshot(uuid,uuid) to service_role;
+alter function public.owner_export_snapshot(uuid,uuid) owner to postgres;
+
 commit;
