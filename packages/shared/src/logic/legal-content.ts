@@ -84,7 +84,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentId, LegalDocument> = {
       },
       {
         heading: 'CUSTOM TRACKER AND FITNESS',
-        body: "Custom quest and chain names, descriptions and progress, and Gym routines, exercises, weights, workouts and optional exercise media, are saved with Supabase only after you give a separate permission for each. These records can be sensitive, so add only what you want saved. Neither permission allows AI reviews. If you say no, basic quests with standard names and your ordinary history keep working. If you withdraw a permission, new records of that kind stop and your saved records stay read-only for 30 days, during which you can export them or ask for deletion; after 30 days we remove them. People aged 12 to 17 get a plainer explanation, and we may review a young person's request for these permissions ourselves. We do not ask for IDs, selfies or documents.",
+        body: "Custom quest and chain names, descriptions and progress, and Gym routines, exercises, weights, workouts and optional exercise media, are saved with Supabase so your tracker works across your devices. These records can be sensitive, so add only what you want saved. They are used for AI reviews only if you turn on the weekly AI review, which is a separate choice. Basic quests with standard names still work if you prefer them. Your saved records stay in your account until you delete them or your account is removed, and you can export them or ask for deletion at any time. We do not ask for IDs, selfies or documents.",
       },
       {
         heading: 'HOW LONG WE KEEP THINGS',

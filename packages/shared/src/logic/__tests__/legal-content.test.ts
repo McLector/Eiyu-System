@@ -231,3 +231,32 @@ describe('tracker purpose notices', () => {
     expect(TRACKER_PURPOSE_NOTICES['fitness-tracking'].body).toMatch(/media/i);
   });
 });
+
+describe('privacy policy after the open tracker (065)', () => {
+  const section = () => LEGAL_DOCUMENTS.privacy.sections.find(s => s.heading === 'CUSTOM TRACKER AND FITNESS')!.body;
+  it('no longer promises a separate permission for custom quests, chains or Gym', () => {
+    expect(section()).not.toMatch(/separate permission/i);
+    expect(section()).not.toMatch(/only after you give/i);
+    expect(section()).not.toMatch(/if you say no/i);
+    expect(section()).not.toMatch(/young person/i);
+  });
+  it('no longer promises a read-only period or removal after a withdrawal', () => {
+    expect(section()).not.toMatch(/withdraw/i);
+    expect(section()).not.toMatch(/read-only/i);
+    expect(section()).not.toMatch(/30 days/);
+    expect(section()).not.toMatch(/we remove them/i);
+  });
+  it('still says what is saved, that it can be sensitive, who stores it, and that AI use is a separate opt-in', () => {
+    expect(section()).toMatch(/Custom quest and chain names, descriptions and progress/);
+    expect(section()).toMatch(/Gym routines, exercises, weights, workouts and optional exercise media/);
+    expect(section()).toMatch(/Supabase/);
+    expect(section()).toMatch(/sensitive/i);
+    expect(section()).toMatch(/only if you turn on the weekly AI review/i);
+    expect(section()).toMatch(/export them or ask for deletion/i);
+    expect(section()).toMatch(/do not ask for IDs, selfies or documents/i);
+  });
+  it('keeps every other policy section and the single privacy contact', () => {
+    expect(LEGAL_DOCUMENTS.privacy.sections.map(s => s.heading)).toEqual(['DATA WE COLLECT', "HOW IT'S USED", 'SIGNING IN WITH GOOGLE', 'AI FEATURES', 'CUSTOM TRACKER AND FITNESS', 'HOW LONG WE KEEP THINGS', 'YOUR CONTROL']);
+    expect(LEGAL_DOCUMENTS.privacy.sections.map(s => s.body).join(' ')).toMatch(/privacy@eiyusystem\.app/);
+  });
+});
