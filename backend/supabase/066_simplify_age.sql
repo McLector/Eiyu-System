@@ -9,7 +9,13 @@
 -- authorityVersion is 0 and authorityState is 'not-required'; ageEligible and ageConsent both mean "the 18+ box is
 -- ticked under the current notice". private.account_age stays as an empty table (the export manifest names it).
 --
--- Sections: 1 Terms table and backfill, 2 Terms functions, 3 the access rule, 4 the sign-up trigger.
+-- Sections: 1 Terms table and backfill, 2 Terms functions, 3 the access rule, 4 the sign-up trigger, 5 the birthday
+-- functions and triggers go, 6 the stored birthdays are removed.
+--
+-- Apply note: section 6 deletes every stored birthday. It stops, rather than guess, unless the session first did
+--   set eiyu.birthdays_counted = 'yes';
+-- which is the moment the owner has counted the birthdays and approved removing them (the same "stop rather than
+-- guess" habit as 065's eiyu.go_live_at). A database with no stored birthdays needs nothing.
 begin;
 
 -- 1. One Terms acceptance per account. Existing accounts are backfilled with the earlier Terms.
@@ -153,5 +159,36 @@ end;$$;
 revoke all on function private.capture_initial_terms() from public,anon,authenticated,service_role;
 create trigger capture_initial_terms after insert on auth.users
  for each row execute function private.capture_initial_terms();
+
+-- 5. The birthday functions and the sign-up triggers that read a birthday are removed. A sign-up that still sends a
+-- birthday (an old client) succeeds and the value is ignored. private.account_age stays as an empty table.
+drop trigger capture_initial_birthday on auth.users;
+drop trigger reject_initial_under12 on auth.users;
+drop function private.capture_initial_birthday();
+drop function private.reject_initial_under12();
+drop function public.finish_google_signup(date,text,uuid,integer,integer,integer,integer);
+drop function public.adult_ai_declared();
+drop function public.set_account_birthday(date,uuid);
+drop function public.get_account_age();
+
+-- 6. Stored birthdays and the old sign-up consent metadata are removed. Kept as a revoked function so a test can
+-- drive it; nothing calls it after this file.
+create function private.remove_stored_birthdays() returns jsonb
+language plpgsql security definer set search_path='' as $$
+declare v_rows integer; v_keys integer;
+begin
+ select (select pg_catalog.count(*) from private.account_age)::integer,
+  (select pg_catalog.count(*) from auth.users where raw_user_meta_data ?| array['birth_date','processing_consent'])::integer
+  into v_rows,v_keys;
+ if (v_rows>0 or v_keys>0) and coalesce(pg_catalog.current_setting('eiyu.birthdays_counted',true),'') is distinct from 'yes' then
+  raise exception 'Count the stored birthdays and set eiyu.birthdays_counted to yes before removing them.' using errcode='22023';
+ end if;
+ delete from private.account_age;
+ update auth.users set raw_user_meta_data=raw_user_meta_data-'birth_date'-'processing_consent'
+  where raw_user_meta_data ?| array['birth_date','processing_consent'];
+ return pg_catalog.jsonb_build_object('accountAgeRows',v_rows,'metadataKeys',v_keys);
+end;$$;
+revoke all on function private.remove_stored_birthdays() from public,anon,authenticated,service_role;
+select private.remove_stored_birthdays();
 
 commit;

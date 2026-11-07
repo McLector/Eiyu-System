@@ -232,5 +232,44 @@ select is((select count(*)::integer from private.terms_acceptance where user_id=
 select is((select count(*)::integer from pg_trigger where tgname='capture_initial_processing_consent' and not tgisinternal),0,'the birthday-consent sign-up trigger is gone');
 select is((select count(*)::integer from pg_trigger where tgname='capture_initial_terms' and tgrelid='auth.users'::regclass and not tgisinternal),1,'the Terms sign-up trigger exists');
 select hasnt_function('private','capture_initial_processing_consent',array[]::text[],'and its function is gone');
+-- L. No birthdays: the functions and triggers that handled them are gone and a sign-up with a birthday stores nothing.
+select hasnt_function('public','get_account_age','get_account_age is gone');
+select hasnt_function('public','set_account_birthday','set_account_birthday is gone');
+select hasnt_function('public','finish_google_signup','finish_google_signup is gone');
+select hasnt_function('public','adult_ai_declared','adult_ai_declared is gone');
+select is((select count(*)::integer from pg_trigger where tgrelid='auth.users'::regclass and tgname in ('capture_initial_birthday','reject_initial_under12') and not tgisinternal),0,'no birthday triggers remain on auth.users');
+grant usage on schema extensions to supabase_auth_admin;
+set local role supabase_auth_admin;
+select lives_ok($$insert into auth.users(id,email,raw_user_meta_data) values
+ ('da270000-0000-4000-8000-000000000108','simple-child@example.invalid','{"birth_date":"2020-01-01"}')$$,'a sign-up that still sends a birthday of 2020-01-01 succeeds');
+select lives_ok($$insert into auth.users(id,email,raw_user_meta_data) values
+ ('da270000-0000-4000-8000-000000000109','simple-garbage@example.invalid','{"birth_date":"not a date"}')$$,'a sign-up that sends garbage as a birthday succeeds');
+reset role;
+select is((select count(*)::integer from private.account_age where user_id in ('da270000-0000-4000-8000-000000000107','da270000-0000-4000-8000-000000000108','da270000-0000-4000-8000-000000000109')),0,'and nothing is stored in account_age for any of them');
+
+-- M. The one-time cleanup. It stops unless the owner counted the birthdays first.
+select ok(not has_function_privilege('authenticated','private.remove_stored_birthdays()','execute'),'clients cannot run the cleanup');
+select ok(not has_function_privilege('service_role','private.remove_stored_birthdays()','execute'),'the service role cannot run the cleanup');
+select ok((select count(*)>0 from private.account_age where user_id in ('da270000-0000-4000-8000-000000000001','da270000-0000-4000-8000-000000000003')),'fixture: stored birthdays exist before the cleanup');
+select set_config('eiyu.birthdays_counted','',true);
+select throws_ok($$select private.remove_stored_birthdays()$$,'22023',null,'the cleanup stops when the count was not confirmed');
+select set_config('eiyu.birthdays_counted','no',true);
+select throws_ok($$select private.remove_stored_birthdays()$$,'22023',null,'the cleanup stops when the setting is anything but yes');
+select set_config('eiyu.birthdays_counted','YES',true);
+select throws_ok($$select private.remove_stored_birthdays()$$,'22023',null,'the setting must be exactly yes');
+select ok((select count(*)>0 from private.account_age where user_id='da270000-0000-4000-8000-000000000001'),'a refused cleanup removed nothing');
+select ok(exists(select 1 from auth.users where id='da270000-0000-4000-8000-000000000001' and raw_user_meta_data ? 'birth_date'),'and kept the metadata key');
+select set_config('eiyu.birthdays_counted','yes',true);
+select ok((private.remove_stored_birthdays()->>'accountAgeRows')::integer>=2,'with the setting it reports the rows it removed');
+select is((select count(*)::integer from private.account_age),0,'no account_age rows remain');
+select is((select count(*)::integer from auth.users where raw_user_meta_data ?| array['birth_date','processing_consent']),0,'no account carries birth_date or processing_consent metadata');
+select is((select raw_user_meta_data->>'display_name' from auth.users where id='da270000-0000-4000-8000-000000000001'),'Legacy','the display name is kept');
+select is((select raw_user_meta_data->>'time_zone' from auth.users where id='da270000-0000-4000-8000-000000000001'),'Asia/Manila','the time zone is kept');
+select is((select raw_user_meta_data->'terms'->>'version' from auth.users where id='da270000-0000-4000-8000-000000000101'),'2026-11-08-terms-v2','and the terms metadata of another account is untouched');
+select is((select count(*)::integer from private.processing_consent where user_id='da270000-0000-4000-8000-000000000001'),1,'consent rows are not part of the cleanup');
+select set_config('eiyu.birthdays_counted','',true);
+select lives_ok($$select private.remove_stored_birthdays()$$,'with nothing left to remove the cleanup needs no setting');
+select is(private.remove_stored_birthdays(),'{"accountAgeRows":0,"metadataKeys":0}'::jsonb,'and reports zeros');
+
 select * from finish();
 rollback;
