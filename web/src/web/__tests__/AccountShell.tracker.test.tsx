@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -22,7 +21,7 @@ vi.mock('../../store/eiyu-store', () => ({ useEiyu: () => ({ user: { name: 'Yuki
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ signOut: vi.fn(), user: { id: 'owner-a' } }) }));
 vi.mock('../WebSettings', () => ({ default: () => null }));
 import ProtectedLayout from '../../ProtectedLayout';
-import { noGrant, trackerAccess } from '../../test/tracker-fixtures';
+import { trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 beforeEach(() => {
