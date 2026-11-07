@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import {
-  TRACKER_ACCESS_MESSAGE, fetchAccountAge, fetchTrackerAccess, subscribeAccountAgeChanges, subscribeTrackerAccessChanges, trackerErrorKind,
-  type AccountAge, type TrackerAccess, type TrackerErrorKind, type TrackerInputKind, type TrackerTargetSnapshot,
+  TRACKER_ACCESS_MESSAGE, fetchTrackerAccess, subscribeTrackerAccessChanges, trackerErrorKind,
+  type TrackerAccess, type TrackerErrorKind, type TrackerInputKind, type TrackerTargetSnapshot,
 } from '@eiyu/shared';
 
 export const trackerKey = (userId?: string) => ['tracker', userId ?? null] as const;
@@ -27,45 +27,6 @@ export function useTrackerAccess(userId: string | undefined) {
   });
 }
 
-export type AccountAudience = 'teen' | 'adult';
-/** What the optional notices know about the age band. `checking` means no answer yet, so neither notice can be chosen. */
-export type NoticeAudience = AccountAudience | 'checking';
-export const accountAgeKey = (userId?: string) => ['account-age', userId ?? null] as const;
-
-/** Declared age band from the age read: a birthday with no adult declaration is teen, any other birthday is adult, none is unknown. */
-export function audienceOf(age: Pick<AccountAge, 'birthDate' | 'adultDeclared'>): AccountAudience | null {
-  return age.birthDate ? (age.adultDeclared === false ? 'teen' : 'adult') : null;
-}
-
-/**
- * The declared age band for the optional-notice prompts, from one shared read under one query key. Only the band is kept (never the
- * birthday). A read with no answer yet, offline included, gives `checking`. Unknown, failed or another account's read give
- * undefined, which shows the adult notice. It reads only when `enabled`, so nobody pays for it unless a prompt can appear.
- */
-export function useAccountAudience(userId: string | undefined, enabled = true): NoticeAudience | undefined {
-  const qc = useQueryClient();
-  useEffect(() => {
-    if (!userId) return undefined;
-    let off: (() => void) | undefined;
-    try {
-      off = subscribeAccountAgeChanges(() => { void qc.invalidateQueries({ queryKey: accountAgeKey(userId) }); });
-    } catch { /* No subscription only means a birthday change shows after the next read. */ }
-    return () => off?.();
-  }, [qc, userId]);
-  const query = useQuery({
-    queryKey: accountAgeKey(userId),
-    queryFn: async () => {
-      const age = await Promise.resolve().then(() => fetchAccountAge());
-      return age.userId === userId ? audienceOf(age) : null;
-    },
-    enabled: !!userId && enabled,
-    staleTime: 5 * 60 * 1000,
-    retry: false,
-  });
-  if (query.isPending && query.fetchStatus !== 'idle') return 'checking';
-  return query.data ?? undefined;
-}
-
 /** The wrapper turns a synchronous failure into a handled rejection; a foreign owner's capability is never accepted. */
 export async function readTrackerAccess(userId: string): Promise<TrackerAccess> {
   const access = await Promise.resolve().then(() => fetchTrackerAccess(userId));
@@ -84,10 +45,8 @@ export function isAccessChange(kind: TrackerErrorKind | null): boolean {
 
 export const TRACKER_MESSAGES = {
   paused: 'Tracker changes are paused for this account.',
-  readOnly: 'This quest has custom details, so it is read-only until custom tracker permission is granted. Review it in Edit details.',
-  fitness: 'Gym changes need Gym tracking permission. Your history stays readable.',
   changed: 'Your permissions or this record changed, so nothing was saved. Access was refreshed; review it and try again.',
-  purpose: 'That needs permission first. Review it in Edit details.',
+  purpose: 'The System could not make that change right now. Reload and try again.',
 } as const;
 
 /** Wording for a refused tracker write; null when the error is not a tracker error. */
@@ -107,15 +66,12 @@ export function refreshTrackerAfterFailure(qc: QueryClient, userId: string | und
 
 export interface TrackedRecord { inputKind?: TrackerInputKind; canWrite?: boolean }
 
-/** A known denial, decided before anything is sent. An unclassified record counts as custom and read-only. */
-export function writeDenial(access: TrackerAccess | null | undefined, records: readonly TrackedRecord[]): string | null {
-  if (!access) return TRACKER_ACCESS_MESSAGE;
-  if (!access.canWriteBasic) return TRACKER_MESSAGES.paused;
-  for (const record of records) {
-    if (record.canWrite !== true || !record.inputKind) return TRACKER_MESSAGES.readOnly;
-    if (record.inputKind === 'custom' && !access.canWriteCustom) return TRACKER_MESSAGES.readOnly;
-  }
-  return null;
+/**
+ * The only denial the app decides itself: with no revision loaded there is nothing to send. Everything else (a paused account, a
+ * record the person may not change) is the gateway's call, and its refusal is worded by trackerErrorMessage.
+ */
+export function writeDenial(access: TrackerAccess | null | undefined): string | null {
+  return access ? null : TRACKER_ACCESS_MESSAGE;
 }
 
 export function snapshotOf(kind: 'habit' | 'chain', record: { id: string; inputKind?: TrackerInputKind }): TrackerTargetSnapshot {

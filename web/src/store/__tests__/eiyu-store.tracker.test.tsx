@@ -1,4 +1,4 @@
-﻿// @vitest-environment jsdom
+// @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, waitFor } from '@testing-library/react';
@@ -115,10 +115,18 @@ describe('Board preparation', () => {
     expect(store!.user.quests).toHaveLength(4);
   });
 
-  it('does not prepare while tracker writes are paused, but still reads history', async () => {
-    await mount({ canWriteBasic: false });
-    expect(shared.prepareDay).not.toHaveBeenCalled();
+  it('prepares the day whatever the permission flags say, because the server decides what is allowed', async () => {
+    await mount({ canWriteBasic: false, canWriteCustom: false, canWriteFitness: false });
+    expect(shared.prepareDay).toHaveBeenCalledTimes(1);
     expect(store!.user.quests).toHaveLength(4);
+  });
+
+  it('does not prepare with a revision that belongs to another account', async () => {
+    shared.fetchTrackerAccess.mockImplementation(async () => trackerAccess({}, 'someone-else'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><EiyuProvider><Probe /></EiyuProvider></QueryClientProvider>);
+    await waitFor(() => expect(store?.user.quests.length).toBe(4));
+    expect(shared.prepareDay).not.toHaveBeenCalled();
   });
 
   it('re-reads access when preparation reports a change', async () => {
@@ -201,50 +209,76 @@ describe('writes carry the captured revision and target snapshots', () => {
   });
 });
 
-describe('known denials send nothing', () => {
-  it('refuses custom content without custom permission, and keeps basic creation open', async () => {
-    await mount({ customConsent: false, canWriteCustom: false });
-    await expectRejects(() => store!.saveHabit(customInput), /permission/i);
-    expect(shared.createHabit).not.toHaveBeenCalled();
-    await act(() => store!.saveHabit(basicInput));
-    expect(shared.createHabit).toHaveBeenCalledTimes(1);
+describe('the store holds no permission layer', () => {
+  it('exposes no consent, audience or refresh helpers to screens', async () => {
+    await mount();
+    for (const key of ['acceptTracker', 'refreshTracker', 'audience']) expect(store).not.toHaveProperty(key);
   });
 
-  it('keeps a custom or unclassified quest read-only: no save, archive, delete, move or progress', async () => {
+  it('never reads the age band', async () => {
+    await mount();
+    expect(shared.fetchAccountAge).not.toHaveBeenCalled();
+  });
+
+  it('sends custom content even when the flags say custom is closed: the gateway decides', async () => {
     await mount({ customConsent: false, canWriteCustom: false });
-    await expectRejects(() => store!.saveHabit(basicInput, 'c1'), /read-only/i);
-    await expectRejects(() => store!.archiveQuest('c1'), /read-only/i);
-    await expectRejects(() => store!.deleteQuest('l1'), /read-only/i);
-    await expectRejects(() => store!.moveToBacklog('l1'), /read-only/i);
-    await expectRejects(() => store!.reorderQuests('habit', ['b1', 'l1']), /read-only/i);
+    await act(() => store!.saveHabit(customInput));
+    expect(shared.createHabit).toHaveBeenCalledTimes(1);
+    await act(() => store!.saveHabit(customInput, 'b1'));
+    expect(shared.updateHabit).toHaveBeenCalledWith('b1', customInput, rev(), snap('b1', 'basic'), 'Quest 1');
+  });
+
+  it('writes to custom and unclassified quests: save, archive, delete, move, reorder and progress all reach the gateway', async () => {
+    await mount({ customConsent: false, canWriteCustom: false });
+    await act(() => store!.saveHabit(customInput, 'c1'));
+    await act(() => store!.archiveQuest('c1'));
+    await act(() => store!.deleteQuest('l1'));
+    await act(() => store!.moveToBacklog('l1'));
+    await act(() => store!.reorderQuests('habit', ['b1', 'l1']));
     let toggled: boolean | undefined;
     await act(async () => { toggled = await store!.toggleQuest('c1'); });
-    expect(toggled).toBe(false);
-    act(() => store!.adjustProgress('l1', 1));
-    for (const fn of [shared.updateHabit, shared.archiveHabit, shared.deleteHabit, shared.moveOneTimeToBacklog, shared.reorderQuests, shared.completeHabit, shared.incrementHabitProgress]) expect(fn).not.toHaveBeenCalled();
+    expect(toggled).toBe(true);
+    act(() => store!.adjustProgress('b2', 1));
+    const reached = { updateHabit: shared.updateHabit, archiveHabit: shared.archiveHabit, deleteHabit: shared.deleteHabit, moveOneTimeToBacklog: shared.moveOneTimeToBacklog, reorderQuests: shared.reorderQuests, completeHabit: shared.completeHabit };
+    for (const [name, fn] of Object.entries(reached)) expect(fn.mock.calls.length, name).toBeGreaterThan(0);
+    await waitFor(() => expect(shared.incrementHabitProgress).toHaveBeenCalled());
   });
 
-  it('refuses a basic write while the account is paused (under 12)', async () => {
-    await mount({ canWriteBasic: false });
-    await expectRejects(() => store!.saveHabit(basicInput), /paused/i);
-    await expectRejects(() => store!.archiveQuest('b1'), /paused/i);
-    expect(shared.createHabit).not.toHaveBeenCalled();
-    expect(shared.archiveHabit).not.toHaveBeenCalled();
+  it('treats an unclassified quest as custom in the snapshot it sends', async () => {
+    await mount();
+    await act(() => store!.deleteQuest('l1'));
+    expect(shared.deleteHabit).toHaveBeenCalledWith('l1', rev(), snap('l1', 'custom'));
   });
 
-  it('does not turn a basic quest into a custom one without custom permission', async () => {
-    await mount({ customConsent: false, canWriteCustom: false });
-    await expectRejects(() => store!.saveHabit(customInput, 'b1'), /permission/i);
+  it('does not turn a custom quest back into a basic one', async () => {
+    await mount();
+    await expectRejects(() => store!.saveHabit(basicInput, 'c1'), /cannot go back to basic/i);
     expect(shared.updateHabit).not.toHaveBeenCalled();
   });
 
-  it('refuses every write while access is unavailable', async () => {
+  it('lets a chain with custom details be saved and deleted whatever the flags say', async () => {
+    await mount({ customConsent: false, canWriteCustom: false });
+    const editor = { mode: 'custom' as const, values: { name: 'Plan', stat: 'INT' as const, strictOrder: true, stages: [{ id: 's2', name: 'Step', description: null }] } };
+    await act(() => store!.saveLongQuest(editor, 'ch2'));
+    expect(shared.saveAtomicLongQuest).toHaveBeenCalledWith('ch2', expect.any(String), editor, false, rev(), snap('ch2', 'custom', 'chain'), 'Plan');
+  });
+
+  it('still refuses every write while access is unavailable, because no revision can be sent', async () => {
     shared.fetchTrackerAccess.mockRejectedValue(new Error('down'));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><EiyuProvider><Probe /></EiyuProvider></QueryClientProvider>);
     await waitFor(() => expect(store?.user.quests.length).toBe(4));
     await expectRejects(() => store!.saveHabit(basicInput), 'Tracker access unavailable.');
     expect(shared.createHabit).not.toHaveBeenCalled();
+  });
+
+  it('words a gateway refusal for a paused account without sending people to a permission screen', async () => {
+    await mount();
+    shared.kind.mockReturnValue('purpose-required');
+    shared.updateHabit.mockRejectedValue(Object.assign(new Error('needs permission'), { code: 'ET002' }));
+    await expectRejects(() => store!.saveHabit(basicInput, 'b1'), /./);
+    const failure = await attempt(() => store!.saveHabit(basicInput, 'b1'));
+    expect((failure as Error).message).not.toMatch(/Edit details|permission/i);
   });
 });
 
@@ -361,58 +395,5 @@ describe('late server facts', () => {
     await expectRejects(() => store!.reorderQuests('habit', ['b2', 'b1']));
     await waitFor(() => expect(shared.fetchTodayHabits.mock.calls.length).toBeGreaterThan(before));
     expect(shared.reorderQuests).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('age band for the optional-notice prompts', () => {
-  const age = (over: Record<string, unknown> = {}) => ({
-    userId: 'owner-a', birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: true, version: 1, ...over,
-  });
-
-  it('says checking while the read is out, so nobody sees the wrong notice', async () => {
-    shared.fetchAccountAge.mockReturnValue(new Promise(() => undefined));
-    await mount({ customConsent: false, canWriteCustom: false });
-    await waitFor(() => expect(store?.audience).toBe('checking'));
-  });
-
-  it('is teen when a birthday is present and adult is not declared', async () => {
-    shared.fetchAccountAge.mockResolvedValue(age({ birthDate: '2012-01-01', adultDeclared: false }));
-    await mount({ customConsent: false, canWriteCustom: false });
-    await waitFor(() => expect(store?.audience).toBe('teen'));
-  });
-
-  it('is adult when a birthday is present and adult is declared', async () => {
-    shared.fetchAccountAge.mockResolvedValue(age());
-    await mount({ customConsent: false, canWriteCustom: false });
-    await waitFor(() => expect(store?.audience).toBe('adult'));
-  });
-
-  it('is unknown (undefined) without a birthday', async () => {
-    shared.fetchAccountAge.mockResolvedValue(age({ birthDate: null, adultDeclared: false }));
-    await mount({ customConsent: false, canWriteCustom: false });
-    await waitFor(() => expect(shared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(store?.audience).toBeUndefined());
-  });
-
-  it('stays unknown when the read fails, and the failure does not break the store', async () => {
-    shared.fetchAccountAge.mockRejectedValue(new Error('down'));
-    await mount({ customConsent: false, canWriteCustom: false });
-    await waitFor(() => expect(shared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(store?.audience).toBeUndefined());
-    expect(store?.tracker).toBeTruthy();
-  });
-
-  it('ignores a read that belongs to another account', async () => {
-    shared.fetchAccountAge.mockResolvedValue(age({ userId: 'owner-b', birthDate: '2012-01-01', adultDeclared: false }));
-    await mount({ customConsent: false, canWriteCustom: false });
-    await waitFor(() => expect(shared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(store?.audience).toBeUndefined());
-  });
-
-  it('does no extra read when both optional purposes are already granted', async () => {
-    shared.fetchAccountAge.mockResolvedValue(age());
-    await mount();
-    expect(shared.fetchAccountAge).not.toHaveBeenCalled();
-    expect(store?.audience).toBeUndefined();
   });
 });
