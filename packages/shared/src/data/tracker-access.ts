@@ -83,11 +83,9 @@ export function parseTrackerAccess(value: unknown, expectedOwner: string): Track
   const fitnessState = value.fitnessAuthorityState;
   if (typeof customState !== 'string' || !AUTHORITY_STATES.includes(customState)
     || typeof fitnessState !== 'string' || !AUTHORITY_STATES.includes(fitnessState)) throw new Error(TRACKER_ACCESS_MESSAGE);
-  const allowed = (state: string) => state === 'not-required' || state === 'approved';
-  if ((value.canWriteCustom && (!value.canWriteBasic || !value.customConsent || !allowed(customState)))
-    || (value.canWriteFitness && (!value.canWriteBasic || !value.fitnessConsent || !allowed(fitnessState)))) {
-    throw new Error(TRACKER_ACCESS_MESSAGE);
-  }
+  // Open tracker (065): the server reports custom and Gym writes equal to basic writes, whatever consent or authority
+  // is recorded. The only contradiction left is a write grant while basic writes are paused.
+  if ((value.canWriteCustom || value.canWriteFitness) && !value.canWriteBasic) throw new Error(TRACKER_ACCESS_MESSAGE);
   // Project only the contract; unknown fields are not retained.
   return {
     contractVersion: 1, revision, canWriteBasic: value.canWriteBasic as boolean,

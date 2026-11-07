@@ -67,14 +67,35 @@ describe('parseTrackerAccess', () => {
   ])('rejects an unsupported version or authority state %#', override => {
     expect(() => parseTrackerAccess({...allowed, ...override}, OWNER_A)).toThrow(TRACKER_ACCESS_MESSAGE);
   });
+  // Open tracker (065): the server reports custom and Gym writes equal to basic writes, whatever was recorded.
   it.each([
     {canWriteBasic: false},
+    {canWriteBasic: false, canWriteCustom: false, canWriteFitness: true},
+    {canWriteBasic: false, canWriteCustom: true, canWriteFitness: false},
+  ])('rejects a write grant while basic writes are paused %#', override => {
+    expect(() => parseTrackerAccess({...allowed, ...override}, OWNER_A)).toThrow(TRACKER_ACCESS_MESSAGE);
+  });
+  it.each([
     {customConsent: false},
     {customAuthorityState: 'pending'}, {customAuthorityState: 'revoked'},
     {canWriteFitness: true},
     {fitnessConsent: true, fitnessAuthorityState: 'pending', canWriteFitness: true},
-  ])('rejects a grant that contradicts its own conditions %#', override => {
-    expect(() => parseTrackerAccess({...allowed, ...override}, OWNER_A)).toThrow(TRACKER_ACCESS_MESSAGE);
+    {customConsent: false, fitnessConsent: false, customAuthorityState: 'pending', fitnessAuthorityState: 'revoked', canWriteFitness: true},
+  ])('accepts a write grant with no recorded permission or with a pending or revoked authority %#', override => {
+    const value = {...allowed, ...override};
+    expect(parseTrackerAccess(value, OWNER_A)).toEqual(value);
+  });
+  it('accepts exactly what the open-tracker server sends for an account that never granted anything', () => {
+    const served = {
+      revision: {userId: OWNER_A, ageVersion: 0, consentVersion: 0, authorityVersion: 0}, canWriteBasic: true,
+      customConsent: false, canWriteCustom: true, fitnessConsent: false, canWriteFitness: true, contractVersion: 1,
+      customAuthorityState: 'pending', fitnessAuthorityState: 'pending',
+    };
+    const parsed = parseTrackerAccess(served, OWNER_A);
+    expect(parsed.canWriteCustom).toBe(true);
+    expect(parsed.canWriteFitness).toBe(true);
+    expect(parsed.customConsent).toBe(false);
+    expect(parsed).toEqual({...served});
   });
   it('keeps the two purposes independent', () => {
     const fitnessOnly = {...allowed, customConsent: false, canWriteCustom: false, fitnessConsent: true, canWriteFitness: true};
