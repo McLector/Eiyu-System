@@ -18,7 +18,6 @@ jest.mock('@eiyu/shared', () => ({
   fetchProcessingAccess: () => mockAccess(),
   fetchSavedWeeklySummary: (...args: unknown[]) => mockSaved(...args),
   subscribeProcessingAccessChanges: () => () => {},
-  subscribeAccountAgeChanges: () => () => {},
   subscribeMailboxChanges: () => () => {},
 }));
 let resume: (state: AppStateStatus) => void;

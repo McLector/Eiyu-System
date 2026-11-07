@@ -5,7 +5,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
 import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
-import {DebriefConsent} from '@/components/status/debrief-consent';
 import {OwnerExport} from '@/components/eiyu/owner-export';
 
 import ArchivedHabitsSheet from '@/components/eiyu/archived-habits-sheet';
@@ -131,9 +130,7 @@ function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string
           <Field label="Display name" value={displayName} editable={!pending} onChangeText={setDisplayName} autoFocus />
           <Field label="Class" value={userClass} editable={!pending} onChangeText={setUserClass} />
           <AppText selectable style={[styles.error, {color: t['muted-flat'], fontFamily: fonts.body}]}>{CHILD_PRIVACY_NOTICE}</AppText>
-          {processing && userId ? <DebriefConsent userId={userId} access={processing} purpose="age-screening" onChanged={setProcessing}/> : null}
           <Field label="Birthday" placeholder="YYYY-MM-DD" value={birthday} editable={ageLoaded && !pending} onChangeText={setBirthday} />
-          {processing && userId ? <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/> : null}
           {processingError ? <AppText accessibilityRole="alert" style={[styles.error, {color: t.danger}]}>{processingError}</AppText> : null}
           {userId ? <OwnerExport key={userId} userId={userId}/> : null}
           {birthdayNote ? <AppText style={[styles.error, { color: t['muted-flat'], fontFamily: fonts.body }]}>{birthdayNote}</AppText> : null}

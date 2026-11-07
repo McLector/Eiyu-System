@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
-import { fetchOrCreateWeeklySummary, formatError, regenerateWeeklySummary, subscribeAccountAgeChanges, subscribeMailboxChanges, MAILBOX_MESSAGE } from '@eiyu/shared';
+import { fetchOrCreateWeeklySummary, formatError, regenerateWeeklySummary, subscribeMailboxChanges, MAILBOX_MESSAGE } from '@eiyu/shared';
 import {fetchProcessingAccess, fetchSavedWeeklySummary, fetchMailboxStatus, subscribeProcessingAccessChanges, PROCESSING_ACCESS_MESSAGE, type ProcessingAccess} from '@eiyu/shared';
 import { MailboxVerification } from './mailbox-verification';
 import {DebriefConsent} from './debrief-consent';
@@ -34,11 +34,10 @@ function AccountWeeklyDebrief({ userId, timeZone }: { userId: string | undefined
   useEffect(() => {
     const invalidate = () => { revision.current++; };
     const refresh = () => { invalidate(); setSummary(null); setError(current => current?.includes(MAILBOX_MESSAGE) ? current : null); setRegenerateError(null); setRegenerating(false); setAttempt(n => n + 1); };
-    const unsubscribe = subscribeAccountAgeChanges(refresh);
     const mailbox = subscribeMailboxChanges(refresh);
     const permissions = subscribeProcessingAccessChanges(refresh);
     const foreground = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
-    return () => { invalidate(); unsubscribe(); mailbox(); permissions(); foreground.remove(); };
+    return () => { invalidate(); mailbox(); permissions(); foreground.remove(); };
   }, []);
 
   useEffect(() => {
@@ -82,6 +81,9 @@ function AccountWeeklyDebrief({ userId, timeZone }: { userId: string | undefined
     }
   };
 
+  // While the two boxes are not both on, the card is the one thing to act on. Saved history still shows under it.
+  const showCard = !!processing && !(processing.ageConsent && processing.aiConsent);
+  const cardOnly = showCard && !processing?.canReadDebrief;
   const long = summary !== null && summary.length > SHORT_LIMIT;
   const shown = summary === null ? '' : expanded || !long ? summary : `${summary.slice(0, SHORT_LIMIT).trimEnd()}…`;
 
@@ -99,7 +101,7 @@ function AccountWeeklyDebrief({ userId, timeZone }: { userId: string | undefined
         />
       </View>
       {processing && userId ? <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/> : null}
-      {error?.includes(MAILBOX_MESSAGE) && userId ? (
+      {cardOnly ? null : error?.includes(MAILBOX_MESSAGE) && userId ? (
         <MailboxVerification userId={userId} refreshRevision={attempt} onVerified={() => setAttempt(n => n + 1)} />
       ) : error ? (
         <View style={styles.errorBlock}>
