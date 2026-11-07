@@ -8,7 +8,6 @@ import PagerView from 'react-native-pager-view';
 import { GYM_COPY, type GymExercise } from '@eiyu/shared';
 
 import { ChevronIcon, EditIcon, MoreIcon, TrashIcon } from '@/components/eiyu/icons';
-import { FitnessPrompt } from '@/components/gym/fitness-prompt';
 import { ExerciseMedia } from '@/components/gym/exercise-media';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
@@ -61,7 +60,7 @@ export default function GymExerciseCardScreen() {
     );
   }
 
-  /** Editing is a Gym change: without permission the notice opens instead and nothing is pushed. */
+  /** Editing is a Gym change: with no revision read it says so (in the alert) and nothing is pushed. */
   const openEditor = (target: Parameters<typeof router.push>[0]) => { if (gym.requireFitness()) router.push(target); };
   const go = (to: number) => {
     if (to < 0 || to >= exercises.length) return;
@@ -141,7 +140,6 @@ export default function GymExerciseCardScreen() {
       </PagerView>
 
       <View style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: 8 }]}>
-        <FitnessPrompt />
         {gym.error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{gym.error}</AppText> : null}
         {gym.notice ? <AppText accessibilityLiveRegion="polite" style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>{gym.notice}</AppText> : null}
         {gym.uncertain ? <Button variant="secondary" label={GYM_COPY.confirmSave} busy={gym.pending} onPress={() => void gym.retryUncertain()} /> : null}

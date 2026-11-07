@@ -1,8 +1,8 @@
 import { act, fireEvent, screen, userEvent, within, waitFor } from '@testing-library/react-native';
 import { Alert, StyleSheet } from 'react-native';
 
-import { TRACKER_PURPOSE_NOTICES, type TrackerAccess } from '@eiyu/shared';
-import { noGrant, trackerAccess } from '../../test-support/tracker-fixtures';
+import { type TrackerAccess } from '@eiyu/shared';
+import { noGrant } from '../../test-support/tracker-fixtures';
 import AccountHeader from '../eiyu/account-header';
 import { renderWithTheme, TestThemeProvider } from '../ui/test-theme';
 
@@ -18,15 +18,9 @@ const mockFetchAge = jest.fn();
 const mockSetBirthday = jest.fn();
 const mockProcessing = jest.fn();
 const mockConsent = jest.fn();
-const mockTrackerConsent = jest.fn();
-const mockAcceptTracker = jest.fn();
-const mockRefreshTracker = jest.fn();
 let mockTracker: TrackerAccess | null = null;
 let mockAgeOwner = 'owner-a';
-let mockRetention: unknown[] = [];
 jest.mock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'),
-  setTrackerConsent: (...args: unknown[]) => mockTrackerConsent(...args),
-  fetchRetentionNotice: () => Promise.resolve(mockRetention),
   fetchAccountAge: (...args: unknown[]) => mockFetchAge(...args),
   setAccountBirthday: (...args: unknown[]) => mockSetBirthday(...args),
   fetchProcessingAccess: (...args: unknown[]) => mockProcessing(...args),
@@ -41,9 +35,7 @@ jest.mock('@/contexts/eiyu-store', () => ({
   useEiyu: () => ({
     user: { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C', quests: [] },
     saveProfile: mockSaveProfile,
-    tracker: mockTracker,
-    acceptTracker: mockAcceptTracker,
-    refreshTracker: mockRefreshTracker,
+    get tracker() { return mockTracker; },
     restoreQuest: jest.fn(),
     deleteQuest: jest.fn(),
     notificationsEnabled: true,
@@ -65,11 +57,7 @@ describe('native account header', () => {
     mockProcessing.mockReset().mockImplementation(async () => ({contractVersion: 1, userId: mockAgeOwner, ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
       ageEligible: true, ageConsent: true, aiConsent: false, canReadDebrief: true, canGenerateDebrief: false, authorityState: 'not-required'}));
     mockConsent.mockReset();
-    mockTrackerConsent.mockReset();
-    mockAcceptTracker.mockReset();
-    mockRefreshTracker.mockReset().mockResolvedValue(undefined);
     mockTracker = noGrant('owner-a');
-    mockRetention = [];
     mockRouter.push.mockReset();
     mockRouter.navigate.mockReset();
     mockRouter.setParams.mockReset();
@@ -83,88 +71,29 @@ describe('native account header', () => {
     expect(screen.getByTestId('account-trigger')).toBeOnTheScreen();
     expect(screen.getByRole('button', { name: TRIGGER })).toBeOnTheScreen();
   });
-  describe('tracker permissions in Profile', () => {
-    const custom = TRACKER_PURPOSE_NOTICES['custom-tracker'];
-    const fitness = TRACKER_PURPOSE_NOTICES['fitness-tracking'];
-
-    it('shows both purposes, unchecked and separate from AI, and sends nothing on open', async () => {
+  describe('Profile has no tracker permission layer', () => {
+    it('shows no tracker permissions, no retention notice and no unavailable notice, whatever the store says', async () => {
       const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      expect(await screen.findByRole('checkbox', { name: custom.label })).not.toBeChecked();
-      expect(screen.getByRole('checkbox', { name: fitness.label })).not.toBeChecked();
-      expect(mockTrackerConsent).not.toHaveBeenCalled();
+      await screen.findByLabelText('Display name');
+      await waitFor(() => expect(mockFetchAge).toHaveBeenCalled());
+      expect(screen.queryByLabelText('Tracker permissions')).toBeNull();
+      expect(screen.queryByText(/tracker permissions/i)).toBeNull();
+      expect(screen.queryByText(/custom quest records|will be removed on|Gym tracking|custom tracker/i)).toBeNull();
     });
 
-    it('shows the retention notice in Profile only when a reminder is due', async () => {
-      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      await screen.findByRole('checkbox', { name: custom.label });
-      expect(screen.queryByText(/will be removed on/)).toBeNull();
-    });
-
-    it('names the removal date when a reminder is due', async () => {
-      mockRetention = [{ purpose: 'custom-tracker', removalDueOn: '2026-10-31', reminded: true }];
-      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      expect(await screen.findByText(/custom quest records will be removed on October 31, 2026/)).toBeOnTheScreen();
-    });
-
-    it('grants one purpose with the owner revision and hands the server answer to the store', async () => {
-      const next = trackerAccess({ fitnessConsent: true, canWriteFitness: true }, 'owner-a');
-      mockTrackerConsent.mockResolvedValue(next);
-      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      await user.press(await screen.findByRole('checkbox', { name: fitness.label }));
-      await waitFor(() => expect(mockAcceptTracker).toHaveBeenCalledWith(next));
-      expect(mockTrackerConsent).toHaveBeenCalledWith('fitness-tracking', true, fitness.version, noGrant('owner-a').revision);
-      expect(mockTrackerConsent).not.toHaveBeenCalledWith('custom-tracker', expect.anything(), expect.anything(), expect.anything());
-    });
-
-    it('withdraws a granted purpose', async () => {
-      mockTracker = trackerAccess({}, 'owner-a');
-      mockTrackerConsent.mockResolvedValue({ ...mockTracker, customConsent: false, canWriteCustom: false });
-      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      const box = await screen.findByRole('checkbox', { name: custom.label });
-      expect(box).toBeChecked();
-      await user.press(box);
-      await waitFor(() => expect(mockTrackerConsent).toHaveBeenCalledWith('custom-tracker', false, custom.version, mockTracker!.revision));
-    });
-
-    it('asks the store to re-read access when a change was refused as stale', async () => {
-      mockTrackerConsent.mockRejectedValue(Object.assign(new Error('stale'), { code: 'ET003' }));
-      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      await user.press(await screen.findByRole('checkbox', { name: custom.label }));
-      await waitFor(() => expect(mockRefreshTracker).toHaveBeenCalledTimes(1));
-      expect(mockAcceptTracker).not.toHaveBeenCalled();
-    });
-
-    it('holds both grants and shows no notice until the age read answers, then shows the teen text', async () => {
-      let answer: (value: unknown) => void = () => undefined;
-      mockFetchAge.mockReturnValue(new Promise(resolve => { answer = resolve; }));
-      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      const box = await screen.findByRole('checkbox', { name: custom.label });
-      expect(box).toBeDisabled();
-      expect(screen.getByRole('checkbox', { name: fitness.label })).toBeDisabled();
-      expect(screen.queryByText(custom.body)).toBeNull();
-      expect(screen.queryByText(custom.childBody)).toBeNull();
-      expect(screen.getAllByText('Checking your account…')).toHaveLength(2);
-      await act(async () => { answer({ userId: 'owner-a', birthDate: '2012-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: false }); });
-      expect(await screen.findByText(custom.childBody)).toBeOnTheScreen();
-      expect(screen.queryByText(custom.body)).toBeNull();
-      expect(screen.queryByText('Checking your account…')).toBeNull();
-      expect(screen.getByRole('checkbox', { name: custom.label })).toBeEnabled();
-    });
-
-    it('falls back to the adult notice with the grant open when the age read fails, because the server still decides', async () => {
-      mockFetchAge.mockRejectedValue(new Error('down'));
-      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      expect(await screen.findByText(custom.body)).toBeOnTheScreen();
-      expect(screen.queryByText('Checking your account…')).toBeNull();
-      expect(screen.getByRole('checkbox', { name: custom.label })).toBeEnabled();
-    });
-
-    it('shows no usable controls while access is unavailable or belongs to another account', async () => {
+    it('stays the same when tracker access is unavailable', async () => {
       mockTracker = null;
       const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-      expect(await screen.findByText(/tracker permissions are unavailable/i)).toBeOnTheScreen();
-      expect(screen.queryByRole('checkbox', { name: custom.label })).toBeNull();
-      expect(mockTrackerConsent).not.toHaveBeenCalled();
+      await screen.findByLabelText('Display name');
+      await waitFor(() => expect(mockFetchAge).toHaveBeenCalled());
+      expect(screen.queryByText(/tracker permissions are unavailable/i)).toBeNull();
+      expect(screen.queryByLabelText('Tracker permissions')).toBeNull();
+    });
+
+    it('does not read the tracker store at all', async () => {
+      mockTracker = new Proxy({}, { get: () => { throw new Error('Profile read the tracker capability.'); } }) as unknown as TrackerAccess;
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByLabelText('Display name')).toBeOnTheScreen();
     });
   });
 

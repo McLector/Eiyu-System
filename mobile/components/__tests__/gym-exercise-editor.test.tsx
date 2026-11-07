@@ -259,7 +259,7 @@ describe('Gym exercise editor', () => {
 
     it('sends nothing and uploads nothing on a known denial, and keeps the picked file', async () => {
       setup();
-      mockGym.fitnessRevision.mockReturnValue({ denied: 'Gym changes need Gym tracking permission. Your history stays readable.' });
+      mockGym.fitnessRevision.mockReturnValue({ denied: 'Tracker access unavailable.' });
       mockMedia.pickGymMedia.mockResolvedValueOnce({ uri: 'file:///c/a.gif', mime: 'image/gif', name: 'a.gif' });
       const user = userEvent.setup();
       await renderWithTheme(<ExerciseEditorScreen />);
@@ -268,7 +268,7 @@ describe('Gym exercise editor', () => {
       await save(user);
       expect(mockMedia.uploadPickedGymMedia).not.toHaveBeenCalled();
       expect(mockShared.saveGymExercise).not.toHaveBeenCalled();
-      expect(screen.getByText(/Gym tracking permission/)).toBeOnTheScreen();
+      expect(screen.getByText('Tracker access unavailable.')).toBeOnTheScreen();
       expect(screen.getByText('a.gif')).toBeOnTheScreen();
       expect(NAME()).toHaveDisplayValue('Squat');
     });

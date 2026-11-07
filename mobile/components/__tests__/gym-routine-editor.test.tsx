@@ -45,7 +45,7 @@ function setup(id?: string, routines: GymRoutine[] = [routine()]) {
   mockShared.saveGymRoutine.mockReset().mockResolvedValue('saved-id');
   mockGym = {
     userId: 'u', routines, loading: false, refreshAfterSave: jest.fn().mockResolvedValue(undefined), retryLoad: jest.fn(),
-    fitnessRevision: jest.fn(() => ({ revision: revisionOf('u') })), refreshTracker: jest.fn().mockResolvedValue(undefined), setFitnessPrompt: jest.fn(),
+    fitnessRevision: jest.fn(() => ({ revision: revisionOf('u') })), refreshTracker: jest.fn().mockResolvedValue(undefined),
   };
 }
 const NAME = () => screen.getByLabelText('Routine name');
@@ -127,17 +127,17 @@ describe('Gym routine editor', () => {
     expect(mockRouter.back).toHaveBeenCalled();
   });
 
-  describe('fitness permission', () => {
+  describe('revision and refusals', () => {
     const stale = () => Object.assign(new Error('stale'), { code: 'ET003' });
     it('sends nothing on a known denial, keeps the draft and says why', async () => {
       setup();
-      mockGym.fitnessRevision.mockReturnValue({ denied: 'Gym changes need Gym tracking permission. Your history stays readable.' });
+      mockGym.fitnessRevision.mockReturnValue({ denied: 'Tracker access unavailable.' });
       const user = userEvent.setup();
       await renderWithTheme(<RoutineEditorScreen />);
       await fireEvent.changeText(NAME(), 'Legs');
       await user.press(screen.getByRole('button', { name: 'SAVE ROUTINE' }));
       expect(mockShared.saveGymRoutine).not.toHaveBeenCalled();
-      expect(screen.getByText(/Gym tracking permission/)).toBeOnTheScreen();
+      expect(screen.getByText('Tracker access unavailable.')).toBeOnTheScreen();
       expect(NAME()).toHaveDisplayValue('Legs');
       expect(mockRouter.back).not.toHaveBeenCalled();
     });

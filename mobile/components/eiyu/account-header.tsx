@@ -6,9 +6,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
 import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
 import {DebriefConsent} from '@/components/status/debrief-consent';
-import {TrackerConsent} from '@/components/status/tracker-consent';
-import {audienceOf, type NoticeAudience} from '@/contexts/tracker-access';
-import {RetentionNotice} from '@/components/eiyu/retention-notice';
 import {OwnerExport} from '@/components/eiyu/owner-export';
 
 import ArchivedHabitsSheet from '@/components/eiyu/archived-habits-sheet';
@@ -28,14 +25,13 @@ const ROUTE_SHEETS = ['profile', 'settings', 'archived'] as const;
 
 function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string | undefined }) {
   const t = useTokens();
-  const { user, saveProfile, tracker, acceptTracker, refreshTracker } = useEiyu();
+  const { user, saveProfile } = useEiyu();
   const [displayName, setDisplayName] = useState(user.name);
   const [userClass, setUserClass] = useState(user.userClass);
   const [birthday, setBirthday] = useState('');
   const [originalBirthday, setOriginalBirthday] = useState('');
   const [correctionPending, setCorrectionPending] = useState(false);
   const [ageLoaded, setAgeLoaded] = useState(false);
-  const [audience, setAudience] = useState<NoticeAudience | undefined>('checking');
   const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
   const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
   const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
@@ -59,9 +55,8 @@ function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string
       setBirthday(value); setOriginalBirthday(value); setAgeLoaded(true);
       setBirthdayOwner(userId);
       setCorrectionPending(status.correctionPending);
-      setAudience(audienceOf(status) ?? undefined);
       if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-    }).catch(() => { if (active) { setAudience(undefined); setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); } });
+    }).catch(() => { if (active) setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); });
     return () => { active = false; };
   }, [userId]);
 
@@ -139,15 +134,6 @@ function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string
           {processing && userId ? <DebriefConsent userId={userId} access={processing} purpose="age-screening" onChanged={setProcessing}/> : null}
           <Field label="Birthday" placeholder="YYYY-MM-DD" value={birthday} editable={ageLoaded && !pending} onChangeText={setBirthday} />
           {processing && userId ? <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/> : null}
-          {userId && tracker && tracker.revision.userId === userId ? (
-            <View accessibilityLabel="Tracker permissions" style={{gap: 12}}>
-              <RetentionNotice key={`${userId}-retention`} userId={userId}/>
-              <TrackerConsent userId={userId} access={tracker} purpose="custom-tracker" audience={audience} onChanged={acceptTracker} onStale={() => void refreshTracker()}/>
-              <TrackerConsent userId={userId} access={tracker} purpose="fitness-tracking" audience={audience} onChanged={acceptTracker} onStale={() => void refreshTracker()}/>
-            </View>
-          ) : (
-            <AppText style={[styles.error, {color: t['muted-flat'], fontFamily: fonts.body}]}>Tracker permissions are unavailable right now. Basic tracking is not affected.</AppText>
-          )}
           {processingError ? <AppText accessibilityRole="alert" style={[styles.error, {color: t.danger}]}>{processingError}</AppText> : null}
           {userId ? <OwnerExport key={userId} userId={userId}/> : null}
           {birthdayNote ? <AppText style={[styles.error, { color: t['muted-flat'], fontFamily: fonts.body }]}>{birthdayNote}</AppText> : null}

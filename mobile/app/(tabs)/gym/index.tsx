@@ -5,7 +5,6 @@ import { AppText } from '@/components/ui/app-text';
 import { GYM_COPY } from '@eiyu/shared';
 
 import { ArchiveIcon, ChevronIcon, EditIcon, ListIcon, MoreIcon, PlusIcon, RestoreIcon, TrashIcon } from '@/components/eiyu/icons';
-import { FitnessPrompt } from '@/components/gym/fitness-prompt';
 import { RoutinePickerSheet } from '@/components/gym/routine-picker-sheet';
 import { ActionSheet } from '@/components/ui/action-sheet';
 import { Button } from '@/components/ui/button';
@@ -30,7 +29,7 @@ export default function GymScreen() {
   const [switchTo, setSwitchTo] = useState<{ routineId: string } | { archived: boolean } | null>(null);
   const locked = gym.pending || gym.uncertain;
 
-  /** Opening an editor is a Gym change: without permission the notice opens instead and nothing is pushed. */
+  /** Opening an editor is a Gym change: with no revision read it says so (in the alert below) and nothing is pushed. */
   const open = (target: Parameters<typeof router.push>[0]) => { if (gym.requireFitness()) router.push(target); };
 
   const pick = (id: string) => {
@@ -89,7 +88,11 @@ export default function GymScreen() {
           </View>
         ) : null}
 
-        <FitnessPrompt />
+        {!gym.tracker && gym.trackerSettled ? (
+          <AppText accessibilityLiveRegion="polite" style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>
+            Gym could not check your account, so changes are unavailable for now. Your history stays readable.
+          </AppText>
+        ) : null}
         {gym.refreshError ? <StateBlock kind="error" retryLabel="Retry refresh" onRetry={gym.retryLoad}>{GYM_COPY.refreshFailed}</StateBlock> : null}
         {gym.recentError ? <StateBlock kind="error" retryLabel="Retry weights" onRetry={gym.retryRecent}>The System couldn&apos;t read your logged weights.</StateBlock> : null}
         {gym.error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{gym.error}</AppText> : null}
