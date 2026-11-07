@@ -24,16 +24,16 @@ select ok(coalesce(not has_function_privilege('anon',to_regprocedure('private.ga
   'clients cannot execute the gate function');
 
 insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data,email_confirmed_at) values
- ('d5000000-0000-4000-8000-000000000001','gate-unproved@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000003','gate-created@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000004','gate-noident-email@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000005','gate-noident-null@example.invalid','{}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000006','gate-google-twice@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000007','gate-forged@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01","provider":"google"}',now()),
- ('d5000000-0000-4000-8000-000000000008','gate-nongoogle@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000009','gate-returning@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000010','Gate-Case-Unproved@Example.Invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000011','Gate-Case-Proved@Example.Invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now());
+ ('d5000000-0000-4000-8000-000000000001','gate-unproved@example.invalid','{"provider":"email","providers":["email"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000003','gate-created@example.invalid','{"provider":"google","providers":["google"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000004','gate-noident-email@example.invalid','{"provider":"email","providers":["email"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000005','gate-noident-null@example.invalid','{}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000006','gate-google-twice@example.invalid','{"provider":"google","providers":["google"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000007','gate-forged@example.invalid','{"provider":"email","providers":["email"]}','{"provider":"google"}',now()),
+ ('d5000000-0000-4000-8000-000000000008','gate-nongoogle@example.invalid','{"provider":"email","providers":["email"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000009','gate-returning@example.invalid','{"provider":"email","providers":["email"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000010','Gate-Case-Unproved@Example.Invalid','{"provider":"email","providers":["email"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000011','Gate-Case-Proved@Example.Invalid','{"provider":"email","providers":["email"]}','{}',now());
 insert into auth.identities(provider_id,user_id,identity_data,provider) values
  ('d5000000-0000-4000-8000-000000000001','d5000000-0000-4000-8000-000000000001','{"sub":"d5000000-0000-4000-8000-000000000001","email":"gate-unproved@example.invalid"}','email'),
  ('d5000000-0000-4000-8000-000000000008','d5000000-0000-4000-8000-000000000008','{"sub":"d5000000-0000-4000-8000-000000000008","email":"gate-nongoogle@example.invalid"}','email'),
@@ -126,12 +126,12 @@ select ok(coalesce(not has_function_privilege('anon',to_regprocedure('private.gr
   'clients cannot execute the proof function');
 
 insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data,email_confirmed_at) values
- ('d5000000-0000-4000-8000-000000000012','proof-ok@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000013','proof-unverified@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000014','proof-noclaim@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000015','proof-mismatch@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000016','proof-nongoogle@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}',now()),
- ('d5000000-0000-4000-8000-000000000017','proof-repeat@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01"}',now());
+ ('d5000000-0000-4000-8000-000000000012','proof-ok@example.invalid','{"provider":"google","providers":["google"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000013','proof-unverified@example.invalid','{"provider":"google","providers":["google"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000014','proof-noclaim@example.invalid','{"provider":"google","providers":["google"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000015','proof-mismatch@example.invalid','{"provider":"google","providers":["google"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000016','proof-nongoogle@example.invalid','{"provider":"email","providers":["email"]}','{}',now()),
+ ('d5000000-0000-4000-8000-000000000017','proof-repeat@example.invalid','{"provider":"google","providers":["google"]}','{}',now());
 
 -- Verified claim with a matching email (case and padding ignored) grants proof.
 insert into auth.identities(provider_id,user_id,identity_data,provider) values
@@ -176,41 +176,42 @@ update auth.identities set identity_data=identity_data||'{"email":"proof-ok-new@
  where provider='google' and provider_id='g-sub-12';
 select is(private.mailbox_verified('d5000000-0000-4000-8000-000000000012'),true,'a verified Google claim for the new address grants proof for it');
 
--- T3b: a Google-created account may start without age consent; every other path may not.
--- The exception keys on raw_app_meta_data (GoTrue sets it, the client cannot), never on
--- raw_user_meta_data. Users are inserted as supabase_auth_admin, the role real Auth uses,
--- so the privileged-import shortcut in 050 cannot hide the result.
+-- T3b (rewritten for S03b): sign-up is never refused over age or consent. The old EP003 rule is gone; every shape
+-- that used to be refused or half-accepted is now accepted, and none of them stores a birthday or a consent row.
+-- Users are inserted as supabase_auth_admin, the role real Auth uses, so the privileged-import shortcut in 050
+-- cannot hide the result.
 grant usage on schema extensions to supabase_auth_admin;
 set local role supabase_auth_admin;
-select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
- ('d5000000-0000-4000-8000-000000000020','ep3-password@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01"}')$$,
- 'EP003',null,'password sign-up without consent still raises EP003');
-select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
- ('d5000000-0000-4000-8000-000000000021','ep3-forged@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01","provider":"google"}')$$,
- 'EP003',null,'user metadata claiming Google does not open the exception');
-select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
- ('d5000000-0000-4000-8000-000000000022','ep3-no-provider@example.invalid','{}','{"birth_date":"2000-01-01"}')$$,
- 'EP003',null,'an account with no provider in app metadata still raises EP003');
-select throws_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
- ('d5000000-0000-4000-8000-000000000023','ep3-google-bad-choice@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01","processing_consent":{"age_screening":{"granted":"true","notice_version":"2026-10-20-age-v1"}}}')$$,
- 'EP003',null,'a Google account that sends a malformed consent choice is still refused');
+select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000020','ep3-password@example.invalid','{"provider":"email","providers":["email"]}','{"birth_date":"2000-01-01","processing_consent":{"age_screening":{"granted":true,"notice_version":"2026-10-20-age-v1"}}}')$$,
+ 'a password sign-up that still sends an old birthday is accepted');
+select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000021','ep3-forged@example.invalid','{"provider":"email","providers":["email"]}','{"provider":"google"}')$$,
+ 'user metadata claiming Google is accepted and gains nothing from the claim');
+select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000022','ep3-no-provider@example.invalid','{}','{}')$$,
+ 'an account with no provider in app metadata is accepted');
+select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
+ ('d5000000-0000-4000-8000-000000000023','ep3-google-bad-choice@example.invalid','{"provider":"google","providers":["google"]}','{"processing_consent":{"age_screening":{"granted":"true","notice_version":"2026-10-20-age-v1"}}}')$$,
+ 'a Google account that sends a malformed old consent choice is accepted');
 select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
  ('d5000000-0000-4000-8000-000000000024','ep3-google@example.invalid','{"provider":"google","providers":["google"]}','{"full_name":"Test Person"}')$$,
- 'a Google-created account with no consent and no birthday is accepted');
+ 'a Google-created account with no metadata of ours is accepted');
 select lives_ok($$insert into auth.users(id,email,raw_app_meta_data,raw_user_meta_data) values
- ('d5000000-0000-4000-8000-000000000025','ep3-google-consent@example.invalid','{"provider":"google","providers":["google"]}','{"birth_date":"2000-01-01","processing_consent":{"age_screening":{"granted":true,"notice_version":"2026-10-20-age-v1"}}}')$$,
- 'a Google-created account that does send valid consent is accepted');
+ ('d5000000-0000-4000-8000-000000000025','ep3-google-terms@example.invalid','{"provider":"google","providers":["google"]}','{"terms":{"version":"2026-11-08-terms-v2"}}')$$,
+ 'a Google-created account that sends the current Terms version is accepted');
 reset role;
 select is((select count(*) from auth.users where id in ('d5000000-0000-4000-8000-000000000020','d5000000-0000-4000-8000-000000000021',
-  'd5000000-0000-4000-8000-000000000022','d5000000-0000-4000-8000-000000000023')),0::bigint,'refused sign-ups leave no account behind');
-select is((select count(*) from private.processing_consent where user_id='d5000000-0000-4000-8000-000000000024'),0::bigint,
-  'a Google-created account without consent has no consent row');
-select is((select count(*) from private.processing_consent_events where user_id='d5000000-0000-4000-8000-000000000024'),0::bigint,
-  'and no consent event');
-select is((select count(*) from private.account_age where user_id='d5000000-0000-4000-8000-000000000024'),0::bigint,
-  'and no birthday record, so the audience stays unknown');
-select is((select age_granted from private.processing_consent where user_id='d5000000-0000-4000-8000-000000000025'),true,
-  'valid consent sent with a Google sign-up is still recorded');
+  'd5000000-0000-4000-8000-000000000022','d5000000-0000-4000-8000-000000000023','d5000000-0000-4000-8000-000000000024','d5000000-0000-4000-8000-000000000025')),6::bigint,'all six sign-ups left an account');
+select is((select count(*) from private.processing_consent where user_id in ('d5000000-0000-4000-8000-000000000020','d5000000-0000-4000-8000-000000000021','d5000000-0000-4000-8000-000000000022','d5000000-0000-4000-8000-000000000023','d5000000-0000-4000-8000-000000000024','d5000000-0000-4000-8000-000000000025')),0::bigint,
+  'no sign-up created a consent row, whatever old consent metadata it carried');
+select is((select count(*) from private.account_age where user_id in ('d5000000-0000-4000-8000-000000000020','d5000000-0000-4000-8000-000000000021','d5000000-0000-4000-8000-000000000022','d5000000-0000-4000-8000-000000000023','d5000000-0000-4000-8000-000000000024','d5000000-0000-4000-8000-000000000025')),0::bigint,
+  'and none stored a birthday');
+select is((select count(*) from private.terms_acceptance where user_id='d5000000-0000-4000-8000-000000000025' and version='2026-11-08-terms-v2'),1::bigint,
+  'the current Terms version sent with a Google sign-up is recorded');
+select is((select count(*) from private.terms_acceptance where user_id='d5000000-0000-4000-8000-000000000024'),0::bigint,
+  'a Google sign-up with no Terms metadata has no Terms row, so the finish screen will ask');
+
 
 -- T3b: the narrowed before-user-created hook. Create path only; it never touches linking.
 select ok(to_regprocedure('public.s03_before_user_created(jsonb)') is not null,'hook function exists');

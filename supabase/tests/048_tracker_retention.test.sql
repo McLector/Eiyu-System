@@ -4,17 +4,16 @@ set local search_path=public,extensions;
 select no_plan();
 -- Local S02 061: 30-day retention after full withdrawal (decision 5B). Synthetic users; rolled back.
 -- Users: A (custom withdrawn, removal), B (other owner, data untouched), C (fitness removal), D (first-ever
--- "withdrawal"), E (dispute pause), F (regrant), G (stale state), P (operator), N (not an operator).
+-- "withdrawal"), F (regrant), G (stale state), P (operator), N (not an operator).
 insert into auth.users(id,email,raw_user_meta_data) values
- ('da241000-0000-4000-8000-0000000000a1','ret-a@example.invalid','{"birth_date":"1990-01-01"}'),
- ('da241000-0000-4000-8000-0000000000b1','ret-b@example.invalid','{"birth_date":"1990-01-01"}'),
- ('da241000-0000-4000-8000-0000000000c1','ret-c@example.invalid','{"birth_date":"1990-01-01"}'),
- ('da241000-0000-4000-8000-0000000000d1','ret-d@example.invalid','{"birth_date":"1990-01-01"}'),
- ('da241000-0000-4000-8000-0000000000e1','ret-e@example.invalid','{"birth_date":"2010-01-01"}'),
- ('da241000-0000-4000-8000-0000000000f1','ret-f@example.invalid','{"birth_date":"1990-01-01"}'),
- ('da241000-0000-4000-8000-0000000000a9','ret-g@example.invalid','{"birth_date":"1990-01-01"}'),
- ('da241000-0000-4000-8000-0000000000aa','ret-p@example.invalid','{"birth_date":"1990-01-01"}'),
- ('da241000-0000-4000-8000-0000000000ab','ret-n@example.invalid','{"birth_date":"1990-01-01"}');
+ ('da241000-0000-4000-8000-0000000000a1','ret-a@example.invalid','{}'),
+ ('da241000-0000-4000-8000-0000000000b1','ret-b@example.invalid','{}'),
+ ('da241000-0000-4000-8000-0000000000c1','ret-c@example.invalid','{}'),
+ ('da241000-0000-4000-8000-0000000000d1','ret-d@example.invalid','{}'),
+ ('da241000-0000-4000-8000-0000000000f1','ret-f@example.invalid','{}'),
+ ('da241000-0000-4000-8000-0000000000a9','ret-g@example.invalid','{}'),
+ ('da241000-0000-4000-8000-0000000000aa','ret-p@example.invalid','{}'),
+ ('da241000-0000-4000-8000-0000000000ab','ret-n@example.invalid','{}');
 insert into private.operator_accounts(user_id) values('da241000-0000-4000-8000-0000000000aa');
 create function pg_temp.as_user(u uuid,a text default 'aal1') returns void language sql as $$
  select set_config('request.jwt.claims',json_build_object('sub',u,'aal',a)::text,true),set_config('request.jwt.claim.sub',u::text,true);
@@ -157,21 +156,12 @@ select is((select count(*)::integer from private.tracker_retention_state where u
 select is((select count(*)::integer from public.gym_media_cleanup where user_id='da241000-0000-4000-8000-0000000000c1'),0,'and queues no media cleanup');
 select is((select concat_ws(',',x->>'routines',x->>'exercises',x->>'sessions',x->>'entries') from (select pg_temp.cnt('da241000-0000-4000-8000-0000000000c1') x) q),'1,1,1,1','routines, exercises, sessions and entries are kept');
 
--- D: a first-ever "withdrawal" (never granted) starts no clock. E: a dispute pause starts none.
+-- D: a first-ever "withdrawal" (never granted) starts no clock.
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000d1');
 set local role authenticated;
 select pg_temp.consent('custom-tracker',false);
 reset role;
 select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000d1'),0,'withdrawing a never-granted purpose starts no clock');
-select pg_temp.seed('da241000-0000-4000-8000-0000000000e1');
-select pg_temp.as_user('da241000-0000-4000-8000-0000000000e1');
-set local role authenticated;
-select pg_temp.consent('custom-tracker',true);
-reset role;
-select private.record_tracker_processing_authority('da241000-0000-4000-8000-0000000000e1','custom-tracker','revoked',1,gen_random_uuid());
-select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000e1'),0,'a dispute pause starts no clock');
-select private.run_tracker_retention(statement_timestamp()+interval '90 days');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000e1')->>'customHabits','1','paused data is kept indefinitely');
 
 -- F: a regrant keeps its data under any later run.
 select pg_temp.seed('da241000-0000-4000-8000-0000000000f1');

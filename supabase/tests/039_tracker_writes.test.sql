@@ -3,7 +3,7 @@ create extension if not exists pgtap with schema extensions;
 set local search_path=public,extensions;
 select no_plan();
 insert into auth.users(id,email,raw_user_meta_data) values
- ('da230100-0000-4000-8000-000000000001','write-adult@example.invalid','{"birth_date":"2000-01-01"}'),
+ ('da230100-0000-4000-8000-000000000001','write-adult@example.invalid','{}'),
  ('da230100-0000-4000-8000-000000000002','write-other@example.invalid','{}');
 create temp table intent(revision jsonb, targets jsonb);
 grant all on intent to authenticated;
@@ -124,13 +124,10 @@ select pg_temp.fresh_tracker_command('habit-save',jsonb_build_object('p_id',id,'
 select is(pg_temp.fresh_tracker_command('reorder_quests',jsonb_build_object('p_quest_type','backlog','p_ids',(select jsonb_agg(id order by i desc) from bulk_target)),(select jsonb_agg(jsonb_build_object('kind','habit','id',id,'inputKind','basic')) from bulk_target)),'null'::jsonb,'bulk writes retain support above100 targets');
 select is((select count(distinct h.position)::integer from public.habits h join bulk_target t on t.id=h.id),101,'bulk ordering covers every requested root');
 reset role;
-update private.account_age set version=version+1 where user_id='da230100-0000-4000-8000-000000000001';
+insert into private.processing_consent(user_id,age_granted,age_notice,version) values('da230100-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',1)
+ on conflict(user_id) do update set version=private.processing_consent.version+1;
 set local role authenticated;
-select throws_ok($$select public.apply_tracker_write('archive_habit','{"p_habit_id":"da230100-0000-4000-8000-000000000014","p_expected_targets":[{"kind":"habit","id":"da230100-0000-4000-8000-000000000014","inputKind":"basic"}]}',(select revision from intent))$$,'ET003',null,'basic intent still binds declaration revision');
-reset role;
-update private.account_age set birth_date='2020-01-01',version=version+1 where user_id='da230100-0000-4000-8000-000000000001';
-set local role authenticated;
-select throws_ok($$select pg_temp.fresh_tracker_command('archive_habit','{"p_habit_id":"da230100-0000-4000-8000-000000000014"}','[{"kind":"habit","id":"da230100-0000-4000-8000-000000000014","inputKind":"basic"}]')$$,'ET001',null,'fresh tuple cannot bypass under12 pause');
+select lives_ok($$select public.apply_tracker_write('archive_habit','{"p_habit_id":"da230100-0000-4000-8000-000000000014","p_expected_targets":[{"kind":"habit","id":"da230100-0000-4000-8000-000000000014","inputKind":"basic"}]}',(select revision from intent))$$,'a basic intent survives a consent change, since nothing in the basic rule depends on it');
 select throws_ok($probe$select public.archive_habit(null::uuid)$probe$,'42501',null,'legacy mutation denied: archive_habit');
 select throws_ok($probe$select public.complete_habit(null::uuid,null::date,null::completion_kind)$probe$,'42501',null,'legacy mutation denied: complete_habit');
 select throws_ok($probe$select public.complete_habit_recovery(null::uuid)$probe$,'42501',null,'legacy mutation denied: complete_habit_recovery');
@@ -157,7 +154,7 @@ select throws_ok($probe$select public.set_long_quest_stage_done(null::uuid,null:
 select throws_ok($probe$select public.set_long_quest_stage_done_receipt(null::uuid,null::boolean,null::uuid)$probe$,'42501',null,'legacy mutation denied: set_long_quest_stage_done_receipt');
 select throws_ok($probe$select public.start_gym_session(null::uuid)$probe$,'42501',null,'legacy mutation denied: start_gym_session');
 select throws_ok($probe$select public.undo_habit_completion(null::uuid,null::date)$probe$,'42501',null,'legacy mutation denied: undo_habit_completion');
-select is((select count(*)::integer from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prokind='f' and has_function_privilege('authenticated',p.oid,'EXECUTE') and p.proname<>all(array['ack_gym_media_cleanup','adult_ai_declared','current_debrief_generation_allowed','current_debrief_read_allowed','current_mailbox_verified','get_account_age','get_habits_for_date','get_long_quest_definition_receipt','get_long_quest_reward_receipt','get_mailbox_status','get_open_habit_recoveries','get_processing_access','gym_media_unreferenced','gym_media_upload_allowed','initialize_account_time_zone','list_gym_media_cleanup','previous_gym_weights','read_history_range','recent_gym_weights','reserve_weekly_summary_regen','set_account_birthday','finish_google_signup','set_account_time_zone','set_processing_consent','set_profile_palette','set_profile_theme','tracker_writes_allowed','trim_profile_text','update_profile','get_tracker_processing_access','get_tracker_targets','set_tracker_processing_consent','apply_tracker_write','get_operator_status','request_authority_review','cancel_authority_review','operator_list_review_requests','operator_decide_review','operator_pause_purpose','operator_resume_purpose','get_my_review_requests','get_tracker_retention_notice','operator_list_retention'])) ,0,'no unexpected authenticated public entry point');
+select is((select count(*)::integer from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prokind='f' and has_function_privilege('authenticated',p.oid,'EXECUTE') and p.proname<>all(array['ack_gym_media_cleanup','current_debrief_generation_allowed','current_debrief_read_allowed','current_mailbox_verified','get_terms_status','accept_terms','get_habits_for_date','get_long_quest_definition_receipt','get_long_quest_reward_receipt','get_mailbox_status','get_open_habit_recoveries','get_processing_access','gym_media_unreferenced','gym_media_upload_allowed','initialize_account_time_zone','list_gym_media_cleanup','previous_gym_weights','read_history_range','recent_gym_weights','reserve_weekly_summary_regen','set_account_time_zone','set_processing_consent','set_profile_palette','set_profile_theme','tracker_writes_allowed','trim_profile_text','update_profile','get_tracker_processing_access','get_tracker_targets','set_tracker_processing_consent','apply_tracker_write','get_operator_status','request_authority_review','cancel_authority_review','operator_list_review_requests','operator_decide_review','operator_pause_purpose','operator_resume_purpose','get_my_review_requests','get_tracker_retention_notice','operator_list_retention'])) ,0,'no unexpected authenticated public entry point');
 reset role;
 select * from finish();
 rollback;
