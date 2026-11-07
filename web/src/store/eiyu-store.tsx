@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { createFirstPrepare, FirstPrepareContext } from './first-prepare';
 import {
   archiveHabit,
   deleteHabit,
@@ -149,6 +150,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   trackerRef.current = tracker;
 
   // Preparation comes first and is never required for reading: a failed or paused preparation still shows history.
+  const firstPrepare = useMemo(() => createFirstPrepare(userId), [userId]);
+  const firstPrepareRef = useRef(firstPrepare);
+  firstPrepareRef.current = firstPrepare;
   const prepareBoard = useCallback(async (owner: string) => {
     try {
       const access = await qc.fetchQuery({ queryKey: trackerKey(owner), queryFn: () => readTrackerAccess(owner), staleTime: 0 });
@@ -156,6 +160,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const result = await prepareDay(copyTrackerRevision(access.revision));
       if (result.accessChanged) await qc.invalidateQueries({ queryKey: trackerKey(owner) });
     } catch { /* Preparation is optional for reading; the board read below does not depend on it. */ }
+    finally { if (firstPrepareRef.current.owner === owner) firstPrepareRef.current.settle(); }
   }, [qc]);
 
   const habitsQuery = useQuery({
@@ -163,6 +168,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     queryFn: async () => { await prepareBoard(userId!); return fetchTodayHabits(userId!); },
     enabled: !!userId,
   });
+  // Whatever the board read does (a cached answer, a failure), history must not wait for a preparation that is not coming.
+  useEffect(() => { if (habitsQuery.status !== 'pending') firstPrepare.settle(); }, [habitsQuery.status, firstPrepare]);
   // Read Backlog only after the board read: that read runs the server rollover that can add quests to Backlog.
   const backlogQuery = useQuery({
     queryKey: backlogKey(userId),
@@ -774,7 +781,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  return <EiyuContext.Provider value={value}>{children}</EiyuContext.Provider>;
+  return <EiyuContext.Provider value={value}><FirstPrepareContext.Provider value={firstPrepare}>{children}</FirstPrepareContext.Provider></EiyuContext.Provider>;
 }
 
 export function useEiyu() {

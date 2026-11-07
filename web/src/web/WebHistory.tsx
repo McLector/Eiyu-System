@@ -7,6 +7,7 @@ import {
 
 import { CheckIcon, ChevronIcon, CompletionDotIcon } from '../Icons';
 import StateBlock from '../components/StateBlock';
+import { useAfterFirstPrepare } from '../store/first-prepare';
 
 interface Props { userId: string; timeZone: string; onClose: () => void; }
 
@@ -26,9 +27,10 @@ export default function WebHistory({ userId, timeZone, onClose }: Props) {
   const [year, setYear] = useState(accountYear);
   const [month, setMonth] = useState(accountMonth);
 
+  const afterFirstPrepare = useAfterFirstPrepare();
   const historyQuery = useQuery({
     queryKey: ['monthHistory', userId, year, month],
-    queryFn: () => fetchMonthHistory(userId, year, month),
+    queryFn: async () => { await afterFirstPrepare(); return fetchMonthHistory(userId, year, month); },
     enabled: !!userId,
   });
 

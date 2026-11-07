@@ -11,6 +11,7 @@ import {
   toDateKey,
 } from '@eiyu/shared';
 import { StarIcon } from '../Icons';
+import { useAfterFirstPrepare } from '../store/first-prepare';
 import Dialog from '../components/Dialog';
 
 interface Props {
@@ -36,9 +37,10 @@ export default function WebHeatmap({ userId, timeZone }: Props) {
   const end = addUtcDays(calendarToday, 1);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  const afterFirstPrepare = useAfterFirstPrepare();
   const historyQuery = useQuery({
     queryKey: ['historyRange', userId, toDateKey(start), toDateKey(end)],
-    queryFn: () => fetchHistoryRange(userId!, start, end),
+    queryFn: async () => { await afterFirstPrepare(); return fetchHistoryRange(userId!, start, end); },
     enabled: !!userId,
   });
 
