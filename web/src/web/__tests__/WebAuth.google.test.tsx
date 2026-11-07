@@ -34,12 +34,13 @@ describe('Continue with Google', () => {
     expect(api.start).toHaveBeenCalledWith(api.oauth, window.location.origin);
   });
 
-  it('is offered on sign-up with the birthday line, without asking for the form first', async () => {
+  it('is offered on sign-up with the Terms line, without asking for the form first', async () => {
     const user = userEvent.setup();
     render(<WebAuth onLogin={vi.fn()} />);
-    expect(screen.queryByText("You'll confirm your birthday right after Google.")).not.toBeInTheDocument();
+    expect(screen.queryByText("You'll confirm the Terms right after Google.")).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Register' }));
-    expect(screen.getByText("You'll confirm your birthday right after Google.")).toBeInTheDocument();
+    expect(screen.getByText("You'll confirm the Terms right after Google.")).toBeInTheDocument();
+    expect(screen.queryByText(/birthday/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Continue with Google' }));
     expect(api.start).toHaveBeenCalledTimes(1);
     expect(api.auth.signUp).not.toHaveBeenCalled();

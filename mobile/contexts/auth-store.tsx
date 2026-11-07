@@ -2,7 +2,7 @@ import type { AuthError, Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { GOOGLE_GENERIC_MESSAGE, deviceTimeZone, formatError, initialBirthdayMetadata } from '@eiyu/shared';
+import { GOOGLE_GENERIC_MESSAGE, deviceTimeZone, signupMetadata } from '@eiyu/shared';
 
 import { googleRedirectUrl, runGoogleSignIn } from '@/lib/google-oauth';
 import { getGoogleOAuthClient, supabase } from '@/lib/supabase';
@@ -17,7 +17,7 @@ interface AuthStore {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
-  signUp: (email: string, password: string, displayName: string, birthday: string, ageConsent: boolean) => Promise<AuthResult>;
+  signUp: (email: string, password: string, displayName: string) => Promise<AuthResult>;
   signOut: () => Promise<{ error: AuthError | null }>;
   resetPassword: (email: string) => Promise<AuthResult>;
   /** Opens Google in an in-app browser. `cancelled` means the user backed out: signed out, nothing to show. */
@@ -59,14 +59,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         return { error: error?.message ?? null };
       },
-      signUp: async (email, password, displayName, birthday, ageConsent) => {
-        let birthdayMetadata: ReturnType<typeof initialBirthdayMetadata>;
-        try {birthdayMetadata = initialBirthdayMetadata(birthday, ageConsent);}
-        catch (err) {return {error: formatError(err)};}
+      signUp: async (email, password, displayName) => {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { display_name: displayName, time_zone: deviceTimeZone(), ...birthdayMetadata } },
+          options: { data: { display_name: displayName, time_zone: deviceTimeZone(), ...signupMetadata() } },
         });
         if (error) return { error: error.message };
         return { error: null, needsEmailConfirmation: !data.session };

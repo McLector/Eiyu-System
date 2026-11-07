@@ -17,47 +17,38 @@ async function enterSignup(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('web auth validation', () => {
-  async function completedSignup() {
-    const user = userEvent.setup(); render(<WebAuth onLogin={vi.fn()}/>); await enterSignup(user);
-    for (const [label, value] of [['Display name', 'Kaito'], ['Email address', 'hero@example.invalid'], ['Password', 'StrongPass1!'], ['Confirm password', 'StrongPass1!'], ['Birthday', '2000-01-01']])
+  async function fillSignup(user: ReturnType<typeof userEvent.setup>) {
+    render(<WebAuth onLogin={vi.fn()}/>); await enterSignup(user);
+    for (const [label, value] of [['Display name', 'Kaito'], ['Email address', 'hero@example.invalid'], ['Password', 'StrongPass1!'], ['Confirm password', 'StrongPass1!']])
       await user.type(screen.getByLabelText(label), value);
-    await user.click(screen.getByRole('checkbox', {name: 'I agree to the Privacy Policy & Terms'}));
-    return user;
   }
-  it('does not send birthday or create an account on generic Terms alone', async () => {
-    const user = await completedSignup();
+  it('asks for no birthday and shows no age wording in sign-up', async () => {
+    const user = userEvent.setup(); render(<WebAuth onLogin={vi.fn()}/>); await enterSignup(user);
+    expect(screen.queryByLabelText('Birthday')).toBeNull();
+    expect(screen.queryByRole('checkbox', {name: /birthday|permission|18/i})).toBeNull();
+    expect(screen.queryByText(/birthday|child|under 12|ages 12/i)).toBeNull();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  });
+  it('does not create an account until the Terms box is ticked, and explains why', async () => {
+    const user = userEvent.setup(); await fillSignup(user);
     await user.click(screen.getByRole('button', {name: 'BEGIN JOURNEY'}));
     expect(auth.signUp).not.toHaveBeenCalled();
-    expect(screen.getByRole('checkbox', {name: /I agree.*birthday/i})).not.toBeChecked();
+    expect(screen.getByText('Accept the Privacy Policy and Terms to continue.')).toBeInTheDocument();
   });
-  it('does not create an under12 account even after explicit choices', async () => {
-    const user = await completedSignup();
-    await user.clear(screen.getByLabelText('Birthday')); await user.type(screen.getByLabelText('Birthday'), '2020-01-01');
-    await user.click(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
+  it('sends the Terms version and no birthday or consent keys', async () => {
+    const user = userEvent.setup(); await fillSignup(user);
+    await user.click(screen.getByRole('checkbox', {name: 'I agree to the Privacy Policy & Terms'}));
     await user.click(screen.getByRole('button', {name: 'BEGIN JOURNEY'}));
-    expect(auth.signUp).not.toHaveBeenCalled();
-    expect(screen.getByText('New Eiyu accounts are for ages 12 and above.')).toBeInTheDocument();
-  });
-  it('sends only the initial age-purpose grant and clears it on mode switching', async () => {
-    const user = await completedSignup();
-    await user.click(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
-    await user.click(screen.getByRole('button', {name: 'BEGIN JOURNEY'}));
-    await waitFor(() => expect(auth.signUp).toHaveBeenCalledWith(expect.objectContaining({options: {data: expect.objectContaining({
-      processing_consent: {age_screening: {granted: true, notice_version: '2026-10-20-age-v1'}}, birth_date: '2000-01-01',
-    })}})));
+    await waitFor(() => expect(auth.signUp).toHaveBeenCalledOnce());
     const data = auth.signUp.mock.calls[0][0].options.data;
-    expect(data.processing_consent.weekly_debrief).toBeUndefined(); expect(data.authority).toBeUndefined();
-    await user.click(screen.getByRole('button', {name: 'BACK TO LOGIN'})); await enterSignup(user);
-    expect(screen.getByRole('checkbox', {name: /I agree.*birthday/i})).not.toBeChecked();
+    expect(data).toEqual({display_name: 'Kaito', time_zone: expect.any(String), terms: {version: '2026-11-08-terms-v2'}});
+    expect(data.birth_date).toBeUndefined(); expect(data.processing_consent).toBeUndefined();
   });
-  it('requires an unprefilled birthday without a qualifying-age hint', async () => {
-    const user = userEvent.setup();
-    render(<WebAuth onLogin={vi.fn()} />);
-    await enterSignup(user);
-    expect(screen.getByLabelText('Birthday')).toHaveValue('');
-    fireEvent.submit(screen.getByRole('button', { name: 'BEGIN JOURNEY' }).closest('form')!);
-    expect(await screen.findByText('Enter your birthday.')).toBeInTheDocument();
-    expect(auth.signUp).not.toHaveBeenCalled();
+  it('forgets the Terms tick when the mode changes', async () => {
+    const user = userEvent.setup(); await fillSignup(user);
+    await user.click(screen.getByRole('checkbox', {name: 'I agree to the Privacy Policy & Terms'}));
+    await user.click(screen.getByRole('button', {name: 'Sign in'})); await enterSignup(user);
+    expect(screen.getByRole('checkbox', {name: 'I agree to the Privacy Policy & Terms'})).not.toBeChecked();
   });
   beforeEach(() => {
     auth.signInWithPassword.mockReset().mockResolvedValue({ error: null });
@@ -107,9 +98,7 @@ describe('web auth validation', () => {
 
     await user.type(screen.getByLabelText('Display name'), 'Kaito');
     await user.clear(screen.getByLabelText('Confirm password'));
-    await user.type(screen.getByLabelText('Birthday'), '2000-01-01');
     await user.type(screen.getByLabelText('Confirm password'), 'StrongPass1!');
-    await user.click(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
     await user.click(screen.getByRole('checkbox', { name: 'I agree to the Privacy Policy & Terms' }));
     await user.click(screen.getByRole('button', { name: 'BEGIN JOURNEY' }));
     await waitFor(() => expect(auth.signUp).toHaveBeenCalledOnce());

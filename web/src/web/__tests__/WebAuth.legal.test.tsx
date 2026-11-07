@@ -23,7 +23,6 @@ async function openAndFillSignup(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Email address'), 'kaito@example.com');
   await user.type(screen.getByLabelText('Password'), 'StrongPass1!');
   await user.type(screen.getByLabelText('Confirm password'), 'StrongPass1!');
-  await user.type(screen.getByLabelText('Birthday'), '2000-01-01');
 }
 
 describe('web registration legal documents', () => {
@@ -82,7 +81,6 @@ describe('web registration legal documents', () => {
     expect(auth.signUp).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('checkbox', { name: 'I agree to the Privacy Policy & Terms' }));
-    await user.click(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
     expect(submit).toBeEnabled();
     await user.click(submit);
 
@@ -90,9 +88,7 @@ describe('web registration legal documents', () => {
     expect(auth.signUp).toHaveBeenCalledWith({
       email: 'kaito@example.com',
       password: 'StrongPass1!',
-      options: { data: { display_name: 'Kaito', time_zone: expect.any(String), birth_date: '2000-01-01',
-        processing_consent: {age_screening: {granted: true, notice_version: '2026-10-20-age-v1'}},
-      } },
+      options: { data: { display_name: 'Kaito', time_zone: expect.any(String), terms: { version: '2026-11-08-terms-v2' } } },
     });
     expect(onLogin).not.toHaveBeenCalled();
   });

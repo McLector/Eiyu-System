@@ -44,19 +44,20 @@ describe('mobile auth: Continue with Google', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('is on the sign-up form with the birthday line, and needs no ticked boxes or typed fields', async () => {
+  it('is on the sign-up form with the Terms line, and needs no ticked boxes or typed fields', async () => {
     await renderWithTheme(<AuthScreen />);
     await fireEvent.press(screen.getByText('Register'));
-    expect(screen.getByText("You'll confirm your birthday right after Google.")).toBeOnTheScreen();
+    expect(screen.getByText("You'll confirm the Terms right after Google.")).toBeOnTheScreen();
+    expect(screen.queryByText(/birthday/i)).toBeNull();
     await fireEvent.press(screen.getByRole('button', GOOGLE));
     expect(mockGoogle).toHaveBeenCalledTimes(1);
     expect(mockSignUp).not.toHaveBeenCalled();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('does not show the birthday line on the sign-in form', async () => {
+  it('does not show the Terms line on the sign-in form', async () => {
     await renderWithTheme(<AuthScreen />);
-    expect(screen.queryByText("You'll confirm your birthday right after Google.")).toBeNull();
+    expect(screen.queryByText("You'll confirm the Terms right after Google.")).toBeNull();
   });
 
   it('is not offered while resetting a password', async () => {
@@ -129,12 +130,12 @@ describe('mobile auth: Continue with Google at font scale 1.6', () => {
   });
   afterEach(() => Dimensions.set({ window: original, screen: original }));
 
-  it('keeps the button, its label and the birthday line whole and pressable on sign-up', async () => {
+  it('keeps the button, its label and the Terms line whole and pressable on sign-up', async () => {
     await renderWithTheme(<AuthScreen />);
     await fireEvent.press(screen.getByText('Register'));
     const label = screen.getByText('CONTINUE WITH GOOGLE');
     expect(label.props.numberOfLines).toBeUndefined();
-    const note = screen.getByText("You'll confirm your birthday right after Google.");
+    const note = screen.getByText("You'll confirm the Terms right after Google.");
     expect(note.props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByRole('button', GOOGLE));
     expect(mockGoogle).toHaveBeenCalledTimes(1);

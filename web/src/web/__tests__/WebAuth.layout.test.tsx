@@ -30,7 +30,7 @@ describe('WebAuth layout hooks', () => {
     const { container } = render(<WebAuth onLogin={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Register' }));
     const labels = Array.from(container.querySelectorAll('.auth-label')).map(el => el.textContent);
-    expect(labels).toEqual(['DISPLAY NAME', 'BIRTHDAY', 'EMAIL', 'PASSWORD', 'CONFIRM PASSWORD']);
+    expect(labels).toEqual(['DISPLAY NAME', 'EMAIL', 'PASSWORD', 'CONFIRM PASSWORD']);
     for (const label of container.querySelectorAll('.auth-label')) expect(inlineSpacing(label)).toEqual([]);
   });
   it('uses the same layout classes in forgot-password mode', async () => {

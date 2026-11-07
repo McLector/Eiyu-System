@@ -11,10 +11,7 @@ import {
   passwordStrength,
   resetLinkSentMessage,
   validateConfirmPassword,
-  validateSignupBirthday,
-  CHILD_PRIVACY_NOTICE,
   GOOGLE_GENERIC_MESSAGE,
-  PROCESSING_NOTICES,
   validateDisplayName,
   validateEmail,
   validatePassword,
@@ -55,10 +52,8 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [birthday, setBirthday] = useState('');
   const [confirm, setConfirm] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [ageConsent, setAgeConsent] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,31 +73,27 @@ export default function AuthScreen() {
     setAttempted(false);
     setPassword('');
     setConfirm('');
-    setBirthday('');
     setAcceptedTerms(false);
-    setAgeConsent(false);
   };
 
   const fieldErrors = useMemo(
     () => ({
       name: mode === 'signup' ? validateDisplayName(name) : null,
-      birthday: mode === 'signup' ? validateSignupBirthday(birthday) : null,
       email: validateEmail(email),
       password: mode !== 'forgot' ? validatePassword(password) : null,
       confirm: mode === 'signup' ? validateConfirmPassword(password, confirm) : null,
     }),
-    [mode, name, birthday, email, password, confirm],
+    [mode, name, email, password, confirm],
   );
   const termsMissing = mode === 'signup' && !acceptedTerms;
-  const ageConsentMissing = mode === 'signup' && !ageConsent;
-  const valid = !Object.values(fieldErrors).some(Boolean) && !termsMissing && !ageConsentMissing;
+  const valid = !Object.values(fieldErrors).some(Boolean) && !termsMissing;
   const shown = (key: keyof typeof fieldErrors) => (attempted ? fieldErrors[key] ?? undefined : undefined);
 
   const score = passwordStrength(mode === 'signup' ? password : '');
   const tooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
   const strengthColor = tooShort ? t.danger : score === 0 ? t.danger : score === 1 ? t.warning : t.success;
 
-  /** Google needs no typed fields or ticked boxes here: the birthday and consent come on the finish screen. */
+  /** Google needs no typed fields or ticked boxes here: new accounts accept the Terms on the finish screen. */
   const handleGoogle = async () => {
     if (googleBusy || submitting) return;
     setError(null);
@@ -132,7 +123,7 @@ export default function AuthScreen() {
         return;
       }
       if (mode === 'signup') {
-        const { error: err, needsEmailConfirmation } = await signUp(email.trim(), password, normalizeNameBoundaries(name), birthday, ageConsent);
+        const { error: err, needsEmailConfirmation } = await signUp(email.trim(), password, normalizeNameBoundaries(name));
         if (err) setError(authErrorMessage('signup', err));
         // With no confirmation needed the session arrives and the protected stack moves to the tabs by itself.
         else if (needsEmailConfirmation) setNotice({ icon: 'check', title: 'ALMOST THERE', message: confirmEmailMessage(email.trim()) });
@@ -193,19 +184,6 @@ export default function AuthScreen() {
             <View testID="auth-form" style={[styles.form, { gap: density.formGap }]}>
               {mode === 'signup' ? (
                 <Field label="Display name" placeholder="Kaito Mizuru" autoCapitalize="words" value={name} onChangeText={setName} error={shown('name')} />
-              ) : null}
-              {mode === 'signup' ? (
-                <View style={{gap: 8}}>
-                  <AppText selectable style={[styles.noticeBody, {color: t['muted-flat'], fontFamily: fonts.body}]}>{CHILD_PRIVACY_NOTICE}</AppText>
-                  <AppText selectable style={[styles.noticeBody, {color: t['muted-flat'], fontFamily: fonts.body}]}>{PROCESSING_NOTICES['age-screening'].body}</AppText>
-                  <Pressable accessibilityRole="checkbox" accessibilityLabel={PROCESSING_NOTICES['age-screening'].label}
-                    accessibilityState={{checked: ageConsent}} onPress={() => setAgeConsent(v => !v)} style={[styles.terms, {minHeight: 48, alignItems: 'center'}]}>
-                    <AppText aria-hidden style={{color: t['accent-text'], fontSize: 22}}>{ageConsent ? '☑' : '☐'}</AppText>
-                    <AppText style={[styles.termsText, {flex: 1, color: t['muted-flat'], fontFamily: fonts.body}]}>{PROCESSING_NOTICES['age-screening'].label}</AppText>
-                  </Pressable>
-                  {attempted && ageConsentMissing ? <AppText accessibilityRole="alert" style={[styles.note, {color: t.danger}]}>Review the birthday notice and give specific permission before signup.</AppText> : null}
-                <Field label="Birthday" placeholder="YYYY-MM-DD" autoCapitalize="none" value={birthday} onChangeText={setBirthday} error={shown('birthday')} />
-                </View>
               ) : null}
               <Field
                 label="Email address"
@@ -322,7 +300,7 @@ export default function AuthScreen() {
                   />
                   {mode === 'signup' ? (
                     <AppText style={[styles.note, styles.googleNote, { color: t['muted-flat'], fontFamily: fonts.body }]}>
-                      You&apos;ll confirm your birthday right after Google.
+                      You&apos;ll confirm the Terms right after Google.
                     </AppText>
                   ) : null}
                 </View>
