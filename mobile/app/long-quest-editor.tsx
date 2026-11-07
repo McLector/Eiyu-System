@@ -20,7 +20,6 @@ import {
 } from '@eiyu/shared';
 
 import { PlusIcon } from '@/components/eiyu/icons';
-import { TrackerConsent } from '@/components/status/tracker-consent';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { DiscardChangesModal } from '@/components/ui/discard-changes-modal';
@@ -29,7 +28,6 @@ import { StatChip } from '@/components/ui/stat-chip';
 import { StateBlock } from '@/components/ui/state-block';
 import { fonts } from '@/constants/eiyu-theme';
 import { useEiyu } from '@/contexts/eiyu-store';
-import { TRACKER_MESSAGES } from '@/contexts/tracker-access';
 import { useTokens } from '@/contexts/theme-store';
 import { hapticSuccess } from '@/lib/haptics';
 
@@ -42,19 +40,9 @@ export default function LongQuestEditorScreen() {
   const t = useTokens();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { user, saveLongQuest, forgetLongQuestSave, retryLongQuests, tracker, audience, acceptTracker, refreshTracker } = useEiyu();
+  const { user, saveLongQuest, forgetLongQuestSave, retryLongQuests } = useEiyu();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const quest = id ? user.longQuests.find(q => q.id === id) ?? null : null;
-
-  // The live copy carries the current kind. A chain is read-only when it is unclassified, or custom without custom
-  // permission, or access has not loaded; nothing about it can then be saved from here.
-  const kind = quest?.inputKind;
-  const customOpen = !!tracker?.canWriteCustom;
-  const readOnly = quest !== null && (!tracker || !kind || (kind === 'custom' && !customOpen));
-  const paused = !!tracker && !tracker.canWriteBasic;
-  const [mode, setMode] = useState<'basic' | 'custom'>(() => (quest ? (quest.inputKind === 'basic' ? 'basic' : 'custom') : customOpen ? 'custom' : 'basic'));
-  const customFields = mode === 'custom' && (customOpen || readOnly);
-  const needsCustomNotice = mode === 'custom' && !customOpen && !readOnly;
 
   const [name, setName] = useState(quest?.name ?? '');
   const [nameTouched, setNameTouched] = useState(false);
@@ -72,9 +60,9 @@ export default function LongQuestEditorScreen() {
   const committed = useRef(false);
   const heldAction = useRef<unknown>(null);
   const busy = saving || uncertain;
-  const locked = busy || readOnly;
+  const locked = busy;
 
-  const snapshot = () => JSON.stringify({ mode, name, stat, description, stages, strictOrder });
+  const snapshot = () => JSON.stringify({ name, stat, description, stages, strictOrder });
   const [initialSnapshot] = useState(snapshot);
   const dirty = snapshot() !== initialSnapshot;
 
@@ -101,13 +89,11 @@ export default function LongQuestEditorScreen() {
   };
 
   const editing = quest !== null;
-  const nameProblem = editing && name === quest.name ? null : validateQuestName(name);
+  // An unchanged stored name stays as it is; a stored name that is empty is not a name, so it must be filled in.
+  const nameProblem = editing && name === quest.name && name.trim() !== '' ? null : validateQuestName(name);
   const nameError = nameTouched ? nameProblem : null;
   const filled = stages.map(s => ({ ...s, name: s.name.trim() })).filter(s => s.name.length > 0);
-  // Basic chains carry no text: a stage counts without a name, and the chain needs no name.
-  const valid = !!tracker && !paused && (mode === 'basic'
-    ? stages.length >= MIN_STAGES
-    : customOpen && !nameProblem && filled.length >= MIN_STAGES);
+  const valid = !nameProblem && filled.length >= MIN_STAGES;
   const isDone = (stageId: string | null) => !!quest?.stages.find(s => s.id === stageId)?.done;
   // Going back to in order needs the done stages to form a run from the start, judged on the draft (removing an open stage can fix a gap).
   const orderBlocked = !strictOrder && !doneStagesFormPrefix(stages.map(s => ({ done: isDone(s.id) })));
@@ -119,23 +105,20 @@ export default function LongQuestEditorScreen() {
   };
 
   const handleSave = async () => {
-    if (!valid || saving || readOnly) return;
+    if (!valid || saving) return;
     setSaving(true);
     setError(null);
     try {
-      // A basic save carries only the attribute, the order rule and the stages' existing ids: no typed text can travel.
-      const editor: ChainEditorInput = mode === 'basic'
-        ? { mode: 'basic', values: { stat, strictOrder, stages: stages.map(s => (s.id ? { id: s.id } : {})) } }
-        : {
-          mode: 'custom',
-          values: {
-            name: editing && name === quest.name ? name : normalizeNameBoundaries(name),
-            stat,
-            description: description.trim() || undefined,
-            strictOrder,
-            stages: filled.map(s => ({ id: s.id, name: s.name, description: s.description })),
-          },
-        };
+      const editor: ChainEditorInput = {
+        mode: 'custom',
+        values: {
+          name: editing && name === quest.name ? name : normalizeNameBoundaries(name),
+          stat,
+          description: description.trim() || undefined,
+          strictOrder,
+          stages: filled.map(s => ({ id: s.id, name: s.name, description: s.description })),
+        },
+      };
       await saveLongQuest(editor, quest?.id);
       setUncertain(false);
       hapticSuccess();
@@ -184,56 +167,16 @@ export default function LongQuestEditorScreen() {
 
       <View testID="long-quest-editor-form" style={styles.form}>
         <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formContent}>
-          {readOnly ? (
-            <View accessibilityLabel="Read-only quest" style={styles.notice}>
-              <AppText style={[styles.note, { color: t['muted-flat'], fontFamily: fonts.body }]}>
-                {tracker ? TRACKER_MESSAGES.readOnly : 'Tracker access is unavailable, so this chain is read-only for now.'}
-              </AppText>
-              {tracker && kind && !customOpen ? (
-                <TrackerConsent userId={tracker.revision.userId} access={tracker} purpose="custom-tracker" mode="prompt" audience={audience} declineLabel="Keep read-only"
-                  onDecline={close} onChanged={acceptTracker} onStale={() => void refreshTracker()} />
-              ) : null}
-            </View>
-          ) : null}
-
-          {!readOnly && (!editing || kind === 'basic') ? (
-            <View accessibilityLabel="Tracking style">
-              <AppText style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>TRACKING</AppText>
-              <View style={styles.row}>
-                <Chip label="Use basic tracking" selected={mode === 'basic'} disabled={busy} onPress={() => setMode('basic')} />
-                <Chip label="Use custom details" selected={mode === 'custom'} disabled={busy} onPress={() => setMode('custom')} />
-              </View>
-            </View>
-          ) : null}
-
-          {mode === 'basic' && !readOnly ? (
-            <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>
-              Basic chains get neutral names from the System, such as &quot;Chain 1&quot; and &quot;Stage 1&quot;. You still choose the attribute, the stage order and how many stages.
-              {editing ? ' Adding custom details later cannot be undone.' : ''}
-            </AppText>
-          ) : null}
-
-          {needsCustomNotice && tracker ? (
-            <TrackerConsent userId={tracker.revision.userId} access={tracker} purpose="custom-tracker" mode="prompt" audience={audience} declineLabel="Keep basic tracking"
-              onDecline={() => setMode('basic')} onChanged={acceptTracker} onStale={() => void refreshTracker()} />
-          ) : null}
-          {needsCustomNotice && !tracker ? (
-            <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>Tracker access is unavailable. Use basic tracking or try again later.</AppText>
-          ) : null}
-          {paused ? <AppText style={[styles.note, { color: t['dim-flat'], fontFamily: fonts.body }]}>{TRACKER_MESSAGES.paused}</AppText> : null}
-
-          {customFields ? (
-            <Field
-              label="Quest name"
-              placeholder="e.g. Ship a Side Project"
-              value={name}
-              onChangeText={value => { setName(value); setNameTouched(true); }}
-              onBlur={() => setNameTouched(true)}
-              editable={!locked}
-              error={nameError ?? undefined}
-              errorTestID="long-quest-name-error"
-            />
-          ) : null}
+          <Field
+            label="Quest name"
+            placeholder="e.g. Ship a Side Project"
+            value={name}
+            onChangeText={value => { setName(value); setNameTouched(true); }}
+            onBlur={() => setNameTouched(true)}
+            editable={!locked}
+            error={nameError ?? undefined}
+            errorTestID="long-quest-name-error"
+          />
 
           <View>
             <AppText style={[styles.label, { color: t['muted-flat'], fontFamily: fonts.display }]}>STAT</AppText>
@@ -242,16 +185,14 @@ export default function LongQuestEditorScreen() {
             </View>
           </View>
 
-          {customFields ? (
-            <Field
-              label="Note"
-              placeholder="Context, why it matters…"
-              value={description}
-              onChangeText={setDescription}
-              editable={!locked}
-              multiline
-            />
-          ) : null}
+          <Field
+            label="Note"
+            placeholder="Context, why it matters…"
+            value={description}
+            onChangeText={setDescription}
+            editable={!locked}
+            multiline
+          />
 
           <View style={styles.orderOption}>
             <Chip kind="checkbox" label={CHAIN_ORDER_COPY.label} selected={strictOrder} disabled={locked || orderBlocked} onPress={() => setStrictOrder(v => !v)} />
@@ -267,11 +208,6 @@ export default function LongQuestEditorScreen() {
               const canRemove = stages.length > MIN_STAGES;
               return (
                 <View key={i} style={styles.stage}>
-                  {mode === 'basic' ? (
-                    <View style={styles.stageFields}>
-                      <AppText style={[styles.note, { color: t.text, fontFamily: fonts.body, fontSize: 15, minHeight: 48, textAlignVertical: 'center' }]}>{`Stage ${i + 1}`}</AppText>
-                    </View>
-                  ) : (
                   <View style={styles.stageFields}>
                     <Field
                       testID={`long-quest-stage-name-${i + 1}`}
@@ -293,7 +229,6 @@ export default function LongQuestEditorScreen() {
                       multiline
                     />
                   </View>
-                  )}
                   {canRemove ? (
                     <Pressable
                       accessibilityRole="button"
@@ -321,7 +256,7 @@ export default function LongQuestEditorScreen() {
 
       <View testID="long-quest-editor-footer" style={[styles.footer, { borderTopColor: t['divider-flat'], paddingBottom: Math.max(12, insets.bottom) }]}>
         {error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
-        {readOnly ? null : <Button
+        <Button
           testID="long-quest-save"
           variant="primary"
           label={saving ? 'SAVING…' : uncertain ? 'CHECK SAVE RESULT' : editing ? 'SAVE CHANGES' : 'CREATE LONG QUEST'}
@@ -329,7 +264,7 @@ export default function LongQuestEditorScreen() {
           disabled={!valid}
           busy={saving}
           onPress={() => void handleSave()}
-        />}
+        />
       </View>
 
       <DiscardChangesModal
@@ -372,7 +307,6 @@ const styles = StyleSheet.create({
   remove: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   dimmed: { opacity: 0.45 },
   note: { fontSize: 12, lineHeight: 17 },
-  notice: { gap: 8 },
   footer: { flexShrink: 0, paddingHorizontal: 20, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, gap: 8 },
   overlay: { flex: 1, justifyContent: 'center', padding: 20 },
   dialog: { width: '100%', maxWidth: 480, alignSelf: 'center', borderWidth: 1, borderRadius: 4, padding: 20, gap: 10 },
