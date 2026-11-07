@@ -1,10 +1,10 @@
 import { act, fireEvent, screen, userEvent, within, waitFor } from '@testing-library/react-native';
 import { Alert, StyleSheet } from 'react-native';
 
-import { type TrackerAccess } from '@eiyu/shared';
+import { AI_NOTICE_VERSION, type ProcessingAccess, type TrackerAccess } from '@eiyu/shared';
 import { noGrant } from '../../test-support/tracker-fixtures';
 import AccountHeader from '../eiyu/account-header';
-import { renderWithTheme, TestThemeProvider } from '../ui/test-theme';
+import { renderWithTheme } from '../ui/test-theme';
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -14,15 +14,11 @@ jest.mock('react-native-safe-area-context', () => ({
 
 const mockSignOut = jest.fn();
 const mockSaveProfile = jest.fn();
-const mockFetchAge = jest.fn();
-const mockSetBirthday = jest.fn();
 const mockProcessing = jest.fn();
 const mockConsent = jest.fn();
 let mockTracker: TrackerAccess | null = null;
-let mockAgeOwner = 'owner-a';
+let mockOwner = 'owner-a';
 jest.mock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'),
-  fetchAccountAge: (...args: unknown[]) => mockFetchAge(...args),
-  setAccountBirthday: (...args: unknown[]) => mockSetBirthday(...args),
   fetchProcessingAccess: (...args: unknown[]) => mockProcessing(...args),
   setProcessingConsent: (...args: unknown[]) => mockConsent(...args),
 }));
@@ -30,7 +26,7 @@ let mockParams: { account?: string } = {};
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), navigate: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => mockParams }));
 const mockRouter = jest.requireMock('expo-router').router as { push: jest.Mock; navigate: jest.Mock; setParams: jest.Mock };
-jest.mock('@/contexts/auth-store', () => ({ useAuth: () => ({ signOut: mockSignOut, session: { user: { id: mockAgeOwner } } }) }));
+jest.mock('@/contexts/auth-store', () => ({ useAuth: () => ({ signOut: mockSignOut, session: { user: { id: mockOwner } } }) }));
 jest.mock('@/contexts/eiyu-store', () => ({
   useEiyu: () => ({
     user: { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C', quests: [] },
@@ -43,6 +39,12 @@ jest.mock('@/contexts/eiyu-store', () => ({
   }),
 }));
 
+const access = (over: Partial<ProcessingAccess> = {}): ProcessingAccess => ({
+  contractVersion: 1, userId: 'owner-a', ageVersion: 1, consentVersion: 3, authorityVersion: 0, mailboxVersion: 2,
+  ageEligible: true, ageConsent: true, aiConsent: true, canReadDebrief: true, canGenerateDebrief: true,
+  authorityState: 'not-required', ...over,
+});
+const OFF_BUTTON = { name: 'Turn off AI weekly review' };
 const TRIGGER = /Yuki Tanaka.*Ranger.*rank C/i;
 const openMenu = async (user: ReturnType<typeof userEvent.setup>) => { await user.press(screen.getByRole('button', { name: TRIGGER })); };
 const openProfile = async (user: ReturnType<typeof userEvent.setup>) => { await openMenu(user); await user.press(screen.getByRole('menuitem', { name: 'Edit details' })); };
@@ -51,11 +53,8 @@ describe('native account header', () => {
   beforeEach(() => {
     mockSignOut.mockReset().mockResolvedValue({ error: null });
     mockSaveProfile.mockReset().mockResolvedValue(undefined);
-    mockFetchAge.mockReset().mockResolvedValue({ userId: 'owner-a', birthDate: null, pendingBirthDate: null, correctionPending: false });
-    mockSetBirthday.mockReset().mockResolvedValue({ birthDate: '2000-01-01', correctionPending: false });
-    mockAgeOwner = 'owner-a';
-    mockProcessing.mockReset().mockImplementation(async () => ({contractVersion: 1, userId: mockAgeOwner, ageVersion: 1, consentVersion: 1, authorityVersion: 0, mailboxVersion: 1,
-      ageEligible: true, ageConsent: true, aiConsent: false, canReadDebrief: true, canGenerateDebrief: false, authorityState: 'not-required'}));
+    mockOwner = 'owner-a';
+    mockProcessing.mockReset().mockImplementation(async () => access());
     mockConsent.mockReset();
     mockTracker = noGrant('owner-a');
     mockRouter.push.mockReset();
@@ -75,7 +74,7 @@ describe('native account header', () => {
     it('shows no tracker permissions, no retention notice and no unavailable notice, whatever the store says', async () => {
       const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
       await screen.findByLabelText('Display name');
-      await waitFor(() => expect(mockFetchAge).toHaveBeenCalled());
+      await waitFor(() => expect(mockProcessing).toHaveBeenCalled());
       expect(screen.queryByLabelText('Tracker permissions')).toBeNull();
       expect(screen.queryByText(/tracker permissions/i)).toBeNull();
       expect(screen.queryByText(/custom quest records|will be removed on|Gym tracking|custom tracker/i)).toBeNull();
@@ -85,7 +84,7 @@ describe('native account header', () => {
       mockTracker = null;
       const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
       await screen.findByLabelText('Display name');
-      await waitFor(() => expect(mockFetchAge).toHaveBeenCalled());
+      await waitFor(() => expect(mockProcessing).toHaveBeenCalled());
       expect(screen.queryByText(/tracker permissions are unavailable/i)).toBeNull();
       expect(screen.queryByLabelText('Tracker permissions')).toBeNull();
     });
@@ -103,57 +102,117 @@ describe('native account header', () => {
     expect(screen.getByRole('button',{name:'Prepare data download'})).toBeEnabled();
     expect(screen.getByLabelText('Display name').props.value).toBe('Synthetic draft');expect(mockSaveProfile).not.toHaveBeenCalled();
   });
-  it('requires separate birthday permission before a legacy birthday write, without requiring guardian evidence', async () => {
-    const access = {...await mockProcessing(), ageConsent: false, canReadDebrief: false};
-    mockProcessing.mockResolvedValue(access);
-    mockConsent.mockResolvedValue({...access, ageConsent: true, consentVersion: 2});
-    const user = userEvent.setup(); await renderWithTheme(<AccountHeader/>); await openProfile(user);
-    await waitFor(() => expect(screen.getByLabelText('Birthday')).toBeEnabled());
-    await fireEvent.changeText(screen.getByLabelText('Birthday'), '2020-01-01');
-    await user.press(screen.getByRole('button', {name: 'Save'}));
-    expect(mockSetBirthday).not.toHaveBeenCalled();
-    await user.press(screen.getByRole('checkbox', {name: /I agree.*birthday/i}));
-    await user.press(screen.getByRole('button', {name: 'Save'}));
-    expect(mockSetBirthday).toHaveBeenCalledWith('2020-01-01', 'owner-a');
-  });
-  it('lets a legacy user declare a birthday in Profile while a failed save stays editable', async () => {
-    const user = userEvent.setup();
-    await renderWithTheme(<AccountHeader />);
-    await openProfile(user);
-    await waitFor(() => expect(screen.getByLabelText('Birthday')).toBeEnabled());
-    await fireEvent.changeText(screen.getByLabelText('Birthday'), '2000-01-01');
-    mockSetBirthday.mockRejectedValueOnce(new Error('Birthday save unavailable'));
-    await user.press(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByText('Birthday save unavailable')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01');
-    await user.press(screen.getByRole('button', { name: 'Save' }));
-    expect(mockSetBirthday).toHaveBeenCalledWith('2000-01-01', 'owner-a');
-  });
-  it('clears the previous account birthday when authentication switches owners', async () => {
-    mockFetchAge.mockResolvedValueOnce({ birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false });
-    const user = userEvent.setup(); const tree = await renderWithTheme(<AccountHeader />);
-    await openProfile(user);
-    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01'));
-    mockAgeOwner = 'owner-b';
-    await tree.rerender(<TestThemeProvider><AccountHeader /></TestThemeProvider>);
-    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue(''));
+  describe('Profile after the simplification', () => {
+    it('has no birthday, permission, review or retention wording or fields', async () => {
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await screen.findByText(/AI weekly review is on/i);
+      expect(screen.queryByLabelText('Birthday')).toBeNull();
+      expect(screen.queryByText(/birthday|birth date|child|teen|under 1[38]|guardian/i)).toBeNull();
+      expect(screen.queryByText(/request (a )?review|review request|retention|read-only for 30 days|paused for this account/i)).toBeNull();
+      expect(screen.queryByRole('checkbox')).toBeNull();
+    });
+
+    it('keeps Download your data and the name and class fields', async () => {
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByRole('button', { name: 'Prepare data download' })).toBeEnabled();
+      expect(screen.getByLabelText('Display name').props.value).toBe('Yuki Tanaka');
+      expect(screen.getByLabelText('Class').props.value).toBe('Ranger');
+    });
+
+    it('stays usable when the AI access read fails, and says the AI choice is unavailable', async () => {
+      mockProcessing.mockRejectedValue(new Error('network'));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByText(/AI weekly review settings are unavailable/i)).toBeOnTheScreen();
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+      expect(screen.queryByRole('button', OFF_BUTTON)).toBeNull();
+    });
   });
 
-  it('explicitly accepts an unchanged pending birthday, but never accepts it merely by opening Profile', async () => {
-    mockFetchAge.mockResolvedValueOnce({userId:'owner-a',birthDate:'2014-01-01',pendingBirthDate:'2000-01-01',correctionPending:true});
-    const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01'));
-    expect(mockSetBirthday).not.toHaveBeenCalled();
-    await user.press(screen.getByRole('button', {name:'Save'}));
-    expect(mockSetBirthday).toHaveBeenCalledWith('2000-01-01','owner-a');
-  });
+  describe('AI off switch', () => {
+    it('shows that AI weekly review is on and offers to turn it off', async () => {
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByText(/AI weekly review is on/i)).toBeOnTheScreen();
+      expect(screen.getByRole('button', OFF_BUTTON)).toBeEnabled();
+    });
 
-  it('does not resubmit an unchanged birthday when there is no pending correction', async () => {
-    mockFetchAge.mockResolvedValueOnce({userId:'owner-a',birthDate:'2000-01-01',pendingBirthDate:null,correctionPending:false});
-    const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
-    await waitFor(() => expect(screen.getByLabelText('Birthday')).toHaveDisplayValue('2000-01-01'));
-    await user.press(screen.getByRole('button', {name:'Save'}));
-    expect(mockSetBirthday).not.toHaveBeenCalled();
+    it('turns it off with the current notice and the access that was read, and says so', async () => {
+      const before = access();
+      mockProcessing.mockResolvedValue(before);
+      mockConsent.mockResolvedValue(access({ aiConsent: false, canGenerateDebrief: false, consentVersion: 4 }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('button', OFF_BUTTON));
+      expect(mockConsent).toHaveBeenCalledTimes(1);
+      expect(mockConsent).toHaveBeenCalledWith('weekly-debrief', false, AI_NOTICE_VERSION, before);
+      expect(await screen.findByText(/AI weekly review is off/i)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', OFF_BUTTON)).toBeNull();
+    });
+
+    it('never offers a way to turn it on: when it is off there is no button, no box and no call', async () => {
+      mockProcessing.mockResolvedValue(access({ aiConsent: false, canGenerateDebrief: false }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByText(/AI weekly review is off/i)).toBeOnTheScreen();
+      expect(screen.getByText(/Status page/i)).toBeOnTheScreen();
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      expect(screen.queryByRole('switch')).toBeNull();
+      expect(screen.queryByRole('button', { name: /turn on|enable/i })).toBeNull();
+      expect(mockConsent).not.toHaveBeenCalled();
+    });
+
+    it('does not send a second request while the first is running', async () => {
+      let finish!: (value: ProcessingAccess) => void;
+      mockConsent.mockReturnValue(new Promise<ProcessingAccess>(resolve => { finish = resolve; }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('button', OFF_BUTTON));
+      await user.press(screen.getByRole('button', OFF_BUTTON));
+      expect(mockConsent).toHaveBeenCalledTimes(1);
+      await act(async () => finish(access({ aiConsent: false, canGenerateDebrief: false })));
+      expect(await screen.findByText(/AI weekly review is off/i)).toBeOnTheScreen();
+    });
+
+    it('keeps it on and shows the reason when the save fails', async () => {
+      mockConsent.mockRejectedValue(new Error('server unavailable'));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('button', OFF_BUTTON));
+      expect(await screen.findByText('server unavailable')).toBeOnTheScreen();
+      expect(screen.getByText(/AI weekly review is on/i)).toBeOnTheScreen();
+      expect(screen.getByRole('button', OFF_BUTTON)).toBeEnabled();
+    });
+
+    it('re-reads access after a stale save and offers the fresh state', async () => {
+      mockProcessing.mockResolvedValueOnce(access()).mockResolvedValueOnce(access({ aiConsent: false, canGenerateDebrief: false, consentVersion: 5 }));
+      mockConsent.mockRejectedValue({ code: 'EP002', message: 'Processing access changed. Refresh your choices.' });
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('button', OFF_BUTTON));
+      expect(await screen.findByText(/Processing access changed/)).toBeOnTheScreen();
+      await waitFor(() => expect(mockProcessing).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText(/AI weekly review is off/i)).toBeOnTheScreen();
+    });
+
+    it('refuses to act on access that belongs to another account', async () => {
+      mockProcessing.mockResolvedValue(access({ userId: 'someone-else' }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      expect(await screen.findByText(/AI weekly review settings are unavailable/i)).toBeOnTheScreen();
+      expect(screen.queryByRole('button', OFF_BUTTON)).toBeNull();
+      expect(mockConsent).not.toHaveBeenCalled();
+    });
+
+    it('ignores a result for another account and does not claim it is off', async () => {
+      mockConsent.mockResolvedValue(access({ userId: 'someone-else', aiConsent: false, canGenerateDebrief: false }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('button', OFF_BUTTON));
+      expect(await screen.findByRole('alert')).toBeOnTheScreen();
+      expect(screen.getByText(/AI weekly review is on/i)).toBeOnTheScreen();
+    });
+
+    it('does not make the sheet dirty, so closing needs no discard prompt', async () => {
+      mockConsent.mockResolvedValue(access({ aiConsent: false, canGenerateDebrief: false }));
+      const user = userEvent.setup(); await renderWithTheme(<AccountHeader />); await openProfile(user);
+      await user.press(await screen.findByRole('button', OFF_BUTTON));
+      await screen.findByText(/AI weekly review is off/i);
+      await user.press(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByLabelText('Discard changes?')).toBeNull();
+      expect(screen.queryByText('EDIT DETAILS')).toBeNull();
+    });
   });
 
   it('lays a pulsing glow under the brand mark, invisible to screen readers', async () => {

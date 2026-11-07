@@ -3,8 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
-import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
+import { AI_NOTICE_VERSION, fetchProcessingAccess, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG, setProcessingConsent, type ProcessingAccess } from '@eiyu/shared';
 import {OwnerExport} from '@/components/eiyu/owner-export';
 
 import ArchivedHabitsSheet from '@/components/eiyu/archived-habits-sheet';
@@ -22,42 +21,60 @@ import { useTokens } from '@/contexts/theme-store';
 type OpenSheet = 'menu' | 'profile' | 'settings' | 'archived' | null;
 const ROUTE_SHEETS = ['profile', 'settings', 'archived'] as const;
 
+const AI_UNAVAILABLE = 'AI weekly review settings are unavailable right now. You can still edit your name and class.';
+
+/** The server reports a stale decision with code EP002; Supabase errors are plain objects, not Error instances. */
+function isStale(err: unknown) {
+  return !!err && typeof err === 'object' && 'code' in err && (err as { code: unknown }).code === 'EP002';
+}
+
 function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string | undefined }) {
   const t = useTokens();
   const { user, saveProfile } = useEiyu();
   const [displayName, setDisplayName] = useState(user.name);
   const [userClass, setUserClass] = useState(user.userClass);
-  const [birthday, setBirthday] = useState('');
-  const [originalBirthday, setOriginalBirthday] = useState('');
-  const [correctionPending, setCorrectionPending] = useState(false);
-  const [ageLoaded, setAgeLoaded] = useState(false);
-  const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
-  const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
   const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
-  const [processingError, setProcessingError] = useState<string | null>(null);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPending, setAiPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [discardPrompt, setDiscardPrompt] = useState(false);
   const saving = useRef(false);
-  const dirty = displayName !== user.name || userClass !== user.userClass || birthday !== originalBirthday;
+  const turningOff = useRef(false);
+  const dirty = displayName !== user.name || userClass !== user.userClass;
+
+  const readAccess = (isActive: () => boolean) => fetchProcessingAccess().then(status => {
+    if (!isActive()) return;
+    if (status.userId !== userId) throw new Error(AI_UNAVAILABLE);
+    setProcessing(status); setAiUnavailable(false);
+  }).catch(() => { if (isActive()) { setProcessing(null); setAiUnavailable(true); } });
 
   useEffect(() => {
     let active = true;
-    fetchProcessingAccess().then(status => {
-      if (!active) return;
-      if (status.userId !== userId) throw new Error('Permission settings are unavailable for this account.');
-      setProcessing(status);
-    }).catch(() => {if (active) setProcessingError('Permission settings are unavailable. You can still edit your name and class.');});
-    fetchAccountAge().then(status => {
-      if (!active) return;
-      const value = status.pendingBirthDate ?? status.birthDate ?? '';
-      setBirthday(value); setOriginalBirthday(value); setAgeLoaded(true);
-      setBirthdayOwner(userId);
-      setCorrectionPending(status.correctionPending);
-      if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-    }).catch(() => { if (active) setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); });
+    void readAccess(() => active);
     return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  // This can only switch AI off. Turning it on needs the 18+ box and a verified email, which live on the Status screen.
+  const turnOffAi = async () => {
+    if (turningOff.current || !processing?.aiConsent) return;
+    turningOff.current = true;
+    setAiPending(true); setAiError(null);
+    const owner = userId;
+    try {
+      const next = await setProcessingConsent('weekly-debrief', false, AI_NOTICE_VERSION, processing);
+      if (next.userId !== owner || next.aiConsent) throw new Error(AI_UNAVAILABLE);
+      setProcessing(next);
+    } catch (err) {
+      setAiError(formatError(err));
+      if (isStale(err)) void readAccess(() => true);
+    } finally {
+      turningOff.current = false;
+      setAiPending(false);
+    }
+  };
 
   useEffect(() => {
     setDisplayName(user.name);
@@ -81,26 +98,9 @@ function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string
       const normalized = normalizeProfileEdit({ displayName, userClass }, {
         displayName: user.name, userClass: user.userClass,
       });
-      if (birthday !== originalBirthday || correctionPending) {
-        if (!userId || processing?.userId !== userId || !processing.ageConsent) throw new Error('Review the birthday permission before saving a birthday correction.');
-        const validation = validateBirthday(birthday);
-        if (validation) throw new Error(validation);
-      }
       saving.current = true;
       setPending(true);
       await saveProfile(normalized);
-      if (birthday !== originalBirthday || correctionPending) {
-        const status = await setAccountBirthday(birthday, birthdayOwner);
-        const value = status.pendingBirthDate ?? status.birthDate ?? birthday;
-        setOriginalBirthday(value); setBirthday(value);
-        setCorrectionPending(status.correctionPending);
-        if (status.correctionPending) {
-          setProcessing(null);
-          fetchProcessingAccess().then(next => {if (next.userId === userId) setProcessing(next);}).catch(() => setProcessingError('Refresh Profile to review permission settings.'));
-          setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-          return;
-        }
-      }
       onClose();
     } catch (err) {
       setError(formatError(err));
@@ -129,11 +129,21 @@ function ProfileSheet({ onClose, userId }: { onClose: () => void; userId: string
         <View style={styles.form}>
           <Field label="Display name" value={displayName} editable={!pending} onChangeText={setDisplayName} autoFocus />
           <Field label="Class" value={userClass} editable={!pending} onChangeText={setUserClass} />
-          <AppText selectable style={[styles.error, {color: t['muted-flat'], fontFamily: fonts.body}]}>{CHILD_PRIVACY_NOTICE}</AppText>
-          <Field label="Birthday" placeholder="YYYY-MM-DD" value={birthday} editable={ageLoaded && !pending} onChangeText={setBirthday} />
-          {processingError ? <AppText accessibilityRole="alert" style={[styles.error, {color: t.danger}]}>{processingError}</AppText> : null}
+          <View style={styles.ai} accessibilityLabel="AI weekly review">
+            <AppText accessibilityRole="header" style={[styles.aiTitle, { color: t.text, fontFamily: fonts.display }]}>AI weekly review</AppText>
+            {aiUnavailable ? <AppText style={[styles.aiText, { color: t['muted-flat'], fontFamily: fonts.body }]}>{AI_UNAVAILABLE}</AppText> : null}
+            {processing?.aiConsent ? (
+              <>
+                <AppText style={[styles.aiText, { color: t['muted-flat'], fontFamily: fonts.body }]}>AI weekly review is on.</AppText>
+                <Button variant="secondary" label="Turn off AI weekly review" busy={aiPending} onPress={() => void turnOffAi()} />
+              </>
+            ) : null}
+            {processing && !processing.aiConsent ? (
+              <AppText style={[styles.aiText, { color: t['muted-flat'], fontFamily: fonts.body }]}>AI weekly review is off. You can turn it on from the Status page.</AppText>
+            ) : null}
+            {aiError ? <AppText accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{aiError}</AppText> : null}
+          </View>
           {userId ? <OwnerExport key={userId} userId={userId}/> : null}
-          {birthdayNote ? <AppText style={[styles.error, { color: t['muted-flat'], fontFamily: fonts.body }]}>{birthdayNote}</AppText> : null}
           {error ? <AppText accessibilityRole="alert" style={[styles.error, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
         </View>
       </Sheet>
@@ -258,4 +268,7 @@ const styles = StyleSheet.create({
   form: { gap: 14, paddingTop: 4 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 8 },
   error: { fontSize: 13, lineHeight: 18, marginTop: 8 },
+  ai: { gap: 8 },
+  aiTitle: { fontSize: 15, letterSpacing: 0.6 },
+  aiText: { fontSize: 13, lineHeight: 18 },
 });
