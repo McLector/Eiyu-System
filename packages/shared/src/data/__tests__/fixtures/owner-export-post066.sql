@@ -1,6 +1,7 @@
 -- Recipe for owner-export-post066.json (all values synthetic; nothing is committed, the transaction rolls back).
 -- Rebuild it whenever the export manifest changes, because the contract test compares the fixture with the validator:
---   docker exec -i <db container> psql -U supabase_admin -d postgres -At -X -v ON_ERROR_STOP=1 --     < packages/shared/src/data/__tests__/fixtures/owner-export-post066.sql --     | grep '^SNAPSHOT:' | sed 's/^SNAPSHOT://'
+--   docker exec -i <db container> psql -U supabase_admin -d postgres -At -X -v ON_ERROR_STOP=1 < packages/shared/src/data/__tests__/fixtures/owner-export-post066.sql
+-- Keep the one output line that starts with SNAPSHOT: and drop that prefix.
 -- then pretty-print that JSON (2-space indent) into owner-export-post066.json.
 -- Run it on a database that has migrations 066 applied (the local disposable stack), never on live data.
 begin;
