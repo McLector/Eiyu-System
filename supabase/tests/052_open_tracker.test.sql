@@ -76,6 +76,21 @@ select is((select name from public.habits where id='da260000-0000-4000-8000-0000
 -- A new custom quest and chain need no grant either.
 select lives_ok($$select pg_temp.cmd('habit-save','{"p_id":"da260000-0000-4000-8000-000000000013","p_create":true,"p_mode":"custom","p_input":{"name":"Fresh custom","easyVersion":"small","questType":"habit","stat":"WIS","difficulty":"Easy","time":"09:00","days":[1,3,5],"scheduledDate":null,"targetCount":null,"timeSet":true}}')$$,'a new custom quest needs no grant');
 
+-- C2. An old chain with no provenance row: its stages toggle, it can be edited, and a new custom chain is accepted.
+reset role;
+insert into public.long_quests(id,user_id,name,stat) values('da260000-0000-4000-8000-000000000061','da260000-0000-4000-8000-000000000001','Old named chain','INT');
+insert into public.long_quest_stages(id,long_quest_id,user_id,name,position) values
+ ('da260000-0000-4000-8000-000000000062','da260000-0000-4000-8000-000000000061','da260000-0000-4000-8000-000000000001','First legacy stage',1),
+ ('da260000-0000-4000-8000-000000000063','da260000-0000-4000-8000-000000000061','da260000-0000-4000-8000-000000000001','Second legacy stage',2);
+set local role authenticated;
+select set_config('request.jwt.claim.sub','da260000-0000-4000-8000-000000000001',true);
+select is(public.get_tracker_targets('chain',array['da260000-0000-4000-8000-000000000061']::uuid[])#>>'{0,canWrite}','true','the legacy chain is writable with no grant');
+select lives_ok($$select pg_temp.cmd('set_long_quest_stage_done_receipt',jsonb_build_object('p_stage_id','da260000-0000-4000-8000-000000000062','p_done',true,'p_request_id','da260000-0000-4000-8000-000000000064'),'[{"kind":"chain","id":"da260000-0000-4000-8000-000000000061","inputKind":"custom"}]')$$,'a legacy chain stage can be completed with no grant');
+select ok((select done from public.long_quest_stages where id='da260000-0000-4000-8000-000000000062'),'and the stage is stored as done');
+select lives_ok($$select pg_temp.cmd('chain-save','{"p_id":"da260000-0000-4000-8000-000000000061","p_request_id":"da260000-0000-4000-8000-000000000065","p_create":false,"p_mode":"custom","p_input":{"name":"Renamed old chain","stat":"INT","stages":[{"id":"da260000-0000-4000-8000-000000000062","name":"First legacy stage","description":null},{"id":"da260000-0000-4000-8000-000000000063","name":"Second legacy stage","description":null}]}}','[{"kind":"chain","id":"da260000-0000-4000-8000-000000000061","inputKind":"custom"}]')$$,'a legacy chain can be edited with no grant');
+select is((select name from public.long_quests where id='da260000-0000-4000-8000-000000000061'),'Renamed old chain','and the new name is stored');
+select lives_ok($$select pg_temp.cmd('chain-save','{"p_id":"da260000-0000-4000-8000-000000000066","p_request_id":"da260000-0000-4000-8000-000000000067","p_create":true,"p_mode":"custom","p_input":{"name":"Fresh custom chain","stat":"WIS","stages":[{"id":"da260000-0000-4000-8000-000000000068","name":"Only stage","description":null}]}}')$$,'a new custom chain needs no grant');
+
 -- D. Gym logs a weight with no fitness grant.
 select lives_ok($$select pg_temp.cmd('gym-routine-save','{"p_id":"da260000-0000-4000-8000-000000000021","p_create":true,"p_name":"Open routine","p_unit":"kg"}')$$,'a Gym routine needs no fitness grant');
 select lives_ok($$select pg_temp.cmd('save_gym_exercise','{"p_id":"da260000-0000-4000-8000-000000000022","p_input":{"routine_id":"da260000-0000-4000-8000-000000000021","name":"Squat","position":0,"sets":3,"reps":"5","rest_seconds":90,"rir":2,"notes":""}}')$$,'a Gym exercise needs no fitness grant');
