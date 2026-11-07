@@ -46,13 +46,18 @@ describe('dev ball: seed a quest completed today', () => {
 
   it.each([
     ['no capability yet', null],
-    ['custom permission not granted', trackerAccess({ customConsent: false, canWriteCustom: false }, 'u')],
-    ['a paused account', trackerAccess({ canWriteBasic: false, canWriteCustom: false }, 'u')],
     ["another account's capability", trackerAccess({}, 'someone-else')],
   ])('sends nothing with %s', async (_label, tracker) => {
-    await expect(seedCompletedQuest({ userId: 'u', tracker, input, kind: 'full', todayKey: '2026-10-24', timeZone: 'UTC' })).rejects.toThrow(/permission|unavailable|paused/i);
+    await expect(seedCompletedQuest({ userId: 'u', tracker, input, kind: 'full', todayKey: '2026-10-24', timeZone: 'UTC' })).rejects.toThrow('Tracker access unavailable.');
     expect(mockShared.createHabit).not.toHaveBeenCalled();
     expect(mockShared.completeHabit).not.toHaveBeenCalled();
+  });
+
+  it('seeds whatever the capability flags say, because only the gateway decides what may be written', async () => {
+    const closed = trackerAccess({ customConsent: false, fitnessConsent: false, canWriteCustom: false, canWriteFitness: false, canWriteBasic: false }, 'u');
+    await seedCompletedQuest({ userId: 'u', tracker: closed, input, kind: 'full', todayKey: '2026-10-24', timeZone: 'UTC' });
+    expect(mockShared.createHabit).toHaveBeenCalledTimes(1);
+    expect(mockShared.completeHabit).toHaveBeenCalledTimes(1);
   });
 
   it('does not complete a quest that was not created', async () => {

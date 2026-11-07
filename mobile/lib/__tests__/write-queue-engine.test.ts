@@ -789,6 +789,26 @@ describe('flush and tracker permission', () => {
     expect(t.engine.getEntries()[0].failure?.reason).toBe('purpose-paused');
   });
 
+  it('replays a captured custom entry when the server reports every write open, whatever the consent flags say', async () => {
+    // The shape the server reports once the permission layer is gone: write bits true, consent flags unused.
+    const open = { canWriteBasic: true, canWriteCustom: true, canWriteFitness: true, customConsent: false, fitnessConsent: false };
+    const t = setup({ checkProcessingAccess: answer(open, () => [target('h1', { inputKind: 'custom', canWrite: true })]) },
+      [stored({ trackerTargets: [snap('h1', 'custom')] })]);
+    await t.engine.load(); await t.engine.flush();
+    expect(t.deps.send).toHaveBeenCalledWith(expect.objectContaining({ habitId: 'h1', trackerRevision: REVISION, trackerTargets: [snap('h1', 'custom')] }));
+    expect(t.engine.getEntries()).toEqual([]);
+  });
+
+  it('accepts a new custom entry made under that same capability, and sends it', async () => {
+    const open = { canWriteBasic: true, canWriteCustom: true, canWriteFitness: true, customConsent: false, fitnessConsent: false };
+    const t = setup({ checkProcessingAccess: answer(open, () => [target('h1', { inputKind: 'custom', canWrite: true })]) });
+    await t.engine.load();
+    expect(t.engine.enqueue({ kind: 'complete', habitId: 'h1', trackerTargets: [snap('h1', 'custom')], trackerAccess: access(open) })).toBe(true);
+    await t.engine.flush();
+    expect(t.calls).toEqual(['complete:h1']);
+    expect(t.engine.getEntries()).toEqual([]);
+  });
+
   it('holds an entry with no captured revision or targets and never stamps it', async () => {
     const legacy = stored(); delete legacy.trackerRevision;
     const noTargets = stored({ id: 'second', habitId: 'h2' }); delete noTargets.trackerTargets;

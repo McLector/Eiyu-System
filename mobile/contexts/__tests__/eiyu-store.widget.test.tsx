@@ -179,6 +179,16 @@ describe('the store keeps the widget snapshot current', () => {
     expect(raw).not.toContain('Old habit');
   });
 
+  it('keeps every quest in the snapshot when the server reports every write open', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', { customConsent: false, fitnessConsent: false, canWriteBasic: true, canWriteCustom: true, canWriteFitness: true });
+    const custom: Quest = { ...quest, id: 'custom', name: 'Morning walk', inputKind: 'custom', canWrite: true };
+    const legacy: Quest = { ...quest, id: 'legacy', name: 'Old habit', inputKind: undefined, canWrite: undefined };
+    mockShared.fetchTodayHabits.mockResolvedValue([quest, custom, legacy]);
+    await mountStore();
+    await waitFor(async () => expect((await storedSnapshot())?.state).toBe('ready'));
+    expect((await storedReady()).rows.map(row => row.name).sort()).toEqual(['Morning walk', 'Old habit', 'Read']);
+  });
+
   it('stores today\'s board once it has loaded, dated by when it was fetched, and asks the widget to redraw', async () => {
     await mountStore();
     await waitFor(async () => expect((await storedSnapshot())?.state).toBe('ready'));

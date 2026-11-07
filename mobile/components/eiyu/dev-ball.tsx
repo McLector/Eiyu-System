@@ -103,8 +103,6 @@ export async function seedCompletedQuest(params: {
 }): Promise<string> {
   const { userId, tracker, input, kind, todayKey, timeZone } = params;
   if (!tracker || tracker.revision.userId !== userId) throw new Error(TRACKER_ACCESS_MESSAGE);
-  if (!tracker.canWriteBasic) throw new Error('Tracker changes are paused for this account.');
-  if (!tracker.canWriteCustom) throw new Error('Seeding a custom quest needs custom tracker permission. Grant it in Profile first.');
   const expected = copyTrackerRevision(tracker.revision);
   const creationId = newRequestId();
   const habitId = await createHabit(userId, { mode: 'custom', values: input }, expected, creationId);

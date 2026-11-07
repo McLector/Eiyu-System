@@ -31,8 +31,6 @@ export function makeEditorStore(quests: Quest[] = [], tracker: TrackerAccess | n
     user,
     backlog,
     tracker,
-    acceptTracker: jest.fn(),
-    refreshTracker: jest.fn().mockResolvedValue(undefined),
     saveHabit: jest.fn().mockResolvedValue(undefined),
     archiveQuest: jest.fn().mockResolvedValue(undefined),
     restoreQuest: jest.fn().mockResolvedValue(undefined),

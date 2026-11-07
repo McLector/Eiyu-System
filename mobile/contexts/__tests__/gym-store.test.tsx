@@ -10,7 +10,6 @@ const mockTracker = createTrackerMocks();
 const mockShared = {
   ...mockTracker,
   fetchGym: jest.fn(),
-  fetchAccountAge: jest.fn(),
   fetchRecentGymWeights: jest.fn(),
   logGymWeight: jest.fn(),
   moveGymExercises: jest.fn(),
@@ -25,6 +24,7 @@ jest.doMock('@eiyu/shared', () => ({ ...jest.requireActual('@eiyu/shared'), ...m
 jest.doMock('@/contexts/auth-store', () => ({ useAuth: () => ({ session: { user: { id: 'user-1' } } }) }));
 
 const { GymProvider, useGym } = require('../gym-store') as typeof import('../gym-store');
+const { trackerKey } = require('@/contexts/tracker-access') as typeof import('@/contexts/tracker-access');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const routine = (over: Partial<GymRoutine> = {}): GymRoutine => ({ id: 'r1', user_id: 'user-1', name: 'Push', unit: 'kg', archived: false, created_at: '2026-10-01', ...over });
@@ -216,75 +216,81 @@ describe('gym store: exercises and routines', () => {
   });
 });
 
-describe('gym store: fitness permission', () => {
+describe('gym store: no permission layer', () => {
   const stale = () => Object.assign(new Error('stale'), { code: 'ET003' });
   const writes = () => [mockShared.logGymWeight, mockShared.archiveGymRoutine, mockShared.deleteGymRoutine, mockShared.removeGymExercise, mockShared.moveGymExercises];
+  // A capability that says no to everything: Gym must not act on it, only the gateway may.
+  const closed = () => trackerAccess({ customConsent: false, fitnessConsent: false, canWriteCustom: false, canWriteFitness: false, canWriteBasic: false }, 'user-1');
 
-  it('reads history and makes no write call on mount, without permission', async () => {
-    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
-    await mount();
-    expect(gym!.routines.map(r => r.id)).toEqual(['r1']);
-    expect(gym!.canWriteFitness).toBe(false);
-    for (const fn of writes()) expect(fn).not.toHaveBeenCalled();
-  });
-
-  it('does not log, archive, delete, remove or move without permission: it asks instead', async () => {
+  it('logs, archives, deletes, removes and moves with no fitness permission, each with a copy of the loaded revision', async () => {
     resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
     await mount();
     await act(async () => gym!.setDraft('e1', '70'));
     await act(async () => { await gym!.logWeight(gym!.exercises[0]); });
-    expect(gym!.fitnessPrompt).toBe(true);
     await act(async () => { await gym!.archiveRoutine(); });
     await act(async () => { await gym!.deleteRoutine(); });
     await act(async () => { await gym!.removeExercise(gym!.exercises[0]); });
     await act(async () => { await gym!.moveExercise(gym!.exercises[0], 1); });
-    for (const fn of writes()) expect(fn).not.toHaveBeenCalled();
-    expect(gym!.draft('e1')).toBe('70');
+    for (const fn of writes()) expect(fn).toHaveBeenCalledTimes(1);
+    // The revision is the third argument of archive and the second of delete and remove.
+    for (const [fn, at] of [[mockShared.archiveGymRoutine, 2], [mockShared.deleteGymRoutine, 1], [mockShared.removeGymExercise, 1]] as const) {
+      expect(fn.mock.calls[0][at]).toEqual(revisionOf('user-1'));
+      expect(fn.mock.calls[0][at]).not.toBe(gym!.tracker!.revision);
+    }
+    expect(gym!.error).toBeNull();
   });
 
-  it('treats a paused account like a missing permission', async () => {
-    resetTrackerMocks(mockTracker, 'user-1', trackerAccess({ canWriteBasic: false, canWriteFitness: false }, 'user-1'));
+  it('still sends when the capability is closed on every side: the gateway is the only judge', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', closed());
     await mount();
-    expect(gym!.canWriteFitness).toBe(false);
     await act(async () => { await gym!.archiveRoutine(); });
-    expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
+    expect(mockShared.archiveGymRoutine).toHaveBeenCalledTimes(1);
+    expect(gym!.error).toBeNull();
   });
 
-  it('never adopts another account capability', async () => {
+  it('exposes no fitness flag, prompt, age band or grant helper', async () => {
+    await mount();
+    for (const key of ['canWriteFitness', 'fitnessPrompt', 'setFitnessPrompt', 'audience', 'acceptTracker']) expect(gym).not.toHaveProperty(key);
+    expect(gym!.tracker).toBeTruthy();
+  });
+
+  it('hands an editor a revision copy, or says access is unavailable when none was read', async () => {
+    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
+    await mount();
+    expect(gym!.requireFitness()).toBe(true);
+    const captured = gym!.fitnessRevision();
+    expect(captured).toEqual({ revision: revisionOf('user-1') });
+    expect('revision' in captured && captured.revision).not.toBe(gym!.tracker!.revision);
+  });
+
+  it('never adopts another account capability, and says why nothing was sent', async () => {
     mockShared.fetchTrackerAccess.mockResolvedValue(trackerAccess({}, 'owner-b'));
     await mount(undefined, undefined, false);
     await act(async () => { await gym!.archiveRoutine(); });
     expect(gym!.tracker).toBeNull();
-    expect(gym!.canWriteFitness).toBe(false);
+    expect(gym!.error).toBe('Tracker access unavailable.');
     expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
+    expect(gym!.requireFitness()).toBe(false);
+    expect(gym!.fitnessRevision()).toEqual({ denied: 'Tracker access unavailable.' });
   });
 
-  it('refuses while access cannot be read', async () => {
+  it('refuses while access cannot be read, shows the message and sends nothing', async () => {
     mockShared.fetchTrackerAccess.mockRejectedValue(new Error('down'));
     await mount(undefined, undefined, false);
+    await waitFor(() => expect(gym!.trackerSettled).toBe(true));
+    await act(async () => gym!.setDraft('e1', '70'));
+    await act(async () => { await gym!.logWeight(gym!.exercises[0]); });
     await act(async () => { await gym!.archiveRoutine(); });
-    expect(gym!.canWriteFitness).toBe(false);
-    expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
-  });
-
-  it('takes a server-confirmed grant for this owner only, and closes the prompt', async () => {
-    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
-    await mount();
-    await act(async () => { await gym!.archiveRoutine(); });
-    expect(gym!.fitnessPrompt).toBe(true);
-    await act(async () => gym!.acceptTracker(trackerAccess({}, 'owner-b')));
-    expect(gym!.canWriteFitness).toBe(false);
-    await act(async () => gym!.acceptTracker(trackerAccess({}, 'user-1')));
-    expect(gym!.canWriteFitness).toBe(true);
-    expect(gym!.fitnessPrompt).toBe(false);
-    expect(mockShared.archiveGymRoutine).not.toHaveBeenCalled();
+    expect(gym!.error).toBe('Tracker access unavailable.');
+    for (const fn of writes()) expect(fn).not.toHaveBeenCalled();
+    expect(gym!.draft('e1')).toBe('70');
   });
 
   it('keeps one revision across an uncertain retry even when access changed meanwhile', async () => {
-    await mount();
+    const client = await mount();
     mockShared.archiveGymRoutine.mockRejectedValueOnce(new UncertainSaveError());
     await act(async () => { await gym!.archiveRoutine(); });
-    await act(async () => gym!.acceptTracker({ ...trackerAccess({}, 'user-1'), revision: { ...revisionOf('user-1'), consentVersion: 9 } }));
+    await act(async () => { client.setQueryData(trackerKey('user-1'), { ...trackerAccess({}, 'user-1'), revision: { ...revisionOf('user-1'), consentVersion: 9 } }); });
     await act(async () => { await gym!.retryUncertain(); });
     expect(mockShared.archiveGymRoutine.mock.calls[1][2]).toEqual(revisionOf('user-1'));
   });
@@ -300,36 +306,12 @@ describe('gym store: fitness permission', () => {
     await waitFor(() => expect(mockShared.fetchTrackerAccess.mock.calls.length).toBeGreaterThan(before));
     expect(mockShared.logGymWeight).toHaveBeenCalledTimes(1);
   });
-});
 
-describe('gym store: age band for the Gym notice', () => {
-  const age = (over: Record<string, unknown> = {}) => ({ userId: 'user-1', birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: true, version: 1, ...over });
-
-  it('reads nothing until the Gym notice opens, then gives teen for a teen', async () => {
-    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
-    mockShared.fetchAccountAge.mockResolvedValue(age({ birthDate: '2012-01-01', adultDeclared: false }));
+  it('words a gateway refusal as a plain reload message', async () => {
     await mount();
-    expect(mockShared.fetchAccountAge).not.toHaveBeenCalled();
-    expect(gym!.audience).toBeUndefined();
-    await act(async () => gym!.setFitnessPrompt(true));
-    await waitFor(() => expect(gym!.audience).toBe('teen'));
-  });
-
-  it.each([['adult', age(), 'adult'], ['unknown', age({ birthDate: null }), undefined]])('gives %s', async (_name, answer, expected) => {
-    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
-    mockShared.fetchAccountAge.mockResolvedValue(answer);
-    await mount();
-    await act(async () => gym!.setFitnessPrompt(true));
-    await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(gym!.audience).toBe(expected));
-  });
-
-  it('stays unknown when the read fails', async () => {
-    resetTrackerMocks(mockTracker, 'user-1', noGrant('user-1'));
-    mockShared.fetchAccountAge.mockRejectedValue(new Error('down'));
-    await mount();
-    await act(async () => gym!.setFitnessPrompt(true));
-    await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(gym!.audience).toBeUndefined());
+    mockShared.archiveGymRoutine.mockRejectedValueOnce(Object.assign(new Error('purpose'), { code: 'ET002' }));
+    await act(async () => { await gym!.archiveRoutine(); });
+    expect(gym!.error).toMatch(/Reload and try again/);
+    expect(gym!.error).not.toMatch(/permission|Edit details|Gym tracking/i);
   });
 });

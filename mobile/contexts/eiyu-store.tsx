@@ -97,10 +97,8 @@ import {
   snapshotOf,
   trackerErrorMessage,
   trackerKey,
-  useAccountAudience,
   useTrackerAccess,
   writeDenial,
-  type NoticeAudience,
   type TrackedRecord,
 } from '@/contexts/tracker-access';
 import { newRequestId } from '@/lib/request-id';
@@ -169,7 +167,7 @@ export const persister = keepingGoodCopies(createAsyncStoragePersister({ storage
  * goes for the age band, which comes from a birthday. Anything else with data is kept, even after a failed refresh.
  */
 export function shouldPersistQuery(query: Query): boolean {
-  if (query.queryKey[0] === 'tracker' || query.queryKey[0] === 'account-age') return false;
+  if (query.queryKey[0] === 'tracker') return false;
   return defaultShouldDehydrateQuery(query) || query.state.data !== undefined;
 }
 
@@ -231,12 +229,6 @@ interface EiyuStore {
   saveHabit: (input: HabitEditorInput, existingId?: string) => Promise<void>;
   /** The signed-in owner's loaded tracker capability; null until it is read (every tracker write is refused meanwhile). */
   tracker: TrackerAccess | null;
-  /** Declared age band for the optional-notice prompts; undefined (adult wording) until known or when unknown. */
-  audience: NoticeAudience | undefined;
-  /** Take a server-confirmed capability (after a grant or withdrawal) for the current owner only. */
-  acceptTracker: (access: TrackerAccess) => void;
-  /** Re-read the capability, for example after a stale or refused write. */
-  refreshTracker: () => Promise<void>;
   archiveQuest: (id: string) => Promise<void>;
   restoreQuest: (id: string) => Promise<void>;
   deleteQuest: (id: string) => Promise<void>;
@@ -383,8 +375,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (tracker) void saveTrackerWriteMarker(tracker, Date.now());
   }, [tracker, trackerReadAt]);
-  // Only an account that can still be asked for an optional purpose can see a prompt, so only it reads the age band.
-  const audience = useAccountAudience(userId, !!tracker && !(tracker.customConsent && tracker.fitnessConsent));
   // Reminders and the widget only need the two permission bits; keying on them avoids a resync on every access refetch.
   const reminderCanWriteBasic = tracker ? tracker.canWriteBasic : null;
   const reminderCanWriteCustom = tracker ? tracker.canWriteCustom : null;
@@ -399,7 +389,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   const prepareBoard = useCallback(async (owner: string) => {
     try {
       const access = await qc.fetchQuery({ queryKey: trackerKey(owner), queryFn: () => readTrackerAccess(owner), staleTime: 0 });
-      if (!access.canWriteBasic || access.revision.userId !== owner) return;
+      if (access.revision.userId !== owner) return;
       const result = await prepareDay(copyTrackerRevision(access.revision));
       if (result.accessChanged) await qc.invalidateQueries({ queryKey: trackerKey(owner) });
     } catch { /* Preparation is optional for reading; the board read below does not depend on it. */ }
@@ -878,8 +868,8 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
    */
   const authorize = (kind: 'habit' | 'chain', records: readonly (TrackedRecord & { id: string })[], extra?: (access: TrackerAccess) => string | null) => {
     const access = trackerRef.current;
-    const denial = writeDenial(access, records) ?? (access ? extra?.(access) ?? null : null);
-    if (denial || !access) throw new Error(denial ?? TRACKER_MESSAGES.paused);
+    const denial = writeDenial(access) ?? (access ? extra?.(access) ?? null : null);
+    if (denial || !access) throw new Error(denial ?? TRACKER_ACCESS_MESSAGE);
     const seen = new Set<string>();
     const targets: TrackerTargetSnapshot[] = [];
     for (const record of records) if (!seen.has(record.id)) { seen.add(record.id); targets.push(snapshotOf(kind, record)); }
@@ -900,17 +890,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     const message = trackerErrorMessage(err);
     return message ? new Error(message) : err instanceof Error ? err : new Error(formatError(err));
   };
-  const acceptTracker = useCallback((access: TrackerAccess) => {
-    if (!userId || access.revision.userId !== userId) return;
-    qc.setQueryData(trackerKey(userId), access);
-    // Each record's kind and writability depend on the permission, so the lists are read again.
-    void qc.invalidateQueries({ queryKey: ['habits'] });
-    void qc.invalidateQueries({ queryKey: ['backlog'] });
-    void qc.invalidateQueries({ queryKey: longQuestsKey(userId) });
-  }, [qc, userId]);
-  const refreshTracker = useCallback(async () => {
-    if (userId) await qc.invalidateQueries({ queryKey: trackerKey(userId) });
-  }, [qc, userId]);
 
   /**
    * Hands one progress write to the queue with the capability and the record's kind as the person saw them. A known
@@ -920,12 +899,13 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
    */
   const enqueueTracked = (request: { kind: 'complete' | 'undo' | 'progress' | 'recovery'; habitId: string; delta?: number; base?: number; label: string }, quest: Quest): boolean => {
     const access = trackerRef.current ?? markerAccess(writeMarker.current, userId, Date.now());
-    const denial = writeDenial(access, [quest]);
-    if (denial || !access) { setQuestActionError(denial ?? TRACKER_MESSAGES.paused); return false; }
+    const denial = writeDenial(access);
+    if (denial || !access) { setQuestActionError(denial ?? TRACKER_ACCESS_MESSAGE); return false; }
     const accepted = enqueueWrite({ ...request, trackerAccess: access, trackerTargets: [snapshotOf('habit', quest)] });
     if (!accepted) {
-      setQuestActionError(TRACKER_MESSAGES.readOnly);
-      void refreshTracker();
+      // The queue turned the write away, so what the app holds may be out of date: read the capability again.
+      setQuestActionError(TRACKER_MESSAGES.purpose);
+      if (userId) void qc.invalidateQueries({ queryKey: trackerKey(userId) });
       return false;
     }
     return true;
@@ -985,8 +965,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const existing = existingId ? findQuest(existingId) : undefined;
       if (existingId && !existing) throw new Error(NOT_LOADED);
       // Decided and captured before any await; nothing is sent on a known denial.
-      const { expected, targets } = authorize('habit', existing ? [existing] : [], access => {
-        if (input.mode === 'custom' && !access.canWriteCustom) return TRACKER_MESSAGES.purpose;
+      const { expected, targets } = authorize('habit', existing ? [existing] : [], () => {
         if (input.mode === 'basic' && existing?.inputKind === 'custom') return 'A quest with custom details cannot go back to basic tracking.';
         return null;
       });
@@ -1272,8 +1251,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       if (!userId) return;
       const existing = existingId ? longQuestsRef.current.find(q => q.id === existingId) : undefined;
       if (existingId && !existing) throw new Error(NOT_LOADED);
-      const { expected, targets } = authorize('chain', existing ? [existing] : [], access => {
-        if (input.mode === 'custom' && !access.canWriteCustom) return TRACKER_MESSAGES.purpose;
+      const { expected, targets } = authorize('chain', existing ? [existing] : [], () => {
         if (input.mode === 'basic' && existing?.inputKind === 'custom') return 'A chain with custom details cannot go back to basic tracking.';
         return null;
       });
@@ -1359,9 +1337,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       completeRecovery,
       saveHabit,
       tracker,
-      audience,
-      acceptTracker,
-      refreshTracker,
       archiveQuest,
       restoreQuest,
       deleteQuest,
@@ -1415,9 +1390,6 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       completeRecovery,
       saveHabit,
       tracker,
-      audience,
-      acceptTracker,
-      refreshTracker,
       archiveQuest,
       restoreQuest,
       deleteQuest,

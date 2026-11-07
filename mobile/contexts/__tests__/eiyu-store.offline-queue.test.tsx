@@ -616,10 +616,9 @@ describe('what the saved copy may hold', () => {
     expect(shouldPersistQuery(asQuery(['habits', 'today', 'u'], 'error', undefined))).toBe(false);
     expect(shouldPersistQuery(asQuery(['habits', 'today', 'u'], 'pending', undefined))).toBe(false);
   });
-  it('never holds the tracker capability or the age band, even with data', () => {
+  it('never holds the tracker capability, even with data', () => {
     expect(shouldPersistQuery(asQuery(['tracker', 'u'], 'success', {}))).toBe(false);
     expect(shouldPersistQuery(asQuery(['tracker', 'u'], 'error', {}))).toBe(false);
-    expect(shouldPersistQuery(asQuery(['account-age', 'u'], 'success', 'teen'))).toBe(false);
   });
 });
 
@@ -656,6 +655,21 @@ describe('offline at a cold start, before any live access read', () => {
     await goOnline();
     await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', 'full', revisionOf(), customTarget, TODAY, 'UTC'));
     await waitFor(() => expect(currentStore?.syncEntries).toEqual([]));
+  });
+  it('replays a queued custom tap when the server reports every write open, with no consent flag set', async () => {
+    await saveMarker();
+    await coldStart();
+    await tap();
+    expect(currentStore?.syncEntries).toEqual([expect.objectContaining({ kind: 'complete', trackerTargets: customTarget })]);
+
+    mockTracker.fetchTrackerAccess.mockImplementation(async () => trackerAccess(
+      { customConsent: false, fitnessConsent: false, canWriteBasic: true, canWriteCustom: true, canWriteFitness: true }, 'user-1'));
+    mockTracker.fetchTrackerTargets.mockImplementation(liveCustomTargets);
+    mockShared.fetchTodayHabits.mockResolvedValue([{ ...custom, completed: true }]);
+    await goOnline();
+    await waitFor(() => expect(mockCompleteHabit).toHaveBeenCalledWith('user-1', 'habit-1', 'WIS', 'full', revisionOf(), customTarget, TODAY, 'UTC'));
+    await waitFor(() => expect(currentStore?.syncEntries).toEqual([]));
+    expect(currentStore?.failedSyncs).toEqual([]);
   });
   it('queues a tap on a basic quest', async () => {
     await saveMarker({ canWriteCustom: false });
@@ -734,8 +748,15 @@ describe('offline at a cold start, before any live access read', () => {
     await tap();
     expectRefused();
   });
-  it('refuses a quest whose kind or writability is unknown', async () => {
+  it('queues a tap on a quest whose kind or writability is unknown, as a custom quest', async () => {
     await saveMarker();
+    await coldStart([{ ...quest, inputKind: undefined, canWrite: undefined }]);
+    await tap();
+    expect(byId('habit-1')?.completed).toBe(true);
+    expect(currentStore?.syncEntries).toEqual([expect.objectContaining({ kind: 'complete', trackerTargets: customTarget })]);
+  });
+  it('refuses a quest of unknown kind when the marker has no custom grant, because it counts as custom', async () => {
+    await saveMarker({ canWriteCustom: false });
     await coldStart([{ ...quest, inputKind: undefined, canWrite: undefined }]);
     await tap();
     expectRefused();

@@ -19,6 +19,7 @@ import {
   newRequestId,
   NO_TARGETS,
   copyTrackerRevision,
+  TRACKER_ACCESS_MESSAGE,
   removeGymExercise,
   UncertainSaveError,
   type GymData,
@@ -31,7 +32,7 @@ import {
 } from '@eiyu/shared';
 
 import { useAuth } from '@/contexts/auth-store';
-import { refreshTrackerAfterFailure, trackerErrorMessage, trackerKey, TRACKER_MESSAGES, useAccountAudience, useTrackerAccess, type NoticeAudience } from '@/contexts/tracker-access';
+import { refreshTrackerAfterFailure, trackerErrorMessage, trackerKey, useTrackerAccess } from '@/contexts/tracker-access';
 
 const EMPTY: GymData = { routines: [], exercises: [] };
 
@@ -82,23 +83,15 @@ interface GymStore {
   refreshAfterSave: (what: string, select?: string, warning?: string) => Promise<void>;
   setNotice: (message: string | null) => void;
 
-  /** The signed-in owner's loaded tracker capability; null until it is read (every Gym write is refused meanwhile). */
+  /** The signed-in owner's loaded tracker capability (its revision); null until it is read, and every Gym write waits for it. */
   tracker: TrackerAccess | null;
-  /** Gym writes are open only with Gym permission on an unpaused account. History is always readable. */
-  canWriteFitness: boolean;
   /** True once the capability read settled (success or failure), so a notice is not shown while it is still loading. */
   trackerSettled: boolean;
-  /** Take a server-confirmed capability for the current owner only; it closes the permission prompt. */
-  acceptTracker: (access: TrackerAccess) => void;
+  /** Re-read the capability, for example after a stale or refused write. */
   refreshTracker: () => Promise<void>;
-  /** The Gym permission notice is open (set when a write was asked for without permission). */
-  fitnessPrompt: boolean;
-  setFitnessPrompt: (open: boolean) => void;
-  /** Declared age band for the Gym notice; undefined (adult wording) until known or when unknown. */
-  audience: NoticeAudience | undefined;
-  /** For a screen that opens an editor: true when Gym writes are open, otherwise it opens the permission notice. */
+  /** For a screen that opens an editor: true when a revision is loaded; otherwise it says so in `error` and returns false. */
   requireFitness: () => boolean;
-  /** For an editor's save: a copy of the current revision, or null (and the message to show) when writes are not open. */
+  /** For an editor's save: a copy of the current revision, or the message to show when no revision was read. */
   fitnessRevision: () => { revision: TrackerRevision } | { denied: string };
 }
 
@@ -126,11 +119,8 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
 
   const trackerQuery = useTrackerAccess(userId);
   const tracker = trackerQuery.data && trackerQuery.data.revision.userId === userId ? trackerQuery.data : null;
-  const canWriteFitness = !!tracker && tracker.canWriteBasic && tracker.canWriteFitness;
   const trackerRef = useRef<TrackerAccess | null>(null);
   trackerRef.current = tracker;
-  const [fitnessPrompt, setFitnessPrompt] = useState(false);
-  const audience = useAccountAudience(userId, fitnessPrompt);
 
   const routines = useMemo(() => data.routines.filter(r => !r.deleted_at && (showArchived || !r.archived)), [data.routines, showArchived]);
   const routine = routines.find(r => r.id === selected) ?? routines[0];
@@ -181,25 +171,18 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
     } finally { inFlight.current = false; setPending(false); }
   }, [refresh, qc, userId]);
 
-  /** A copy of the revision for one write, taken now. Without Gym permission it opens the notice and returns null. */
+  /** A copy of the revision for one write, taken now. With no revision read there is nothing to send, so it says so and returns null. */
   const gate = (): TrackerRevision | null => {
     const access = trackerRef.current;
-    if (!access || !access.canWriteBasic || !access.canWriteFitness) { setFitnessPrompt(true); return null; }
+    if (!access) { setError(TRACKER_ACCESS_MESSAGE); return null; }
     return copyTrackerRevision(access.revision);
   };
   const requireFitness = (): boolean => gate() !== null;
   const fitnessRevision = (): { revision: TrackerRevision } | { denied: string } => {
     const access = trackerRef.current;
-    if (!access) return { denied: 'Tracker access is unavailable. Try again in a moment.' };
-    if (!access.canWriteBasic) return { denied: TRACKER_MESSAGES.paused };
-    if (!access.canWriteFitness) return { denied: TRACKER_MESSAGES.fitness };
+    if (!access) return { denied: TRACKER_ACCESS_MESSAGE };
     return { revision: copyTrackerRevision(access.revision) };
   };
-  const acceptTracker = useCallback((access: TrackerAccess) => {
-    if (!userId || access.revision.userId !== userId) return;
-    qc.setQueryData(trackerKey(userId), access);
-    setFitnessPrompt(false);
-  }, [qc, userId]);
   const refreshTracker = useCallback(async () => {
     if (userId) await qc.invalidateQueries({ queryKey: trackerKey(userId) });
   }, [qc, userId]);
@@ -286,8 +269,7 @@ function GymWorkspace({ userId, children }: { userId: string | undefined; childr
       try { await refresh(); setNotice(warning ?? `${what} saved.`); } catch (err) { setNotice(gymSavedRefreshFailed(`${what} saved`, err)); }
     },
     setNotice,
-    tracker, canWriteFitness, trackerSettled: !trackerQuery.isPending, acceptTracker, refreshTracker,
-    fitnessPrompt, setFitnessPrompt, audience, requireFitness, fitnessRevision,
+    tracker, trackerSettled: !trackerQuery.isPending, refreshTracker, requireFitness, fitnessRevision,
   };
   return <GymContext.Provider value={store}>{children}</GymContext.Provider>;
 }

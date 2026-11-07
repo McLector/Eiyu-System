@@ -10,7 +10,7 @@ import { trackerAccess } from '@/test-support/tracker-fixtures';
 
 const mockOrder: string[] = [];
 const mockShared = {
-  fetchTrackerAccess: jest.fn(), fetchAccountAge: jest.fn(), prepareDay: jest.fn(), subscribeTrackerAccessChanges: jest.fn(), trackerErrorKind: jest.fn(),
+  fetchTrackerAccess: jest.fn(), prepareDay: jest.fn(), subscribeTrackerAccessChanges: jest.fn(), trackerErrorKind: jest.fn(),
   createHabit: jest.fn(), updateHabit: jest.fn(), archiveHabit: jest.fn(), deleteHabit: jest.fn(), restoreHabit: jest.fn(),
   moveBacklogToOneTime: jest.fn(), moveOneTimeToBacklog: jest.fn(), reorderQuests: jest.fn(),
   completeHabit: jest.fn(), undoCompletion: jest.fn(), incrementHabitProgress: jest.fn(), completeHabitRecovery: jest.fn(),
@@ -140,9 +140,10 @@ describe('Board preparation', () => {
     expect(store!.user.quests).toHaveLength(4);
   });
 
-  it('does not prepare while tracker writes are paused, but still reads history', async () => {
-    await mount({ canWriteBasic: false });
-    expect(mockShared.prepareDay).not.toHaveBeenCalled();
+  it('prepares the day whatever the capability says, and still reads history', async () => {
+    await mount({ canWriteBasic: false, canWriteCustom: false, customConsent: false, fitnessConsent: false, canWriteFitness: false });
+    expect(mockShared.prepareDay).toHaveBeenCalledTimes(1);
+    expect(mockShared.prepareDay.mock.calls[0][0]).toEqual(rev());
     expect(store!.user.quests).toHaveLength(4);
   });
 
@@ -251,27 +252,36 @@ describe('queued progress work', () => {
     expect(mockQueue.enqueue).toHaveBeenCalledWith({ kind: 'complete', habitId: 'b1', label: 'Quest 1', trackerAccess: access, trackerTargets: snap('b1', 'basic') });
   });
 
-  it('enqueues nothing for a custom or unclassified quest without custom permission', async () => {
-    await mount({ customConsent: false, canWriteCustom: false });
-    await act(async () => { store!.toggleQuest('c1'); store!.toggleQuest('l1'); store!.adjustProgress('l1', 1); });
-    expect(mockQueue.enqueue).not.toHaveBeenCalled();
-    expect(store!.questsError).toMatch(/read-only/i);
+  it('enqueues a custom, unclassified or counted quest whatever the capability says, with its own snapshot', async () => {
+    await mount({ customConsent: false, canWriteCustom: false, canWriteBasic: false });
+    await act(async () => { store!.toggleQuest('c1'); store!.toggleQuest('l1'); store!.adjustProgress('b2', 1); });
+    expect(mockQueue.enqueue).toHaveBeenCalledTimes(3);
+    expect(mockQueue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ habitId: 'c1', trackerTargets: snap('c1', 'custom') }));
+    expect(mockQueue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ habitId: 'l1', trackerTargets: snap('l1', 'custom') }));
+    expect(mockQueue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ kind: 'progress', habitId: 'b2', trackerTargets: snap('b2', 'basic') }));
+    expect(store!.questsError).toBeNull();
   });
 
-  it('enqueues nothing while the account is paused', async () => {
-    await mount({ canWriteBasic: false });
-    await act(async () => { store!.toggleQuest('b1'); });
-    expect(mockQueue.enqueue).not.toHaveBeenCalled();
-    expect(store!.questsError).toMatch(/paused/i);
-  });
-
-  it('shows the denial and does not flush when the queue refuses', async () => {
+  it('says plainly to reload, re-reads access and does not flush when the queue refuses', async () => {
     await mount();
+    const before = mockShared.fetchTrackerAccess.mock.calls.length;
     mockQueue.enqueue.mockReturnValue(false);
     mockQueue.flush.mockClear();
     await act(async () => { store!.toggleQuest('b1'); });
     expect(mockQueue.flush).not.toHaveBeenCalled();
-    expect(store!.questsError).toBeTruthy();
+    expect(store!.questsError).toMatch(/Reload and try again/);
+    expect(store!.questsError).not.toMatch(/permission|read-only|Edit details/i);
+    await waitFor(() => expect(mockShared.fetchTrackerAccess.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it('enqueues nothing while no capability has been read and no stored marker stands in', async () => {
+    mockShared.fetchTrackerAccess.mockRejectedValue(new Error('down'));
+    activeClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    await render(<QueryClientProvider client={activeClient}><EiyuProvider><Probe /></EiyuProvider></QueryClientProvider>);
+    await waitFor(() => expect(store?.user.quests.length).toBe(4));
+    await act(async () => { store!.toggleQuest('b1'); });
+    expect(mockQueue.enqueue).not.toHaveBeenCalled();
+    expect(store!.questsError).toBe('Tracker access unavailable.');
   });
 
   it('sends with the entry revision and targets, never a fresh one', async () => {
@@ -310,43 +320,55 @@ describe('queued progress work', () => {
   });
 });
 
-describe('known denials send nothing', () => {
-  it('refuses custom content without custom permission, and keeps basic creation open', async () => {
-    await mount({ customConsent: false, canWriteCustom: false });
-    await expectRejects(() => store!.saveHabit(customInput), /permission/i);
-    expect(mockShared.createHabit).not.toHaveBeenCalled();
+describe('the store holds no permission layer', () => {
+  // A capability that says no to everything: the app must not act on it, only the gateway may.
+  const closed = { customConsent: false, fitnessConsent: false, canWriteCustom: false, canWriteFitness: false, canWriteBasic: false } as const;
+
+  it('sends custom content, a basic quest and a chain whatever the capability says', async () => {
+    await mount(closed);
+    await act(() => store!.saveHabit(customInput));
     await act(() => store!.saveHabit(basicInput));
-    expect(mockShared.createHabit).toHaveBeenCalledTimes(1);
+    expect(mockShared.createHabit).toHaveBeenCalledTimes(2);
+    const customChainInput = { mode: 'custom' as const, values: { name: 'Plan', stat: 'INT' as const, strictOrder: true, stages: [{ name: 'Step' }] } };
+    await act(() => store!.saveLongQuest(customChainInput));
+    expect(mockShared.saveAtomicLongQuest).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps a custom or unclassified quest read-only: no save, archive, delete, move or reorder', async () => {
-    await mount({ customConsent: false, canWriteCustom: false });
-    await expectRejects(() => store!.saveHabit(basicInput, 'c1'), /read-only/i);
-    await expectRejects(() => store!.archiveQuest('c1'), /read-only/i);
-    await expectRejects(() => store!.deleteQuest('l1'), /read-only/i);
-    await expectRejects(() => store!.moveToBacklog('l1'), /read-only/i);
-    await expectRejects(() => store!.reorderQuests('habit', ['b1', 'l1']), /read-only/i);
-    for (const fn of [mockShared.updateHabit, mockShared.archiveHabit, mockShared.deleteHabit, mockShared.moveOneTimeToBacklog, mockShared.reorderQuests]) expect(fn).not.toHaveBeenCalled();
+  it('writes a custom, basic or unclassified quest alike: save, archive, delete, move and reorder', async () => {
+    await mount(closed);
+    await act(() => store!.saveHabit(customInput, 'c1'));
+    await act(() => store!.saveHabit(customInput, 'l1'));
+    await act(() => store!.archiveQuest('c1'));
+    await act(() => store!.deleteQuest('l1'));
+    await act(() => store!.moveToBacklog('l1'));
+    await act(() => store!.reorderQuests('habit', ['b1', 'l1']));
+    expect(mockShared.updateHabit).toHaveBeenCalledWith('c1', customInput, rev(), snap('c1', 'custom'), 'Morning walk');
+    expect(mockShared.updateHabit).toHaveBeenCalledWith('l1', customInput, rev(), snap('l1', 'custom'), 'Old habit');
+    expect(mockShared.archiveHabit).toHaveBeenCalledWith('c1', rev(), snap('c1', 'custom'));
+    expect(mockShared.deleteHabit).toHaveBeenCalledWith('l1', rev(), snap('l1', 'custom'));
+    expect(mockShared.moveOneTimeToBacklog).toHaveBeenCalledWith('l1', rev(), snap('l1', 'custom'));
+    expect(mockShared.reorderQuests).toHaveBeenCalledWith('habit', ['b1', 'l1'], rev(), [...snap('b1', 'basic'), ...snap('l1', 'custom')]);
   });
 
-  it('refuses a basic write while the account is paused (under 12)', async () => {
-    await mount({ canWriteBasic: false });
-    await expectRejects(() => store!.saveHabit(basicInput), /paused/i);
-    await expectRejects(() => store!.archiveQuest('b1'), /paused/i);
-    expect(mockShared.createHabit).not.toHaveBeenCalled();
-    expect(mockShared.archiveHabit).not.toHaveBeenCalled();
+  it('ignores a record whose canWrite flag is false', async () => {
+    mockShared.fetchTodayHabits.mockResolvedValue([{ ...basicQuest, canWrite: false }, countQuest, customQuest, { ...legacyQuest, canWrite: false }]);
+    await mount(closed);
+    await act(() => store!.archiveQuest('b1'));
+    expect(mockShared.archiveHabit).toHaveBeenCalledWith('b1', rev(), snap('b1', 'basic'));
   });
 
-  it('does not turn a basic quest into a custom one without custom permission', async () => {
-    await mount({ customConsent: false, canWriteCustom: false });
-    await expectRejects(() => store!.saveHabit(customInput, 'b1'), /permission/i);
-    expect(mockShared.updateHabit).not.toHaveBeenCalled();
+  it('exposes no audience, grant or refresh helper', async () => {
+    await mount();
+    for (const key of ['audience', 'acceptTracker', 'refreshTracker']) expect(store).not.toHaveProperty(key);
+    expect(store!.tracker).toBeTruthy();
   });
 
-  it('does not let a custom quest go back to basic tracking', async () => {
+  it('still does not let a custom quest or chain go back to basic tracking', async () => {
     await mount();
     await expectRejects(() => store!.saveHabit(basicInput, 'c1'), /custom details/i);
+    await expectRejects(() => store!.saveLongQuest({ mode: 'basic', values: { stat: 'INT', stages: [{ id: 's2' }] } }, 'ch2'), /custom details/i);
     expect(mockShared.updateHabit).not.toHaveBeenCalled();
+    expect(mockShared.saveAtomicLongQuest).not.toHaveBeenCalled();
   });
 
   it('refuses every write while access is unavailable', async () => {
@@ -355,7 +377,18 @@ describe('known denials send nothing', () => {
     await render(<QueryClientProvider client={activeClient}><EiyuProvider><Probe /></EiyuProvider></QueryClientProvider>);
     await waitFor(() => expect(store?.user.quests.length).toBe(4));
     await expectRejects(() => store!.saveHabit(basicInput), 'Tracker access unavailable.');
+    await expectRejects(() => store!.archiveQuest('b1'), 'Tracker access unavailable.');
     expect(mockShared.createHabit).not.toHaveBeenCalled();
+    expect(mockShared.archiveHabit).not.toHaveBeenCalled();
+  });
+
+  it('words a gateway refusal as a plain reload message, with no permission screen to point at', async () => {
+    await mount();
+    mockShared.trackerErrorKind.mockReturnValue('purpose-required');
+    mockShared.createHabit.mockRejectedValueOnce(Object.assign(new Error('purpose'), { code: 'EP001' }));
+    const failure = await attempt(() => store!.saveHabit(customInput));
+    expect((failure as Error).message).toMatch(/Reload and try again/);
+    expect((failure as Error).message).not.toMatch(/permission|Edit details/i);
   });
 });
 
@@ -462,6 +495,21 @@ describe('Reminders and widget respect the custom purpose', () => {
     expect(notifications().scheduleOneTimeReminder.mock.calls.map(c => c[0]).sort()).toEqual(['o1', 'o2']);
   });
 
+  it('arms every reminder when the server reports every write open, with no consent flag set', async () => {
+    mockShared.fetchAllActiveHabits.mockResolvedValue(reminderRows());
+    mockShared.fetchUpcomingOneTimeHabits.mockResolvedValue(oneTimeRows());
+    await mount({ customConsent: false, fitnessConsent: false, canWriteBasic: true, canWriteCustom: true, canWriteFitness: true });
+    await waitFor(() => expect(notifications().scheduleHabitReminders).toHaveBeenCalledTimes(3));
+    expect(notifications().scheduleOneTimeReminder.mock.calls.map(c => c[0]).sort()).toEqual(['o1', 'o2']);
+  });
+
+  it('announces a newly frozen custom quest by name when the server reports every write open', async () => {
+    await mount({ customConsent: false, fitnessConsent: false, canWriteBasic: true, canWriteCustom: true, canWriteFitness: true });
+    mockShared.fetchTodayHabits.mockResolvedValue([basicQuest, countQuest, { ...customQuest, frozen: true }, legacyQuest]);
+    await act(async () => { await activeClient!.invalidateQueries(); });
+    await waitFor(() => expect(notifications().notifyRecoveryQuestGenerated).toHaveBeenCalledWith('Morning walk'));
+  });
+
   it('announces a newly frozen protected quest without its name when custom permission is denied', async () => {
     await mount({ customConsent: false, canWriteCustom: false });
     mockShared.fetchTodayHabits.mockResolvedValue([basicQuest, countQuest, { ...customQuest, frozen: true }, legacyQuest]);
@@ -469,65 +517,6 @@ describe('Reminders and widget respect the custom purpose', () => {
     await waitFor(() => expect(notifications().notifyRecoveryQuestGenerated).toHaveBeenCalled());
     expect(notifications().notifyRecoveryQuestGenerated).toHaveBeenCalledWith(null);
     expect(notifications().notifyRecoveryQuestGenerated).not.toHaveBeenCalledWith('Morning walk');
-  });
-});
-
-describe('age band for the optional-notice prompts', () => {
-  const age = (over: Record<string, unknown> = {}) => ({
-    userId: 'owner-a', birthDate: '2000-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: true, version: 1, ...over,
-  });
-  const open = { customConsent: false, canWriteCustom: false } as const;
-
-  it('says checking while the read is out, so nobody sees the wrong notice', async () => {
-    mockShared.fetchAccountAge.mockReturnValue(new Promise(() => undefined));
-    await mount(open);
-    await waitFor(() => expect(store?.audience).toBe('checking'));
-  });
-
-  it('is teen when a birthday is present and adult is not declared', async () => {
-    mockShared.fetchAccountAge.mockResolvedValue(age({ birthDate: '2012-01-01', adultDeclared: false }));
-    await mount(open);
-    await waitFor(() => expect(store?.audience).toBe('teen'));
-  });
-
-  it('is adult when a birthday is present and adult is declared', async () => {
-    mockShared.fetchAccountAge.mockResolvedValue(age());
-    await mount(open);
-    await waitFor(() => expect(store?.audience).toBe('adult'));
-  });
-
-  it('is unknown (undefined) without a birthday', async () => {
-    mockShared.fetchAccountAge.mockResolvedValue(age({ birthDate: null, adultDeclared: false }));
-    await mount(open);
-    await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(store?.audience).toBeUndefined());
-  });
-
-  it('stays unknown when the read fails, and the failure does not break the store', async () => {
-    mockShared.fetchAccountAge.mockRejectedValue(new Error('down'));
-    await mount(open);
-    await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(store?.audience).toBeUndefined());
-    expect(store?.tracker).toBeTruthy();
-  });
-
-  it('ignores a read that belongs to another account', async () => {
-    mockShared.fetchAccountAge.mockResolvedValue(age({ userId: 'owner-b', birthDate: '2012-01-01', adultDeclared: false }));
-    await mount(open);
-    await waitFor(() => expect(mockShared.fetchAccountAge).toHaveBeenCalled());
-    await waitFor(() => expect(store?.audience).toBeUndefined());
-  });
-
-  it('does no extra read when both optional purposes are already granted', async () => {
-    mockShared.fetchAccountAge.mockResolvedValue(age());
-    await mount();
-    expect(mockShared.fetchAccountAge).not.toHaveBeenCalled();
-    expect(store?.audience).toBeUndefined();
-  });
-
-  it('never keeps the age band in the stored offline cache', () => {
-    const query = (key: readonly unknown[]) => ({ queryKey: key, state: { status: 'success' } }) as never;
-    expect(shouldPersistQuery(query(['account-age', 'owner-a']))).toBe(false);
   });
 });
 

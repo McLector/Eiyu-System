@@ -33,7 +33,7 @@ const legacyCustomReadOnly: Quest = { ...habitQuest, id: 'q1', inputKind: 'custo
 /** The store has no `tracker`, `audience`, `acceptTracker` or `refreshTracker`: the editor must not read any of them. */
 function setup(quests: Quest[] = [], editing?: Quest, backlog: Quest[] = []) {
   mockParams = editing ? { id: editing.id } : {};
-  const { tracker: _t, acceptTracker: _a, refreshTracker: _r, ...store } = makeEditorStore(quests, null, backlog);
+  const { tracker: _tracker, ...store } = makeEditorStore(quests, null, backlog);
   mockStore = store;
   return mockStore as typeof store;
 }
