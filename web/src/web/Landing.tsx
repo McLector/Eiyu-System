@@ -214,7 +214,11 @@ export default function Landing({ onGetStarted }: Props) {
       {/* Footer */}
       <footer style={{ padding: '20px 40px', borderTop: '1px solid var(--c-divider-flat)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ fontFamily: 'Rajdhani', fontSize: 13, fontWeight: 700, color: 'var(--c-dim-flat)', letterSpacing: '0.1em' }}>EIYU SYSTEM</span>
-        <span style={{ fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>Built for the ascent</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', fontFamily: 'Inter', fontSize: 12, color: 'var(--c-dim-flat)' }}>
+          <a href="/privacy" style={{ color: 'var(--c-dim-flat)' }}>Privacy Policy</a>
+          <a href="/terms" style={{ color: 'var(--c-dim-flat)' }}>Terms of Use</a>
+          <span>Built for the ascent</span>
+        </span>
       </footer>
     </div>
   );
