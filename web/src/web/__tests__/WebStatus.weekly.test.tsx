@@ -91,6 +91,8 @@ describe('web Status weekly review', () => {
     const interaction = userEvent.setup(); renderStatus();
     await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
     await interaction.click(await screen.findByRole('button', {name: 'Send verification email'}));
+    // From here the server holds the code that was just sent, so later status reads report it (as the real one does).
+    store.fetchMailboxStatus.mockResolvedValue({userId: 'user-1', version: 1, verified: false, challenge: {id: 'challenge', expiresAt: '2026-11-08T12:10:00+00:00', resendAfter: 50}});
     await interaction.type(await screen.findByLabelText('Verification code'), '12345678');
     return interaction;
   }

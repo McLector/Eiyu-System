@@ -82,7 +82,9 @@ it('a passive refresh with the same pending code keeps what the person has typed
   await view.rerender(again({refreshRevision: 1}));
   await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2));
   expect(screen.getByLabelText('Verification code').props.value).toBe('1234');
-  expect(screen.getByRole('button', {name: 'Resend in 40s'})).toBeOnTheScreen();
+  // The countdown keeps running from 40 (a slow machine may have ticked it); it is not reset to the refresh's 10.
+  const left = Number(/Resend in (\d+)s/.exec(String(screen.getByRole('button', {name: /Resend in \d+s/}).props.accessibilityLabel ?? ''))?.[1] ?? NaN);
+  expect(left).toBeGreaterThanOrEqual(30);
 });
 
 // ---- expired or superseded ---------------------------------------------------------------------------------

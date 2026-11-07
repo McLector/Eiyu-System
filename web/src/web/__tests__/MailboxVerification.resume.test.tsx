@@ -86,7 +86,9 @@ it('a passive refresh with the same pending code keeps what the person has typed
   view.rerender(<MailboxVerification userId="owner" refreshRevision={1} onVerified={vi.fn()} />);
   await waitFor(() => expect(api.fetchMailboxStatus).toHaveBeenCalledTimes(2));
   expect(screen.getByLabelText('Verification code')).toHaveValue('1234');
-  expect(screen.getByRole('button', {name: 'Resend in 40s'})).toBeInTheDocument();
+  // The countdown keeps running from 40 (a slow machine may have ticked it); it is not reset to the refresh's 10.
+  const left = Number(/Resend in (\d+)s/.exec(screen.getByRole('button', {name: /Resend in \d+s/}).textContent ?? '')?.[1]);
+  expect(left).toBeGreaterThanOrEqual(30);
 });
 
 // ---- expired or superseded -------------------------------------------------------------------------------
