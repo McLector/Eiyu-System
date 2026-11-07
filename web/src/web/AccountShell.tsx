@@ -68,6 +68,12 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
+  // A deep link (?account=profile) can open this before the store has loaded, so follow the store until it settles.
+  useEffect(() => {
+    setDisplayName(user.name);
+    setUserClass(user.userClass);
+  }, [user.name, user.userClass]);
+
   // This can only switch AI off. Turning it on needs the 18+ box and a verified email, which live on the Status page.
   const turnOffAi = async () => {
     if (turningOff.current || !processing?.aiConsent) return;

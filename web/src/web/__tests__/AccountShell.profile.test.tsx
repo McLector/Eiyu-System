@@ -7,7 +7,7 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AI_NOTICE_VERSION, type ProcessingAccess } from '@eiyu/shared';
 
-const mocks = vi.hoisted(() => ({ fetch: vi.fn(), save: vi.fn(), ownerId: 'owner-a' }));
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), save: vi.fn(), ownerId: 'owner-a', user: { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C' } }));
 vi.mock('@eiyu/shared', async importOriginal => ({
   ...await importOriginal<object>(),
   fetchProcessingAccess: () => mocks.fetch(),
@@ -15,7 +15,7 @@ vi.mock('@eiyu/shared', async importOriginal => ({
   fetchTrackerAccess: async () => (await import('../../test/tracker-fixtures')).trackerAccess({}, mocks.ownerId),
   subscribeTrackerAccessChanges: () => () => undefined,
 }));
-vi.mock('../../store/eiyu-store', () => ({ useEiyu: () => ({ user: { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C' }, saveProfile: vi.fn() }) }));
+vi.mock('../../store/eiyu-store', () => ({ useEiyu: () => ({ user: mocks.user, saveProfile: vi.fn() }) }));
 vi.mock('../../store/session-context', () => ({ useSession: () => ({ signOut: vi.fn(), user: { id: mocks.ownerId } }) }));
 vi.mock('../WebSettings', () => ({ default: () => null }));
 import ProtectedLayout from '../../ProtectedLayout';
@@ -29,6 +29,7 @@ const access = (over: Partial<ProcessingAccess> = {}): ProcessingAccess => ({
 afterEach(cleanup);
 beforeEach(() => {
   mocks.ownerId = 'owner-a';
+  mocks.user = { name: 'Yuki Tanaka', userClass: 'Ranger', rank: 'C' };
   mocks.fetch.mockReset().mockResolvedValue(access());
   mocks.save.mockReset();
 });
@@ -158,6 +159,29 @@ describe('AI off switch', () => {
     const router = setup();
     await user.click(await screen.findByRole('button', { name: 'Turn off AI weekly review' }));
     await screen.findByText(/AI weekly review is off/i);
+    await router.navigate('/board');
+    expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).not.toBeInTheDocument();
+  });
+});
+
+describe('opening Profile before the store has loaded', () => {
+  it('shows the loaded name and class once they arrive, instead of keeping the placeholders', async () => {
+    mocks.user = { name: 'Adventurer', userClass: '', rank: 'E' };
+    const router = setup();
+    expect(await screen.findByLabelText('Display name')).toHaveValue('Adventurer');
+    mocks.user = { name: 'G1 Check', userClass: 'Developer', rank: 'E' };
+    await router.navigate('/board?account=profile&loaded=1');
+    await waitFor(() => expect(screen.getByLabelText('Display name')).toHaveValue('G1 Check'));
+    expect(screen.getByLabelText('Class')).toHaveValue('Developer');
+  });
+
+  it('does not treat the freshly loaded name as an unsaved edit', async () => {
+    mocks.user = { name: 'Adventurer', userClass: '', rank: 'E' };
+    const router = setup();
+    await screen.findByLabelText('Display name');
+    mocks.user = { name: 'G1 Check', userClass: 'Developer', rank: 'E' };
+    await router.navigate('/board?account=profile&loaded=1');
+    await waitFor(() => expect(screen.getByLabelText('Display name')).toHaveValue('G1 Check'));
     await router.navigate('/board');
     expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).not.toBeInTheDocument();
   });
