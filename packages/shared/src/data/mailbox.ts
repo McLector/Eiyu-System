@@ -1,9 +1,22 @@
 import { supabase } from '../supabase/client';
-export interface MailboxStatus { userId: string; version: number; verified: boolean; }
+export interface MailboxChallenge { id: string; expiresAt: string; resendAfter: number; }
+export interface MailboxStatus { userId: string; version: number; verified: boolean; challenge: MailboxChallenge | null; }
 export const MAILBOX_MESSAGE = 'Verify your email to access your weekly debrief.';
 const listeners = new Set<() => void>();
 export function subscribeMailboxChanges(listener: () => void): () => void {
   listeners.add(listener); return () => { listeners.delete(listener); };
+}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Postgres writes timestamptz as ISO 8601 with a numeric offset (and any fraction up to microseconds).
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}(:?\d{2})?)$/;
+// A pending code is optional extra information: anything malformed, or absent from an older server, means "none".
+function parseChallenge(raw: unknown): MailboxChallenge | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const { id, expiresAt, resendAfter } = raw as Record<string, unknown>;
+  if (typeof id !== 'string' || !UUID.test(id)) return null;
+  if (typeof expiresAt !== 'string' || !ISO_DATE.test(expiresAt) || Number.isNaN(Date.parse(expiresAt))) return null;
+  if (typeof resendAfter !== 'number' || !Number.isSafeInteger(resendAfter) || resendAfter < 0 || resendAfter > 600) return null;
+  return { id, expiresAt, resendAfter };
 }
 export async function fetchMailboxStatus(): Promise<MailboxStatus> {
   const { data, error } = await supabase.rpc('get_mailbox_status');
@@ -11,7 +24,7 @@ export async function fetchMailboxStatus(): Promise<MailboxStatus> {
   const value = data as unknown as MailboxStatus;
   if (!value || typeof value.userId !== 'string' || !value.userId || typeof value.verified !== 'boolean' ||
     !Number.isSafeInteger(value.version) || value.version < 1) throw new Error('Email verification status is unavailable.');
-  return value;
+  return { userId: value.userId, version: value.version, verified: value.verified, challenge: parseChallenge((value as { challenge?: unknown }).challenge) };
 }
 export async function requireMailboxProof(expected?: Pick<MailboxStatus, 'userId' | 'version'>): Promise<MailboxStatus> {
   const status = await fetchMailboxStatus();
@@ -33,7 +46,6 @@ async function invoke(body: Record<string, unknown>): Promise<Record<string, unk
   if (!data || typeof data !== 'object') throw new Error('Email verification is temporarily unavailable.');
   return data;
 }
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function sendMailboxCode(): Promise<{ challengeId: string; retryAfter: number }> {
   const data = await invoke({ action: 'send' });
   if (typeof data.challengeId !== 'string' || !UUID.test(data.challengeId) || typeof data.retryAfter !== 'number' ||
