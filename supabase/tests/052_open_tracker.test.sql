@@ -3,8 +3,8 @@ create extension if not exists pgtap with schema extensions;
 set local search_path=public,extensions;
 set local timezone='UTC';
 select no_plan();
--- Migration 065, "open tracker": custom quests, chains and Gym follow the basic write rule (only the under-12
--- pause still stops writes); the day-pause applies only between go-live and the unblock; retention is off.
+-- Migration 065, "open tracker": custom quests, chains and Gym follow the basic write rule (066 later removed the
+-- under-12 pause too); the day-pause applies only between go-live and the unblock; retention is off.
 -- Synthetic users; rolled back.
 insert into auth.users(id,email,raw_user_meta_data) values
  ('da260000-0000-4000-8000-000000000001','open-legacy@example.invalid','{}'),
@@ -48,11 +48,6 @@ select set_config('request.jwt.claim.sub','da260000-0000-4000-8000-000000000002'
 select is(public.get_tracker_processing_access()->>'canWriteCustom','true','a teen birthday does not close custom writes');
 select is(public.get_tracker_processing_access()->>'canWriteFitness','true','a teen birthday does not close Gym writes');
 select is(public.get_tracker_processing_access()->'revision'->>'userId','da260000-0000-4000-8000-000000000002','the revision still names its owner');
-reset role;
-select private.record_tracker_processing_authority('da260000-0000-4000-8000-000000000002','custom-tracker','revoked',(select version from private.account_age where user_id='da260000-0000-4000-8000-000000000002'),'da260000-0000-4000-8000-0000000000f1');
-set local role authenticated;
-select set_config('request.jwt.claim.sub','da260000-0000-4000-8000-000000000002',true);
-select is(public.get_tracker_processing_access()->>'canWriteCustom','true','a revoked reviewed authority does not close custom writes');
 
 -- C. An old named quest with no provenance row completes, and the day is prepared for it.
 reset role;
@@ -151,14 +146,7 @@ select is(private.run_tracker_retention(now()+interval '90 days'),'{"reminded":0
 select ok(exists(select 1 from public.habits where id='da260000-0000-4000-8000-000000000011'),'and the old quest is still there');
 select ok((select removed_at is null and reminded_at is null from private.tracker_retention_state where user_id='da260000-0000-4000-8000-000000000001'),'and a stray row is left untouched');
 
--- H. The under-12 pause still holds, and each person still sees only their own rows.
-update private.account_age set birth_date='2020-01-01',version=version+1 where user_id='da260000-0000-4000-8000-000000000003';
-set local role authenticated;
-select set_config('request.jwt.claim.sub','da260000-0000-4000-8000-000000000003',true);
-select is(public.get_tracker_processing_access()->>'canWriteBasic','false','under 12: basic writes stay paused');
-select is(public.get_tracker_processing_access()->>'canWriteCustom','false','under 12: custom writes stay paused');
-select is(public.get_tracker_processing_access()->>'canWriteFitness','false','under 12: Gym writes stay paused');
-select throws_ok($$select pg_temp.cmd('habit-save','{"p_id":"da260000-0000-4000-8000-000000000041","p_create":true,"p_mode":"custom","p_input":{"name":"Paused","easyVersion":"small","stat":"STR","difficulty":"Easy","time":"08:00","days":[1]}}')$$,'ET001',null,'under 12: a custom quest is still refused');
+-- H. Each person still sees only their own rows (the under-12 pause and authority review no longer exist; 053 covers that).
 reset role;
 insert into public.habits(id,user_id,name,easy_version,stat) values
  ('da260000-0000-4000-8000-000000000051','da260000-0000-4000-8000-000000000004','Other owner quest','small','STR');

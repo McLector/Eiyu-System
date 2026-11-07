@@ -14,7 +14,7 @@ insert into auth.users(id,email,raw_user_meta_data) values
 update private.mailbox_state set verified_version=version,verified_at=now()
  where user_id::text like 'da230400-%' and user_id<>'da230400-0000-4000-8000-000000000004';
 insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version)
- select id,true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2 from auth.users where id::text like 'da230400-%';
+ select id,true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2 from auth.users where id::text like 'da230400-%';
 create function pg_temp.week() returns date language sql as $$ select (current_date-(extract(isodow from current_date)::integer-1)) $$;
 create function pg_temp.expected(u uuid) returns jsonb language sql security definer set search_path='' as $$
  select jsonb_build_object('userId',u,'ageVersion',a->'ageVersion','mailboxVersion',a->'mailboxVersion',

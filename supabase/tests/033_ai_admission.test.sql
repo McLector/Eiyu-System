@@ -21,12 +21,10 @@ insert into auth.users(id,email,raw_user_meta_data) values
  ('d3300000-0000-4000-8000-000000000006','admission-pending@example.invalid','{"birth_date":"2000-01-01"}');
 update private.mailbox_state set verified_version=version,verified_at=now()
  where user_id::text like 'd3300000-%' and user_id<>'d3300000-0000-4000-8000-000000000005';
+-- 066: the "I'm 18 or older" box replaces the birthday. Accounts 003, 004 and 006 have not ticked it.
 insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version)
- select id,true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2 from auth.users where id::text like 'd3300000-%';
-update private.account_age set pending_birth_date='2000-01-01' where user_id='d3300000-0000-4000-8000-000000000006';
--- Model a retained corrected declaration; fresh under12 signup must remain rejected.
-update private.account_age set birth_date='2020-01-01' where user_id='d3300000-0000-4000-8000-000000000004';
-select private.record_processing_authority('d3300000-0000-4000-8000-000000000002','not-required',array['age-screening','weekly-debrief'],1,'d3300000-0000-4000-8000-000000000902');
+ select id,id::text not in ('d3300000-0000-4000-8000-000000000003','d3300000-0000-4000-8000-000000000004','d3300000-0000-4000-8000-000000000006'),
+  '2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2 from auth.users where id::text like 'd3300000-%';
 create function pg_temp.admit(r uuid default 'd3300000-0000-4000-8000-000000000101',e uuid default 'd3300000-0000-4000-8000-000000000201',v integer default 1)
 returns jsonb language sql as $$select public.ai_admit_execution('d3300000-0000-4000-8000-000000000001','weekly-summary',r,date_trunc('week',current_date)::date,e,v)$$;
 create function pg_temp.admit_user(u uuid) returns jsonb language sql as $$select public.ai_admit_execution(u,'weekly-summary',u,date_trunc('week',current_date)::date,u,1)$$;
@@ -44,12 +42,12 @@ select throws_ok('select private.open_ai_admission()','ED001',null,'missing main
 update private.ai_admission_control set last_pruned_at=statement_timestamp();
 select is(private.open_ai_admission(),1::bigint,'operator opens first healthy epoch');
 set local role service_role;
-select is((pg_temp.admit_user('d3300000-0000-4000-8000-000000000002')->>'allowed')::boolean,true,'new protocol admits eligible teen with specific consent and reviewed authority disposition');
-select is(public.ai_settle_execution('d3300000-0000-4000-8000-000000000002',1,'stopped-before-dispatch'),true,'synthetic teen acceptance performs no provider call');
-select throws_ok($$select pg_temp.admit_user('d3300000-0000-4000-8000-000000000003')$$,'EP001',null,'unknown age denied by actual new protocol');
-select throws_ok($$select pg_temp.admit_user('d3300000-0000-4000-8000-000000000004')$$,'EP001',null,'retained under12 denied by actual new protocol');
+select is((pg_temp.admit_user('d3300000-0000-4000-8000-000000000002')->>'allowed')::boolean,true,'new protocol admits an account with the 18+ box, the AI agreement and a verified mailbox');
+select is(public.ai_settle_execution('d3300000-0000-4000-8000-000000000002',1,'stopped-before-dispatch'),true,'synthetic acceptance performs no provider call');
+select throws_ok($$select pg_temp.admit_user('d3300000-0000-4000-8000-000000000003')$$,'EP001',null,'no 18+ box denied by actual new protocol');
+select throws_ok($$select pg_temp.admit_user('d3300000-0000-4000-8000-000000000004')$$,'EP001',null,'18+ box not ticked (retained child account) denied by actual new protocol');
 select throws_ok($$select pg_temp.admit_user('d3300000-0000-4000-8000-000000000005')$$,'EM001',null,'actual new protocol still requires current mailbox proof');
-select throws_ok($$select pg_temp.admit_user('d3300000-0000-4000-8000-000000000006')$$,'EP001',null,'retained pending correction denied by actual new protocol');
+select throws_ok($$select pg_temp.admit_user('d3300000-0000-4000-8000-000000000006')$$,'EP001',null,'18+ box not ticked (retained correction account) denied by actual new protocol');
 select is((public.ai_begin_request('d3300000-0000-4000-8000-000000000001','weekly-summary','d3300000-0000-4000-8000-000000000199',date_trunc('week',current_date)::date)->>'allowed')::boolean,false,'legacy begin denied even when open');
 select is(public.ai_reserve_next_attempt('d3300000-0000-4000-8000-000000000199',1),false,'legacy retry denied');
 select is(public.ai_check_request_age('d3300000-0000-4000-8000-000000000199',1),false,'legacy output gate denied');

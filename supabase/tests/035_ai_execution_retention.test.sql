@@ -18,7 +18,7 @@ insert into auth.users(id,email,raw_user_meta_data) values
  ('d3500000-0000-4000-8000-000000000001','retention@example.invalid','{"birth_date":"2000-01-01"}');
 update private.mailbox_state set verified_version=version,verified_at=now() where user_id='d3500000-0000-4000-8000-000000000001';
 insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version)
- values('d3500000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
+ values('d3500000-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
 -- Give this rollback fixture headroom without rewriting any retained counts.
 update private.ai_quota_config set max_user_requests_per_action=100,
  max_provider_attempts=coalesce((select attempt_count from private.ai_provider_daily_usage where usage_date=current_date),0)+20;
