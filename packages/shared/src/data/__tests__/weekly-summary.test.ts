@@ -5,7 +5,6 @@ import { generateWeeklySummary } from '../../ai/suggestions';
 jest.mock('../../ai/suggestions', () => ({
   generateWeeklySummary: jest.fn(async () => 'a fresh paragraph'),
 }));
-jest.mock('../account-age', () => ({ requireAdultDeclaration: jest.fn(async () => ({ userId: 'user-1', version: 1 })) }));
 jest.mock('../processing-access', () => ({requireDebriefAccess: jest.fn(async () => ({
   contractVersion: 1, userId: 'user-1', ageVersion: 1, consentVersion: 2, authorityVersion: 0,
   mailboxVersion: 1, ageEligible: true, ageConsent: true, aiConsent: true,

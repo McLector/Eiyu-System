@@ -440,8 +440,12 @@ export interface Database {
         Args: { p_display_name: string; p_user_class: string };
         Returns: { displayName: string; userClass: string; timeZone: string | null };
       };
-      get_account_age: {
+      get_terms_status: {
         Args: Record<string, never>;
+        Returns: Json;
+      };
+      accept_terms: {
+        Args: { p_version: string };
         Returns: Json;
       };
       get_processing_access: {
@@ -519,22 +523,6 @@ export interface Database {
       };
       get_mailbox_status: {
         Args: Record<string, never>;
-        Returns: Json;
-      };
-      set_account_birthday: {
-        Args: { p_birth_date: string; p_expected_user_id?: string };
-        Returns: Json;
-      };
-      finish_google_signup: {
-        Args: {
-          p_birth_date: string;
-          p_notice_version: string;
-          p_expected_user_id: string;
-          p_expected_age_version: number;
-          p_expected_consent_version: number;
-          p_expected_authority_version: number;
-          p_expected_mailbox_version: number;
-        };
         Returns: Json;
       };
       set_profile_palette: {

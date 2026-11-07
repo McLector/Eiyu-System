@@ -1,6 +1,5 @@
 const rpc=jest.fn();const invoke=jest.fn();const from=jest.fn();
 jest.mock('../../supabase/client',()=>({supabase:{auth:{getSession:async()=>({data:{session:{user:{id:'owner'},access_token:'inert-owner'}},error:null})},rpc:(...args:unknown[])=>rpc(...args),from:(...args:unknown[])=>from(...args),functions:{invoke:(...args:unknown[])=>invoke(...args)}}}));
-jest.mock('../../data/account-age',()=>({requireAdultDeclaration:jest.fn(async()=>({userId:'owner',version:1}))}));
 import { generateWeeklySummary } from '../suggestions';
 import { fetchOrCreateWeeklySummary,regenerateWeeklySummary } from '../../data/weekly-summary';
 const state={userId:'owner',version:1,verified:true};

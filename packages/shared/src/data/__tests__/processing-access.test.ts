@@ -1,7 +1,9 @@
 const rpc = jest.fn();
 jest.mock('../../supabase/client', () => ({supabase: {rpc: (...args: unknown[]) => rpc(...args)}}));
+import * as processingAccess from '../processing-access';
+import {ADULT_NOTICE_VERSION, AI_NOTICE_VERSION} from '../../logic/legal-content';
 import {
-  fetchProcessingAccess, requireDebriefAccess, setProcessingConsent,
+  fetchProcessingAccess, requireDebriefAccess, setProcessingConsent, PROCESSING_ACCESS_MESSAGE,
   subscribeProcessingAccessChanges, type ProcessingAccess,
 } from '../processing-access';
 
@@ -99,26 +101,26 @@ it('denies unsupported operation kinds before a request', async () => {
 });
 it('sends only the explicit purpose, versioned notice and captured account revisions', async () => {
   rpc.mockResolvedValue({data: {...allowed, aiConsent: false, canGenerateDebrief: false, consentVersion: 4}, error: null});
-  const result = await setProcessingConsent('weekly-debrief', false, '2026-10-20-weekly-debrief-v1', allowed);
+  const result = await setProcessingConsent('weekly-debrief', false, '2026-11-08-weekly-debrief-v2', allowed);
   expect(result.aiConsent).toBe(false);
   expect(rpc).toHaveBeenCalledWith('set_processing_consent', {
-    p_purpose: 'weekly-debrief', p_granted: false, p_notice_version: '2026-10-20-weekly-debrief-v1',
+    p_purpose: 'weekly-debrief', p_granted: false, p_notice_version: '2026-11-08-weekly-debrief-v2',
     p_expected_user_id: 'owner-a', p_expected_age_version: 2, p_expected_consent_version: 3,
     p_expected_authority_version: 4, p_expected_mailbox_version: 5,
   });
 });
 it.each([
-  ['authority', true, '2026-10-20-weekly-debrief-v1'],
-  ['weekly-debrief', 'true', '2026-10-20-weekly-debrief-v1'],
-  ['weekly-debrief', true, '2026-10-20-age-v1'],
-  ['age-screening', true, '2026-10-20-weekly-debrief-v1'],
+  ['authority', true, '2026-11-08-weekly-debrief-v2'],
+  ['weekly-debrief', 'true', '2026-11-08-weekly-debrief-v2'],
+  ['weekly-debrief', true, '2026-11-08-adult-v1'],
+  ['age-screening', true, '2026-11-08-weekly-debrief-v2'],
   ['age-screening', false, 'unknown'],
 ] as const)('does not send invalid consent purpose/grant/notice %#', async (purpose, granted, notice) => {
   await expect(setProcessingConsent(purpose as 'age-screening', granted as boolean, notice, allowed)).rejects.toThrow();
   expect(rpc).not.toHaveBeenCalled();
 });
 it('requires a complete expected status before sending consent', async () => {
-  await expect(setProcessingConsent('age-screening', true, '2026-10-20-age-v1', {} as ProcessingAccess)).rejects.toThrow();
+  await expect(setProcessingConsent('age-screening', true, '2026-11-08-adult-v1', {} as ProcessingAccess)).rejects.toThrow();
   expect(rpc).not.toHaveBeenCalled();
 });
 it.each([
@@ -126,23 +128,46 @@ it.each([
   {consentVersion: 2}, {aiConsent: false, canGenerateDebrief: false},
 ])('rejects a stale or wrong-owner mutation result %#', async override => {
   rpc.mockResolvedValue({data: {...allowed, ...override}, error: null});
-  await expect(setProcessingConsent('weekly-debrief', true, '2026-10-20-weekly-debrief-v1', allowed)).rejects.toThrow();
+  await expect(setProcessingConsent('weekly-debrief', true, '2026-11-08-weekly-debrief-v2', allowed)).rejects.toThrow();
 });
 it('accepts an explicit age-purpose withdrawal without inventing AI eligibility', async () => {
   const withdrawn = {...allowed, ageConsent: false, canReadDebrief: false, canGenerateDebrief: false, consentVersion: 4};
   rpc.mockResolvedValue({data: withdrawn, error: null});
-  expect(await setProcessingConsent('age-screening', false, '2026-10-20-age-v1', allowed)).toEqual(withdrawn);
+  expect(await setProcessingConsent('age-screening', false, '2026-11-08-adult-v1', allowed)).toEqual(withdrawn);
 });
 it('notifies observers only for accepted mutations and isolates failing observers', async () => {
   const changed = jest.fn(); const stopBad = subscribeProcessingAccessChanges(() => {throw new Error('observer');});
   const stop = subscribeProcessingAccessChanges(changed);
   try {
     rpc.mockResolvedValueOnce({data: null, error: new Error('offline')});
-    await expect(setProcessingConsent('weekly-debrief', true, '2026-10-20-weekly-debrief-v1', allowed)).rejects.toThrow();
+    await expect(setProcessingConsent('weekly-debrief', true, '2026-11-08-weekly-debrief-v2', allowed)).rejects.toThrow();
     expect(changed).not.toHaveBeenCalled();
-    await setProcessingConsent('weekly-debrief', true, '2026-10-20-weekly-debrief-v1', allowed);
+    await setProcessingConsent('weekly-debrief', true, '2026-11-08-weekly-debrief-v2', allowed);
     expect(changed).toHaveBeenCalledTimes(1);
-    stop(); await setProcessingConsent('weekly-debrief', true, '2026-10-20-weekly-debrief-v1', allowed);
+    stop(); await setProcessingConsent('weekly-debrief', true, '2026-11-08-weekly-debrief-v2', allowed);
     expect(changed).toHaveBeenCalledTimes(1);
   } finally {stop(); stopBad();}
+});
+describe('after the age simplification (066)', () => {
+  it('names what the weekly review needs, without a birthday or Profile permissions', () => {
+    expect(PROCESSING_ACCESS_MESSAGE).toBe('Weekly review needs the 18+ box, the AI agreement and a verified email. Turn it on from the Status page.');
+  });
+  it.each(['2026-10-20-age-v1', '2026-10-20-weekly-debrief-v1', '2026-11-08-weekly-debrief-v2'])(
+    'does not send the 18+ declaration under the old or wrong notice %s', async notice => {
+      await expect(setProcessingConsent('age-screening', true, notice, allowed)).rejects.toThrow();
+      expect(rpc).not.toHaveBeenCalled();
+    });
+  it('sends the 18+ declaration under the adult notice', async () => {
+    rpc.mockResolvedValue({data: {...allowed, consentVersion: 4}, error: null});
+    await setProcessingConsent('age-screening', true, ADULT_NOTICE_VERSION, allowed);
+    expect(rpc).toHaveBeenCalledWith('set_processing_consent', expect.objectContaining({p_purpose: 'age-screening', p_notice_version: '2026-11-08-adult-v1'}));
+  });
+  it('sends the AI agreement under the new weekly-review notice only', async () => {
+    rpc.mockResolvedValue({data: {...allowed, consentVersion: 4}, error: null});
+    await setProcessingConsent('weekly-debrief', true, AI_NOTICE_VERSION, allowed);
+    expect(rpc).toHaveBeenCalledWith('set_processing_consent', expect.objectContaining({p_notice_version: '2026-11-08-weekly-debrief-v2'}));
+  });
+  it('no longer offers a birthday-based Google finish', () => {
+    expect((processingAccess as Record<string, unknown>).finishGoogleSignup).toBeUndefined();
+  });
 });

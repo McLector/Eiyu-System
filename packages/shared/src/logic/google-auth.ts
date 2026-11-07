@@ -1,5 +1,5 @@
 /**
- * Google sign-in: callback error mapping and the "finish sign-up" check.
+ * Google sign-in: callback error mapping and the "accept the Terms" check.
  *
  * Shapes come from real GoTrue v2.196.0 logins (S03 T1/T4). A refused link reaches the client as
  * `error=server_error&error_code=unexpected_failure&error_description=Error+creating+identity`,
@@ -80,22 +80,10 @@ export function googleSignInErrorMessage(input: OAuthErrorParams | GoogleSignInF
 }
 
 /**
- * True only for an account GoTrue created through Google that has not finished: no age consent yet, or
- * (when the birthday status is given) consent but no birthday, which the earlier two-call screen could leave.
- * A malformed birthday status is ignored, so the answer falls back to consent alone.
- * Keys on `app_metadata.provider`, which only GoTrue sets and is not changed by a later link, so a
- * password account that adds Google, or one whose user_metadata claims Google, is never pushed in.
+ * True only when the server says this account has not accepted the Terms. A new Google sign-up skips the sign-up
+ * form, so it meets this once. A missing or malformed status answers false: a failed read must never trap a
+ * person on the screen.
  */
-export function needsGoogleSignupFinish(
-  user: {app_metadata?: {provider?: unknown; [key: string]: unknown} | null} | null | undefined,
-  access: {ageConsent?: unknown} | null | undefined,
-  age?: {birthDate?: unknown; pendingBirthDate?: unknown} | null,
-): boolean {
-  if (!user || !access) return false;
-  if (user.app_metadata?.provider !== 'google') return false;
-  if (access.ageConsent === false) return true;
-  if (access.ageConsent !== true || !age) return false;
-  const known = (value: unknown) => value === null || typeof value === 'string';
-  if (!known(age.birthDate) || !known(age.pendingBirthDate)) return false;
-  return age.birthDate === null && age.pendingBirthDate === null;
+export function needsTermsAcceptance(terms: {accepted?: unknown} | null | undefined): boolean {
+  return !!terms && typeof terms === 'object' && terms.accepted === false;
 }

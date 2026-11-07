@@ -1,7 +1,5 @@
 import {supabase} from '../supabase/client';
-import {AGE_NOTICE_VERSION, AI_NOTICE_VERSION} from '../logic/legal-content';
-import {validateBirthday} from '../logic/validation';
-import {notifyAccountAgeChanged, parseAccountAge, type AccountAge} from './account-age';
+import {ADULT_NOTICE_VERSION, AI_NOTICE_VERSION} from '../logic/legal-content';
 
 export interface ProcessingAccess {
   contractVersion: 1;
@@ -18,7 +16,7 @@ export interface ProcessingAccess {
   aiConsent: boolean;
 }
 
-export const PROCESSING_ACCESS_MESSAGE = 'Debrief access needs a current birthday declaration, the applicable permissions and email verification. Review your choices in Profile.';
+export const PROCESSING_ACCESS_MESSAGE = 'Weekly review needs the 18+ box, the AI agreement and a verified email. Turn it on from the Status page.';
 const INVALID_STATUS = 'Processing access is unavailable.';
 const revisions = ['ageVersion', 'consentVersion', 'authorityVersion', 'mailboxVersion'] as const;
 const decisions = ['ageEligible', 'canReadDebrief', 'canGenerateDebrief', 'ageConsent', 'aiConsent'] as const;
@@ -68,7 +66,7 @@ export async function requireDebriefAccess(kind: 'read' | 'generate', expected?:
 
 export async function setProcessingConsent(purpose: 'age-screening' | 'weekly-debrief', granted: boolean,
   noticeVersion: string, expected: ProcessingAccess): Promise<ProcessingAccess> {
-  const requiredNotice = purpose === 'age-screening' ? AGE_NOTICE_VERSION
+  const requiredNotice = purpose === 'age-screening' ? ADULT_NOTICE_VERSION
     : purpose === 'weekly-debrief' ? AI_NOTICE_VERSION : null;
   if (!requiredNotice || noticeVersion !== requiredNotice || typeof granted !== 'boolean') {
     throw new Error('Review the current notice before changing this permission.');
@@ -90,34 +88,6 @@ export async function setProcessingConsent(purpose: 'age-screening' | 'weekly-de
   }
   listeners.forEach(listener => {try {listener();} catch { /* Observers cannot undo an accepted mutation. */ }});
   return status;
-}
-
-/**
- * Finishes a Google sign-up: saves the birthday-notice permission and the birthday in one server call,
- * so either both are kept or neither is. Works for an account that already gave the permission.
- */
-export async function finishGoogleSignup(birthDate: string, expected: ProcessingAccess):
-  Promise<{access: ProcessingAccess; age: AccountAge}> {
-  const validation = validateBirthday(birthDate);
-  if (validation) throw new Error(validation);
-  const captured = parseProcessingAccess(expected);
-  const {data, error} = await supabase.rpc('finish_google_signup', {
-    p_birth_date: birthDate, p_notice_version: AGE_NOTICE_VERSION, p_expected_user_id: captured.userId,
-    p_expected_age_version: captured.ageVersion, p_expected_consent_version: captured.consentVersion,
-    p_expected_authority_version: captured.authorityVersion, p_expected_mailbox_version: captured.mailboxVersion,
-  });
-  if (error) throw error;
-  const result = (data ?? {}) as {access?: unknown; age?: unknown};
-  const access = parseProcessingAccess(result.access);
-  const age = parseAccountAge(result.age);
-  if (access.userId !== captured.userId || age.userId !== captured.userId || !access.ageConsent
-    || access.authorityVersion !== captured.authorityVersion || access.mailboxVersion !== captured.mailboxVersion
-    || access.consentVersion < captured.consentVersion || age.birthDate !== birthDate) {
-    throw new Error(PROCESSING_ACCESS_MESSAGE);
-  }
-  listeners.forEach(listener => {try {listener();} catch { /* Observers cannot undo an accepted mutation. */ }});
-  notifyAccountAgeChanged();
-  return {access, age};
 }
 
 export function subscribeProcessingAccessChanges(listener: () => void): () => void {

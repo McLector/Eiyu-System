@@ -36,12 +36,12 @@ it('does not start stage generation or populate cache under changing eligibility
   expect(invoke).not.toHaveBeenCalled();
   expect(cache.size).toBe(0);
 });
-it('does not read a saved summary when age is unknown', async () => {
+it('does not read a saved summary until the 18+ box is ticked', async () => {
   rpc.mockImplementation((name: string) => Promise.resolve({data: name === 'get_mailbox_status'
     ? {userId: 'owner-a', version: 1, verified: true}
     : {contractVersion: 1, userId: 'owner-a', ageVersion: 0, consentVersion: 0, authorityVersion: 0,
       mailboxVersion: 1, ageEligible: false, ageConsent: false, aiConsent: false,
       canReadDebrief: false, canGenerateDebrief: false, authorityState: 'pending'}, error: null}));
-  await expect(fetchOrCreateWeeklySummary('owner-a','UTC')).rejects.toThrow(/birthday declaration/);
+  await expect(fetchOrCreateWeeklySummary('owner-a','UTC')).rejects.toThrow(/18\+ box/);
   expect(from).not.toHaveBeenCalled();
 });

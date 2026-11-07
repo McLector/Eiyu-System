@@ -1,182 +1,181 @@
-import { DATA_REQUEST_RESPONSE, LEGAL_DOCUMENTS, PROCESSING_NOTICES, TRACKER_PURPOSE_NOTICES } from '../legal-content';
+import {
+  ADULT_NOTICE_VERSION, AI_NOTICE_VERSION, DATA_REQUEST_RESPONSE, DELIVERED_REMINDER_NOTICE, LEGAL_DOCUMENTS,
+  PROCESSING_NOTICES, TERMS_VERSION,
+} from '../legal-content';
 import * as legalContent from '../legal-content';
-import { TRACKER_NOTICE_VERSIONS } from '../../data/tracker-access';
 
-describe('registration legal content', () => {
-  it('keeps Privacy Policy and Terms of Use as separate complete documents', () => {
+const privacyText = () => LEGAL_DOCUMENTS.privacy.sections.map(section => section.body).join(' ');
+const termsText = () => LEGAL_DOCUMENTS.terms.sections.map(section => section.body).join(' ');
+const section = (heading: string) => LEGAL_DOCUMENTS.privacy.sections.find(s => s.heading === heading)?.body ?? '';
+
+// Words that belonged to the birthday, child-notice, teen-review and per-purpose-permission system (removed in S03b).
+const REMOVED_WORDING = /birthday|date of birth|\bchild|\bteen|under 12|age 12|12 and above|\bparent|\bguardian|fitness permission|fitness notice|custom permission|separate permission|read-only|teen review|eligible declared/i;
+
+describe('versions', () => {
+  it('names the three current notices', () => {
+    expect(TERMS_VERSION).toBe('2026-11-08-terms-v2');
+    expect(ADULT_NOTICE_VERSION).toBe('2026-11-08-adult-v1');
+    expect(AI_NOTICE_VERSION).toBe('2026-11-08-weekly-debrief-v2');
+  });
+  it('keeps the three versions different, so changing one asks only for that one again', () => {
+    expect(new Set([TERMS_VERSION, ADULT_NOTICE_VERSION, AI_NOTICE_VERSION]).size).toBe(3);
+  });
+  it('no longer exports the old age notice version or the removed notices', () => {
+    const exported = legalContent as Record<string, unknown>;
+    for (const name of ['AGE_NOTICE_VERSION', 'CHILD_PRIVACY_NOTICE', 'TRACKER_PURPOSE_NOTICES', 'PROCESSING_AUTHORITY_REVIEW']) {
+      expect(exported[name]).toBeUndefined();
+    }
+  });
+});
+
+describe('document structure', () => {
+  it('keeps Privacy Policy and Terms of Use as separate documents', () => {
     expect(LEGAL_DOCUMENTS.privacy.title).toBe('Privacy Policy');
-    expect(LEGAL_DOCUMENTS.privacy.sections.map(section => section.heading)).toEqual([
-      'DATA WE COLLECT',
-      "HOW IT'S USED",
-      'SIGNING IN WITH GOOGLE',
-      'AI FEATURES',
-      'CUSTOM TRACKER AND FITNESS',
-      'HOW LONG WE KEEP THINGS',
-      'YOUR CONTROL',
+    expect(LEGAL_DOCUMENTS.privacy.sections.map(s => s.heading)).toEqual([
+      'DATA WE COLLECT', "HOW IT'S USED", 'SIGNING IN WITH GOOGLE', 'AI FEATURES',
+      'CUSTOM TRACKER AND FITNESS', 'HOW LONG WE KEEP THINGS', 'YOUR CONTROL',
     ]);
     expect(LEGAL_DOCUMENTS.terms.title).toBe('Terms of Use');
-    expect(LEGAL_DOCUMENTS.terms.sections.map(section => section.heading)).toEqual(['TERMS OF USE']);
+    expect(LEGAL_DOCUMENTS.terms.sections.map(s => s.heading)).toEqual(['TERMS OF USE', 'WHO CAN USE EIYU']);
   });
-
-  it('describes the current data and processors without claiming only profile and quest data exist', () => {
-    const privacy = LEGAL_DOCUMENTS.privacy.sections.map(section => section.body).join(' ');
-    expect(privacy).toMatch(/account email/i);
-    expect(privacy).toMatch(/timezone/i);
-    expect(privacy).toMatch(/birthday/i);
-    expect(privacy).toMatch(/verification status/i);
-    expect(privacy).toMatch(/usage records/i);
-    expect(privacy).toContain('Supabase Auth');
-    expect(privacy).toContain('Resend');
-    expect(privacy).toContain('sync your progress across your devices');
-    expect(privacy).toContain('No ads, no data selling, no third-party trackers.');
-    expect(privacy).not.toMatch(/nothing else|password is stored encrypted/i);
+  it('has no empty section', () => {
+    for (const doc of Object.values(LEGAL_DOCUMENTS)) for (const s of doc.sections) expect(s.body.length).toBeGreaterThan(40);
   });
+});
 
-  it('describes the Groq debrief recipient, declaration limits, saved output and mailbox-free quests', () => {
-    const privacy = LEGAL_DOCUMENTS.privacy.sections.map(section => section.body).join(' ');
-    expect(privacy).toContain('Groq');
-    expect(privacy).toContain('openai/gpt-oss-20b');
-    expect(privacy).toMatch(/quest and activity information/i);
-    expect(privacy).toMatch(/birthday and verification code are not included/i);
-    expect(privacy).toMatch(/debriefs are saved/i);
-    expect(privacy).toMatch(/opening Status or Weekly may automatically request a debrief/i);
-    expect(privacy).toMatch(/do not independently verify age or parental authority/i);
-    expect(privacy).toMatch(/quests remain available without mailbox verification/i);
-    expect(privacy).not.toMatch(/Gemini|never auto-saved|two (?:total )?(?:generations|debriefs) per week/i);
+describe('Privacy Policy: data and processors', () => {
+  it('describes the data we hold and the processors', () => {
+    expect(privacyText()).toMatch(/account email/i);
+    expect(privacyText()).toMatch(/timezone/i);
+    expect(privacyText()).toMatch(/verification status/i);
+    expect(privacyText()).toMatch(/usage records/i);
+    expect(privacyText()).toContain('Supabase Auth');
+    expect(privacyText()).toContain('Resend');
+    expect(privacyText()).toContain('sync your progress across your devices');
+    expect(privacyText()).toContain('No ads, no data selling, no third-party trackers.');
+    expect(privacyText()).not.toMatch(/nothing else|password is stored encrypted/i);
   });
-
-  it('describes the reviewed12+ permission boundary without an adult-only debrief promise', () => {
-    const privacy = LEGAL_DOCUMENTS.privacy.sections.map(section => section.body).join(' ');
-    expect(privacy).toMatch(/age 12 and above/i);
-    expect(privacy).toMatch(/specific.*permission/i);
-    expect(privacy).toMatch(/IDs, selfies or documents/i);
-    expect(privacy).not.toMatch(/requires an adult birthday declaration/i);
+  it('says what is kept about agreements: the Terms version and time, the 18+ yes and the AI agreement', () => {
+    const data = section('DATA WE COLLECT');
+    expect(data).toMatch(/Terms/);
+    expect(data).toMatch(/18 or older/);
+    expect(data).toMatch(/AI agreement/);
+    expect(data).toMatch(/never a birthday|do not keep a birthday|no birthday/i);
   });
-
-  it('provides the confirmed operator contact without promising unimplemented Settings controls', () => {
-    const privacy = LEGAL_DOCUMENTS.privacy.sections.map(section => section.body).join(' ');
-    expect(privacy).toContain('McLector Dev');
-    expect(privacy).toContain('Philippines');
-    expect(privacy).toContain('privacy@eiyusystem.app');
-    expect(privacy).toContain('Profile');
-    expect(privacy).not.toMatch(/export your data as JSON|delete your account at any time from Settings/i);
+  it('names the operator, country and the one contact address', () => {
+    expect(privacyText()).toContain('McLector Dev');
+    expect(privacyText()).toContain('Philippines');
+    expect(privacyText()).toContain('privacy@eiyusystem.app');
   });
+});
 
-  it('publishes one contact address and never a personal mailbox', () => {
-    const addresses = JSON.stringify(legalContent).match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [];
-    expect(addresses.length).toBeGreaterThan(0);
-    expect([...new Set(addresses)]).toEqual(['privacy@eiyusystem.app']);
+describe('Privacy Policy and Terms carry none of the removed age wording', () => {
+  it('has no birthday, child, teen, guardian or per-purpose permission wording in the policy sections that used it', () => {
+    for (const heading of ['DATA WE COLLECT', "HOW IT'S USED", 'SIGNING IN WITH GOOGLE', 'AI FEATURES', 'CUSTOM TRACKER AND FITNESS', 'HOW LONG WE KEEP THINGS', 'YOUR CONTROL']) {
+      const body = section(heading);
+      const allowedNegative = heading === 'DATA WE COLLECT' ? body.replace(/never a birthday|do not keep a birthday|no birthday/gi, '') : body;
+      expect(allowedNegative).not.toMatch(REMOVED_WORDING);
+    }
   });
-
-  it('preserves the separate approved Terms of Use', () => {
-    const terms = LEGAL_DOCUMENTS.terms.sections.map(section => section.body).join(' ');
-    expect(terms).toContain('provided as-is, without warranty');
-    expect(terms).toContain('Your quest data remains yours');
+  it('has none of it in the Terms either, beyond the written 13-and-over rule', () => {
+    expect(termsText()).not.toMatch(/birthday|date of birth|\bchild|\bteen|guardian|read-only/i);
   });
-
+  it('no longer promises a 30-day removal or a read-only period after a withdrawal', () => {
+    expect(section('CUSTOM TRACKER AND FITNESS')).not.toMatch(/withdraw|30 days|we remove them/i);
+    expect(section('AI FEATURES')).not.toMatch(/30 days/);
+    expect(privacyText()).not.toMatch(/decision notes/i);
+  });
   it('contains no obsolete Easy Version or Freeze Shield terminology', () => {
-    const content = JSON.stringify(LEGAL_DOCUMENTS);
-    expect(content).not.toMatch(/Easy Version|Freeze Shield/i);
+    expect(JSON.stringify(LEGAL_DOCUMENTS)).not.toMatch(/Easy Version|Freeze Shield/i);
   });
 });
 
-describe('Google sign-in (S03)', () => {
-  const google = () => LEGAL_DOCUMENTS.privacy.sections.find(s => s.heading === 'SIGNING IN WITH GOOGLE')?.body ?? '';
-
-  it('names what Google gives us and that we never receive the Google password', () => {
-    expect(google()).toMatch(/email address/i);
-    expect(google()).toMatch(/verified/i);
-    expect(google()).toMatch(/name/i);
-    expect(google()).toMatch(/profile picture address/i);
-    expect(google()).toMatch(/Google account ID/i);
-    expect(google()).toMatch(/never receive your Google password/i);
+describe('Terms of Use', () => {
+  it('keeps the approved as-is wording and that quest data stays the owner’s', () => {
+    expect(termsText()).toContain('provided as-is, without warranty');
+    expect(termsText()).toContain('Your quest data remains yours');
   });
-
-  it('says the account exists before the birthday step and what it holds until the user finishes', () => {
-    expect(google()).toMatch(/creates your account before you confirm your birthday/i);
-    expect(google()).toMatch(/until you finish[^.]*email[^.]*name[^.]*profile picture address[^.]*Google account ID/i);
-    expect(google()).toMatch(/birthday[^.]*only after[^.]*specific permission/i);
+  it('states 13 and over as a written rule that the app never asks about or checks', () => {
+    expect(termsText()).toMatch(/13 and over/);
+    expect(termsText()).toMatch(/do not ask for your age or check it/i);
   });
-
-  it('says the finish step also asks for the Terms of Use, as password sign-up does', () => {
-    expect(google()).toMatch(/finish[^.]*Terms of Use/i);
+  it('says one agreement covers the account, quests, chains and Gym', () => {
+    expect(termsText()).toMatch(/covers your account, your quests and chains, and Gym/);
   });
-
-  it('says what happens to an abandoned sign-up and how to ask for removal', () => {
-    expect(google()).toMatch(/stop[^.]*account stays/i);
-    expect(google()).toContain('privacy@eiyusystem.app');
-  });
-
-  it('explains that an existing account is linked only after its email is verified, and what to do otherwise', () => {
-    expect(google()).toMatch(/same email/i);
-    expect(google()).toMatch(/only when you have verified that email/i);
-    expect(google()).toMatch(/sign in with your password and verify your email first/i);
-  });
-
-  it('names Google as a processor without ads or selling claims being weakened', () => {
-    expect(google()).toMatch(/Google's own privacy policy/i);
-    const privacy = LEGAL_DOCUMENTS.privacy.sections.map(s => s.body).join(' ');
-    expect(privacy).toContain('No ads, no data selling, no third-party trackers.');
-  });
-
-  it('adds no new contact address', () => {
-    const addresses = google().match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [];
-    expect([...new Set(addresses)]).toEqual(['privacy@eiyusystem.app']);
+  it('says the AI weekly review is optional and for people 18 and over', () => {
+    expect(termsText()).toMatch(/AI weekly review[^.]*optional/i);
+    expect(termsText()).toMatch(/18 and over/);
   });
 });
 
-describe('approved tracker notices and policy additions (S02 decisions 5-9, 13)', () => {
-  const purposes = ['custom-tracker', 'fitness-tracking'] as const;
-  it('carries no draft marker and keeps the notice versions unchanged', () => {
-    for (const purpose of purposes) {
-      const notice = TRACKER_PURPOSE_NOTICES[purpose];
-      expect(JSON.stringify(notice)).not.toMatch(/draft|provisional|pending owner/i);
-    }
-    expect(TRACKER_PURPOSE_NOTICES['custom-tracker'].version).toBe('2026-10-23-custom-tracker-v1');
-    expect(TRACKER_PURPOSE_NOTICES['fitness-tracking'].version).toBe('2026-10-23-fitness-tracking-v1');
+describe('AI features (opt-in, 18+, Groq, verified email)', () => {
+  const ai = () => section('AI FEATURES');
+  it('says the review is opt-in, for people 18 and over, and needs a verified email', () => {
+    expect(ai()).toMatch(/until you turn it on/i);
+    expect(ai()).toMatch(/18 or older/);
+    expect(ai()).toMatch(/verified email/i);
+    expect(ai()).toMatch(/AI agreement/);
   });
-  it('states the adopted 30-day read-only period in the adult and the 12-17 text', () => {
-    for (const purpose of purposes) {
-      const notice = TRACKER_PURPOSE_NOTICES[purpose];
-      expect(notice.body).toMatch(/30 days/);
-      expect(notice.childBody).toMatch(/30 days/);
-      expect(notice.body).toMatch(/read-only/);
-      expect(notice.childBody).toMatch(/can't add/i);
-    }
+  it('names the recipient and model, what is sent, and what is not', () => {
+    expect(ai()).toContain('Groq');
+    expect(ai()).toContain('openai/gpt-oss-20b');
+    expect(ai()).toMatch(/quest and activity information/i);
+    expect(ai()).toMatch(/verification code is not included/i);
   });
-  it('has a plain child-oriented version that never asks for IDs and keeps AI separate', () => {
-    for (const purpose of purposes) {
-      const child = TRACKER_PURPOSE_NOTICES[purpose].childBody;
-      expect(child).toMatch(/does not turn on AI/i);
-      expect(child).toMatch(/never ask for IDs, selfies or documents/i);
-      expect(child).toMatch(/Profile/);
-      expect(child.length).toBeGreaterThan(200);
-    }
-    expect(TRACKER_PURPOSE_NOTICES['custom-tracker'].childBody).toMatch(/who you are/);
+  it('says saved reviews are kept, and that turning it off stops new ones without deleting saved ones', () => {
+    expect(ai()).toMatch(/reviews are saved/i);
+    expect(ai()).toMatch(/turning (?:it|this) off stops new reviews/i);
+    expect(ai()).toMatch(/does not (?:request )?delet/i);
   });
-  it('names data, storage, decline result, withdrawal result and rights in each adult body', () => {
-    const custom = TRACKER_PURPOSE_NOTICES['custom-tracker'];
-    expect(custom.label).toMatch(/custom quest and chain names, descriptions and progress/i);
-    expect(custom.body).toMatch(/Supabase/);
-    expect(custom.body).toMatch(/If you say no, you can still use basic quests/i);
-    expect(custom.body).toMatch(/export it or ask for deletion/i);
-    expect(custom.body).toMatch(/see, correct, export or delete/i);
-    expect(custom.body).toMatch(/do not ask for IDs, selfies or documents/i);
-    const fit = TRACKER_PURPOSE_NOTICES['fitness-tracking'];
-    expect(fit.body).toMatch(/Supabase/);
-    expect(fit.body).toMatch(/Gym stays closed for new records/i);
-    expect(fit.body).toMatch(/may remain in storage/i);
-    expect(fit.body).toMatch(/see, correct, export or delete/i);
-    expect(fit.body).toMatch(/do not ask for IDs, selfies or documents/i);
+  it('treats the 18+ box as the person’s own statement and asks for no ID', () => {
+    expect(ai()).toMatch(/your own statement/i);
+    expect(ai()).toMatch(/IDs, selfies or documents/i);
   });
-  it('adds a purposes section and a keeping-things section to the privacy policy', () => {
-    const headings = LEGAL_DOCUMENTS.privacy.sections.map(s => s.heading);
-    expect(headings).toEqual(['DATA WE COLLECT', "HOW IT'S USED", 'SIGNING IN WITH GOOGLE', 'AI FEATURES', 'CUSTOM TRACKER AND FITNESS', 'HOW LONG WE KEEP THINGS', 'YOUR CONTROL']);
-    const text = LEGAL_DOCUMENTS.privacy.sections.map(s => s.body).join(' ');
-    expect(text).toMatch(/30 days/);
-    expect(text).toMatch(/12 months/);
-    expect(text).toMatch(/Deleting your Eiyu account does not recall delivered messages/);
-    expect(text).toMatch(/zero-data-retention control applies to inference content/);
+  it('keeps quests available without the review or a verified email', () => {
+    expect(ai()).toMatch(/quests remain available without/i);
+  });
+  it('does not still promise the old age-12 rules or an adult-birthday requirement', () => {
+    expect(ai()).not.toMatch(/age 12|requires an adult birthday|do not independently verify age/i);
+  });
+  it('does not claim the review is requested automatically', () => {
+    expect(ai()).not.toMatch(/automatically request/i);
+  });
+  it('mentions neither Gemini nor stale allowance promises', () => {
+    expect(privacyText()).not.toMatch(/Gemini|never auto-saved|two (?:total )?(?:generations|debriefs) per week/i);
+  });
+});
+
+describe('quests, chains and Gym', () => {
+  const body = () => section('CUSTOM TRACKER AND FITNESS');
+  it('says no extra permission is needed beyond agreeing to the Terms', () => {
+    expect(body()).toMatch(/no extra permission/i);
+    expect(body()).not.toMatch(/basic quests/i);
+    expect(body()).not.toMatch(/only after you give|if you say no|young person/i);
+  });
+  it('still says what is saved, that it can be sensitive, who stores it, and that AI use is a separate opt-in', () => {
+    expect(body()).toMatch(/Custom quest and chain names, descriptions and progress/);
+    expect(body()).toMatch(/Gym routines, exercises, weights, workouts and optional exercise media/);
+    expect(body()).toMatch(/Supabase/);
+    expect(body()).toMatch(/sensitive/i);
+    expect(body()).toMatch(/only if you turn on the weekly AI review/i);
+    expect(body()).toMatch(/export them or ask for deletion/i);
+    expect(body()).toMatch(/do not ask for IDs, selfies or documents/i);
+  });
+});
+
+describe('keeping things and your control', () => {
+  it('keeps the retention statements that still apply', () => {
+    expect(privacyText()).toMatch(/12 months/);
+    expect(privacyText()).toMatch(/Deleting your Eiyu account does not recall delivered messages/);
+    expect(privacyText()).toMatch(/zero-data-retention control applies to inference content/);
+  });
+  it('lets the person turn the AI weekly review off in Profile and does not offer birthday edits', () => {
+    const control = section('YOUR CONTROL');
+    expect(control).toMatch(/turn the AI weekly review off in Profile/i);
+    expect(control).toContain('privacy@eiyusystem.app');
+    expect(control).toMatch(/backups/i);
+    expect(control).toMatch(/old offline|old app/i);
+    expect(control).not.toMatch(/export your data as JSON|delete your account at any time from Settings/i);
   });
   it('response wording separates active records, backups and logs, delivered mail, user exports and old offline copies', () => {
     expect(DATA_REQUEST_RESPONSE).not.toMatch(/draft/i);
@@ -184,14 +183,14 @@ describe('approved tracker notices and policy additions (S02 decisions 5-9, 13)'
       expect(DATA_REQUEST_RESPONSE).toMatch(part);
     }
     expect(DATA_REQUEST_RESPONSE).toMatch(/never ask for your password, a code or an ID/);
-    const control = LEGAL_DOCUMENTS.privacy.sections.find(s => s.heading === 'YOUR CONTROL')!.body;
-    expect(control).toMatch(/backups/i);
-    expect(control).toMatch(/old offline|old app/i);
+  });
+  it('keeps the delivered-reminder notice', () => {
+    expect(DELIVERED_REMINDER_NOTICE).toMatch(/already delivered/);
   });
 });
 
 describe('backup wording', () => {
-  const all = () => [...LEGAL_DOCUMENTS.privacy.sections.map(s => s.body), DATA_REQUEST_RESPONSE].join(' ');
+  const all = () => [privacyText(), DATA_REQUEST_RESPONSE].join(' ');
   it('does not imply the database host keeps automatic backups', () => {
     expect(all()).not.toMatch(/Backups and operational records can remain/);
     expect(all()).not.toMatch(/backups and (operating )?records kept by our hosting/i);
@@ -203,60 +202,81 @@ describe('backup wording', () => {
   });
 });
 
-describe('tracker purpose notices', () => {
-  it('has one notice per purpose, at the version the server accepts', () => {
-    expect(Object.keys(TRACKER_PURPOSE_NOTICES).sort()).toEqual(['custom-tracker', 'fitness-tracking']);
-    for (const purpose of ['custom-tracker', 'fitness-tracking'] as const) {
-      expect(TRACKER_PURPOSE_NOTICES[purpose].version).toBe(TRACKER_NOTICE_VERSIONS[purpose]);
-      expect(TRACKER_PURPOSE_NOTICES[purpose].label.length).toBeGreaterThan(20);
-      expect(TRACKER_PURPOSE_NOTICES[purpose].body.length).toBeGreaterThan(40);
-    }
+describe('Google sign-in', () => {
+  const google = () => section('SIGNING IN WITH GOOGLE');
+  it('names what Google gives us and that we never receive the Google password', () => {
+    expect(google()).toMatch(/email address/i);
+    expect(google()).toMatch(/verified/i);
+    expect(google()).toMatch(/name/i);
+    expect(google()).toMatch(/profile picture address/i);
+    expect(google()).toMatch(/Google account ID/i);
+    expect(google()).toMatch(/never receive your Google password/i);
   });
-  it('keeps the two tracker purposes and the AI permission separate', () => {
-    const versions = [TRACKER_PURPOSE_NOTICES['custom-tracker'].version, TRACKER_PURPOSE_NOTICES['fitness-tracking'].version, PROCESSING_NOTICES['weekly-debrief'].version, PROCESSING_NOTICES['age-screening'].version];
-    expect(new Set(versions).size).toBe(4);
-    for (const notice of Object.values(TRACKER_PURPOSE_NOTICES)) expect(`${notice.label} ${notice.body}`).toMatch(/does not give permission for AI/i);
+  it('says the account exists straight away and what it holds until the Terms are accepted', () => {
+    expect(google()).toMatch(/creates your account right away/i);
+    expect(google()).toMatch(/until you accept[^.]*Terms[^.]*email[^.]*name[^.]*profile picture address[^.]*Google account ID/i);
   });
-  it('says what each purpose covers and that the information may be sensitive', () => {
-    expect(TRACKER_PURPOSE_NOTICES['custom-tracker'].label).toMatch(/custom quest and chain names, descriptions and progress/i);
-    expect(TRACKER_PURPOSE_NOTICES['fitness-tracking'].label).toMatch(/routines, exercise details, weights and workout progress/i);
-    for (const notice of Object.values(TRACKER_PURPOSE_NOTICES)) expect(notice.label).toMatch(/sensitive/i);
+  it('says the next screen asks only for the Terms and Privacy Policy, as password sign-up does', () => {
+    expect(google()).toMatch(/accept the Privacy Policy and Terms of Use/i);
+    expect(google()).toMatch(/only/i);
   });
-  it('promises withdrawal in Profile with a read-only period rather than instant deletion, and does not promise recall of delivered media', () => {
-    for (const notice of Object.values(TRACKER_PURPOSE_NOTICES)) {
-      expect(notice.body).toMatch(/Profile/);
-      expect(notice.body).toMatch(/read-only/i);
-      expect(notice.body).not.toMatch(/deleted (?:right away|immediately)/i);
-    }
-    expect(TRACKER_PURPOSE_NOTICES['fitness-tracking'].body).toMatch(/media/i);
+  it('says what happens to an abandoned sign-up and how to ask for removal', () => {
+    expect(google()).toMatch(/stop[^.]*account stays/i);
+    expect(google()).toContain('privacy@eiyusystem.app');
+  });
+  it('explains that an existing account is linked only after its email is verified, and what to do otherwise', () => {
+    expect(google()).toMatch(/same email/i);
+    expect(google()).toMatch(/only when you have verified that email/i);
+    expect(google()).toMatch(/sign in with your password and verify your email first/i);
+  });
+  it('names Google as a processor without weakening the no-ads claim', () => {
+    expect(google()).toMatch(/Google's own privacy policy/i);
+    expect(privacyText()).toContain('No ads, no data selling, no third-party trackers.');
   });
 });
 
-describe('privacy policy after the open tracker (065)', () => {
-  const section = () => LEGAL_DOCUMENTS.privacy.sections.find(s => s.heading === 'CUSTOM TRACKER AND FITNESS')!.body;
-  it('no longer promises a separate permission for custom quests, chains or Gym', () => {
-    expect(section()).not.toMatch(/separate permission/i);
-    expect(section()).not.toMatch(/only after you give/i);
-    expect(section()).not.toMatch(/if you say no/i);
-    expect(section()).not.toMatch(/young person/i);
+describe('processing notices', () => {
+  it('keeps the 18+ declaration separate from the AI agreement', () => {
+    expect(Object.keys(PROCESSING_NOTICES).sort()).toEqual(['age-screening', 'weekly-debrief']);
+    expect(PROCESSING_NOTICES['age-screening'].version).toBe(ADULT_NOTICE_VERSION);
+    expect(PROCESSING_NOTICES['weekly-debrief'].version).toBe(AI_NOTICE_VERSION);
   });
-  it('no longer promises a read-only period or removal after a withdrawal', () => {
-    expect(section()).not.toMatch(/withdraw/i);
-    expect(section()).not.toMatch(/read-only/i);
-    expect(section()).not.toMatch(/30 days/);
-    expect(section()).not.toMatch(/we remove them/i);
+  it('words the adult box as a plain 18+ statement that stores yes and the date, never a birthday', () => {
+    const notice = PROCESSING_NOTICES['age-screening'];
+    expect(notice.label).toMatch(/18 or older/);
+    expect(notice.label).not.toMatch(/birthday|corrections/i);
+    expect(notice.body).toMatch(/yes and the date/i);
+    expect(notice.body).toMatch(/never a birthday/i);
+    expect(notice.body).toMatch(/AI weekly review/);
   });
-  it('still says what is saved, that it can be sensitive, who stores it, and that AI use is a separate opt-in', () => {
-    expect(section()).toMatch(/Custom quest and chain names, descriptions and progress/);
-    expect(section()).toMatch(/Gym routines, exercises, weights, workouts and optional exercise media/);
-    expect(section()).toMatch(/Supabase/);
-    expect(section()).toMatch(/sensitive/i);
-    expect(section()).toMatch(/only if you turn on the weekly AI review/i);
-    expect(section()).toMatch(/export them or ask for deletion/i);
-    expect(section()).toMatch(/do not ask for IDs, selfies or documents/i);
+  it('words the AI agreement around Groq, opt-in, saving, no training and turning it off', () => {
+    const notice = PROCESSING_NOTICES['weekly-debrief'];
+    expect(notice.label).toContain('Groq');
+    expect(notice.label).toMatch(/quest and activity information/i);
+    expect(notice.body).toMatch(/18 or older/);
+    expect(notice.body).toMatch(/verified email/i);
+    expect(notice.body).toMatch(/saves the result/i);
+    expect(notice.body).toMatch(/no permission to train/i);
+    expect(notice.body).toMatch(/turning this off stops new/i);
+    expect(notice.body).toContain('privacy@eiyusystem.app');
   });
-  it('keeps every other policy section and the single privacy contact', () => {
-    expect(LEGAL_DOCUMENTS.privacy.sections.map(s => s.heading)).toEqual(['DATA WE COLLECT', "HOW IT'S USED", 'SIGNING IN WITH GOOGLE', 'AI FEATURES', 'CUSTOM TRACKER AND FITNESS', 'HOW LONG WE KEEP THINGS', 'YOUR CONTROL']);
-    expect(LEGAL_DOCUMENTS.privacy.sections.map(s => s.body).join(' ')).toMatch(/privacy@eiyusystem\.app/);
+  it('carries none of the removed wording', () => {
+    for (const notice of Object.values(PROCESSING_NOTICES)) {
+      expect(notice.label).not.toMatch(REMOVED_WORDING);
+      expect(notice.body.replace(/never a birthday/gi, '')).not.toMatch(REMOVED_WORDING);
+      expect(notice.body).not.toMatch(/30 days/);
+    }
+  });
+});
+
+describe('contact address', () => {
+  it('publishes one contact address and never a personal mailbox', () => {
+    const addresses = JSON.stringify(legalContent).match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [];
+    expect(addresses.length).toBeGreaterThan(0);
+    expect([...new Set(addresses)]).toEqual(['privacy@eiyusystem.app']);
+  });
+  it('adds no other address in the Google section', () => {
+    const addresses = section('SIGNING IN WITH GOOGLE').match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g) ?? [];
+    expect([...new Set(addresses)]).toEqual(['privacy@eiyusystem.app']);
   });
 });

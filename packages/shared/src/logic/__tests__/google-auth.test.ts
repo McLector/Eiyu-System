@@ -1,3 +1,4 @@
+import * as googleAuth from '../google-auth';
 import {
   GOOGLE_CANCELLED_MESSAGE,
   GOOGLE_EMAIL_UNVERIFIED_MESSAGE,
@@ -6,7 +7,7 @@ import {
   GOOGLE_LINK_REFUSED_MESSAGE,
   classifyGoogleSignInError,
   googleSignInErrorMessage,
-  needsGoogleSignupFinish,
+  needsTermsAcceptance,
   readExpiredGoogleSignIn,
   readOAuthErrorParams,
 } from '../google-auth';
@@ -162,72 +163,23 @@ describe('googleSignInErrorMessage', () => {
   });
 });
 
-describe('needsGoogleSignupFinish', () => {
-  const google = {app_metadata: {provider: 'google', providers: ['google']}};
-  const password = {app_metadata: {provider: 'email', providers: ['email']}};
-
-  it('is true for a Google-created account without age consent', () => {
-    expect(needsGoogleSignupFinish(google, {ageConsent: false})).toBe(true);
+describe('needsTermsAcceptance', () => {
+  it('is true only when the server says the Terms are not accepted', () => {
+    expect(needsTermsAcceptance({accepted: false})).toBe(true);
   });
-
-  it('is false for a Google-created account that has age consent', () => {
-    expect(needsGoogleSignupFinish(google, {ageConsent: true})).toBe(false);
+  it('is false once the Terms are accepted', () => {
+    expect(needsTermsAcceptance({accepted: true})).toBe(false);
   });
-
-  it('is false for a password account without consent, so legacy accounts skip the screen', () => {
-    expect(needsGoogleSignupFinish(password, {ageConsent: false})).toBe(false);
+  it.each([
+    ['null', null], ['undefined', undefined], ['no fields', {}], ['accepted as text "false"', {accepted: 'false'}],
+    ['accepted as 0', {accepted: 0}], ['accepted null', {accepted: null}], ['a string', 'false'], ['a number', 0],
+  ])('is false for %s, so a failed or odd read never traps a person on the screen', (_name, terms) => {
+    expect(needsTermsAcceptance(terms as never)).toBe(false);
   });
-
-  it('is false for a password account that linked Google later', () => {
-    expect(needsGoogleSignupFinish({app_metadata: {provider: 'email', providers: ['email', 'google']}}, {ageConsent: false})).toBe(false);
+  it('does not look at the sign-in provider: any account without acceptance is asked once', () => {
+    expect(needsTermsAcceptance({accepted: false, provider: 'email'} as never)).toBe(true);
   });
-
-  it('does not trust user_metadata claiming Google', () => {
-    expect(needsGoogleSignupFinish({app_metadata: {provider: 'email'}, user_metadata: {provider: 'google'}} as never, {ageConsent: false})).toBe(false);
-  });
-
-  it('is false when the user or the status is missing', () => {
-    expect(needsGoogleSignupFinish(null, {ageConsent: false})).toBe(false);
-    expect(needsGoogleSignupFinish(undefined, {ageConsent: false})).toBe(false);
-    expect(needsGoogleSignupFinish(google, null)).toBe(false);
-    expect(needsGoogleSignupFinish(google, undefined)).toBe(false);
-  });
-
-  it('is false for malformed input rather than throwing', () => {
-    expect(needsGoogleSignupFinish({} as never, {ageConsent: false})).toBe(false);
-    expect(needsGoogleSignupFinish({app_metadata: null} as never, {ageConsent: false})).toBe(false);
-    expect(needsGoogleSignupFinish(google, {} as never)).toBe(false);
-    expect(needsGoogleSignupFinish(google, {ageConsent: 'false'} as never)).toBe(false);
-  });
-
-  describe('with the birthday status', () => {
-    const noBirthday = {birthDate: null, pendingBirthDate: null};
-    const withBirthday = {birthDate: '2000-01-01', pendingBirthDate: null};
-
-    it('is true for a half-finished account: permission saved, no birthday', () => {
-      expect(needsGoogleSignupFinish(google, {ageConsent: true}, noBirthday)).toBe(true);
-    });
-
-    it('is false once permission and birthday are both saved', () => {
-      expect(needsGoogleSignupFinish(google, {ageConsent: true}, withBirthday)).toBe(false);
-    });
-
-    it('treats a pending birthday as a saved one', () => {
-      expect(needsGoogleSignupFinish(google, {ageConsent: true}, {birthDate: null, pendingBirthDate: '2000-01-01'})).toBe(false);
-    });
-
-    it('is still true without permission even when a birthday exists', () => {
-      expect(needsGoogleSignupFinish(google, {ageConsent: false}, withBirthday)).toBe(true);
-    });
-
-    it('never pushes a password account in, even with no birthday', () => {
-      expect(needsGoogleSignupFinish(password, {ageConsent: true}, noBirthday)).toBe(false);
-      expect(needsGoogleSignupFinish(password, {ageConsent: false}, noBirthday)).toBe(false);
-    });
-
-    it('ignores a malformed birthday status rather than throwing', () => {
-      expect(needsGoogleSignupFinish(google, {ageConsent: true}, {} as never)).toBe(false);
-      expect(needsGoogleSignupFinish(google, {ageConsent: true}, {birthDate: 5} as never)).toBe(false);
-    });
+  it('no longer exports the birthday-based finish check', () => {
+    expect((googleAuth as Record<string, unknown>).needsGoogleSignupFinish).toBeUndefined();
   });
 });
