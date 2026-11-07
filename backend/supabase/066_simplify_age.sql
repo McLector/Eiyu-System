@@ -139,6 +139,8 @@ begin
 end;$$;
 
 -- 4. Sign-up records the Terms that the client sent and never refuses a sign-up. The birthday-consent trigger goes.
+-- An app version from before this change may still send a birthday and the old consent keys; they are removed from
+-- the new account's metadata right away, so a birthday is never kept and the export never meets one.
 drop trigger capture_initial_processing_consent on auth.users;
 drop function private.capture_initial_processing_consent();
 
@@ -146,14 +148,23 @@ create function private.capture_initial_terms() returns trigger
 language plpgsql security definer set search_path='' as $$
 declare t jsonb:=new.raw_user_meta_data->'terms';
 begin
- if pg_catalog.jsonb_typeof(t)='object' and pg_catalog.jsonb_typeof(t->'version')='string'
-  and t->>'version'='2026-11-08-terms-v2' then
-  insert into private.terms_acceptance(user_id,version) values(new.id,'2026-11-08-terms-v2')
-   on conflict (user_id) do nothing;
- end if;
- return new;
-exception when others then
- -- A Terms record must never block a sign-up; the person is asked on the next screen instead.
+ begin
+  if pg_catalog.jsonb_typeof(t)='object' and pg_catalog.jsonb_typeof(t->'version')='string'
+   and t->>'version'='2026-11-08-terms-v2' then
+   insert into private.terms_acceptance(user_id,version) values(new.id,'2026-11-08-terms-v2')
+    on conflict (user_id) do nothing;
+  end if;
+ exception when others then
+  -- A Terms record must never block a sign-up; the person is asked on the next screen instead.
+  null;
+ end;
+ begin
+  if new.raw_user_meta_data ?| array['birth_date','processing_consent'] then
+   update auth.users set raw_user_meta_data=raw_user_meta_data-'birth_date'-'processing_consent' where id=new.id;
+  end if;
+ exception when others then
+  null;
+ end;
  return new;
 end;$$;
 revoke all on function private.capture_initial_terms() from public,anon,authenticated,service_role;

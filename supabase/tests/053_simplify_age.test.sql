@@ -8,7 +8,7 @@ select no_plan();
 -- Fixture accounts are privileged imports (they stand for accounts that existed before 066); fresh sign-ups are
 -- exercised through the Auth database role further down.
 insert into auth.users(id,email,raw_user_meta_data) values
- ('da270000-0000-4000-8000-000000000001','simple-legacy@example.invalid','{"birth_date":"2000-01-01","display_name":"Legacy","time_zone":"Asia/Manila"}'),
+ ('da270000-0000-4000-8000-000000000001','simple-legacy@example.invalid','{"display_name":"Legacy","time_zone":"Asia/Manila"}'),
  ('da270000-0000-4000-8000-000000000002','simple-flow@example.invalid','{}'),
  ('da270000-0000-4000-8000-000000000003','simple-residue@example.invalid','{}'),
  ('da270000-0000-4000-8000-000000000004','simple-nomailbox@example.invalid','{}'),
@@ -22,6 +22,9 @@ update private.mailbox_state set verified_version=version,verified_at=now()
   'da270000-0000-4000-8000-000000000003','da270000-0000-4000-8000-000000000007','da270000-0000-4000-8000-000000000008',
   'da270000-0000-4000-8000-000000000009');
 -- A legacy account: a stored birthday and permissions given under the October notices.
+-- The sign-up trigger strips a birthday from a new account, so a legacy one gets its metadata key by update, the way
+-- accounts created before this change have it.
+update auth.users set raw_user_meta_data=raw_user_meta_data||'{"birth_date":"2000-01-01"}'::jsonb where id='da270000-0000-4000-8000-000000000001';
 insert into private.account_age(user_id,birth_date) values
  ('da270000-0000-4000-8000-000000000001','2000-01-01'),
  ('da270000-0000-4000-8000-000000000003','2020-01-01')
@@ -246,6 +249,18 @@ select lives_ok($$insert into auth.users(id,email,raw_user_meta_data) values
  ('da270000-0000-4000-8000-000000000109','simple-garbage@example.invalid','{"birth_date":"not a date"}')$$,'a sign-up that sends garbage as a birthday succeeds');
 reset role;
 select is((select count(*)::integer from private.account_age where user_id in ('da270000-0000-4000-8000-000000000107','da270000-0000-4000-8000-000000000108','da270000-0000-4000-8000-000000000109')),0,'and nothing is stored in account_age for any of them');
+-- The birthday is not kept in the account's metadata either, so it can never be exported or read back.
+select is((select count(*)::integer from auth.users where id in ('da270000-0000-4000-8000-000000000107','da270000-0000-4000-8000-000000000108','da270000-0000-4000-8000-000000000109')
+ and raw_user_meta_data ?| array['birth_date','processing_consent']),0,'and none of them keeps a birth_date or processing_consent key in its metadata');
+set local role supabase_auth_admin;
+select lives_ok($$insert into auth.users(id,email,raw_user_meta_data) values
+ ('da270000-0000-4000-8000-000000000110','simple-old-client@example.invalid','{"display_name":"Old client","time_zone":"Asia/Manila","birth_date":"2000-01-01","processing_consent":{"age_screening":{"granted":true,"notice_version":"2026-10-20-age-v1"}},"terms":{"version":"2026-11-08-terms-v2"}}')$$,
+ 'an old client that sends a birthday, old consent and the Terms together is accepted');
+reset role;
+select is((select raw_user_meta_data from auth.users where id='da270000-0000-4000-8000-000000000110'),
+ '{"display_name":"Old client","time_zone":"Asia/Manila","terms":{"version":"2026-11-08-terms-v2"}}'::jsonb,
+ 'only the birthday and old consent keys are stripped; the name, time zone and Terms stay');
+select is((select count(*)::integer from private.terms_acceptance where user_id='da270000-0000-4000-8000-000000000110'),1,'and the Terms row is still recorded');
 
 -- M. The one-time cleanup. It stops unless the owner counted the birthdays first.
 select ok(not has_function_privilege('authenticated','private.remove_stored_birthdays()','execute'),'clients cannot run the cleanup');
