@@ -30,8 +30,8 @@ set local statement_timeout = '30s';
 select no_plan();
 
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('d1300000-0000-4000-8000-000000000001', 'quota-owner@example.invalid', '{"display_name":"Quota Owner","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
-  ('d1300000-0000-4000-8000-000000000002', 'quota-second@example.invalid', '{"display_name":"Quota Second","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
+  ('d1300000-0000-4000-8000-000000000001', 'quota-owner@example.invalid', '{"display_name":"Quota Owner","time_zone":"UTC"}'::jsonb),
+  ('d1300000-0000-4000-8000-000000000002', 'quota-second@example.invalid', '{"display_name":"Quota Second","time_zone":"UTC"}'::jsonb);
 -- Trusted synthetic proof fixture: this suite tests accounting after eligibility.
 update private.mailbox_state set verified_version=version,verified_at=now() where user_id in ('d1300000-0000-4000-8000-000000000001','d1300000-0000-4000-8000-000000000002');
 -- Explicit synthetic accepted permissions; no production/legacy consent backfill.
@@ -181,7 +181,9 @@ select lives_ok($sql$
     end;
     $cleanup$;
     insert into auth.users (id, email, raw_user_meta_data)
-    values ('d1300000-0000-4000-8000-000000000099', 'quota-race@example.invalid', '{"display_name":"Quota Race","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb)
+    values ('d1300000-0000-4000-8000-000000000099', 'quota-race@example.invalid', '{"display_name":"Quota Race","time_zone":"UTC"}'::jsonb);
+    insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version)
+    values ('d1300000-0000-4000-8000-000000000099',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2)
   $remote$)
 $sql$, 'creates a clean committed fixture for independent quota connections');
 
@@ -364,9 +366,12 @@ reset role;
 select is((select max_user_requests_per_action from private.ai_quota_config where singleton), 2,
   'the per-user cap lives in the config row and is still 2');
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('d1300000-0000-4000-8000-000000000003', 'quota-third@example.invalid', '{"display_name":"Quota Third","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb),
-  ('d1300000-0000-4000-8000-000000000004', 'quota-fourth@example.invalid', '{"display_name":"Quota Fourth","time_zone":"UTC","birth_date":"2000-01-01"}'::jsonb);
+  ('d1300000-0000-4000-8000-000000000003', 'quota-third@example.invalid', '{"display_name":"Quota Third","time_zone":"UTC"}'::jsonb),
+  ('d1300000-0000-4000-8000-000000000004', 'quota-fourth@example.invalid', '{"display_name":"Quota Fourth","time_zone":"UTC"}'::jsonb);
 update private.mailbox_state set verified_version=version,verified_at=now() where user_id::text like 'd130%';
+insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version) values
+ ('d1300000-0000-4000-8000-000000000003',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2),
+ ('d1300000-0000-4000-8000-000000000004',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
 update private.ai_quota_config set max_user_requests_per_action = 3 where singleton;
 set local role service_role;
 select set_config('request.jwt.claim.role', 'service_role', true);

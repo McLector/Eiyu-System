@@ -27,7 +27,7 @@ revoke all on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_p
 grant execute on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.ai_policy_reserve(uuid,integer),pg_temp.ai_policy_check(uuid,integer) to service_role;
 
  insert into auth.users(id,email,raw_user_meta_data) values
-  ('d3200000-0000-4000-8000-000000000001','processing-locks@example.invalid','{"birth_date":"2000-01-01"}');
+  ('d3200000-0000-4000-8000-000000000001','processing-locks@example.invalid','{}');
  update private.mailbox_state set verified_version=version,verified_at=now() where user_id='d3200000-0000-4000-8000-000000000001';
  insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version)
   values('d3200000-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
@@ -100,8 +100,8 @@ select is((select result from extensions.dblink('processing_locker',$sql$
  select pg_temp.ai_policy_check('d3200000-0000-4000-8000-000000000101',1)
 $sql$) as r(result boolean)),false,'subsequent authorization rejects captured grant after withdrawal');
 select extensions.dblink_exec('processing_locker','rollback');
--- Regrant purpose explicitly, reserve the unchanged existing regeneration
--- allowance, then hold a current request against operator authority revocation.
+-- Regrant the AI agreement explicitly, reserve the existing regeneration allowance, then hold a current request
+-- against the 18+ box being unticked.
 select extensions.dblink_exec('processing_writer',$sql$
  begin;set local role authenticated;
  set local "request.jwt.claims"='{"sub":"d3200000-0000-4000-8000-000000000001","role":"authenticated"}';
@@ -118,62 +118,29 @@ select extensions.dblink_exec('processing_locker',$sql$
 $sql$);
 select is((select result->>'allowed' from extensions.dblink('processing_locker',$sql$
  select pg_temp.ai_policy_begin('d3200000-0000-4000-8000-000000000001','weekly-summary','d3200000-0000-4000-8000-000000000102',date_trunc('week',current_date)::date)
-$sql$) as r(result jsonb)),'true','new grant creates a current held request');
-select extensions.dblink_exec('processing_writer', 'begin');
+$sql$) as r(result jsonb)),'true','the regrant creates a current held request');
+select extensions.dblink_exec('processing_writer',$sql$
+ begin;set local role authenticated;
+ set local "request.jwt.claims"='{"sub":"d3200000-0000-4000-8000-000000000001","role":"authenticated"}';
+ set local statement_timeout='8s';
+$sql$);
 select is(extensions.dblink_send_query('processing_writer',$sql$
- select 'revoked' from (select private.record_processing_authority(
-  'd3200000-0000-4000-8000-000000000001','revoked',array['age-screening','weekly-debrief'],1,
-  'd3200000-0000-4000-8000-000000000201')) reviewed
-$sql$),1,'starts trusted synthetic authority revocation');
+ select public.set_processing_consent('age-screening',false,'2026-11-08-adult-v1',
+  'd3200000-0000-4000-8000-000000000001',1,4,0,1)->>'canGenerateDebrief'
+$sql$),1,'starts unticking the 18+ box while the request is held');
 do $$begin for i in 1..100 loop
  exit when exists(select 1 from pg_stat_activity where application_name='processing_writer' and wait_event_type='Lock');
  perform pg_sleep(0.02);end loop;end$$;
-select ok(exists(select 1 from pg_stat_activity where application_name='processing_writer' and wait_event_type='Lock'),'authority revocation waits for earlier request authorization');
+select ok(exists(select 1 from pg_stat_activity where application_name='processing_writer' and wait_event_type='Lock'),'unticking the 18+ box waits for the earlier request authorization');
 select extensions.dblink_exec('processing_locker','commit');
-select is((select result from extensions.dblink_get_result('processing_writer') as r(result text)),'revoked','authority revocation resumes');
+select is((select result from extensions.dblink_get_result('processing_writer') as r(result text)),'false','unticking resumes and denies generation');
 select * from extensions.dblink_get_result('processing_writer') as r(result text);
 select extensions.dblink_exec('processing_writer','commit');
 select extensions.dblink_exec('processing_locker',$sql$
  begin;set local role service_role;set local "request.jwt.claim.role"='service_role';
 $sql$);
 select is((select result from extensions.dblink('processing_locker',
- $$select pg_temp.ai_policy_check('d3200000-0000-4000-8000-000000000102',1)$$) as r(result boolean)),false,'held response denied after authority revocation');
-select extensions.dblink_exec('processing_locker','rollback');
-
-select extensions.dblink_exec('processing_writer',$sql$
- do $body$begin perform private.record_processing_authority('d3200000-0000-4000-8000-000000000001','not-required',
-  array['age-screening','weekly-debrief'],1,'d3200000-0000-4000-8000-000000000202');end$body$;
- begin;set local role authenticated;
- set local "request.jwt.claims"='{"sub":"d3200000-0000-4000-8000-000000000001","role":"authenticated"}';
-$sql$);
-select is((select result from extensions.dblink('processing_writer',
- $$select public.reserve_weekly_summary_regen(date_trunc('week',current_date)::date)$$) as r(result integer)),2,'second existing daily regeneration slot reserved without changing allowance');
-select extensions.dblink_exec('processing_writer','commit');
-select extensions.dblink_exec('processing_locker',$sql$
- begin;set local role service_role;set local "request.jwt.claim.role"='service_role';
-$sql$);
-select is((select result->>'allowed' from extensions.dblink('processing_locker',$sql$
- select pg_temp.ai_policy_begin('d3200000-0000-4000-8000-000000000001','weekly-summary','d3200000-0000-4000-8000-000000000103',date_trunc('week',current_date)::date)
-$sql$) as r(result jsonb)),'true','reviewed disposition creates a current birthday-race request');
-select extensions.dblink_exec('processing_writer',$sql$
- begin;set local role authenticated;
- set local "request.jwt.claims"='{"sub":"d3200000-0000-4000-8000-000000000001","role":"authenticated"}';
-$sql$);
-select is(extensions.dblink_send_query('processing_writer',
- $$select public.set_account_birthday('1999-01-01')->>'version'$$),1,'starts trusted birthday correction while request is held');
-do $$begin for i in 1..100 loop
- exit when exists(select 1 from pg_stat_activity where application_name='processing_writer' and wait_event_type='Lock');
- perform pg_sleep(0.02);end loop;end$$;
-select ok(exists(select 1 from pg_stat_activity where application_name='processing_writer' and wait_event_type='Lock'),'birthday correction waits for earlier request authorization');
-select extensions.dblink_exec('processing_locker','commit');
-select is((select result from extensions.dblink_get_result('processing_writer') as r(result text)),'2','trusted correction advances birthday revision after unlock');
-select * from extensions.dblink_get_result('processing_writer') as r(result text);
-select extensions.dblink_exec('processing_writer','commit');
-select extensions.dblink_exec('processing_locker',$sql$
- begin;set local role service_role;set local "request.jwt.claim.role"='service_role';
-$sql$);
-select is((select result from extensions.dblink('processing_locker',
- $$select pg_temp.ai_policy_check('d3200000-0000-4000-8000-000000000103',1)$$) as r(result boolean)),false,'held response denied after accepted birthday correction');
+ $$select pg_temp.ai_policy_check('d3200000-0000-4000-8000-000000000102',1)$$) as r(result boolean)),false,'the held response is denied after the 18+ box is unticked');
 select extensions.dblink_exec('processing_locker','rollback');
 select is((select summary from public.weekly_summaries where user_id='d3200000-0000-4000-8000-000000000001'),
  'Retained concurrency review','rolled-back writer and withdrawal preserve summary text');
