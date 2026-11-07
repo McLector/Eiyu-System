@@ -9,6 +9,7 @@ function keys(value:Record<string,unknown>,expected:readonly string[]){const act
 function nullableString(value:unknown){return value===null||typeof value==='string';}
 function timestamp(value:unknown){return typeof value==='string'&&value.length<=64&&Number.isFinite(Date.parse(value));}
 function scalar(value:unknown){return value===null||typeof value==='string'||typeof value==='boolean'||(typeof value==='number'&&Number.isFinite(value));}
+function flatObject(value:unknown){return record(value)&&Object.keys(value).length<=OWNER_EXPORT_MAX_OBJECT_KEYS&&Object.values(value).every(scalar);}
 export function isOwnerExportDocument(value:unknown,owner:string):value is OwnerExportDocument{
  if(!record(value)||!keys(value,['schemaVersion','generatedAt','accountId','account','mailboxVersion','sections','omissions'])
   ||value.schemaVersion!==1||value.accountId!==owner||!timestamp(value.generatedAt)
@@ -25,7 +26,8 @@ export function isOwnerExportDocument(value:unknown,owner:string):value is Owner
   const rows=value.sections[table];if(!Array.isArray(rows))return false;count+=rows.length;if(count>OWNER_EXPORT_MAX_RECORDS)return false;
   for(const row of rows){
    if(!record(row)||!keys(row,fields)||('user_id' in row&&row.user_id!==owner))return false;
-   if(!Object.values(row).every(v=>scalar(v)||(Array.isArray(v)&&v.every(scalar))))return false;
+   if(!Object.entries(row).every(([column,v])=>scalar(v)||(Array.isArray(v)&&v.every(scalar))
+    ||((OWNER_EXPORT_OBJECT_COLUMNS[table]??[]).includes(column)&&flatObject(v))))return false;
    if((table==='private.processing_consent_events'||table==='private.processing_authority_events')
     &&(typeof row.id!=='string'||! /^-?\d+$/.test(row.id)))return false;
   }
@@ -39,6 +41,10 @@ export function isOwnerExportDocument(value:unknown,owner:string):value is Owner
 }
 export const OWNER_EXPORT_MAX_BYTES=5242880;
 export const OWNER_EXPORT_MAX_RECORDS=10000;
+export const OWNER_EXPORT_MAX_OBJECT_KEYS=32;
+// Hand-written: the only exported columns that hold a JSON object (a flat object of scalars). scripts/owner-export-contract.mjs --check
+// fails when the database has a JSON column that is not listed here, or one listed here that is gone.
+export const OWNER_EXPORT_OBJECT_COLUMNS:Readonly<Record<string,readonly string[]>>={"public.gym_entries":["prescription"]};
 // Generated from private.owner_export_manifest(); never edit by hand.
 // Regenerate: node scripts/owner-export-contract.mjs --write  (check: --check, also run by db:test)
 export const OWNER_EXPORT_SECTION_FIELDS:Readonly<Record<string,readonly string[]>>={

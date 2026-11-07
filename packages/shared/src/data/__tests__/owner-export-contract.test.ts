@@ -1,4 +1,4 @@
-import {isOwnerExportDocument,OWNER_EXPORT_SECTION_FIELDS,type OwnerExportDocument} from '../owner-export-contract';
+import {isOwnerExportDocument,OWNER_EXPORT_OBJECT_COLUMNS,OWNER_EXPORT_SECTION_FIELDS,type OwnerExportDocument} from '../owner-export-contract';
 
 // The reviewed manifest is generated from private.owner_export_manifest() (scripts/owner-export-contract.mjs).
 // These tests build documents from it, so a contract that falls behind the database fails here.
@@ -47,5 +47,32 @@ describe('owner export contract against the database manifest',()=>{
  });
  it('rejects a document for a different owner',()=>{
   expect(isOwnerExportDocument(document(),'e5200000-0000-4000-8000-0000000000ff')).toBe(false);
+ });
+
+ describe('structured columns (Gym prescription is a flat JSON object)',()=>{
+  const gym=owned.find(t=>t.table==='public.gym_entries')!;
+  const entry=(prescription:unknown)=>({...row(gym.export),prescription});
+  const flat={name:'Hammer Curl',sets:3,reps:'6-10',rir:1,rir_max:null,rest_seconds:60,notes:'Brachialis'};
+  it('accepts a flat object of scalars in gym_entries.prescription (the second 503 on hosted)',()=>{
+   expect(isOwnerExportDocument(document({'public.gym_entries':[entry(flat)]}),owner)).toBe(true);
+   expect(isOwnerExportDocument(document({'public.gym_entries':[entry({})]}),owner)).toBe(true);
+  });
+  it('rejects a nested object or an array of objects inside the prescription',()=>{
+   expect(isOwnerExportDocument(document({'public.gym_entries':[entry({...flat,extra:{deep:1}})]}),owner)).toBe(false);
+   expect(isOwnerExportDocument(document({'public.gym_entries':[entry({...flat,list:[{a:1}]})]}),owner)).toBe(false);
+  });
+  it('rejects an absurdly wide prescription object',()=>{
+   const wide=Object.fromEntries(Array.from({length:200},(_,i)=>['k'+i,i]));
+   expect(isOwnerExportDocument(document({'public.gym_entries':[entry(wide)]}),owner)).toBe(false);
+  });
+  it('rejects an object in any other column',()=>{
+   const habits=owned.find(t=>t.table==='public.habits')!;
+   expect(isOwnerExportDocument(document({'public.habits':[{...row(habits.export),name:{a:1}}]}),owner)).toBe(false);
+   expect(isOwnerExportDocument(document({'public.gym_entries':[{...row(gym.export),exercise_id:{a:1}}]}),owner)).toBe(false);
+  });
+  it('lists only exported columns, so the allowlist cannot drift from the manifest',()=>{
+   for(const [table,columns] of Object.entries(OWNER_EXPORT_OBJECT_COLUMNS))
+    for(const column of columns)expect(OWNER_EXPORT_SECTION_FIELDS[table]).toContain(column);
+  });
  });
 });

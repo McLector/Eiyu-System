@@ -8,6 +8,7 @@ const COLUMN = /^[a-z_][a-z0-9_]*$/;
 const SCOPES = new Set(['owner', 'indirect', 'global']);
 const CONSTANT = 'OWNER_EXPORT_SECTION_FIELDS';
 const CONSTANT_DECLARATION = `export const ${CONSTANT}`;
+const OBJECT_COLUMNS = 'OWNER_EXPORT_OBJECT_COLUMNS';
 const CONSTANT_TYPE = 'Readonly<Record<string,readonly string[]>>';
 
 function fail(message) {
@@ -68,13 +69,14 @@ export function contractFields(manifest) {
   return fields;
 }
 
-function locateConstant(source) {
-  const first = source.indexOf(CONSTANT_DECLARATION);
-  if (first === -1 || source.indexOf(CONSTANT_DECLARATION, first + 1) !== -1) {
-    throw new Error(`Export contract: expected exactly one "${CONSTANT_DECLARATION}" declaration`);
+function locateConstant(source, name = CONSTANT) {
+  const declaration = `export const ${name}`;
+  const first = source.indexOf(declaration);
+  if (first === -1 || source.indexOf(declaration, first + 1) !== -1) {
+    throw new Error(`Export contract: expected exactly one "${declaration}" declaration`);
   }
   const open = source.indexOf('={', first);
-  if (open === -1) throw new Error(`Export contract: could not find the object after ${CONSTANT}`);
+  if (open === -1) throw new Error(`Export contract: could not find the object after ${name}`);
   let depth = 0;
   for (let i = open + 1; i < source.length; i += 1) {
     if (source[i] === '{') depth += 1;
@@ -86,7 +88,7 @@ function locateConstant(source) {
       }
     }
   }
-  throw new Error(`Export contract: the object after ${CONSTANT} is not closed`);
+  throw new Error(`Export contract: the object after ${name} is not closed`);
 }
 
 /** Replace only the generated constant; the hand-written validator above it stays as it is. */
@@ -167,6 +169,37 @@ export function diffContractFields(saved, manifest) {
   }
   for (const table of Object.keys(saved)) {
     if (!(table in expected)) out.push(`${table} is in the contract but not in the database manifest`);
+  }
+  return out;
+}
+
+/** The hand-written allowlist of columns that may hold a flat JSON object (everything else must be a scalar or array). */
+export function readObjectColumns(source) {
+  const { open, close } = locateConstant(source, OBJECT_COLUMNS);
+  try {
+    const value = JSON.parse(source.slice(open, close));
+    if (!isRecord(value) || !Object.values(value).every((list) => Array.isArray(list) && list.every((c) => typeof c === 'string'))) {
+      throw new Error('not a table -> columns map');
+    }
+    return value;
+  } catch {
+    throw new Error(`Export contract: ${OBJECT_COLUMNS} is not plain JSON, so it cannot be compared`);
+  }
+}
+
+/**
+ * jsonColumns: "table.column" for every exported column whose database type is json or jsonb.
+ * The validator accepts only scalars and arrays of scalars, so each of those needs an explicit allowlist entry.
+ */
+export function diffObjectColumns(jsonColumns, allowed) {
+  const out = [];
+  const allowedIds = new Set(Object.entries(allowed).flatMap(([table, columns]) => columns.map((c) => `${table}.${c}`)));
+  for (const id of jsonColumns) {
+    if (!allowedIds.has(id)) out.push(`${id} is a JSON column the contract would reject; add it to ${OBJECT_COLUMNS} (and the validator) or change the export`);
+  }
+  const live = new Set(jsonColumns);
+  for (const id of allowedIds) {
+    if (!live.has(id)) out.push(`${id} is allowed as an object but is no longer an exported JSON column`);
   }
   return out;
 }

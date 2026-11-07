@@ -10,6 +10,8 @@ import {
   diffManifests,
   normalizeManifest,
   diffContractFields,
+  readObjectColumns,
+  diffObjectColumns,
 } from './lib/owner-export-contract-sync.mjs';
 
 const owner = (table, exportFields, extra = {}) => ({ table, export: exportFields, exclude: [], scope: 'owner', ...extra });
@@ -188,4 +190,42 @@ test('diffContractFields treats a column order change as a difference (the valid
   const stale = contractFields(base());
   stale['public.habits'] = ['name', 'user_id', 'id'];
   assert.match(diffContractFields(stale, base()).join('\n'), /public\.habits.*reordered/);
+});
+
+const WITH_OBJECTS = CONTRACT.replace(
+  'export const OWNER_EXPORT_MAX_BYTES=5242880;',
+  'export const OWNER_EXPORT_MAX_BYTES=5242880;\n' +
+    'export const OWNER_EXPORT_OBJECT_COLUMNS:Readonly<Record<string,readonly string[]>>={"public.gym_entries":["prescription"]};',
+);
+
+test('readObjectColumns reads the hand-written allowlist of columns that may hold a flat JSON object', () => {
+  assert.deepEqual(readObjectColumns(WITH_OBJECTS), { 'public.gym_entries': ['prescription'] });
+});
+
+test('readObjectColumns refuses a contract that has no allowlist or a broken one', () => {
+  assert.throws(() => readObjectColumns(CONTRACT), /OWNER_EXPORT_OBJECT_COLUMNS/);
+  assert.throws(() => readObjectColumns('export const OWNER_EXPORT_OBJECT_COLUMNS:X={ nope };'), /OWNER_EXPORT_OBJECT_COLUMNS/);
+});
+
+test('renderContractSource leaves the hand-written allowlist alone', () => {
+  const out = renderContractSource(WITH_OBJECTS, base());
+  assert.deepEqual(readObjectColumns(out), { 'public.gym_entries': ['prescription'] });
+  assert.deepEqual(readContractFields(out), contractFields(base()));
+});
+
+test('diffObjectColumns is empty when every JSON column in the database is allowed and nothing is stale', () => {
+  assert.deepEqual(diffObjectColumns(['public.gym_entries.prescription'], { 'public.gym_entries': ['prescription'] }), []);
+  assert.deepEqual(diffObjectColumns([], {}), []);
+});
+
+test('diffObjectColumns names a JSON column the contract would reject (the Gym prescription bug)', () => {
+  const out = diffObjectColumns(['public.gym_entries.prescription', 'public.habits.extras'], { 'public.gym_entries': ['prescription'] });
+  assert.equal(out.length, 1);
+  assert.match(out[0], /public.habits.extras/);
+  assert.match(out[0], /OWNER_EXPORT_OBJECT_COLUMNS/);
+});
+
+test('diffObjectColumns names an allowlist entry that is no longer a JSON column', () => {
+  const out = diffObjectColumns([], { 'public.gym_entries': ['prescription'] });
+  assert.match(out.join('\n'), /public\.gym_entries\.prescription.*no longer/i);
 });
