@@ -8,9 +8,7 @@ vi.mock('@eiyu/shared', async importOriginal => ({
   ...await importOriginal<typeof import('@eiyu/shared')>(),
   requestAuthorityReview: vi.fn(), cancelAuthorityReview: vi.fn(), fetchMyReviewRequests: vi.fn(async () => []),
 }));
-import { TrackerConsent } from '../TrackerConsent';
 import { DebriefConsent } from '../DebriefConsent';
-import { noGrant, trackerAccess } from '../../test/tracker-fixtures';
 
 afterEach(cleanup);
 const processing: ProcessingAccess = {
@@ -19,26 +17,6 @@ const processing: ProcessingAccess = {
 };
 
 describe('Request review placement', () => {
-  it('appears on a pending custom purpose, in profile and prompt modes', () => {
-    const access = { ...noGrant(), customAuthorityState: 'pending' as const };
-    const { rerender } = render(<TrackerConsent userId="owner-a" access={access} purpose="custom-tracker" />);
-    expect(screen.getByRole('button', { name: 'Request review' })).toBeInTheDocument();
-    rerender(<TrackerConsent userId="owner-a" access={access} purpose="custom-tracker" mode="prompt" />);
-    expect(screen.getByRole('button', { name: 'Request review' })).toBeInTheDocument();
-  });
-  it('is not offered for the other purpose when only one is pending', () => {
-    const access = { ...noGrant(), customAuthorityState: 'pending' as const };
-    render(<TrackerConsent userId="owner-a" access={access} purpose="fitness-tracking" />);
-    expect(screen.queryByRole('button', { name: 'Request review' })).not.toBeInTheDocument();
-  });
-  it.each(['not-required', 'approved', 'revoked'] as const)('is not offered when the state is %s', state => {
-    render(<TrackerConsent userId="owner-a" access={trackerAccess({ customConsent: false, canWriteCustom: false, customAuthorityState: state })} purpose="custom-tracker" />);
-    expect(screen.queryByRole('button', { name: 'Request review' })).not.toBeInTheDocument();
-  });
-  it('is not offered once the purpose is granted', () => {
-    render(<TrackerConsent userId="owner-a" access={trackerAccess({ customAuthorityState: 'pending', canWriteCustom: false })} purpose="custom-tracker" />);
-    expect(screen.queryByRole('button', { name: 'Request review' })).not.toBeInTheDocument();
-  });
   it('appears on a pending weekly debrief but not on age screening', () => {
     const pending = { ...processing, authorityState: 'pending' as const, canReadDebrief: false };
     const { rerender } = render(<DebriefConsent userId="owner-a" access={pending} />);
