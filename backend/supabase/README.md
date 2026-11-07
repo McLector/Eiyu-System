@@ -58,6 +58,8 @@ acceptance remain incomplete. See
 repeating qualified checks. This is neither an account-deletion API nor a
 promise about backups, vendor retention or unreachable client copies.
 
+The export manifest grows with later migrations (056, 060, 061, 062, 065), so the TypeScript contract that `account-export` validates against is generated from `private.owner_export_manifest()`, never edited by hand: `node scripts/owner-export-contract.mjs --write --container <db container>` rewrites `scripts/fixtures/owner-export-manifest.json` and the `OWNER_EXPORT_SECTION_FIELDS` constant, and `--check` (also run by `npm run db:test` and `db:verify`) fails when they drift. Without this the function answers 503 to every download, because its validator rejects a snapshot with sections it does not know. After a migration that changes the manifest, regenerate, run the shared tests, and redeploy `account-export` (it imports the contract).
+
 Paste each file into the **SQL Editor** on your Supabase dashboard and run it,
 lowest number first.
 

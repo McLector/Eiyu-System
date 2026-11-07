@@ -88,6 +88,16 @@ function Invoke-Supabase {
   }
 }
 
+# The TypeScript export contract is generated from private.owner_export_manifest(). A migration that changes the
+# manifest without regenerating the contract would make account-export refuse every download (503).
+function Test-OwnerExportContract {
+  Invoke-Checked -Executable 'node' -CommandArguments @(
+    (Join-Path $projectRoot 'scripts/owner-export-contract.mjs'),
+    '--check',
+    '--container', 'supabase_db_eiyu-system'
+  )
+}
+
 function Start-LocalStack {
   Write-Warning 'On Docker Desktop for Windows, the Supabase CLI may publish the database port on all host interfaces even when the Docker network requests loopback binding. Use this local stack only on a trusted network and stop it when finished.'
   Ensure-LocalNetwork
@@ -111,6 +121,7 @@ switch ($Action) {
   }
   'test' {
     Invoke-Supabase -CommandArguments @('test', 'db', '--local')
+    Test-OwnerExportContract
   }
   'verify' {
     Start-LocalStack
@@ -120,6 +131,7 @@ switch ($Action) {
         'db', 'lint', '--local', '--schema', 'public', '--level', 'error', '--fail-on', 'error'
       )
       Invoke-Supabase -CommandArguments @('test', 'db', '--local')
+      Test-OwnerExportContract
     } finally {
       Invoke-Supabase -CommandArguments @('stop')
     }

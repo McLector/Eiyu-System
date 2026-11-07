@@ -144,7 +144,11 @@
         "ai_granted",
         "ai_notice",
         "version",
-        "changed_at"
+        "changed_at",
+        "custom_granted",
+        "custom_notice",
+        "fitness_granted",
+        "fitness_notice"
       ],
       "exclude": [],
       "scope": "owner"
@@ -572,6 +576,100 @@
         "cutover"
       ],
       "scope": "global"
+    },
+    {
+      "table": "private.tracker_input_provenance",
+      "export": [
+        "object_kind",
+        "object_id",
+        "user_id",
+        "input_kind",
+        "ordinal"
+      ],
+      "exclude": [
+        "next_stage_ordinal"
+      ],
+      "scope": "owner"
+    },
+    {
+      "table": "private.tracker_purpose_authority",
+      "export": [
+        "user_id",
+        "purpose",
+        "state",
+        "age_version",
+        "version",
+        "changed_at"
+      ],
+      "exclude": [
+        "review_reference"
+      ],
+      "scope": "owner"
+    },
+    {
+      "table": "private.authority_review_requests",
+      "export": [
+        "id",
+        "user_id",
+        "purpose",
+        "note",
+        "status",
+        "created_at",
+        "decided_at",
+        "age_version"
+      ],
+      "exclude": [
+        "decided_by"
+      ],
+      "scope": "owner"
+    },
+    {
+      "table": "private.operator_accounts",
+      "export": [],
+      "exclude": [
+        "user_id",
+        "added_at"
+      ],
+      "scope": "global"
+    },
+    {
+      "table": "private.operator_audit",
+      "export": [],
+      "exclude": [
+        "id",
+        "operator_id",
+        "action",
+        "subject_user_id",
+        "purpose",
+        "reason_code",
+        "at"
+      ],
+      "scope": "global"
+    },
+    {
+      "table": "private.tracker_retention_state",
+      "export": [
+        "user_id",
+        "purpose",
+        "withdrawn_at",
+        "reminder_due_on",
+        "removal_due_on",
+        "reminded_at",
+        "removed_at",
+        "last_failed_at"
+      ],
+      "exclude": [],
+      "scope": "owner"
+    },
+    {
+      "table": "private.tracker_open_settings",
+      "export": [],
+      "exclude": [
+        "singleton",
+        "go_live_at",
+        "unblocked_at"
+      ],
+      "scope": "global"
     }
   ],
   "foreignKeys": [
@@ -600,6 +698,14 @@
       "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
     },
     {
+      "source": "private.authority_review_requests",
+      "definition": "FOREIGN KEY (decided_by) REFERENCES auth.users(id) ON DELETE SET NULL"
+    },
+    {
+      "source": "private.authority_review_requests",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
       "source": "private.long_quest_definition_receipts",
       "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
     },
@@ -609,6 +715,10 @@
     },
     {
       "source": "private.mailbox_state",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "source": "private.operator_accounts",
       "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
     },
     {
@@ -625,6 +735,18 @@
     },
     {
       "source": "private.processing_consent_events",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "source": "private.tracker_input_provenance",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "source": "private.tracker_purpose_authority",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    },
+    {
+      "source": "private.tracker_retention_state",
       "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
     },
     {

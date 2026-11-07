@@ -39,6 +39,8 @@ export function isOwnerExportDocument(value:unknown,owner:string):value is Owner
 }
 export const OWNER_EXPORT_MAX_BYTES=5242880;
 export const OWNER_EXPORT_MAX_RECORDS=10000;
+// Generated from private.owner_export_manifest(); never edit by hand.
+// Regenerate: node scripts/owner-export-contract.mjs --write  (check: --check, also run by db:test)
 export const OWNER_EXPORT_SECTION_FIELDS:Readonly<Record<string,readonly string[]>>={
   "private.account_age": [
     "user_id",
@@ -117,7 +119,11 @@ export const OWNER_EXPORT_SECTION_FIELDS:Readonly<Record<string,readonly string[
     "ai_granted",
     "ai_notice",
     "version",
-    "changed_at"
+    "changed_at",
+    "custom_granted",
+    "custom_notice",
+    "fitness_granted",
+    "fitness_notice"
   ],
   "private.processing_consent_events": [
     "id",
@@ -356,5 +362,40 @@ export const OWNER_EXPORT_SECTION_FIELDS:Readonly<Record<string,readonly string[
     "state",
     "created_at",
     "settled_at"
+  ],
+  "private.tracker_input_provenance": [
+    "object_kind",
+    "object_id",
+    "user_id",
+    "input_kind",
+    "ordinal"
+  ],
+  "private.tracker_purpose_authority": [
+    "user_id",
+    "purpose",
+    "state",
+    "age_version",
+    "version",
+    "changed_at"
+  ],
+  "private.authority_review_requests": [
+    "id",
+    "user_id",
+    "purpose",
+    "note",
+    "status",
+    "created_at",
+    "decided_at",
+    "age_version"
+  ],
+  "private.tracker_retention_state": [
+    "user_id",
+    "purpose",
+    "withdrawn_at",
+    "reminder_due_on",
+    "removal_due_on",
+    "reminded_at",
+    "removed_at",
+    "last_failed_at"
   ]
 };

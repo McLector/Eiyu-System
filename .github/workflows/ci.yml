@@ -26,3 +26,5 @@ jobs:
         run: cd web && npx tsc --noEmit && npx vitest run
       - name: lint
         run: npm run lint
+      - name: export contract generator
+        run: node --test scripts/owner-export-contract-sync.test.mjs
