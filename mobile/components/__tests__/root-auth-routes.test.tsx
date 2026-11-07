@@ -36,14 +36,19 @@ it.each([false, true])('keeps recovery reachable without making it the auth fall
  expect(names).not.toContain(signedIn ? 'auth' : '(tabs)');
 });
 
-// S03: a Google-created account is held at the finish screen before the signed-in stack opens.
-describe('Google finish gate in the root layout', () => {
+// S03b: the gate sits around the signed-in stack for every account and decides from the Terms record, not the provider.
+describe('Terms gate in the root layout', () => {
  it('passes the signed-in user and the sign-out handler to the gate', async () => {
   mockSignedIn = true; mockGoogleUser = true; mockGateProps.length = 0;
   await render(<RootLayout/>);
   expect(mockGateProps).toHaveLength(1);
   expect(mockGateProps[0].user).toMatchObject({id: 'owner', app_metadata: {provider: 'google'}});
   expect(typeof mockGateProps[0].onSignOut).toBe('function');
+ });
+ it('mounts the gate for a password account too, because the Terms record decides, not the provider', async () => {
+  mockSignedIn = true; mockGoogleUser = false; mockGateProps.length = 0;
+  await render(<RootLayout/>);
+  expect(mockGateProps).toHaveLength(1);
  });
  it('does not mount the gate when signed out', async () => {
   mockSignedIn = false; mockGoogleUser = false; mockGateProps.length = 0;

@@ -1,23 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import {
-  CHILD_PRIVACY_NOTICE,
   LEGAL_DOCUMENTS,
-  PROCESSING_NOTICES,
-  fetchAccountAge,
-  fetchProcessingAccess,
-  finishGoogleSignup,
+  acceptTerms,
+  fetchTermsStatus,
   formatError,
-  needsGoogleSignupFinish,
-  validateSignupBirthday,
+  needsTermsAcceptance,
   type LegalDocumentId,
-  type ProcessingAccess,
 } from '@eiyu/shared';
 
 import { Screen } from '@/components/eiyu/screen';
 import { Button } from '@/components/ui/button';
 import { AppText } from '@/components/ui/app-text';
-import { Field } from '@/components/ui/field';
 import { Sheet } from '@/components/ui/sheet';
 import { SignaturePanel } from '@/components/ui/signature-panel';
 import { fonts } from '@/constants/eiyu-theme';
@@ -26,7 +20,7 @@ import { useTokens } from '@/contexts/theme-store';
 interface GateUser { id: string; app_metadata?: { provider?: unknown; [key: string]: unknown } | null }
 interface Props { user: GateUser; onSignOut: () => Promise<unknown>; children: ReactNode }
 
-type Status = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready' };
+type Status = 'loading' | 'ready';
 
 function Shell({ children }: { children: ReactNode }) {
   const t = useTokens();
@@ -43,39 +37,28 @@ function SignOutButton({ onSignOut }: { onSignOut: () => Promise<unknown> }) {
   return <Button variant="quiet" label="Sign out" onPress={() => { void Promise.resolve(onSignOut()).catch(() => {}); }} />;
 }
 
-function FinishSignup({ initialAccess, onDone, onSignOut }: {
-  initialAccess: ProcessingAccess; onDone: () => void; onSignOut: () => Promise<unknown>;
+function AcceptTermsScreen({ userId, onDone, onSignOut }: {
+  userId: string; onDone: () => void; onSignOut: () => Promise<unknown>;
 }) {
   const t = useTokens();
-  const notice = PROCESSING_NOTICES['age-screening'];
-  // Kept in memory only. A birth date is never written to device storage.
-  const [birthday, setBirthday] = useState('');
-  const [consent, setConsent] = useState(false);
-  // Never pre-ticked, even for an account that already gave the birthday permission.
+  // Never pre-ticked: the agreement has to be a choice made on this screen.
   const [terms, setTerms] = useState(false);
   const [legalDocument, setLegalDocument] = useState<LegalDocumentId | null>(null);
   const activeLegalDocument = legalDocument ? LEGAL_DOCUMENTS[legalDocument] : null;
-  const access = initialAccess;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  const consented = consent || access.ageConsent;
   const body = [styles.body, { color: t['muted-flat'], fontFamily: fonts.body }];
   const link = [styles.body, styles.link, { color: t['accent-text'], fontFamily: fonts.body }];
 
   const submit = async () => {
-    if (saving.current) return;
-    const birthdayError = validateSignupBirthday(birthday);
-    if (!consented) { setError('Review the birthday notice and give specific permission before finishing.'); return; }
-    if (!terms) { setError('Accept the Privacy Policy and Terms to continue.'); return; }
-    if (birthdayError) { setError(birthdayError); return; }
+    if (saving.current || !terms) return;
     saving.current = true; setBusy(true); setError(null);
     try {
-      // One call saves the permission and the birthday together: a failure keeps neither, and a retry is the same call.
-      await finishGoogleSignup(birthday, access);
+      await acceptTerms(userId);
       if (mounted.current) onDone();
     } catch (err) {
       if (mounted.current) setError(formatError(err));
@@ -88,19 +71,7 @@ function FinishSignup({ initialAccess, onDone, onSignOut }: {
   return (
     <Shell>
       <AppText accessibilityRole="header" style={[styles.title, { color: t['accent-text'], fontFamily: fonts.display }]}>Finish signing up</AppText>
-      <AppText style={body}>Your Google account is connected. Confirm your birthday to start using Eiyu.</AppText>
-      <AppText selectable style={body}>{CHILD_PRIVACY_NOTICE}</AppText>
-      <AppText selectable style={body}>{notice.body}</AppText>
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityLabel={notice.label}
-        accessibilityState={{ checked: consented, disabled: busy || access.ageConsent }}
-        disabled={busy || access.ageConsent}
-        onPress={() => setConsent(v => !v)}
-        style={styles.check}>
-        <AppText aria-hidden style={{ color: t['accent-text'], fontSize: 22 }}>{consented ? '☑' : '☐'}</AppText>
-        <AppText style={[body, styles.checkLabel]}>{notice.label}</AppText>
-      </Pressable>
+      <AppText style={body}>One last step: please read and accept the Privacy Policy and Terms to start using Eiyu.</AppText>
       <View style={styles.check}>
         <Pressable
           accessibilityRole="checkbox"
@@ -122,9 +93,8 @@ function FinishSignup({ initialAccess, onDone, onSignOut }: {
           </Pressable>
         </View>
       </View>
-      <Field label="Birthday" placeholder="YYYY-MM-DD" autoCapitalize="none" value={birthday} onChangeText={setBirthday} editable={!busy} />
       {error ? <AppText accessibilityRole="alert" style={[styles.note, { color: t.danger, fontFamily: fonts.body }]}>{error}</AppText> : null}
-      <Button variant="primary" label={busy ? 'SAVING…' : 'FINISH SIGN-UP'} busy={busy} onPress={() => void submit()} />
+      <Button variant="primary" label={busy ? 'SAVING…' : 'CONTINUE'} busy={busy} disabled={!terms} onPress={() => void submit()} />
       <SignOutButton onSignOut={onSignOut} />
       <Sheet
         visible={activeLegalDocument !== null}
@@ -144,51 +114,38 @@ function FinishSignup({ initialAccess, onDone, onSignOut }: {
 }
 
 /**
- * Blocks the app for an account Google created that has not yet confirmed its birthday. A password
- * account never reaches the lookup. Permission and birthday are saved in one call, and an account that
- * has the permission but no birthday (left by the earlier two-call screen) is shown the screen again.
- * Sign-out is always available.
+ * Blocks the app for an account that has no Terms acceptance on record, which today means a new Google
+ * account (password sign-ups record the Terms from the sign-up form, and older accounts were backfilled).
+ * The gate keys on the missing record, never on the sign-in provider. A status read that fails, or that
+ * belongs to another account, opens the app: a failed read must never trap anyone behind this screen.
+ * Sign-out is always available on the screen.
  */
 export function GoogleFinishGate({ user, onSignOut, children }: Props) {
   const t = useTokens();
-  const isGoogle = user.app_metadata?.provider === 'google';
   const userId = user.id;
-  const [status, setStatus] = useState<Status>({ kind: 'loading' });
-  const [access, setAccess] = useState<ProcessingAccess | null>(null);
-  const [finishing, setFinishing] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  // A token refresh hands over a new user object; only a different account (or a retry) may restart the lookup.
-  const latestUser = useRef(user);
-  latestUser.current = user;
+  const [status, setStatus] = useState<Status>('loading');
+  const [needsTerms, setNeedsTerms] = useState(false);
 
+  // A token refresh hands over a new user object; only a different account may restart the lookup.
   useEffect(() => {
-    if (!isGoogle) return;
     let active = true;
-    setStatus({ kind: 'loading' }); setFinishing(false); setAccess(null);
-    Promise.all([fetchProcessingAccess(), fetchAccountAge()]).then(([next, age]) => {
+    setStatus('loading'); setNeedsTerms(false);
+    fetchTermsStatus().then(terms => {
       if (!active) return;
-      if (next.userId !== userId || age.userId !== userId) throw new Error('Account status belongs to another account.');
-      setAccess(next);
-      setFinishing(needsGoogleSignupFinish(latestUser.current, next, age));
-      setStatus({ kind: 'ready' });
-    }).catch(() => { if (active) setStatus({ kind: 'error' }); });
+      setNeedsTerms(terms.userId === userId && needsTermsAcceptance(terms));
+      setStatus('ready');
+    }).catch(() => {
+      if (!active) return;
+      setNeedsTerms(false);
+      setStatus('ready');
+    });
     return () => { active = false; };
-  }, [userId, isGoogle, attempt]);
+  }, [userId]);
 
-  if (!isGoogle) return <>{children}</>;
-  if (status.kind === 'loading') {
+  if (status === 'loading') {
     return <Shell><AppText accessibilityRole="progressbar" style={[styles.body, { color: t['muted-flat'], fontFamily: fonts.body }]}>Checking your account…</AppText></Shell>;
   }
-  if (status.kind === 'error') {
-    return (
-      <Shell>
-        <AppText accessibilityRole="alert" style={[styles.body, { color: t.danger, fontFamily: fonts.body }]}>We couldn&apos;t check your account. Try again, or sign out.</AppText>
-        <Button variant="primary" label="Try again" onPress={() => setAttempt(n => n + 1)} />
-        <SignOutButton onSignOut={onSignOut} />
-      </Shell>
-    );
-  }
-  if (finishing && access) return <FinishSignup initialAccess={access} onDone={() => setFinishing(false)} onSignOut={onSignOut} />;
+  if (needsTerms) return <AcceptTermsScreen userId={userId} onDone={() => setNeedsTerms(false)} onSignOut={onSignOut} />;
   return <>{children}</>;
 }
 
@@ -200,7 +157,6 @@ const styles = StyleSheet.create({
   body: { fontSize: 13, lineHeight: 19 },
   note: { fontSize: 12, lineHeight: 17 },
   check: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48 },
-  checkLabel: { flex: 1 },
   box: { minHeight: 48, minWidth: 48, justifyContent: 'center' },
   termsCopy: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 4 },
   linkTarget: { minHeight: 48, justifyContent: 'center' },

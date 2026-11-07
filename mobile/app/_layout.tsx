@@ -120,6 +120,6 @@ function AppNavigator() {
     </Stack>
   );
 
-  // A Google-created account that has not confirmed its birthday sees the finish screen before anything else.
+  // An account with no Terms acceptance on record (a new Google account) sees the Terms screen before anything else.
   return session ? <GoogleFinishGate user={session.user} onSignOut={signOut}>{stack}</GoogleFinishGate> : stack;
 }
