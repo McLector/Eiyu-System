@@ -133,56 +133,27 @@ select is(pg_temp.st('da242000-0000-4000-8000-000000000002','weekly-debrief'),'n
 select is((select count(*)::integer from private.operator_audit where action='resume-purpose' and operator_id='da242000-0000-4000-8000-000000000001'),3,'resumes are audited');
 select ok(not exists(select 1 from private.operator_audit a where a::text ~* 'example\.invalid'),'audit holds no email');
 
--- Retention day boundaries: never earlier than 30 full days, whatever the hour of withdrawal.
+-- Retention is off (065 open tracker): a withdrawal at any hour schedules no removal, and the job
+-- reminds and removes nobody, whatever the date. The day-boundary and failure-handling rules of 062
+-- are not exercised because nothing runs.
 select pg_temp.withdrawn('da242000-0000-4000-8000-000000000011','custom-tracker','2026-11-01 23:00+08');
 select pg_temp.withdrawn('da242000-0000-4000-8000-000000000012','custom-tracker','2026-11-01 00:30+08');
-select is((select reminder_due_on::text||' '||removal_due_on::text from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000011'),'2026-11-25 2026-12-02','late-night withdrawal: reminder and removal dates');
-select is((select reminder_due_on::text||' '||removal_due_on::text from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000012'),'2026-11-25 2026-12-02','early-morning withdrawal: same dates');
-select private.run_tracker_retention('2026-11-24 02:15+08');
-select is((select count(*)::integer from private.tracker_retention_state where user_id in ('da242000-0000-4000-8000-000000000011','da242000-0000-4000-8000-000000000012') and reminded_at is not null),0,'no reminder before its date');
-select private.run_tracker_retention('2026-11-25 02:15+08');
-select is((select count(*)::integer from private.tracker_retention_state where user_id in ('da242000-0000-4000-8000-000000000011','da242000-0000-4000-8000-000000000012') and reminded_at is not null),2,'both reminded on the date');
-select private.run_tracker_retention('2026-12-01 02:15+08');
-select is((select removed_at from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000011'),null,'29 days 3 hours after a late withdrawal: not removed');
-select private.run_tracker_retention('2026-12-02 02:15+08');
-select ok((select removed_at-withdrawn_at>=interval '30 days' from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000011'),'late withdrawal removed after at least 30 full days');
-select ok((select removed_at-withdrawn_at>=interval '30 days' from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000012'),'early withdrawal removed after at least 30 full days');
-
--- A missed reminder is sent first, and removal waits 7 days after it.
 select pg_temp.withdrawn('da242000-0000-4000-8000-000000000013','custom-tracker','2026-11-01 12:00+08');
-select private.run_tracker_retention('2027-01-10 02:15+08');
-select is((select removed_at from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000013'),null,'job was down: nothing removed without a reminder');
-select ok((select reminded_at is not null and removal_due_on='2027-01-17' from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000013'),'the reminder goes out and removal moves 7 days on');
-select private.run_tracker_retention('2027-01-16 02:15+08');
-select is((select removed_at from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000013'),null,'still waiting on day 6');
-select private.run_tracker_retention('2027-01-17 02:15+08');
-select ok((select removed_at is not null from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000013'),'removed on the new date');
-
--- One failing account does not stop the others, and the failure shows in the console.
+select is((select count(*)::integer from private.tracker_retention_state where user_id in ('da242000-0000-4000-8000-000000000011','da242000-0000-4000-8000-000000000012','da242000-0000-4000-8000-000000000013')),0,'a withdrawal at any hour schedules no removal');
+-- A stray pending row (for example from before the unblock) is never reminded or removed.
 insert into public.gym_routines(id,user_id,name,unit) values
- ('da242000-0000-4000-8000-0000000000a4','da242000-0000-4000-8000-000000000014','SECRET-poison','kg'),
- ('da242000-0000-4000-8000-0000000000a5','da242000-0000-4000-8000-000000000015','SECRET-healthy','kg');
-select pg_temp.withdrawn('da242000-0000-4000-8000-000000000014','fitness-tracking','2027-03-01 12:00+08');
-select pg_temp.withdrawn('da242000-0000-4000-8000-000000000015','fitness-tracking','2027-03-01 12:00+08');
-select private.run_tracker_retention('2027-03-25 02:15+08');
-create function pg_temp.poison() returns trigger language plpgsql as $$
-begin
- if old.user_id='da242000-0000-4000-8000-000000000014' then raise exception 'SECRET-poison refused'; end if;
- return old;
-end;$$;
-create trigger fix_poison before delete on public.gym_routines for each row execute function pg_temp.poison();
-select is(private.run_tracker_retention('2027-04-01 02:15+08'),'{"reminded":0,"removed":1,"failed":1}'::jsonb,'one account fails, the other is removed');
-select is((select count(*)::integer from public.gym_routines where user_id='da242000-0000-4000-8000-000000000015'),0,'the healthy account is removed');
-select is((select count(*)::integer from public.gym_routines where user_id='da242000-0000-4000-8000-000000000014'),1,'the failing account keeps its data');
-select ok((select removed_at is null and last_failed_at is not null from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000014'),'the failure is recorded, and it is not marked removed');
+ ('da242000-0000-4000-8000-0000000000a4','da242000-0000-4000-8000-000000000014','SECRET-kept','kg');
+insert into private.tracker_retention_state(user_id,purpose,withdrawn_at,reminder_due_on,removal_due_on)
+ values('da242000-0000-4000-8000-000000000014','fitness-tracking','2027-03-01 12:00+08','2027-03-25','2027-04-01');
+select is(private.run_tracker_retention('2027-03-25 02:15+08'),'{"reminded":0,"removed":0}'::jsonb,'no reminder on the old reminder date');
+select is(private.run_tracker_retention('2027-04-02 02:15+08'),'{"reminded":0,"removed":0}'::jsonb,'no removal on the old removal date');
+select is(private.run_tracker_retention('2030-01-01 02:15+08'),'{"reminded":0,"removed":0}'::jsonb,'and none years later');
+select is((select count(*)::integer from public.gym_routines where user_id='da242000-0000-4000-8000-000000000014'),1,'the data is kept');
+select ok((select removed_at is null and reminded_at is null and last_failed_at is null from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000014'),'and the stray row is untouched');
 select pg_temp.op();
 set local role authenticated;
-select ok((select bool_or(e->>'email'='fix-poison@example.invalid' and e->>'status'='failed') from jsonb_array_elements(public.operator_list_retention()) e),'the console shows the failed row');
+select ok((select bool_or(e->>'email'='fix-poison@example.invalid' and e->>'status'='pending') from jsonb_array_elements(public.operator_list_retention()) e),'the console still lists the stray row as pending');
 select ok(public.operator_list_retention()::text !~* 'SECRET','no content or error text in the list');
 reset role;
-drop trigger fix_poison on public.gym_routines;
-select is(private.run_tracker_retention('2027-04-02 02:15+08'),'{"reminded":0,"removed":1}'::jsonb,'the next run retries, and a clean run keeps the plain shape');
-select ok((select removed_at is not null and last_failed_at is null from private.tracker_retention_state where user_id='da242000-0000-4000-8000-000000000014'),'success clears the failure');
-select is((select count(*)::integer from public.gym_routines where user_id='da242000-0000-4000-8000-000000000014'),0,'and the data is removed');
 select * from finish();
 rollback;

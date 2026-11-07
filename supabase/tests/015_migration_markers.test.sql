@@ -248,5 +248,12 @@ select ok(
  and not has_function_privilege('service_role','private.owner_export_manifest()','EXECUTE')
  and (select provolatile='s' from pg_proc where oid='public.owner_export_snapshot(uuid,uuid)'::regprocedure),
  '052 service-only read-only owner export exists');
+select ok(
+ to_regclass('private.tracker_open_settings') is not null
+ and (select count(*) from private.tracker_open_settings)=1
+ and pg_get_functiondef('private.custom_purpose_paused_on(uuid,date,text)'::regprocedure) like '%tracker_open_settings%'
+ and not exists(select 1 from pg_trigger where tgname='track_tracker_retention' and not tgisinternal)
+ and not has_table_privilege('authenticated','private.tracker_open_settings','SELECT'),
+ '065 open tracker settings, pause window and retention-off exist');
 select * from finish();
 rollback;

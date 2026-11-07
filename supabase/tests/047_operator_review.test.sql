@@ -171,7 +171,7 @@ select pg_temp.as_user('da240000-0000-4000-8000-000000000003','aal1');
 set local role authenticated;
 select public.set_tracker_processing_consent('custom-tracker',true,'2026-10-23-custom-tracker-v1',pg_temp.acc()->'revision');
 select public.set_tracker_processing_consent('fitness-tracking',true,'2026-10-23-fitness-tracking-v1',pg_temp.acc()->'revision');
-select is(pg_temp.acc()->>'canWriteCustom','false','granted but pending: teen cannot write custom');
+select is(pg_temp.acc()->>'canWriteCustom','true','open tracker: a pending authority does not close custom writes');
 select set_config('adm.stale',(pg_temp.acc()->'revision')::text,true);
 reset role;
 select pg_temp.as_user('da240000-0000-4000-8000-000000000001','aal2');
@@ -189,7 +189,7 @@ select is((select count(*)::integer from private.processing_authority_events whe
 select pg_temp.as_user('da240000-0000-4000-8000-000000000003','aal1');
 set local role authenticated;
 select is(pg_temp.acc()->>'canWriteCustom','true','teen gains custom permission only after approval');
-select is(pg_temp.acc()->>'canWriteFitness','false','fitness unaffected by custom approval');
+select is(pg_temp.acc()->>'canWriteFitness','true','open tracker: fitness follows basic whatever the custom approval');
 select is(pg_temp.state_of(format($$select public.set_tracker_processing_consent('custom-tracker',true,'2026-10-23-custom-tracker-v1','%s'::jsonb)$$,current_setting('adm.stale'))),'ET003','stale pre-approval revision still ET003');
 reset role;
 select pg_temp.as_user('da240000-0000-4000-8000-000000000001','aal2');
@@ -228,7 +228,7 @@ select is(public.operator_decide_review(pg_temp.rid('da240000-0000-4000-8000-000
 reset role;
 select pg_temp.as_user('da240000-0000-4000-8000-000000000004','aal1');
 set local role authenticated;
-select is(pg_temp.acc()->>'canWriteCustom','false','denied teen still cannot write custom');
+select is(pg_temp.acc()->>'canWriteCustom','true','open tracker: a denied review does not close custom writes');
 select is(pg_temp.acc()->>'customAuthorityState','pending','denied keeps the purpose pending');
 select is((select jsonb_agg(e->>'purpose'||':'||(e->>'status') order by e->>'purpose') from jsonb_array_elements(public.get_my_review_requests()) e),'["custom-tracker:denied","fitness-tracking:open"]'::jsonb,'my requests: only my own, open and decided');
 reset role;
@@ -248,7 +248,7 @@ select lives_ok($$select public.operator_pause_purpose('da240000-0000-4000-8000-
 reset role;
 select pg_temp.as_user('da240000-0000-4000-8000-000000000003','aal1');
 set local role authenticated;
-select is(pg_temp.acc()->>'canWriteCustom','false','paused purpose cannot write');
+select is(pg_temp.acc()->>'canWriteCustom','true','open tracker: a paused purpose does not close custom writes');
 select is(pg_temp.acc()->>'customAuthorityState','revoked','state is revoked');
 select is(pg_temp.acc()->>'canWriteFitness','true','other purpose unaffected');
 reset role;

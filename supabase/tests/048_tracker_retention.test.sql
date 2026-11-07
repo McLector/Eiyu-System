@@ -89,6 +89,9 @@ select is((select count(*)::integer from pg_proc where proname in ('run_tracker_
  and pronamespace in ('public'::regnamespace,'private'::regnamespace) and 'search_path=""'<>all(coalesce(proconfig,'{}'))),0,'search_path is empty');
 select throws_ok($$select private.run_tracker_retention(null)$$,'22023',null,'a null clock is refused');
 
+-- Retention is off (065 open tracker): withdrawing a permission starts no clock, the job reminds and
+-- removes nobody, and nothing is deleted. The 061/062 schedule and removal rules are not exercised because
+-- nothing runs; the removal routine itself is left in place, unused.
 -- A and B: consent, data, withdrawal.
 select pg_temp.seed('da241000-0000-4000-8000-0000000000a1'),pg_temp.seed('da241000-0000-4000-8000-0000000000b1');
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000a1');
@@ -108,31 +111,19 @@ select pg_temp.as_user('da241000-0000-4000-8000-0000000000a1');
 set local role authenticated;
 select pg_temp.consent('custom-tracker',false);
 reset role;
-select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1' and purpose='custom-tracker'),1,'full withdrawal creates retention state');
-select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),1,'only the withdrawn purpose has state');
+select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),0,'a full withdrawal starts no retention state');
 select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000b1'),0,'other owners have no state');
-select ok((select reminder_due_on=(withdrawn_at at time zone 'Asia/Manila')::date+24 and removal_due_on=(withdrawn_at at time zone 'Asia/Manila')::date+31
- and reminded_at is null and removed_at is null from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),'reminder after 23 full days, removal after 30 full days (the job runs early in the day)');
--- Regrant before day 30 clears the state; a new withdrawal starts a fresh clock.
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000a1');
 set local role authenticated;
 select pg_temp.consent('custom-tracker',true);
-reset role;
-select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),0,'regrant clears the pending removal');
-select pg_temp.as_user('da241000-0000-4000-8000-0000000000a1');
-set local role authenticated;
 select pg_temp.consent('custom-tracker',false);
 reset role;
-create temp table w as select withdrawn_at from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1';
-select is((select count(*)::integer from w),1,'second withdrawal starts a fresh clock');
+select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),0,'a regrant and a second withdrawal start none either');
 
--- Notice shows only the caller's own dates.
+-- Notice: nothing pending, for anyone.
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000a1');
 set local role authenticated;
-select is((select jsonb_agg(distinct k order by k) from jsonb_array_elements(public.get_tracker_retention_notice()) e,jsonb_object_keys(e) k),
- '["purpose","reminded","reminderDueOn","removalDueOn"]'::jsonb,'notice keys');
-select is(public.get_tracker_retention_notice()->0->>'purpose','custom-tracker','notice names the purpose');
-select is(jsonb_array_length(public.get_tracker_retention_notice()),1,'notice lists only the withdrawn purpose');
+select is(public.get_tracker_retention_notice(),'[]'::jsonb,'the withdrawing account sees no removal notice');
 reset role;
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000b1');
 set local role authenticated;
@@ -143,46 +134,18 @@ set local role authenticated;
 select is(pg_temp.state_of($$select public.get_tracker_retention_notice()$$),'42501','notice needs sign-in');
 reset role;
 
--- Schedule by calendar date D: D+23 nothing, D+24 reminder once, D+30 nothing, D+31 removal.
-select is(private.run_tracker_retention((select withdrawn_at+interval '23 days' from w)),'{"reminded":0,"removed":0}'::jsonb,'D+23: nothing yet');
-select is(private.run_tracker_retention((select withdrawn_at+interval '24 days' from w)),'{"reminded":1,"removed":0}'::jsonb,'D+24: one reminder');
-create temp table rem as select reminded_at from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1';
-select ok((select reminded_at is not null from rem),'reminder time recorded');
-select is(private.run_tracker_retention((select withdrawn_at+interval '25 days' from w)),'{"reminded":0,"removed":0}'::jsonb,'reminder is set once');
-select is((select reminded_at from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),(select reminded_at from rem),'reminder time unchanged on rerun');
-select pg_temp.as_user('da241000-0000-4000-8000-0000000000a1');
-set local role authenticated;
-select is(public.get_tracker_retention_notice()->0->>'reminded','true','notice reflects the reminder');
-reset role;
-select is(private.run_tracker_retention((select withdrawn_at+interval '30 days' from w)),'{"reminded":0,"removed":0}'::jsonb,'D+30: still read-only');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')-'consentEvents',(select a-'consentEvents' from snap),'nothing removed before its date');
-select is(private.run_tracker_retention((select withdrawn_at+interval '31 days' from w)),'{"reminded":0,"removed":1}'::jsonb,'D+31: removal');
-select is((select (pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')-array['customHabits','completions','deletedCustom','customChains','stages','receipts','consentEvents','provenance'])::text),
- (select ((a-array['customHabits','completions','deletedCustom','customChains','stages','receipts','consentEvents','provenance'])::text) from snap),'everything outside the protected custom scope is untouched (incl. fitness, objects)');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'customHabits','0','custom habits removed');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'basicHabits','1','basic habit kept');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'legacyHabits','1','unclassified legacy habit kept (narrow scope)');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'completions','1','custom completion history removed, basic kept');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'deletedCustom','0','custom deleted-history names removed');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'deletedBasic','1','basic deleted history kept');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'customChains','0','custom chain removed');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'basicChains','1','basic chain kept');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'stages','1','custom stage text removed, basic stage kept');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'receipts','1','custom definition receipt (stage text) removed, basic kept');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')->>'provenance',(select a->>'provenance' from snap),'content-free provenance kept');
-select is((select count(*)::integer from private.processing_consent_events where user_id='da241000-0000-4000-8000-0000000000a1'),(select (a->>'consentEvents')::integer+3 from snap),'consent-evidence rows kept (only the withdraw, regrant, withdraw rows were added)');
+-- The job does nothing on any date, even with a stray pending row (for example from before the unblock).
+insert into private.tracker_retention_state(user_id,purpose,withdrawn_at,reminder_due_on,removal_due_on)
+ values('da241000-0000-4000-8000-0000000000a1','custom-tracker',statement_timestamp()-interval '90 days',current_date-66,current_date-59);
+select is(private.run_tracker_retention(statement_timestamp()+interval '24 days'),'{"reminded":0,"removed":0}'::jsonb,'no reminder on any date');
+select is(private.run_tracker_retention(statement_timestamp()+interval '31 days'),'{"reminded":0,"removed":0}'::jsonb,'no removal after 31 days');
+select is(private.run_tracker_retention(statement_timestamp()+interval '1000 days'),'{"reminded":0,"removed":0}'::jsonb,'and none years later');
+select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')-'consentEvents',(select a-'consentEvents' from snap),'every record of the withdrawing owner is kept, custom, Gym and media included');
 select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000b1'),(select b from snap),'another owner is untouched');
-select ok((select removed_at is not null from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),'removal time recorded');
--- Idempotent rerun.
-create temp table after1 as select pg_temp.cnt('da241000-0000-4000-8000-0000000000a1') c,(select removed_at from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1') r;
-select is(private.run_tracker_retention((select withdrawn_at+interval '45 days' from w)),'{"reminded":0,"removed":0}'::jsonb,'rerun removes nothing more');
-select ok(pg_temp.cnt('da241000-0000-4000-8000-0000000000a1')=(select c from after1) and (select removed_at from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1')=(select r from after1),'rerun changes nothing');
-select pg_temp.as_user('da241000-0000-4000-8000-0000000000a1');
-set local role authenticated;
-select is(public.get_tracker_retention_notice(),'[]'::jsonb,'nothing pending after removal');
-reset role;
+select ok((select removed_at is null and reminded_at is null and last_failed_at is null from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1'),'and the stray row is untouched');
+delete from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a1';
 
--- C: fitness removal; custom untouched; storage objects queued for the cleanup list (not deleted here).
+-- C: a fitness withdrawal queues no media cleanup.
 select pg_temp.seed('da241000-0000-4000-8000-0000000000c1');
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000c1');
 set local role authenticated;
@@ -190,14 +153,9 @@ select pg_temp.consent('custom-tracker',true);
 select pg_temp.consent('fitness-tracking',true);
 select pg_temp.consent('fitness-tracking',false);
 reset role;
-create temp table csnap as select pg_temp.cnt('da241000-0000-4000-8000-0000000000c1') c;
-select private.run_tracker_retention((select withdrawn_at+interval '24 days' from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000c1'));
-select is(private.run_tracker_retention((select withdrawn_at+interval '31 days' from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000c1')),'{"reminded":0,"removed":1}'::jsonb,'fitness removal');
-select is((select concat_ws(',',x->>'routines',x->>'exercises',x->>'sessions',x->>'entries') from (select pg_temp.cnt('da241000-0000-4000-8000-0000000000c1') x) q),'0,0,0,0','routines, exercises, sessions and entries removed');
-select is((select (x-array['routines','exercises','sessions','entries'])::text from (select pg_temp.cnt('da241000-0000-4000-8000-0000000000c1') x) q),
- (select (c-array['routines','exercises','sessions','entries'])::text from csnap),'custom and basic data and objects untouched');
-select is((select count(*)::integer from public.gym_media_cleanup where user_id='da241000-0000-4000-8000-0000000000c1'),2,'attached and unattached media are queued for storage cleanup');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000b1'),(select b from snap),'another owner still untouched');
+select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000c1'),0,'a fitness withdrawal starts no clock');
+select is((select count(*)::integer from public.gym_media_cleanup where user_id='da241000-0000-4000-8000-0000000000c1'),0,'and queues no media cleanup');
+select is((select concat_ws(',',x->>'routines',x->>'exercises',x->>'sessions',x->>'entries') from (select pg_temp.cnt('da241000-0000-4000-8000-0000000000c1') x) q),'1,1,1,1','routines, exercises, sessions and entries are kept');
 
 -- D: a first-ever "withdrawal" (never granted) starts no clock. E: a dispute pause starts none.
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000d1');
@@ -215,7 +173,7 @@ select is((select count(*)::integer from private.tracker_retention_state where u
 select private.run_tracker_retention(statement_timestamp()+interval '90 days');
 select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000e1')->>'customHabits','1','paused data is kept indefinitely');
 
--- F: regrant before day 30; data survives any later run.
+-- F: a regrant keeps its data under any later run.
 select pg_temp.seed('da241000-0000-4000-8000-0000000000f1');
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000f1');
 set local role authenticated;
@@ -226,17 +184,14 @@ reset role;
 select private.run_tracker_retention(statement_timestamp()+interval '60 days');
 select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000f1')->>'customHabits','1','regranted purpose keeps its data');
 
--- G: stale state while consent is actually granted again: the job clears it and removes nothing.
+-- G: a completed removal stays as a record and a pending row is left alone; the operator list shows both.
 select pg_temp.seed('da241000-0000-4000-8000-0000000000a9');
-select pg_temp.as_user('da241000-0000-4000-8000-0000000000a9');
-set local role authenticated;
-select pg_temp.consent('custom-tracker',true);
-select pg_temp.consent('custom-tracker',false);
-reset role;
-update private.processing_consent set custom_granted=true where user_id='da241000-0000-4000-8000-0000000000a9';
-select private.run_tracker_retention(statement_timestamp()+interval '60 days');
-select is((select count(*)::integer from private.tracker_retention_state where user_id='da241000-0000-4000-8000-0000000000a9'),0,'job clears state when the purpose is permitted again');
-select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a9')->>'customHabits','1','and removes nothing');
+insert into private.tracker_retention_state(user_id,purpose,withdrawn_at,reminder_due_on,removal_due_on,removed_at)
+ values('da241000-0000-4000-8000-0000000000a1','custom-tracker',statement_timestamp()-interval '40 days',current_date-16,current_date-9,statement_timestamp()-interval '9 days');
+insert into private.tracker_retention_state(user_id,purpose,withdrawn_at,reminder_due_on,removal_due_on)
+ values('da241000-0000-4000-8000-0000000000c1','fitness-tracking',statement_timestamp()-interval '5 days',current_date+19,current_date+26);
+select is(private.run_tracker_retention(statement_timestamp()+interval '60 days'),'{"reminded":0,"removed":0}'::jsonb,'a recorded removal and a pending row both stay as they are');
+select is(pg_temp.cnt('da241000-0000-4000-8000-0000000000a9')->>'customHabits','1','and nobody else is touched');
 
 -- Operator retention list.
 select pg_temp.as_user('da241000-0000-4000-8000-0000000000ab','aal2');
@@ -251,8 +206,8 @@ select pg_temp.as_user('da241000-0000-4000-8000-0000000000aa','aal2');
 set local role authenticated;
 select is((select jsonb_agg(distinct k order by k) from jsonb_array_elements(public.operator_list_retention()) e,jsonb_object_keys(e) k),
  '["email","purpose","reminderDueOn","removalDueOn","status","withdrawnAt"]'::jsonb,'retention list keys');
-select ok((select bool_or(e->>'email'='ret-a@example.invalid' and e->>'status'='removed' and e->>'purpose'='custom-tracker') from jsonb_array_elements(public.operator_list_retention()) e),'removed window listed with status');
-select ok((select bool_or(e->>'email'='ret-c@example.invalid' and e->>'purpose'='fitness-tracking') from jsonb_array_elements(public.operator_list_retention()) e),'fitness window listed');
+select ok((select bool_or(e->>'email'='ret-a@example.invalid' and e->>'status'='removed' and e->>'purpose'='custom-tracker') from jsonb_array_elements(public.operator_list_retention()) e),'a recorded removal is listed with its status');
+select ok((select bool_or(e->>'email'='ret-c@example.invalid' and e->>'purpose'='fitness-tracking') from jsonb_array_elements(public.operator_list_retention()) e),'a stray fitness row is listed');
 select ok(public.operator_list_retention()::text !~* 'SECRET|birth|1990-01-01|2010-01-01','no content or birthday in the list');
 reset role;
 select is((select count(*)::integer from private.operator_audit where action='list-retention' and operator_id='da241000-0000-4000-8000-0000000000aa'),4,'list audited per successful call');

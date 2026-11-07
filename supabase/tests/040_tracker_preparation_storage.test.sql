@@ -2,7 +2,8 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path=public,extensions;
 select no_plan();
--- Local S02 Task 3: read paths never prepare paused protected roots; the
+-- Local S02 Task 3, as changed by 065 (open tracker): withdrawing a custom or fitness permission no longer pauses
+-- protected roots, so preparation treats custom roots like basic ones. Read paths never prepare anything; the
 -- explicit prepare-day operation filters before effects; Storage uploads bind
 -- the owner, routine and current tracker tuple. Synthetic users only.
 insert into auth.users(id,email,raw_user_meta_data) values
@@ -72,52 +73,52 @@ select set_config('request.jwt.claim.sub','da230200-0000-4000-8000-000000000001'
 select public.set_tracker_processing_consent('custom-tracker',false,'2026-10-23-custom-tracker-v1',public.get_tracker_processing_access()->'revision');
 select public.set_tracker_processing_consent('fitness-tracking',false,'2026-10-23-fitness-tracking-v1',public.get_tracker_processing_access()->'revision');
 insert into kept values('rev_paused',public.get_tracker_processing_access()->'revision');
-select throws_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media',
- 'da230200-0000-4000-8000-000000000001/da230200-0000-4000-8000-000000000030/'||(select (v->>'ageVersion')||'-'||(v->>'consentVersion')||'-'||(v->>'authorityVersion') from kept where k='rev_paused')||'/da230200-0000-4000-8000-0000000000a7.gif')$$,'42501',null,'withdrawn fitness blocks even the current tuple path');
+select lives_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media',
+ 'da230200-0000-4000-8000-000000000001/da230200-0000-4000-8000-000000000030/'||(select (v->>'ageVersion')||'-'||(v->>'consentVersion')||'-'||(v->>'authorityVersion') from kept where k='rev_paused')||'/da230200-0000-4000-8000-0000000000a7.gif')$$,'open tracker: a withdrawn fitness grant no longer blocks the current tuple path');
 reset role;
 select pg_temp.take('s0');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','da230200-0000-4000-8000-000000000001',true);
 -- Public reads do not materialize anything.
-select lives_ok($$select count(*) from public.get_habits_for_date(current_date)$$,'board read still works while protected roots are paused');
+select lives_ok($$select count(*) from public.get_habits_for_date(current_date)$$,'board read works after both permissions are withdrawn');
 select lives_ok($$select count(*) from public.get_open_habit_recoveries()$$,'open-recovery read still works');
 select lives_ok($$select public.read_history_range(current_date-7,current_date+1)$$,'history read still works');
 reset role;
 select pg_temp.take('s1');
 select ok(pg_temp.same('s0','s1','da230200-0000-4000-8000-000000000010'),'Board/recovery/history reads leave the basic root unchanged');
-select ok(pg_temp.same('s0','s1','da230200-0000-4000-8000-000000000011'),'reads leave the paused root unchanged');
+select ok(pg_temp.same('s0','s1','da230200-0000-4000-8000-000000000011'),'reads leave the custom root unchanged');
 select is((select count(*)::integer from public.habit_occurrences where user_id='da230200-0000-4000-8000-000000000001'),0,'reads fabricate no occurrence');
--- Timezone change keeps account semantics without preparing paused roots.
+-- Timezone change keeps account semantics, and prepares the custom root exactly as it does a basic one.
 set local role authenticated;
 select set_config('request.jwt.claim.sub','da230200-0000-4000-8000-000000000001',true);
 select lives_ok($$select public.set_account_time_zone('Etc/UTC')$$,'timezone change still works');
 select is((select time_zone from public.profiles where user_id=auth.uid()),'Etc/UTC','timezone semantics preserved');
 reset role;
 select pg_temp.take('s2');
-select ok(pg_temp.same('s1','s2','da230200-0000-4000-8000-000000000011'),'timezone change does not materialize the paused root');
--- prepare-day prepares basic roots only.
+select is(pg_temp.occ('s2','da230200-0000-4000-8000-000000000011'),pg_temp.occ('s2','da230200-0000-4000-8000-000000000010'),'timezone change treats the custom root like the basic one');
+-- prepare-day prepares custom roots too: nothing is paused any more.
 set local role authenticated;
 select set_config('request.jwt.claim.sub','da230200-0000-4000-8000-000000000001',true);
 select is(pg_temp.cmd('prepare-day','{}','[]',(select v from kept where k='rev_paused')),
- '{"basicPrepared":true,"protectedPrepared":false,"accessChanged":false}'::jsonb,'matching revision reports the actual preparation');
+ '{"basicPrepared":true,"protectedPrepared":true,"accessChanged":false}'::jsonb,'matching revision reports the actual preparation');
 reset role;
 select pg_temp.take('s3');
 select ok(pg_temp.occ('s3','da230200-0000-4000-8000-000000000010')>0,'basic root is prepared');
 select ok((select win from snap where label='s3' and habit_id='da230200-0000-4000-8000-000000000010')>0,'basic missed day opens its recovery window');
-select is(pg_temp.occ('s3','da230200-0000-4000-8000-000000000011'),0,'paused protected root gets no occurrence');
-select is((select win from snap where label='s3' and habit_id='da230200-0000-4000-8000-000000000011'),0,'paused protected root opens no recovery');
-select ok(pg_temp.same('s2','s3','da230200-0000-4000-8000-000000000011'),'paused protected root is byte-identical after preparation');
-select is((select count(*)::integer from public.weekly_quests where user_id='da230200-0000-4000-8000-000000000001'),0,'weekly quest is not created from unpermitted protected aggregates');
+select ok(pg_temp.occ('s3','da230200-0000-4000-8000-000000000011')>0,'open tracker: the custom root is prepared');
+select is(pg_temp.occ('s3','da230200-0000-4000-8000-000000000011'),pg_temp.occ('s3','da230200-0000-4000-8000-000000000010'),'the custom root gets as many occurrences as the basic root');
+select ok((select win from snap where label='s3' and habit_id='da230200-0000-4000-8000-000000000011')>0,'a missed day on the custom root opens its recovery window like a basic one');
+select is((select count(*)::integer from public.weekly_quests where user_id='da230200-0000-4000-8000-000000000001'),1,'weekly quest is created: protected aggregates need no permission');
 -- Basic progress works and moves only its own stat.
 set local role authenticated;
 select set_config('request.jwt.claim.sub','da230200-0000-4000-8000-000000000001',true);
 select lives_ok($$select pg_temp.cmd('complete_habit',jsonb_build_object('p_habit_id','da230200-0000-4000-8000-000000000010','p_completed_on',current_date,'p_kind','full'),
- '[{"kind":"habit","id":"da230200-0000-4000-8000-000000000010","inputKind":"basic"}]',public.get_tracker_processing_access()->'revision')$$,'basic completion succeeds while custom is paused');
+ '[{"kind":"habit","id":"da230200-0000-4000-8000-000000000010","inputKind":"basic"}]',public.get_tracker_processing_access()->'revision')$$,'basic completion succeeds after both permissions are withdrawn');
 reset role;
 select pg_temp.take('s4');
 select is((select stats->>'STR' from stat_snap where label='s4')::integer,(select stats->>'STR' from stat_snap where label='s3')::integer+20,'basic completion applies its target-owned XP');
 select is((select stats->>'INT' from stat_snap where label='s4'),(select stats->>'INT' from stat_snap where label='s3'),'unrelated stat total is not recomputed');
-select ok(pg_temp.same('s3','s4','da230200-0000-4000-8000-000000000011'),'basic completion does not touch the paused root');
+select ok(pg_temp.same('s3','s4','da230200-0000-4000-8000-000000000011'),'basic completion does not touch the custom root');
 -- Bulk reorder with an omitted paused sibling.
 set local role authenticated;
 select set_config('request.jwt.claim.sub','da230200-0000-4000-8000-000000000001',true);
@@ -125,8 +126,8 @@ select lives_ok($$select pg_temp.cmd('reorder_quests','{"p_quest_type":"habit","
  '[{"kind":"habit","id":"da230200-0000-4000-8000-000000000010","inputKind":"basic"},{"kind":"habit","id":"da230200-0000-4000-8000-000000000013","inputKind":"basic"}]',public.get_tracker_processing_access()->'revision')$$,'basic-only reorder succeeds');
 reset role;
 select pg_temp.take('s5');
-select is((select pos from snap where label='s5' and habit_id='da230200-0000-4000-8000-000000000011'),7,'omitted paused sibling keeps its position');
-select ok((select upd from snap where label='s5' and habit_id='da230200-0000-4000-8000-000000000011')=(select upd from snap where label='s4' and habit_id='da230200-0000-4000-8000-000000000011'),'omitted paused sibling is not rewritten');
+select is((select pos from snap where label='s5' and habit_id='da230200-0000-4000-8000-000000000011'),2,'open tracker: an omitted custom sibling is renumbered after the requested order, like a basic one');
+select ok((select pos from snap where label='s5' and habit_id='da230200-0000-4000-8000-000000000011')>(select pos from snap where label='s5' and habit_id='da230200-0000-4000-8000-000000000010'),'and it follows the requested ones');
 select ok((select pos from snap where label='s5' and habit_id='da230200-0000-4000-8000-000000000013')<(select pos from snap where label='s5' and habit_id='da230200-0000-4000-8000-000000000010'),'requested permitted order applied');
 -- Stale optional revision: basic prepares, protected does not, accessChanged reports it.
 set local role authenticated;
@@ -136,7 +137,7 @@ select is(pg_temp.cmd('prepare-day','{}','[]',(select v from kept where k='rev_p
  '{"basicPrepared":true,"protectedPrepared":false,"accessChanged":true}'::jsonb,'stale optional revision prepares only still-basic roots');
 reset role;
 select pg_temp.take('s6');
-select is(pg_temp.occ('s6','da230200-0000-4000-8000-000000000011'),0,'regrant does not restamp an old intent');
+select is(pg_temp.occ('s6','da230200-0000-4000-8000-000000000011'),pg_temp.occ('s3','da230200-0000-4000-8000-000000000011'),'a stale revision prepares nothing more for the custom root');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','da230200-0000-4000-8000-000000000001',true);
 select is(pg_temp.cmd('prepare-day','{}','[]',public.get_tracker_processing_access()->'revision'),

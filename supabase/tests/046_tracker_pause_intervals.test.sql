@@ -3,9 +3,9 @@ create extension if not exists pgtap with schema extensions;
 set local search_path=public,extensions;
 set local timezone='UTC';
 select no_plan();
--- Local S02 decision 14 (059): days inside a custom-tracker pause are not
--- scheduled for protected roots, so a regrant does not turn them into misses.
--- Basic roots are unaffected. Synthetic user; rolled back.
+-- Local S02 decision 14 (059), narrowed by 065 (open tracker): days inside the go-live to unblock window
+-- are not scheduled for protected roots when no grant was in force, so nobody gets a miss for a day they
+-- could not complete. Every other day is never paused. Basic roots are unaffected. Synthetic user; rolled back.
 insert into auth.users(id,email,raw_user_meta_data) values
  ('da230700-0000-4000-8000-000000000001','pause-days@example.invalid','{"birth_date":"2000-01-01"}');
 create function pg_temp.cmd(op text,args jsonb,targets jsonb default '[]') returns jsonb
@@ -35,6 +35,8 @@ update private.processing_consent_events set changed_at=(current_date-10)::times
  and version=(select min(version) from private.processing_consent_events where user_id='da230700-0000-4000-8000-000000000001' and purpose='custom-tracker');
 update private.processing_consent_events set changed_at=(current_date-6)::timestamp at time zone 'UTC'
  where user_id='da230700-0000-4000-8000-000000000001' and purpose='custom-tracker' and not granted;
+-- The blocked window: from go-live six days ago up to (not including) the unblock today.
+update private.tracker_open_settings set go_live_at=(current_date-6)::timestamp at time zone 'UTC',unblocked_at=current_date::timestamp at time zone 'UTC';
 insert into public.habit_occurrences(habit_id,user_id,occurrence_date,time_zone,day_ends_at)
  select 'da230700-0000-4000-8000-000000000011','da230700-0000-4000-8000-000000000001',d::date,'UTC',(d::date+1)::timestamp at time zone 'UTC'
  from generate_series(current_date-10,current_date-7,interval '1 day') d;
@@ -53,12 +55,12 @@ select is(cardinality(pg_temp.occ('da230700-0000-4000-8000-000000000012')),11,'b
 select is((select count(*)::integer from public.habit_recovery_windows where habit_id='da230700-0000-4000-8000-000000000011'),0,'no recovery window opens for paused days');
 select is((select current_streak from public.streaks where habit_id='da230700-0000-4000-8000-000000000011'),4,'the streak continues across the pause');
 select ok((select recovery_armed from public.streaks where habit_id='da230700-0000-4000-8000-000000000011'),'recovery stays armed after the pause');
--- A day counts as paused only on or after the withdrawal and before the regrant.
-select ok(not private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-7,'UTC'),'the day before withdrawal is not paused');
-select ok(private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-6,'UTC'),'the withdrawal day is paused');
-select ok(private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-1,'UTC'),'the day before the regrant is paused');
-select ok(not private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date,'UTC'),'the regrant day is not paused');
-select ok(private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-11,'UTC'),'days before any grant count as paused (legacy rollout)');
+-- A day counts as paused only inside the window and only when no grant was in force that day.
+select ok(not private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-7,'UTC'),'the day before go-live is not paused');
+select ok(private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-6,'UTC'),'the go-live day with a withdrawal in force is paused');
+select ok(private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-1,'UTC'),'the day before the unblock is paused');
+select ok(not private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date,'UTC'),'the unblock day is not paused');
+select ok(not private.custom_purpose_paused_on('da230700-0000-4000-8000-000000000001',current_date-11,'UTC'),'days before go-live are never paused, with or without a grant (pre-S02 behaviour)');
 select ok(not has_function_privilege('authenticated','private.custom_purpose_paused_on(uuid,date,text)','execute'),'clients cannot call the pause helper');
 select * from finish();
 rollback;

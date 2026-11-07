@@ -24,7 +24,7 @@ select throws_ok($$insert into storage.objects(bucket_id,name) values('gym-exerc
 select throws_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media','19000000-0000-4000-8000-000000000001/routine/demo.gif')$$,'42501',null,'the legacy own-folder path without routine and tuple is refused');
 select throws_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media',pg_temp.media_path('19000000-0000-4000-8000-000000000002','19000000-0000-4000-8000-000000000004.gif',1))$$,'42501',null,'a stale tuple cannot upload');
 select public.set_tracker_processing_consent('fitness-tracking',false,'2026-10-23-fitness-tracking-v1',public.get_tracker_processing_access()->'revision');
-select throws_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media',pg_temp.media_path('19000000-0000-4000-8000-000000000002','19000000-0000-4000-8000-000000000005.gif'))$$,'42501',null,'withdrawing the fitness grant refuses new uploads');
+select lives_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media',pg_temp.media_path('19000000-0000-4000-8000-000000000002','19000000-0000-4000-8000-000000000005.gif'))$$,'open tracker: withdrawing the fitness grant no longer refuses uploads');
 set local "request.jwt.claim.sub"='19000000-0000-4000-8000-000000000099';
 select is((select count(*) from storage.objects where bucket_id='gym-exercise-media'),0::bigint,'foreign media cannot be read');
 select throws_ok($$insert into storage.objects(bucket_id,name) values('gym-exercise-media','19000000-0000-4000-8000-000000000099/deleted-owner.gif')$$,'42501',null,'a claim for a nonexistent account cannot upload');

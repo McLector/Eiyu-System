@@ -59,14 +59,15 @@ select set_config('request.jwt.claim.role','service_role',true);
 select is(pg_temp.input('da230400-0000-4000-8000-000000000002'),
  '{"habits":[{"name":"Quest 1","stat":"DEX","fullCount":1,"easyCount":1}],"statTotals":{"STR":0,"INT":0,"DEX":2,"WIS":0,"CHA":0}}'::jsonb,
  'basic-only account yields the same bounded names/counts/totals as the client gatherer');
--- Mixed owner without custom permission: denied before any admission side effect.
-select throws_ok($$select pg_temp.input('da230400-0000-4000-8000-000000000001')$$,'ET002',null,'protected input denied without custom permission');
-select throws_ok($$select pg_temp.input('da230400-0000-4000-8000-000000000003')$$,'ET002',null,'unclassified deleted history is protected');
+-- Open tracker (065): custom quests need no separate permission, so a mixed owner's named quests and
+-- unclassified deleted history are included with no grant at all.
+select is(jsonb_array_length(pg_temp.input('da230400-0000-4000-8000-000000000001')->'habits'),2,'open tracker: custom input is included with no grant');
+select is(pg_temp.input('da230400-0000-4000-8000-000000000003')#>>'{habits,0,name}','Unclassified legacy name','open tracker: unclassified deleted history is included with no grant');
 reset role;
 update private.processing_consent set fitness_granted=true,fitness_notice='2026-10-23-fitness-tracking-v1',version=version+1 where user_id in('da230400-0000-4000-8000-000000000001','da230400-0000-4000-8000-000000000003');
 set local role service_role;
 select set_config('request.jwt.claim.role','service_role',true);
-select throws_ok($$select pg_temp.input('da230400-0000-4000-8000-000000000001')$$,'ET002',null,'a fitness grant does not authorize custom input');
+select is(jsonb_array_length(pg_temp.input('da230400-0000-4000-8000-000000000001')->'habits'),2,'open tracker: a fitness grant changes nothing about custom input');
 reset role;
 update private.processing_consent set custom_granted=true,custom_notice='2026-10-23-custom-tracker-v1',version=version+1 where user_id in('da230400-0000-4000-8000-000000000001','da230400-0000-4000-8000-000000000003');
 set local role service_role;

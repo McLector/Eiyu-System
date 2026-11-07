@@ -11,7 +11,8 @@ select set_config('request.jwt.claim.sub','da230000-0000-4000-8000-000000000001'
 select ok((public.get_tracker_processing_access()->>'canWriteBasic')::boolean,'unknown legacy retains basic');
 select is(public.get_tracker_processing_access()->>'customConsent','false','no invented custom grant');
 select is(public.get_tracker_processing_access()->>'fitnessConsent','false','no invented fitness grant');
-select is(public.get_tracker_processing_access()->>'canWriteCustom','false','unknown cannot add protected data');
+select is(public.get_tracker_processing_access()->>'canWriteCustom','true','open tracker: an unknown legacy account can write named quests with no grant');
+select is(public.get_tracker_processing_access()->>'canWriteFitness','true','open tracker: an unknown legacy account can log Gym with no grant');
 reset role;
 select is((select count(*)::integer from private.tracker_input_provenance where user_id::text like 'da230000-%'),0,'existing roots not backfilled');
 select is((select count(*)::integer from private.tracker_purpose_authority where user_id::text like 'da230000-%'),0,'no invented reviewed authority');
@@ -23,7 +24,7 @@ select is(public.get_tracker_processing_access()->>'customAuthorityState','not-r
 select throws_ok($$select public.set_tracker_processing_consent('custom-tracker',true,'old',public.get_tracker_processing_access()->'revision')$$,'22023',null,'stale notice refuses');
 select throws_ok($$select public.set_tracker_processing_consent('custom-tracker',true,'2026-10-23-custom-tracker-v1',jsonb_set(public.get_tracker_processing_access()->'revision','{userId}','"da230000-0000-4000-8000-000000000001"'))$$,'42501',null,'wrong owner refuses');
 select is(public.set_tracker_processing_consent('custom-tracker',true,'2026-10-23-custom-tracker-v1',public.get_tracker_processing_access()->'revision')->>'canWriteCustom','true','specific adult grant without mailbox');
-select is(public.get_tracker_processing_access()->>'canWriteFitness','false','custom does not grant fitness');
+select is(public.get_tracker_processing_access()->>'canWriteFitness','true','open tracker: fitness follows basic whatever was granted');
 select is(public.set_tracker_processing_consent('fitness-tracking',true,'2026-10-23-fitness-tracking-v1',public.get_tracker_processing_access()->'revision')->>'canWriteFitness','true','fitness independent grant');
 select lives_ok($$select public.set_processing_consent('age-screening',true,'2026-10-20-age-v1','da230000-0000-4000-8000-000000000002',
  (public.get_processing_access()->>'ageVersion')::integer,(public.get_processing_access()->>'consentVersion')::integer,
@@ -43,7 +44,7 @@ select private.record_processing_authority('da230000-0000-4000-8000-000000000003
 select is(private.processing_authority_version('da230000-0000-4000-8000-000000000003'),1,'old decision starts aggregate revision');
 set local role authenticated;
 select set_config('request.jwt.claim.sub','da230000-0000-4000-8000-000000000003',true);
-select is(public.set_tracker_processing_consent('custom-tracker',true,'2026-10-23-custom-tracker-v1',public.get_tracker_processing_access()->'revision')->>'canWriteCustom','false','old authority scope never grants custom');
+select is(public.set_tracker_processing_consent('custom-tracker',true,'2026-10-23-custom-tracker-v1',public.get_tracker_processing_access()->'revision')->>'canWriteCustom','true','open tracker: a teen declaration or old authority scope does not close custom writes');
 reset role;
 select private.record_tracker_processing_authority('da230000-0000-4000-8000-000000000003','custom-tracker','not-required',1,'da230000-0000-4000-8000-000000000011');
 select is(private.processing_authority_version('da230000-0000-4000-8000-000000000003'),2,'new purpose increments shared authority');
@@ -57,12 +58,13 @@ set local role authenticated;
 select throws_ok($$select public.set_processing_consent('weekly-debrief',true,'2026-10-20-weekly-debrief-v1','da230000-0000-4000-8000-000000000003',
  (public.get_processing_access()->>'ageVersion')::integer,(public.get_processing_access()->>'consentVersion')::integer,1,
  (public.get_processing_access()->>'mailboxVersion')::integer)$$,'EP002',null,'old AI intent invalidated by scoped decision');
-select is(public.get_tracker_processing_access()->>'canWriteCustom','true','conditional scoped decision allows teen custom');
-select is(public.get_tracker_processing_access()->>'canWriteFitness','false','authority not copied across purposes');
+select is(public.get_tracker_processing_access()->>'canWriteCustom','true','open tracker: custom stays writable under a conditional scoped decision');
+select is(public.get_tracker_processing_access()->>'canWriteFitness','true','open tracker: fitness follows basic, not another purpose''s authority');
 reset role;
 select private.record_tracker_processing_authority('da230000-0000-4000-8000-000000000003','custom-tracker','revoked',1,'da230000-0000-4000-8000-000000000013');
 set local role authenticated;
-select is(public.get_tracker_processing_access()->>'canWriteCustom','false','explicit revocation wins');
+select is(public.get_tracker_processing_access()->>'canWriteCustom','true','open tracker: a revoked authority no longer blocks custom writes');
+select is(public.get_tracker_processing_access()->>'customAuthorityState','revoked','the recorded revocation itself is untouched');
 reset role;
 update private.account_age set birth_date='2000-01-01',version=version+1 where user_id='da230000-0000-4000-8000-000000000003';
 set local role authenticated;
