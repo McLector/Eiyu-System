@@ -4,8 +4,6 @@ import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, nor
 import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
 import {DebriefConsent} from './DebriefConsent';
 import OwnerExport from './OwnerExport';
-import TrackerPermissions from './TrackerPermissions';
-import { audienceOf, type NoticeAudience } from '../store/tracker';
 
 import { BoardIcon, DumbbellIcon, GearIcon, ScrollIcon, SignOutIcon, StatusIcon } from '../Icons';
 import { useSession } from '../store/session-context';
@@ -45,7 +43,6 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
   const [originalBirthday, setOriginalBirthday] = useState('');
   const [correctionPending, setCorrectionPending] = useState(false);
   const [ageLoaded, setAgeLoaded] = useState(false);
-  const [audience, setAudience] = useState<NoticeAudience | undefined>('checking');
   const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
   const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
   const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
@@ -69,9 +66,8 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
       setBirthday(value); setOriginalBirthday(value); setAgeLoaded(true);
       setBirthdayOwner(userId);
       setCorrectionPending(status.correctionPending);
-      setAudience(audienceOf(status) ?? undefined);
       if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-    }).catch(() => { if (active) { setAudience(undefined); setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); } });
+    }).catch(() => { if (active) { setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); } });
     return () => { active = false; };
   }, [userId]);
 
@@ -131,7 +127,6 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
         {birthdayNote && <p role="status">{birthdayNote}</p>}
         {processing && userId && <DebriefConsent userId={userId} access={processing} onChanged={setProcessing}/>}
         {processingError && <p role="alert">{processingError}</p>}
-        {userId && <TrackerPermissions key={`${userId}-permissions`} userId={userId} audience={audience}/>}
         {userId && <OwnerExport key={`${userId}-export`} userId={userId}/>}
         <div className="phase4-dialog-actions">
           <button type="button" className="btn-secondary" onClick={() => requestClose(onClose)} disabled={pending}>CANCEL</button>

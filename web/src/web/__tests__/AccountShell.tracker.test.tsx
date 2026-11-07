@@ -37,119 +37,44 @@ function setup(access: TrackerAccess | Error) {
   const router = createMemoryRouter([{ path: '/', element: <ProtectedLayout />, children: [{ path: '/board', element: <p>BOARD</p> }] }], { initialEntries: ['/board?account=profile'] });
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>);
 }
-const box = (purpose: 'custom-tracker' | 'fitness-tracking') => screen.findByRole('checkbox', { name: NOTICES[purpose].label });
+const choice = (purpose: 'custom-tracker' | 'fitness-tracking') => screen.queryByRole('checkbox', { name: NOTICES[purpose].label });
 
-it('shows both tracker purposes as separate choices reflecting the server and writes nothing on mount', async () => {
+// Open tracker (065): custom quests and Gym need no permission, so Profile no longer offers the two choices.
+// Turning them off would do nothing. Phase 1 deletes the components; this keeps the live Profile honest meanwhile.
+it('shows no custom or Gym permission choice and none of their notices', async () => {
   setup(trackerAccess({ fitnessConsent: false, canWriteFitness: false }));
-  expect(await box('custom-tracker')).toBeChecked();
-  expect(await box('fitness-tracking')).not.toBeChecked();
-  expect(screen.getByText(NOTICES['custom-tracker'].body)).toBeInTheDocument();
-  expect(screen.getByText(NOTICES['fitness-tracking'].body)).toBeInTheDocument();
+  await screen.findByRole('button', { name: 'Prepare data download' });
+  expect(choice('custom-tracker')).not.toBeInTheDocument();
+  expect(choice('fitness-tracking')).not.toBeInTheDocument();
+  expect(screen.queryByText(NOTICES['custom-tracker'].body)).not.toBeInTheDocument();
+  expect(screen.queryByText(NOTICES['fitness-tracking'].body)).not.toBeInTheDocument();
+  expect(screen.queryByText(NOTICES['custom-tracker'].childBody)).not.toBeInTheDocument();
+  expect(screen.queryByText(/permissions or this record changed/i)).not.toBeInTheDocument();
+});
+
+it('shows no retention or paused-tracker message about these permissions', async () => {
+  setup(trackerAccess({ canWriteBasic: false, canWriteCustom: false, canWriteFitness: false, fitnessConsent: false }));
+  await screen.findByRole('button', { name: 'Prepare data download' });
+  expect(screen.queryByText(/paused for this account/i)).not.toBeInTheDocument();
+  expect(screen.queryByText(/read-only for 30 days/i)).not.toBeInTheDocument();
+});
+
+it('neither reads nor writes tracker permissions from Profile', async () => {
+  setup(trackerAccess());
+  await screen.findByRole('button', { name: 'Prepare data download' });
   expect(mocks.setConsent).not.toHaveBeenCalled();
+});
+
+it('does not warn that permission settings are unavailable when the access read fails, and keeps Profile usable', async () => {
+  setup(new Error('network'));
+  expect(await screen.findByLabelText('Display name')).toBeEnabled();
+  expect(screen.queryByText(/Tracker permission settings are unavailable/i)).not.toBeInTheDocument();
+  expect(within(screen.getByRole('dialog', { name: 'EDIT DETAILS' })).getByRole('button', { name: 'SAVE' })).toBeEnabled();
   expect(screen.getByRole('button', { name: 'Prepare data download' })).toBeEnabled();
 });
 
-it('gives each Profile section its own key, so a re-render cannot leave a stale copy on screen', async () => {
-  const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-  try {
-    setup(noGrant());
-    await box('custom-tracker');
-    await waitFor(() => expect(mocks.fetchAge).toHaveBeenCalled());
-    await screen.findByText(NOTICES['custom-tracker'].body);
-    const duplicates = errors.mock.calls.filter(call => String(call[0]).includes('two children with the same key'));
-    expect(duplicates).toEqual([]);
-  } finally { errors.mockRestore(); }
-});
-
-it('holds both grants and shows no notice until the age read answers, then shows the teen text', async () => {
-  let answer: (value: unknown) => void = () => undefined;
-  mocks.fetchAge.mockReturnValue(new Promise(resolve => { answer = resolve; }));
-  setup(noGrant());
-  const custom = await box('custom-tracker');
-  expect(custom).toBeDisabled();
-  expect(await box('fitness-tracking')).toBeDisabled();
-  expect(screen.queryByText(NOTICES['custom-tracker'].body)).not.toBeInTheDocument();
-  expect(screen.queryByText(NOTICES['custom-tracker'].childBody)).not.toBeInTheDocument();
-  expect(screen.getAllByText('Checking your account…')).toHaveLength(2);
-  answer({ userId: 'owner-a', birthDate: '2012-01-01', pendingBirthDate: null, correctionPending: false, adultDeclared: false });
-  expect(await screen.findByText(NOTICES['custom-tracker'].childBody)).toBeInTheDocument();
-  expect(screen.queryByText(NOTICES['custom-tracker'].body)).not.toBeInTheDocument();
-  expect(screen.queryByText('Checking your account…')).not.toBeInTheDocument();
-  expect(custom).toBeEnabled();
-});
-
-it('falls back to the adult notice with the grant open when the age read fails, because the server still decides', async () => {
-  mocks.fetchAge.mockRejectedValue(new Error('down'));
-  setup(noGrant());
-  expect(await screen.findByText(NOTICES['custom-tracker'].body)).toBeInTheDocument();
-  expect(screen.queryByText('Checking your account…')).not.toBeInTheDocument();
-  expect(await box('custom-tracker')).toBeEnabled();
-});
-
-it('grants Gym tracking alone with its notice version and a copy of the captured revision', async () => {
-  const access = trackerAccess({ fitnessConsent: false, canWriteFitness: false });
-  const next = { ...trackerAccess({}), revision: { ...access.revision, consentVersion: 2 } };
-  mocks.setConsent.mockResolvedValue(next);
-  const user = userEvent.setup(); setup(access);
-  await user.click(await box('fitness-tracking'));
-  await waitFor(() => expect(mocks.setConsent).toHaveBeenCalledTimes(1));
-  expect(mocks.setConsent).toHaveBeenCalledWith('fitness-tracking', true, NOTICES['fitness-tracking'].version, access.revision);
-  expect(mocks.setConsent.mock.calls[0][3]).not.toBe(access.revision);
-  await waitFor(() => expect(screen.getByRole('checkbox', { name: NOTICES['fitness-tracking'].label })).toBeChecked());
-  expect(screen.getByRole('checkbox', { name: NOTICES['custom-tracker'].label })).toBeChecked();
-});
-
-it('withdraws custom tracker permission without touching Gym', async () => {
-  const access = trackerAccess();
-  mocks.setConsent.mockResolvedValue({ ...access, customConsent: false, canWriteCustom: false, revision: { ...access.revision, consentVersion: 2 } });
-  const user = userEvent.setup(); setup(access);
-  await user.click(await box('custom-tracker'));
-  await waitFor(() => expect(mocks.setConsent).toHaveBeenCalledWith('custom-tracker', false, NOTICES['custom-tracker'].version, access.revision));
-  await waitFor(() => expect(screen.getByRole('checkbox', { name: NOTICES['custom-tracker'].label })).not.toBeChecked());
-  expect(screen.getByRole('checkbox', { name: NOTICES['fitness-tracking'].label })).toBeChecked();
-  expect(mocks.setConsent).toHaveBeenCalledTimes(1);
-});
-
-it('re-reads access and keeps the checkbox unchanged when the change is refused as stale', async () => {
-  const user = userEvent.setup(); setup(noGrant());
-  mocks.kind.mockReturnValue('access-changed');
-  mocks.setConsent.mockRejectedValue(Object.assign(new Error('stale'), { code: 'ET003' }));
-  const fitness = await box('fitness-tracking');
-  const reads = mocks.fetchAccess.mock.calls.length;
-  await user.click(fitness);
-  expect(await screen.findByText(/permissions or this record changed/i)).toBeInTheDocument();
-  await waitFor(() => expect(mocks.fetchAccess.mock.calls.length).toBeGreaterThan(reads));
-  expect(screen.getByRole('checkbox', { name: NOTICES['fitness-tracking'].label })).not.toBeChecked();
-  expect(mocks.setConsent).toHaveBeenCalledTimes(1);
-});
-
-it('under 12: turning a purpose on is closed, but withdrawing stays open', async () => {
-  const user = userEvent.setup();
-  setup(trackerAccess({ canWriteBasic: false, canWriteCustom: false, canWriteFitness: false, fitnessConsent: false }));
-  expect(await box('fitness-tracking')).toBeDisabled();
-  expect(await box('custom-tracker')).toBeEnabled();
-  expect(screen.getAllByText(/paused for this account/i).length).toBeGreaterThan(0);
-  await user.click(screen.getByRole('checkbox', { name: NOTICES['fitness-tracking'].label }));
-  expect(mocks.setConsent).not.toHaveBeenCalled();
-});
-
-it('a purpose that is simply off stays available to turn on; this panel never blocks on the mailbox', async () => {
-  setup(trackerAccess({ customConsent: false, canWriteCustom: false }));
-  expect(await box('custom-tracker')).toBeEnabled();
-  expect(screen.getByRole('checkbox', { name: NOTICES['custom-tracker'].label })).not.toBeChecked();
-});
-
-it('keeps the rest of Profile usable and explains when permission settings cannot be read', async () => {
-  setup(new Error('network'));
-  expect(await screen.findByText(/Tracker permission settings are unavailable/i)).toBeInTheDocument();
-  expect(screen.queryByRole('checkbox', { name: NOTICES['custom-tracker'].label })).not.toBeInTheDocument();
-  expect(screen.getByLabelText('Display name')).toBeEnabled();
-  expect(within(screen.getByRole('dialog', { name: 'EDIT DETAILS' })).getByRole('button', { name: 'SAVE' })).toBeEnabled();
-  expect(mocks.setConsent).not.toHaveBeenCalled();
-});
-
-it('refuses a capability that belongs to another owner', async () => {
-  setup(trackerAccess({}, 'owner-b'));
-  expect(await screen.findByText(/Tracker permission settings are unavailable/i)).toBeInTheDocument();
-  expect(screen.queryByRole('checkbox', { name: NOTICES['custom-tracker'].label })).not.toBeInTheDocument();
+it('keeps the data download and the AI choice in Profile', async () => {
+  setup(trackerAccess());
+  expect(await screen.findByRole('button', { name: 'Prepare data download' })).toBeEnabled();
+  await waitFor(() => expect(mocks.fetchAge).toHaveBeenCalled());
 });
