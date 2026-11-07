@@ -44,7 +44,8 @@ function mockTables(habitsData: unknown[], completionsData: unknown[], occurrenc
   });
   (supabase.rpc as jest.Mock).mockImplementation(async (name: string) => {
     if (name === 'initialize_account_time_zone') return { data: 'UTC', error: null };
-    if (name === 'ensure_habit_occurrences') return { data: null, error: null };
+    // Live revokes this legacy mutation from signed-in users (054), so a call is a 42501 refusal.
+    if (name === 'ensure_habit_occurrences') return { data: null, error: { code: '42501', message: 'permission denied for function ensure_habit_occurrences' } };
     if (name === 'read_history_range') {
       const habits = habitsData as { id: string; name: string; stat?: string; quest_type: string }[];
       const completions = completionsData as { habit_id: string; completed_on: string; kind: string }[];
@@ -170,6 +171,22 @@ describe('fetchHistoryRange', () => {
     expect(result['2026-08-28'].scheduledCount).toBe(1);
     expect(result['2026-09-01'].scheduledCount).toBe(1);
     expect(result['2026-09-02'].scheduledCount).toBe(1);
+  });
+
+  it('only reads: it never calls the revoked legacy mutation, so a refusal cannot break the heatmap', async () => {
+    mockTables([], []);
+    await fetchHistoryRange('user-1', new Date(Date.UTC(2026, 7, 28)), new Date(Date.UTC(2026, 8, 3)));
+    const called = (supabase.rpc as jest.Mock).mock.calls.map(([name]) => name);
+    expect(called).not.toContain('ensure_habit_occurrences');
+    expect(called).toContain('read_history_range');
+  });
+
+  it('still surfaces a failed history read instead of an empty month', async () => {
+    mockTables([], []);
+    const original = (supabase.rpc as jest.Mock).getMockImplementation()!;
+    (supabase.rpc as jest.Mock).mockImplementation(async (name: string, args?: unknown) =>
+      name === 'read_history_range' ? { data: null, error: new Error('read failed') } : original(name, args));
+    await expect(fetchHistoryRange('user-1', new Date(Date.UTC(2026, 7, 28)), new Date(Date.UTC(2026, 8, 3)))).rejects.toThrow('read failed');
   });
 
   it('places a completion on the correct side of the month boundary', async () => {

@@ -1,4 +1,4 @@
-import { addDateKeyDays, addUtcDays, toDateKey } from '../logic/date-utils';
+import { addUtcDays, toDateKey } from '../logic/date-utils';
 import { supabase } from '../supabase/client';
 import { CompletionKind } from '../types/database';
 import { Stat } from '../types/eiyu';
@@ -78,11 +78,10 @@ export async function fetchHistoryRange(userId: string, startDate: Date, endDate
   const endStr = toDateKey(endDate);
   await initializeAccountTimeZone();
 
-  const { error: ensureError } = await supabase.rpc('ensure_habit_occurrences', {
-    p_through_date: addDateKeyDays(endStr, -1),
-  });
-  if (ensureError) throw ensureError;
-
+  // A read never writes: occurrences are materialized by the gateway's
+  // prepare-day step when the app opens. The legacy ensure_habit_occurrences
+  // mutation is revoked from signed-in users (054), so calling it here made every
+  // history and heatmap read fail with a 403.
   const boundaryRows = (await fetchHistoryEvidence(startStr, endStr)).rows;
   const rowsByDate = new Map<string, HistoryEvidenceRow[]>();
   for (const row of boundaryRows) {
