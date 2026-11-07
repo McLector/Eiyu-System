@@ -15,18 +15,26 @@ export function MailboxVerification({ userId, onVerified, refreshRevision = 0, p
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [remaining, setRemaining] = useState(0);
+  // `epoch` guards status reads, which every refresh supersedes. `scope` guards
+  // user actions (send, verify, check): a passive refresh must not discard an
+  // answer still in flight, only a change of account, purpose or unmount does.
   const epoch = useRef(0);
+  const scope = useRef(0);
   const owner = useRef(userId);
+  const ownerPurpose = useRef(purpose);
+  const acting = useRef(false);
   const observed = useRef<MailboxStatus | null>(null);
   const done = useRef(onVerified);
   useEffect(() => { done.current = onVerified; }, [onVerified]);
+  useEffect(() => () => { scope.current++; }, []);
   useEffect(() => {
     const current = ++epoch.current;
-    if (owner.current !== userId) {
-      owner.current = userId; observed.current = null;
-      setStatus(null); setChallenge(null); setCode(''); setRemaining(0);
+    if (owner.current !== userId || ownerPurpose.current !== purpose) {
+      owner.current = userId; ownerPurpose.current = purpose; observed.current = null;
+      scope.current++; acting.current = false;
+      setStatus(null); setChallenge(null); setCode(''); setRemaining(0); setBusy(false);
     }
-    setError(null); setBusy(false);
+    setError(null);
     void fetchMailboxStatus().then(value => {
       if (epoch.current !== current) return;
       if (value.userId !== userId) throw new Error('Your account changed. Check verification status again.');
@@ -44,27 +52,32 @@ export function MailboxVerification({ userId, onVerified, refreshRevision = 0, p
     return () => clearTimeout(timer);
   }, [remaining]);
   const act = async (action: 'send' | 'verify' | 'check') => {
-    if (busy) return;
-    const current = epoch.current; setBusy(true); setError(null);
+    if (busy || acting.current) return;
+    const current = scope.current, startVersion = observed.current?.version;
+    const live = () => scope.current === current;
+    // A refresh that saw a different mailbox version means the email changed under this request.
+    const unchanged = () => live() && observed.current?.version === startVersion;
+    acting.current = true; setBusy(true); setError(null);
     try {
       if (action === 'verify') {
         if (!challenge || !status) return;
         const verified = await verifyMailboxCode(challenge, code.trim(), status);
-        if (epoch.current === current) { observed.current = verified; setStatus(verified); setCode(''); done.current(); }
+        if (live()) { observed.current = verified; setStatus(verified); setCode(''); done.current(); }
       } else {
         const fresh = await fetchMailboxStatus();
-        if (epoch.current !== current) return;
+        if (!live()) return;
         if (fresh.userId !== userId) throw new Error('Your account changed. Check verification status again.');
         if (status && fresh.version !== status.version) { setChallenge(null); setCode(''); }
         observed.current = fresh; setStatus(fresh);
         if (fresh.verified) { done.current(); return; }
         if (action === 'send') {
+          const sentFor = fresh.version;
           const next = await sendMailboxCode();
-          if (epoch.current === current) { setChallenge(next.challengeId); setCode(''); setRemaining(next.retryAfter); }
+          if (live() && (observed.current?.version ?? sentFor) === sentFor) { setChallenge(next.challengeId); setCode(''); setRemaining(next.retryAfter); }
         }
       }
-    } catch (err) { if (epoch.current === current) setError(formatError(err)); }
-    finally { if (epoch.current === current) setBusy(false); }
+    } catch (err) { if (live()) setError(formatError(err)); }
+    finally { if (live()) { acting.current = false; setBusy(false); } }
   };
   return <View style={{ gap: 10 }}>
     <AppText style={{ fontFamily: fonts.body, color: t['muted-flat'] }}>{purpose === 'account-export' ? 'Verify your email to download your account data.' : MAILBOX_MESSAGE} Your quests remain available.</AppText>

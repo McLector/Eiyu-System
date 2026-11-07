@@ -91,3 +91,41 @@ it('retries a failed delivery inline without losing the mailbox gate', async () 
  expect(screen.queryByRole('alert')).toBeNull();
  expect(mockSend).toHaveBeenCalledTimes(2); expect(done).not.toHaveBeenCalled();
 });
+
+// Bug 2 (live, web; same pattern here): a passive refresh must not discard a code request still in flight.
+const SENT = {challengeId: 'challenge', retryAfter: 60};
+async function startSend() {
+ const user = userEvent.setup(); let finish!: (value: typeof SENT) => void;
+ mockSend.mockReturnValueOnce(new Promise<typeof SENT>(resolve => { finish = resolve; }));
+ const view = await renderWithTheme(<MailboxVerification userId="owner" onVerified={jest.fn()}/>);
+ await user.press(await screen.findByRole('button', {name: 'Send verification email'}));
+ await waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+ return {view, finish: () => act(async () => { finish(SENT); })};
+}
+const refreshed = (n: number) => <TestThemeProvider><MailboxVerification userId="owner" refreshRevision={n} onVerified={jest.fn()}/></TestThemeProvider>;
+it('keeps the code box when a passive refresh lands while the send is in flight', async () => {
+ const {view, finish} = await startSend();
+ await view.rerender(refreshed(1));
+ await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(3));
+ await finish();
+ expect(await screen.findByLabelText('Verification code')).toBeEnabled();
+ expect(screen.getByRole('button', {name: /Resend in/})).toBeDisabled();
+ expect(screen.queryByRole('alert')).toBeNull();
+});
+it('stays busy through a passive refresh so a second send cannot start', async () => {
+ const {view, finish} = await startSend();
+ await view.rerender(refreshed(1));
+ await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(3));
+ expect(screen.getByRole('button', {name: 'Send verification email'})).toBeDisabled();
+ expect(mockSend).toHaveBeenCalledTimes(1);
+ await finish();
+ await screen.findByLabelText('Verification code');
+});
+it('drops an in-flight send when the refresh shows the mailbox changed underneath it', async () => {
+ const {view, finish} = await startSend();
+ mockStatus.mockResolvedValue({userId: 'owner', version: 2, verified: false});
+ await view.rerender(refreshed(1));
+ await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(3));
+ await finish();
+ expect(screen.queryByLabelText('Verification code')).toBeNull();
+});

@@ -107,3 +107,48 @@ it('retries a failed delivery inline without losing the mailbox gate', async () 
  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
  expect(api.sendMailboxCode).toHaveBeenCalledTimes(2); expect(done).not.toHaveBeenCalled();
 });
+
+// Bug 2 (live): the parent re-checks eligibility on window focus, which changes
+// refreshRevision. A code request still in flight then lost its answer, so the
+// code box never appeared even though the email was sent.
+const SENT = {challengeId: 'challenge', retryAfter: 60};
+async function startSend(extraProps: {refreshRevision?: number} = {}) {
+ const user = userEvent.setup(); let finish!: (value: typeof SENT) => void;
+ api.sendMailboxCode.mockReturnValueOnce(new Promise<typeof SENT>(resolve => { finish = resolve; }));
+ const view = render(<MailboxVerification userId="owner" onVerified={vi.fn()} {...extraProps}/>);
+ await user.click(await screen.findByRole('button', {name: 'Send verification email'}));
+ await waitFor(() => expect(api.sendMailboxCode).toHaveBeenCalledTimes(1));
+ return {view, finish: () => act(async () => { finish(SENT); })};
+}
+it('keeps the code box when a passive refresh lands while the send is in flight', async () => {
+ const {view, finish} = await startSend();
+ view.rerender(<MailboxVerification userId="owner" refreshRevision={1} onVerified={vi.fn()}/>);
+ await waitFor(() => expect(api.fetchMailboxStatus).toHaveBeenCalledTimes(3));
+ await finish();
+ expect(await screen.findByLabelText('Verification code')).toBeEnabled();
+ expect(screen.getByRole('button', {name: /Resend in/})).toBeDisabled();
+ expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+it('stays busy through a passive refresh so a second send cannot start', async () => {
+ const {view, finish} = await startSend();
+ view.rerender(<MailboxVerification userId="owner" refreshRevision={1} onVerified={vi.fn()}/>);
+ await waitFor(() => expect(api.fetchMailboxStatus).toHaveBeenCalledTimes(3));
+ expect(screen.getByRole('button', {name: 'Send verification email'})).toBeDisabled();
+ expect(api.sendMailboxCode).toHaveBeenCalledTimes(1);
+ await finish();
+ await screen.findByLabelText('Verification code');
+});
+it('drops an in-flight send when the refresh shows the mailbox changed underneath it', async () => {
+ const {view, finish} = await startSend();
+ api.fetchMailboxStatus.mockResolvedValue({userId: 'owner', version: 2, verified: false});
+ view.rerender(<MailboxVerification userId="owner" refreshRevision={1} onVerified={vi.fn()}/>);
+ await waitFor(() => expect(api.fetchMailboxStatus).toHaveBeenCalledTimes(3));
+ await finish();
+ expect(screen.queryByLabelText('Verification code')).not.toBeInTheDocument();
+});
+it('ignores a send answer that arrives after the component unmounted', async () => {
+ const {view, finish} = await startSend();
+ const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+ view.unmount(); await finish();
+ expect(errors).not.toHaveBeenCalled(); errors.mockRestore();
+});

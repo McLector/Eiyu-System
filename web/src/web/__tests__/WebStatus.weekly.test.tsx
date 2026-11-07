@@ -103,6 +103,20 @@ describe('web Status weekly review', () => {
     expect(store.sendMailboxCode).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('A cached weekly reading.')).not.toBeInTheDocument();
   });
+  it('keeps the code box when the tab regains focus while the code request is still in flight', async () => {
+    store.fetchOrCreateWeeklySummary.mockRejectedValue(new Error('Verify your email to access your weekly debrief.'));
+    let sent!: (value: {challengeId: string; retryAfter: number}) => void;
+    store.sendMailboxCode.mockReturnValueOnce(new Promise(resolve => { sent = resolve; }));
+    const interaction = userEvent.setup(); renderStatus();
+    await interaction.click(screen.getByRole('tab', {name: 'WEEKLY REVIEW'}));
+    await interaction.click(await screen.findByRole('button', {name: 'Send verification email'}));
+    await waitFor(() => expect(store.sendMailboxCode).toHaveBeenCalledTimes(1));
+    await act(async () => { focusManager.setFocused(false); focusManager.setFocused(true); });
+    await waitFor(() => expect(store.fetchOrCreateWeeklySummary).toHaveBeenCalledTimes(2));
+    await act(async () => { sent({challengeId: 'challenge', retryAfter: 60}); });
+    expect(await screen.findByLabelText('Verification code')).toBeEnabled();
+    expect(store.sendMailboxCode).toHaveBeenCalledTimes(1);
+  });
   it('clears the pending draft after returning to a changed mailbox version', async () => {
     await mailboxDraft();
     store.fetchMailboxStatus.mockResolvedValue({userId: 'user-1', version: 2, verified: false});
