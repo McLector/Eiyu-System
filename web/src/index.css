@@ -1554,3 +1554,20 @@ button:disabled { opacity: .45; cursor: default; }
   .auth-label { margin-bottom: 5px; line-height: 1.2; }
   .auth-switch { margin-top: 12px; }
 }
+
+/* Email verification code box (MailboxVerification). Larger, spaced digits so a six-digit code is easy to read and check. */
+.code-entry { display: grid; gap: 6px; }
+.code-entry .field-label { margin-bottom: 0; }
+.code-entry .field-hint { margin: 0; }
+.field.code-input { min-height: 52px; padding: 10px 14px; border-width: 2px; border-radius: 8px; font: 600 24px/1.2 'JetBrains Mono', monospace; letter-spacing: .4em; text-align: center; text-indent: .4em; }
+.field.code-input:focus-visible { outline: 2px solid var(--c-accent-strong); outline-offset: 2px; border-color: var(--c-accent-strong); }
+.field.code-input:disabled { opacity: .6; }
+.code-status { margin: 0; color: var(--c-muted-flat); font: 13px/1.5 Inter, sans-serif; }
+.code-status[data-tone='success'] { color: var(--c-success); }
+.code-status[data-tone='warning'] { color: var(--c-warning); }
+@media (prefers-reduced-motion: no-preference) {
+  .field.code-input { transition: border-color var(--dur-base) ease, outline-color var(--dur-base) ease; }
+}
+@media (max-width: 479px) {
+  .field.code-input { font-size: 22px; letter-spacing: .3em; text-indent: .3em; }
+}
