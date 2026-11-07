@@ -39,10 +39,12 @@ Live today still lets signed-in users write `habits` (insert/update), `long_ques
 ## Order (revised)
 
 A. **YES: push `feat/s03-google-auth` to GitHub** (public repo) so GitHub CI runs on it. No deploy: only `main` deploys.
-B. **Auth settings (owner in the dashboard, Claude guides)**: Google provider on with client ID/secret; Google Cloud OAuth client gets the hosted callback URI; consent screen to In production; redirect allow-list additions. Harmless to the old site (it has no Google button).
+B. **Auth settings (owner in the dashboard, Claude guides)**: Google provider client ID/secret saved but **left switched off** (switched on in D1a); Google Cloud OAuth client gets the hosted callback URI; redirect allow-list additions; consent screen to In production once the public Privacy Policy and Terms pages exist. Harmless to the old site.
+   Done 2026-11-07: allow-list now `/auth` (kept), `/auth/callback`, `/auth/recovery`, `eiyusystem://auth/callback`, `eiyusystem://auth/recovery` (5 total); Site URL unchanged. Google Cloud client "Eiyu production" has the hosted callback URI. Publishing the consent screen is blocked until Branding has an app home page and a privacy policy link.
 C. **YES: deploy `account-export` and `mailbox-verification`** (JWT verification on). Old clients never call them.
 D. **One sitting, minutes apart:**
    1. owner runs `apply.ps1 -Target live` (the database step);
+   1a. **Auth, right after 1 (owner in the dashboard):** Auth Hooks → add "Before User Created" as a Postgres hook on `public.s03_before_user_created` (from 063); then Providers → Google → switch "Enable Sign in with Google" on and save. The hook must not be switched on before 063 exists: every sign-up, email included, would fail. Google stays off until the hook and 063's link gate are live, so there is no window where Google can create or link accounts without them;
    2. **YES:** deploy `ai-proxy` (it needs 051's functions);
    3. **YES:** fast-forward `main` to the release commit and push → Vercel Production;
    4. smoke test on the live site with a disposable account, then delete it.
