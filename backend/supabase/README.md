@@ -1,6 +1,6 @@
 # Supabase migrations
 
-**047–064 are local, incomplete S02/S03 groundwork/drafts. Do not apply them to a deployed project yet.**
+**047–064 are the S02/S03 release.** Apply them to the live project only through the release procedure in `../../docs/plans/2026-11-07-s03-release-runbook.md` (step D1: a precheck that the target is the 046 base, 047–052 one by one, 053–056 as one transaction, 057–064 one by one, then pg_cron, the two schedules and opening AI admission). That procedure was rehearsed on a restored copy of the live database on 2026-11-07: 001–046 matched committed SQL (marker query 46/46) and 047–064 applied cleanly. Turn on the `before_user_created` hook only after 063 exists, or every sign-up fails. The "local only" and "not approved for deployment" notes below record each migration's state when it was written.
 S01 investigation is COMPLETE under `../../docs/handoff/027-handoff.md`;
 S02 and public release remain INCOMPLETE. See that handoff and
 `../../docs/plans/2026-10-20-s02-continuation.md` for current contracts and
