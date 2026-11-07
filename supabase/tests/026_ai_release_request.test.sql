@@ -35,8 +35,8 @@ insert into auth.users (id, email, raw_user_meta_data) values
 update private.mailbox_state set verified_version=version,verified_at=now() where user_id::text like 'd260%';
 -- Explicit synthetic accepted permissions for refund tests, not legacy backfill.
 insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version) values
- ('d2600000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2),
- ('d2600000-0000-4000-8000-000000000002',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
+ ('d2600000-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2),
+ ('d2600000-0000-4000-8000-000000000002',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
 
 -- Shape and privileges.
 select ok(to_regprocedure('public.ai_release_request(uuid)') is not null, 'the refund RPC exists');

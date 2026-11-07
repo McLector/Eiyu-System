@@ -36,8 +36,8 @@ insert into auth.users (id, email, raw_user_meta_data) values
 update private.mailbox_state set verified_version=version,verified_at=now() where user_id in ('d1300000-0000-4000-8000-000000000001','d1300000-0000-4000-8000-000000000002');
 -- Explicit synthetic accepted permissions; no production/legacy consent backfill.
 insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version) values
- ('d1300000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2),
- ('d1300000-0000-4000-8000-000000000002',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
+ ('d1300000-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2),
+ ('d1300000-0000-4000-8000-000000000002',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
 -- Deleted accounts can leave reserved-provider accounting by design. Compare
 -- this test's deltas instead of assuming the retained project has zero history.
 create temp table quota_attempt_baseline as select

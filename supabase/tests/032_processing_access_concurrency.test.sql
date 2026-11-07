@@ -30,7 +30,7 @@ grant execute on function pg_temp.ai_policy_begin(uuid,text,uuid,date),pg_temp.a
   ('d3200000-0000-4000-8000-000000000001','processing-locks@example.invalid','{"birth_date":"2000-01-01"}');
  update private.mailbox_state set verified_version=version,verified_at=now() where user_id='d3200000-0000-4000-8000-000000000001';
  insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version)
-  values('d3200000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
+  values('d3200000-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
 $setup$);
 select extensions.dblink_exec('processing_locker',$sql$
  begin;set local role service_role;set local "request.jwt.claim.role"='service_role';
@@ -82,7 +82,7 @@ select extensions.dblink_exec('processing_writer',$sql$
  set local statement_timeout='8s';
 $sql$);
 select is(extensions.dblink_send_query('processing_writer',$sql$
- select public.set_processing_consent('weekly-debrief',false,'2026-10-20-weekly-debrief-v1',
+ select public.set_processing_consent('weekly-debrief',false,'2026-11-08-weekly-debrief-v2',
   'd3200000-0000-4000-8000-000000000001',1,2,0,1)->>'canGenerateDebrief'
 $sql$),1,'starts concurrent withdrawal');
 do $$begin for i in 1..100 loop
@@ -107,7 +107,7 @@ select extensions.dblink_exec('processing_writer',$sql$
  set local "request.jwt.claims"='{"sub":"d3200000-0000-4000-8000-000000000001","role":"authenticated"}';
 $sql$);
 select is((select result from extensions.dblink('processing_writer',$sql$
- select public.set_processing_consent('weekly-debrief',true,'2026-10-20-weekly-debrief-v1',
+ select public.set_processing_consent('weekly-debrief',true,'2026-11-08-weekly-debrief-v2',
   'd3200000-0000-4000-8000-000000000001',1,3,0,1)->>'consentVersion'
 $sql$) as r(result text)),'4','purpose regrant has a new explicit revision');
 select is((select result from extensions.dblink('processing_writer',

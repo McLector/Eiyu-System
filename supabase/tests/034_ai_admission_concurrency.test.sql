@@ -47,7 +47,7 @@ insert into auth.users(id,email,raw_user_meta_data) values
  ('d3400000-0000-4000-8000-000000000001','admission-lock@example.invalid','{"birth_date":"2000-01-01"}');
 update private.mailbox_state set verified_version=version,verified_at=now() where user_id='d3400000-0000-4000-8000-000000000001';
 insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version)
- values('d3400000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
+ values('d3400000-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
 update private.ai_admission_control set last_pruned_at=statement_timestamp();
 select lives_ok('select private.open_ai_admission()','open healthy synthetic-only branch');
 select dblink_exec('admission_writer',$sql$

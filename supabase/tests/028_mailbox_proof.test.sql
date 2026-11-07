@@ -31,8 +31,8 @@ insert into auth.users(id,email,raw_user_meta_data,email_confirmed_at) values
  ('d2800000-0000-4000-8000-000000000002','mailbox-other@example.invalid','{"birth_date":"2000-01-01"}',now());
 -- This suite isolates mailbox proof after explicit synthetic processing grants.
 insert into private.processing_consent(user_id,age_granted,age_notice,ai_granted,ai_notice,version) values
- ('d2800000-0000-4000-8000-000000000001',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2),
- ('d2800000-0000-4000-8000-000000000002',true,'2026-10-20-age-v1',true,'2026-10-20-weekly-debrief-v1',2);
+ ('d2800000-0000-4000-8000-000000000001',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2),
+ ('d2800000-0000-4000-8000-000000000002',true,'2026-11-08-adult-v1',true,'2026-11-08-weekly-debrief-v2',2);
 select ok(not has_table_privilege('authenticated','private.mailbox_state','UPDATE'),'client cannot grant proof');
 select ok(not has_function_privilege('authenticated','public.mailbox_finish(uuid,uuid,uuid,text)','EXECUTE'),'proof writer is service only');
 set local role authenticated;
