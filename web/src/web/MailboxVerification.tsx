@@ -46,10 +46,8 @@ export default function MailboxVerification({ userId, onVerified, refreshRevisio
   }, [remaining]);
   const act = async (action: 'send' | 'verify' | 'check') => {
     if (busy || acting.current) return;
-    const current = scope.current, startVersion = observed.current?.version;
+    const current = scope.current;
     const live = () => scope.current === current;
-    // A refresh that saw a different mailbox version means the email changed under this request.
-    const unchanged = () => live() && observed.current?.version === startVersion;
     acting.current = true; setBusy(true); setError(null);
     try {
       if (action === 'verify') {
@@ -64,6 +62,7 @@ export default function MailboxVerification({ userId, onVerified, refreshRevisio
         observed.current = fresh; setStatus(fresh);
         if (fresh.verified) { done.current(); return; }
         if (action === 'send') {
+          // A refresh that saw a different mailbox version means the email changed under this request.
           const sentFor = fresh.version;
           const next = await sendMailboxCode();
           if (live() && (observed.current?.version ?? sentFor) === sentFor) { setChallenge(next.challengeId); setCode(''); setRemaining(next.retryAfter); }
