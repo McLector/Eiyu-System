@@ -16,7 +16,7 @@ const store = vi.hoisted(() => ({
   regenerateWeeklySummary: vi.fn(),
   fetchProcessingAccess: vi.fn(),
   fetchSavedWeeklySummary: vi.fn(),
-  fetchMailboxStatus: vi.fn(async () => ({ userId: 'user-1', version: 1, verified: false })),
+  fetchMailboxStatus: vi.fn(async (): Promise<{ userId: string; version: number; verified: boolean; challenge?: { id: string; expiresAt: string; resendAfter: number } | null }> => ({ userId: 'user-1', version: 1, verified: false })),
   sendMailboxCode: vi.fn(),
   verifyMailboxCode: vi.fn(),
   setProcessingConsent: vi.fn(),

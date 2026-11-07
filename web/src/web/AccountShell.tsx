@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { fetchAccountAge, setAccountBirthday, validateBirthday, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG } from '@eiyu/shared';
-import {CHILD_PRIVACY_NOTICE, fetchProcessingAccess, type ProcessingAccess} from '@eiyu/shared';
+import { AI_NOTICE_VERSION, fetchProcessingAccess, formatError, normalizeProfileEdit, profileInitials, RANK_CONFIG, setProcessingConsent, type ProcessingAccess } from '@eiyu/shared';
 import OwnerExport from './OwnerExport';
 
 import { BoardIcon, DumbbellIcon, GearIcon, ScrollIcon, SignOutIcon, StatusIcon } from '../Icons';
@@ -34,41 +33,59 @@ const NAV = [
 
 function initials(name: string) { return profileInitials(name); }
 
+const AI_UNAVAILABLE = 'AI weekly review settings are unavailable right now. You can still edit your name and class.';
+
+/** The server reports a stale decision with code EP002; Supabase errors are plain objects, not Error instances. */
+function isStale(err: unknown) {
+  return !!err && typeof err === 'object' && 'code' in err && (err as { code: unknown }).code === 'EP002';
+}
+
 function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: string | undefined }) {
   const { user, saveProfile } = useEiyu();
   const [displayName, setDisplayName] = useState(user.name);
   const [userClass, setUserClass] = useState(user.userClass);
-  const [birthday, setBirthday] = useState('');
-  const [originalBirthday, setOriginalBirthday] = useState('');
-  const [correctionPending, setCorrectionPending] = useState(false);
-  const [ageLoaded, setAgeLoaded] = useState(false);
-  const [birthdayOwner, setBirthdayOwner] = useState<string | undefined>();
-  const [birthdayNote, setBirthdayNote] = useState<string | null>(null);
   const [processing, setProcessing] = useState<ProcessingAccess | null>(null);
-  const [processingError, setProcessingError] = useState<string | null>(null);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPending, setAiPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const saving = useRef(false);
-  const dirty = displayName !== user.name || userClass !== user.userClass || birthday !== originalBirthday;
+  const turningOff = useRef(false);
+  const dirty = displayName !== user.name || userClass !== user.userClass;
   const requestClose = useEditorGuard(dirty, pending, true);
+
+  const readAccess = (isActive: () => boolean) => fetchProcessingAccess().then(status => {
+    if (!isActive()) return;
+    if (status.userId !== userId) throw new Error(AI_UNAVAILABLE);
+    setProcessing(status); setAiUnavailable(false);
+  }).catch(() => { if (isActive()) { setProcessing(null); setAiUnavailable(true); } });
 
   useEffect(() => {
     let active = true;
-    fetchProcessingAccess().then(status => {
-      if (!active) return;
-      if (status.userId !== userId) throw new Error('Permission settings are unavailable for this account.');
-      setProcessing(status);
-    }).catch(() => {if (active) setProcessingError('Permission settings are unavailable. You can still edit your name and class.');});
-    fetchAccountAge().then(status => {
-      if (!active) return;
-      const value = status.pendingBirthDate ?? status.birthDate ?? '';
-      setBirthday(value); setOriginalBirthday(value); setAgeLoaded(true);
-      setBirthdayOwner(userId);
-      setCorrectionPending(status.correctionPending);
-      if (status.correctionPending) setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-    }).catch(() => { if (active) { setBirthdayNote('Birthday settings are unavailable. You can still edit your name and class.'); } });
+    void readAccess(() => active);
     return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  // This can only switch AI off. Turning it on needs the 18+ box and a verified email, which live on the Status page.
+  const turnOffAi = async () => {
+    if (turningOff.current || !processing?.aiConsent) return;
+    turningOff.current = true;
+    setAiPending(true); setAiError(null);
+    const owner = userId;
+    try {
+      const next = await setProcessingConsent('weekly-debrief', false, AI_NOTICE_VERSION, processing);
+      if (next.userId !== owner || next.aiConsent) throw new Error(AI_UNAVAILABLE);
+      setProcessing(next);
+    } catch (err) {
+      setAiError(formatError(err));
+      if (isStale(err)) void readAccess(() => true);
+    } finally {
+      turningOff.current = false;
+      setAiPending(false);
+    }
+  };
 
   const save = async () => {
     if (saving.current) return;
@@ -77,26 +94,9 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
       const normalized = normalizeProfileEdit({ displayName, userClass }, {
         displayName: user.name, userClass: user.userClass,
       });
-      if (birthday !== originalBirthday || correctionPending) {
-        if (!userId || processing?.userId !== userId || !processing.ageConsent) throw new Error('Review the birthday permission before saving a birthday correction.');
-        const validation = validateBirthday(birthday);
-        if (validation) throw new Error(validation);
-      }
       saving.current = true;
       setPending(true);
       await saveProfile(normalized);
-      if (birthday !== originalBirthday || correctionPending) {
-        const status = await setAccountBirthday(birthday, birthdayOwner);
-        const value = status.pendingBirthDate ?? status.birthDate ?? birthday;
-        setOriginalBirthday(value); setBirthday(value);
-        setCorrectionPending(status.correctionPending);
-        if (status.correctionPending) {
-          setProcessing(null);
-          fetchProcessingAccess().then(next => {if (next.userId === userId) setProcessing(next);}).catch(() => setProcessingError('Refresh Profile to review permission settings.'));
-          setBirthdayNote('An earlier birthday correction is still pending. Save these details to confirm the displayed birthday.');
-          return;
-        }
-      }
       requestClose.committed(onClose);
     } catch (err) {
       setError(formatError(err));
@@ -118,12 +118,18 @@ function ProfileDialog({ onClose, userId }: { onClose: () => void; userId: strin
           <input aria-label="Class" value={userClass} disabled={pending} onChange={event => setUserClass(event.target.value)} />
         </label>
         {error && <p className="phase4-error" role="alert">{error}</p>}
-        <p>{CHILD_PRIVACY_NOTICE}</p>
-        <label>Birthday
-          <input aria-label="Birthday" placeholder="YYYY-MM-DD" value={birthday} disabled={!ageLoaded || pending} onChange={event => setBirthday(event.target.value)} />
-        </label>
-        {birthdayNote && <p role="status">{birthdayNote}</p>}
-        {processingError && <p role="alert">{processingError}</p>}
+        <section aria-label="AI weekly review" style={{ display: 'grid', gap: 10 }}>
+          <strong>AI weekly review</strong>
+          {aiUnavailable && <p role="status" style={{ margin: 0 }}>{AI_UNAVAILABLE}</p>}
+          {processing?.aiConsent && (<>
+            <p role="status" style={{ margin: 0 }}>AI weekly review is on.</p>
+            <div><button type="button" className="btn-secondary" onClick={() => void turnOffAi()} disabled={aiPending}>Turn off AI weekly review</button></div>
+          </>)}
+          {processing && !processing.aiConsent && (
+            <p role="status" style={{ margin: 0 }}>AI weekly review is off. You can turn it on from the Status page.</p>
+          )}
+          {aiError && <p className="phase4-error" role="alert">{aiError}</p>}
+        </section>
         {userId && <OwnerExport key={`${userId}-export`} userId={userId}/>}
         <div className="phase4-dialog-actions">
           <button type="button" className="btn-secondary" onClick={() => requestClose(onClose)} disabled={pending}>CANCEL</button>

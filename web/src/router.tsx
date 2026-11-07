@@ -13,7 +13,6 @@ import SettingsPage from './pages/SettingsPage';
 import HistoryPage from './pages/HistoryPage';
 import QuestEditorPage from './pages/QuestEditorPage';
 import WebGym from './web/WebGym';
-import AdminPage from './pages/AdminPage';
 import LegalPage from './pages/LegalPage';
 
 export const routes: RouteObject[] = [
@@ -27,7 +26,6 @@ export const routes: RouteObject[] = [
   {
     element: <RequireAuth />,
     children: [
-      { path: '/admin', element: <AdminPage /> },
       {
         element: <ProtectedLayout />,
         children: [
