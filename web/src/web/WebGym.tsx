@@ -6,7 +6,7 @@ import {
   type GymData, type GymExercise, type GymRecentWeight,
   type GymRoutine, type GymUnit,
   parseGymRir, fetchRecentGymWeights, fetchGymHistory, deleteGymRoutine, listGymMediaCleanup, acknowledgeGymMediaCleanup,
-  logGymWeight, UncertainSaveError, NO_TARGETS, copyTrackerRevision,
+  logGymWeight, UncertainSaveError, NO_TARGETS, copyTrackerRevision, TRACKER_ACCESS_MESSAGE,
   type TrackerAccess, type TrackerRevision,
 } from '@eiyu/shared';
 import { GYM_COPY, gymCleanupPending, gymSavedRefreshFailed, isGymCleanupNotice } from '@eiyu/shared';
@@ -19,8 +19,7 @@ import StateBlock from '../components/StateBlock';
 import { announceFeedback } from '../components/ArchiveNotice';
 import { useEditorGuard } from '../components/NavigationGuard';
 import { deleteGymMedia, signGymMedia, uploadGymMedia } from './gym-media';
-import { TRACKER_MESSAGES, refreshTrackerAfterFailure, trackerErrorMessage, trackerKey, useAccountAudience, useTrackerAccess } from '../store/tracker';
-import { TrackerConsent } from './TrackerConsent';
+import { refreshTrackerAfterFailure, trackerErrorMessage, useTrackerAccess } from '../store/tracker';
 
 const EMPTY: GymData = { routines: [], exercises: [] };
 
@@ -42,7 +41,6 @@ function RoutineEditor({ routine, userId, access, onTrackerFailure, onClose, onS
   return <Dialog title={routine ? 'Edit routine' : 'Create routine'} onClose={() => closeEditor(onClose)} pending={pending}>
     <form className="gym-form" onSubmit={async event => {
       event.preventDefault(); if (inFlight.current) return;
-      if (!access.canWriteFitness) { setError(TRACKER_MESSAGES.fitness); return; }
       const expected = expectedRef.current ?? copyTrackerRevision(access.revision);
       expectedRef.current = expected;
       inFlight.current = true; setPending(true); setError(null);
@@ -95,8 +93,6 @@ function ExerciseEditor({ exercise, routine, userId, access, onTrackerFailure, n
   return <Dialog title={exercise ? 'Edit exercise' : 'Add exercise'} onClose={() => closeEditor(onClose)} pending={pending}>
     <form className="gym-form" onSubmit={async event => {
       event.preventDefault(); if (inFlight.current) return;
-      // Refused before anything is validated, uploaded or sent: a draft is never transmitted on a known denial.
-      if (!access.canWriteFitness) { setError(TRACKER_MESSAGES.fitness); return; }
       const expected = expectedRef.current ?? copyTrackerRevision(access.revision);
       expectedRef.current = expected;
       inFlight.current = true; setPending(true); setError(null);
@@ -255,12 +251,9 @@ function GymWorkspace({ userId }: { userId: string }) {
   const key = ['gym', userId];
   const trackerQuery = useTrackerAccess(userId);
   const access = trackerQuery.data ?? null;
-  const canFitness = !!access?.canWriteFitness;
-  const [fitnessPrompt, setFitnessPrompt] = useState(false);
-  const audience = useAccountAudience(userId, fitnessPrompt);
-  /** The revision for one write, copied now. Without fitness permission it opens the notice and returns null. */
+  /** The revision for one write, copied now. With no revision read there is nothing to send, so it says so and returns null. */
   const gate = (): TrackerRevision | null => {
-    if (!access || !access.canWriteFitness) { setFitnessPrompt(true); return null; }
+    if (!access) { setError(TRACKER_ACCESS_MESSAGE); return null; }
     return copyTrackerRevision(access.revision);
   };
   const onTrackerFailure = (err: unknown) => refreshTrackerAfterFailure(qc, userId, err);
@@ -350,9 +343,7 @@ function GymWorkspace({ userId }: { userId: string }) {
   return <div className="gym-page">
     <header className="gym-heading"><h1 className="page-title">Gym Progress</h1><div className="gym-actions"><button className="btn-secondary" onClick={() => setHistory(true)}>Workout history</button><button className="btn-secondary" onClick={() => { if (gate()) setRoutineEditor('new'); }} disabled={pending || uncertain}>Create routine</button></div></header>
     <div className="gym-toolbar"><label>Routine<select className="field" value={routine?.id ?? ''} disabled={pending || uncertain} onChange={e => { const id = e.target.value; requestSwitch(() => { setSelected(id); setWeights({}); setInvalidWeights(new Set()); }); }}>{!routines.length && <option value="">No routines</option>}{routines.map(r => <option key={r.id} value={r.id}>{r.name}{r.archived ? ' (archived)' : ''}</option>)}</select></label><label className="gym-checkbox"><input type="checkbox" checked={showArchived} onChange={e => { const checked = e.target.checked; requestSwitch(() => { setShowArchived(checked); setWeights({}); setInvalidWeights(new Set()); }); }} />Include archived routines</label></div>
-    {!canFitness && (trackerQuery.isPending ? null : access
-      ? <div role="status" className="field-hint"><p>Gym is read-only until you allow Gym tracking. Your history stays readable.</p><button type="button" className="btn-secondary btn-compact" onClick={() => setFitnessPrompt(true)}>Review Gym tracking</button></div>
-      : <p role="status" className="field-hint">Gym tracking permission could not be read, so Gym is read-only for now. Your history stays readable.</p>)}
+    {!access && !trackerQuery.isPending && <p role="status" className="field-hint">Gym could not check your account, so changes are unavailable for now. Your history stays readable.</p>}
     {query.isError && <StateBlock kind="error" retryLabel="Retry refresh" onRetry={() => void query.refetch()}>{GYM_COPY.refreshFailed}</StateBlock>}
     {recent.isError && <StateBlock kind="error" retryLabel="Retry" onRetry={() => void recent.refetch()}>The System couldn&apos;t read your logged weights.</StateBlock>}
     {error && <p role="alert" className="phase4-error">{error}</p>}
@@ -400,13 +391,6 @@ function GymWorkspace({ userId }: { userId: string }) {
       </div>
       {pending && <span role="status" className="gym-saving">Saving…</span>}
     </>}
-    {fitnessPrompt && <Dialog title="Gym tracking permission" onClose={() => setFitnessPrompt(false)}>
-      {access
-        ? <TrackerConsent userId={userId} access={access} purpose="fitness-tracking" mode="prompt" audience={audience} declineLabel="Keep history only"
-            onDecline={() => setFitnessPrompt(false)} onStale={() => void qc.invalidateQueries({ queryKey: trackerKey(userId) })}
-            onChanged={next => { qc.setQueryData(trackerKey(userId), next); setFitnessPrompt(false); }} />
-        : <><p role="alert">Gym tracking permission could not be read. Your history stays readable.</p><div className="action-footer"><button type="button" className="btn-secondary" onClick={() => setFitnessPrompt(false)}>Close</button></div></>}
-    </Dialog>}
     {routineEditor && access && <RoutineEditor access={access} onTrackerFailure={onTrackerFailure} routine={routineEditor === 'edit' ? routine : undefined} userId={userId} onClose={() => setRoutineEditor(null)} onSaved={async id => { setSelected(id); try { await refresh(); setNotice('Routine saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Routine saved', err)); } }} />}
     {exerciseEditor && routine && access && <ExerciseEditor access={access} onTrackerFailure={onTrackerFailure} exercise={exerciseEditor === 'new' ? undefined : exerciseEditor} routine={routine} userId={userId} nextPosition={Math.max(-1, ...exercises.map(e => e.position)) + 1} onClose={() => setExerciseEditor(null)} onSaved={async warning => { try { await refresh(); setNotice(warning ?? 'Exercise saved.'); } catch (err) { setNotice(gymSavedRefreshFailed('Exercise saved', err)); } }} />}
     {history && <WorkoutHistory userId={userId} routines={data.routines} onClose={() => setHistory(false)} />}
