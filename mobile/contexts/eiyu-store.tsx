@@ -121,6 +121,7 @@ import {
   type SyncState,
 } from '@/lib/write-queue';
 import { NOTIFICATIONS_NEED_PERMISSION, NOTIFICATIONS_REFUSED } from '@/lib/reminder-warning';
+import { createFirstPrepare, FirstPrepareContext } from '@/contexts/first-prepare';
 import { fetchProfile, updateProfile } from '@eiyu/shared';
 import { fetchStats } from '@eiyu/shared';
 import { LongQuest, Quest, UserProfile } from '@eiyu/shared';
@@ -386,6 +387,9 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
   );
 
   // Preparation comes first and is never required for reading: a failed or paused preparation still shows history.
+  const firstPrepare = useMemo(() => createFirstPrepare(userId), [userId]);
+  const firstPrepareRef = useRef(firstPrepare);
+  firstPrepareRef.current = firstPrepare;
   const prepareBoard = useCallback(async (owner: string) => {
     try {
       const access = await qc.fetchQuery({ queryKey: trackerKey(owner), queryFn: () => readTrackerAccess(owner), staleTime: 0 });
@@ -393,6 +397,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
       const result = await prepareDay(copyTrackerRevision(access.revision));
       if (result.accessChanged) await qc.invalidateQueries({ queryKey: trackerKey(owner) });
     } catch { /* Preparation is optional for reading; the board read below does not depend on it. */ }
+    finally { if (firstPrepareRef.current.owner === owner) firstPrepareRef.current.settle(); }
   }, [qc]);
 
   const habitsQuery = useQuery({
@@ -400,6 +405,11 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     queryFn: () => trackOfflineFailure(async () => { await prepareBoard(userId!); return fetchTodayHabits(userId!); }),
     enabled: !!userId,
   });
+  // Whatever the board read does (a failure, an answer that needed no fetch), history must not wait for a preparation that is not
+  // coming. A cached board shown while the first read is still running does not count: wait until that read goes idle.
+  useEffect(() => {
+    if (!isRestoring && habitsQuery.status !== 'pending' && habitsQuery.fetchStatus === 'idle') firstPrepare.settle();
+  }, [isRestoring, habitsQuery.status, habitsQuery.fetchStatus, firstPrepare]);
   // Read Backlog only after the board read: that read runs the server rollover that can add quests to Backlog.
   const backlogQuery = useQuery({
     queryKey: backlogKey(userId),
@@ -1423,7 +1433,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     ]
   );
 
-  return <EiyuContext.Provider value={value}>{children}</EiyuContext.Provider>;
+  return <EiyuContext.Provider value={value}><FirstPrepareContext.Provider value={firstPrepare}>{children}</FirstPrepareContext.Provider></EiyuContext.Provider>;
 }
 
 export function useEiyu() {

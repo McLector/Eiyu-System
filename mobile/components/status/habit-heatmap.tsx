@@ -13,6 +13,7 @@ import { Sheet } from '@/components/ui/sheet';
 import { StateBlock } from '@/components/ui/state-block';
 import { useReducedMotion } from '@/components/ui/use-reduced-motion';
 import { fonts } from '@/constants/eiyu-theme';
+import { useAfterFirstPrepare } from '@/contexts/first-prepare';
 import { useTokens } from '@/contexts/theme-store';
 
 const MONTHS_BACK = 6;
@@ -80,18 +81,20 @@ export default function HabitHeatmap({ userId, timeZone }: Props) {
   // One fetch for both the mount effect and the focus refetch (Expo Router keeps this screen mounted across tab switches, so a
   // quest completed on another tab shows up when Status regains focus). It depends on the primitive window keys, not the Date
   // objects, so it is not recreated on every render.
+  const afterFirstPrepare = useAfterFirstPrepare();
   const fetchHistory = useCallback(() => {
     if (!userId) return undefined;
     let cancelled = false;
     setLoading(true);
     setFailed(false);
-    fetchHistoryRange(userId, start, end)
+    afterFirstPrepare()
+      .then(() => fetchHistoryRange(userId, start, end))
       .then(result => { if (!cancelled) setData(result); })
       .catch(() => { if (!cancelled) setFailed(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, startKey, endKey, attempt]);
+  }, [userId, startKey, endKey, attempt, afterFirstPrepare]);
 
   useEffect(() => fetchHistory(), [fetchHistory]);
   useFocusEffect(fetchHistory);

@@ -10,6 +10,7 @@ import { CheckIcon, ChevronIcon, CompletionDotIcon } from '@/components/eiyu/ico
 import { Sheet } from '@/components/ui/sheet';
 import { StateBlock } from '@/components/ui/state-block';
 import { fonts } from '@/constants/eiyu-theme';
+import { useAfterFirstPrepare } from '@/contexts/first-prepare';
 import { useTokens } from '@/contexts/theme-store';
 
 const WEEKDAYS = [
@@ -26,6 +27,7 @@ interface Props {
 
 /** The month calendar of past completions: full and penalty dots, month stepping, and the day's list underneath. */
 export function HistorySheet({ visible, userId, timeZone, onClose }: Props) {
+  const afterFirstPrepare = useAfterFirstPrepare();
   const t = useTokens();
   const todayKey = accountDateKey(new Date(), timeZone);
   const [todayYear, todayMonth] = todayKey.split('-').map(Number);
@@ -39,11 +41,12 @@ export function HistorySheet({ visible, userId, timeZone, onClose }: Props) {
     if (!visible || !userId) return;
     let cancelled = false;
     setStatus('loading');
-    fetchMonthHistory(userId, shown.year, shown.month)
+    afterFirstPrepare()
+      .then(() => fetchMonthHistory(userId, shown.year, shown.month))
       .then(result => { if (!cancelled) { setData(result); setStatus('ready'); } })
       .catch(() => { if (!cancelled) setStatus('error'); });
     return () => { cancelled = true; };
-  }, [visible, userId, shown.year, shown.month, attempt]);
+  }, [visible, userId, shown.year, shown.month, attempt, afterFirstPrepare]);
 
   const step = (delta: number) => setShown(current => shiftHistoryMonth(current, delta));
   const cells = historyMonthCells(shown.year, shown.month);
