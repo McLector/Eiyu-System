@@ -169,7 +169,7 @@ export function EiyuProvider({ children }: { children: ReactNode }) {
     enabled: !!userId,
   });
   // Whatever the board read does (a cached answer, a failure), history must not wait for a preparation that is not coming.
-  useEffect(() => { if (habitsQuery.status !== 'pending') firstPrepare.settle(); }, [habitsQuery.status, firstPrepare]);
+  useEffect(() => { if (habitsQuery.status !== 'pending' && habitsQuery.fetchStatus === 'idle') firstPrepare.settle(); }, [habitsQuery.status, habitsQuery.fetchStatus, firstPrepare]);
   // Read Backlog only after the board read: that read runs the server rollover that can add quests to Backlog.
   const backlogQuery = useQuery({
     queryKey: backlogKey(userId),

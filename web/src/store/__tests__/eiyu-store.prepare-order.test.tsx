@@ -126,6 +126,14 @@ describe('history waits for the first day preparation', () => {
     await waitFor(() => expect(shared.fetchHistoryRange).toHaveBeenCalledTimes(2));
   });
 
+  it('reads history when the board answer is already cached and no preparation is coming', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(['habits', 'today', 'owner-a'], []);
+    render(<QueryClientProvider client={client}><EiyuProvider><WebHeatmap userId="owner-a" timeZone="UTC" /></EiyuProvider></QueryClientProvider>);
+    await waitFor(() => expect(shared.fetchHistoryRange).toHaveBeenCalledTimes(1));
+    expect(shared.prepareDay).not.toHaveBeenCalled();
+  });
+
   it('reads history at once when the page is used with no store around it', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><WebHeatmap userId="owner-a" timeZone="UTC" /></QueryClientProvider>);

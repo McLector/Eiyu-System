@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, useCallback, useContext } from 'react';
 
 /**
  * The first attempt to prepare today's habits for one signed-in owner. History reads (the Status heatmap and the
@@ -21,8 +21,8 @@ export function createFirstPrepare(owner: string | undefined): FirstPrepare {
 
 export const FirstPrepareContext = createContext<FirstPrepare | null>(null);
 
-/** A function that resolves once the first preparation has settled; with no store around it, it resolves at once. */
+/** A stable function that resolves once the first preparation has settled; with no store around it, it resolves at once. */
 export function useAfterFirstPrepare(): () => Promise<void> {
   const first = useContext(FirstPrepareContext);
-  return () => (first ? first.promise : Promise.resolve());
+  return useCallback(() => (first ? first.promise : Promise.resolve()), [first]);
 }
