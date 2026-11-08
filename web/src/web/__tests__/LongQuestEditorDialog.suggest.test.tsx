@@ -2,6 +2,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { initialUser, type LongQuest } from '@eiyu/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -139,6 +140,27 @@ describe('Suggest stages button', () => {
     expect(mocks.suggestStages).toHaveBeenCalledOnce();
     resolve(['One']);
     await waitFor(() => expect(stageFields()[0].value).toBe('One'));
+  });
+
+  // The app runs inside React.StrictMode, which mounts, unmounts and remounts every component once in development.
+  // The dialog must still use the answer (or show the failure) afterwards.
+  it('fills the stage rows under StrictMode', async () => {
+    const user = userEvent.setup();
+    render(<StrictMode><LongQuestEditorDialog onClose={vi.fn()} /></StrictMode>);
+    await user.type(screen.getByLabelText('Quest name'), 'Finish a long hike');
+    await user.click(await screen.findByRole('button', { name: /suggest stages/i }));
+    await waitFor(() => expect(stageFields().map(f => f.value)).toEqual(['Pick a route', 'Walk it once', 'Finish it']));
+    expect(screen.getByRole('button', { name: /suggest stages/i })).toBeEnabled();
+  });
+
+  it('shows a refusal and re-enables the button under StrictMode', async () => {
+    mocks.suggestStages.mockRejectedValue(new Error('Your daily AI limit has been reached. Please try again later.'));
+    const user = userEvent.setup();
+    render(<StrictMode><LongQuestEditorDialog onClose={vi.fn()} /></StrictMode>);
+    await user.type(screen.getByLabelText('Quest name'), 'Finish a long hike');
+    await user.click(await screen.findByRole('button', { name: /suggest stages/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your daily AI limit has been reached. Please try again later.');
+    expect(screen.getByRole('button', { name: /suggest stages/i })).toBeEnabled();
   });
 
   it('does not save anything by itself, and the suggestions are an ordinary draft', async () => {

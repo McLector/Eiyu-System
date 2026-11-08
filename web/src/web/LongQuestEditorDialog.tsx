@@ -82,7 +82,8 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const suggestingRef = useRef(false);
   const mounted = useRef(true);
-  useEffect(() => () => { mounted.current = false; }, []);
+  // Set true again on every mount: React.StrictMode unmounts and remounts once in development, and the cleanup alone would leave this false.
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const dirty = editing
     ? name !== quest.name || stat !== quest.stat || description !== (quest.description ?? '') || strictOrder !== (quest.strictOrder !== false) || JSON.stringify(stages) !== JSON.stringify(stagesOf(quest))
