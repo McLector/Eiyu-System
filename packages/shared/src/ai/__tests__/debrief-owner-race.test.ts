@@ -1,5 +1,5 @@
 import {fetchOrCreateWeeklySummary, regenerateWeeklySummary} from '../../data/weekly-summary';
-import {suggestStages, STAGE_SUGGESTIONS_PAUSED_MESSAGE} from '../suggestions';
+import {suggestStages} from '../suggestions';
 import {initCacheAdapter} from '../../cache/adapter';
 
 const mockInvoke = jest.fn();
@@ -66,21 +66,24 @@ it('never reads history, and pins the provider dispatch to A even if transport c
  expect(mockInvoke).toHaveBeenCalledTimes(1);
 });
 
-it('does not start a stage cache read or dispatch while accounts change', async()=>{
+it('discards a stage answer made for A after switching to verified adult B, and never touches the cache', async()=>{
  const read=jest.fn(async()=>null);
  initCacheAdapter({getItem:read,setItem:async()=>{},removeItem:async()=>{}});
- const pending=suggestStages('A private quest','INT');mockOwner='owner-b';
- await expect(pending).rejects.toThrow(STAGE_SUGGESTIONS_PAUSED_MESSAGE);
- expect(read).not.toHaveBeenCalled();expect(mockSession).not.toHaveBeenCalled();
- expect(mockInvoke).not.toHaveBeenCalled();
+ mockInvoke.mockImplementation(async(_name,options)=>{
+  mockOwner='owner-b'; expect(options.headers?.Authorization).toBe('Bearer inert-owner-a');
+  return {data:{stages:['A private stage']},error:null};
+ });
+ await expect(suggestStages('A private quest','INT')).rejects.toThrow(/18\+ box|AI agreement|email/);
+ expect(mockInvoke).toHaveBeenCalledTimes(1);
+ expect(read).not.toHaveBeenCalled();
 });
 
-it('leaves mutable stage transport entirely unused while the action is paused', async()=>{
+it('pins stage dispatch to A even if transport consults a mutable session', async()=>{
  initCacheAdapter({getItem:async()=>null,setItem:async()=>{},removeItem:async()=>{}});
  mockInvoke.mockImplementation(async(_name,options)=>{
   mockOwner='owner-b'; expect(options.headers?.Authorization).toBe('Bearer inert-owner-a');
   return {data:{stages:['discarded']},error:null};
  });
- await expect(suggestStages('A private quest','INT')).rejects.toThrow(STAGE_SUGGESTIONS_PAUSED_MESSAGE);
- expect(mockInvoke).not.toHaveBeenCalled();
+ await expect(suggestStages('A private quest','INT')).rejects.toThrow();
+ expect(mockInvoke).toHaveBeenCalledTimes(1);
 });

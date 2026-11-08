@@ -34,7 +34,7 @@ async function toAiProxyError(error: unknown): Promise<Error> {
 
 /** Active weekly requests retain their client timeout. Legacy suggestion-cache
  * constants/pure helpers remain for compatibility; the stage entry point below
- * is deliberately paused and no longer reads or recreates persistent caches. */
+ * does not read or recreate persistent caches. */
 
 export const AI_TIMEOUT_MS = 20_000;
 export const AI_SUGGESTIONS_STORAGE_KEY = 'eiyu:ai-suggestions';
@@ -100,11 +100,41 @@ async function invokeAiProxy<T>(body: Record<string, unknown>, authorization?: s
   }
 }
 
-export const STAGE_SUGGESTIONS_PAUSED_MESSAGE = 'Stage suggestions are unavailable while their privacy requirements are reviewed.';
+export const MAX_SUGGESTED_STAGES = 6;
 
-/** No current UI caller. Never replace retired cache reads with extra provider requests. */
-export async function suggestStages(_questName: string, _stat: Stat): Promise<string[]> {
-  throw new Error(STAGE_SUGGESTIONS_PAUSED_MESSAGE);
+/**
+ * Ask the AI to break a chain into ordered stages. Same access rules as the weekly review: the 18+ box, the AI
+ * agreement and a verified mailbox, checked before the request, pinned to the account that asked, and checked again
+ * before the answer is used. Only the quest name and stat are sent, with the captured access revisions the server
+ * compares. The retired suggestion cache is never read or written.
+ */
+export async function suggestStages(
+  questName: string,
+  stat: Stat,
+  expected?: {access: ProcessingAccess; mailbox: Pick<MailboxStatus, 'userId' | 'version'>}
+): Promise<string[]> {
+  const name = questName.trim();
+  if (!name) throw new Error('Give the chain a name first.');
+  const mailbox = await requireMailboxProof(expected?.mailbox);
+  const access = await requireDebriefAccess('generate', expected?.access);
+  if (mailbox.userId !== access.userId) throw new Error('Verify your email to access your weekly debrief.');
+  const authorization = await authorizationForOwner(access.userId, PROCESSING_ACCESS_MESSAGE);
+  await requireDebriefAccess('generate', access);
+  await requireMailboxProof(mailbox);
+  const data = await invokeAiProxy<{ stages?: unknown }>({
+    action: 'stage-breakdown',
+    questName: name,
+    stat,
+    processingAccess: {contractVersion: 1, ageVersion: access.ageVersion, mailboxVersion: access.mailboxVersion,
+      consentVersion: access.consentVersion, authorityVersion: access.authorityVersion},
+  }, authorization);
+  await requireDebriefAccess('generate', access);
+  await requireMailboxProof(mailbox);
+  const stages = Array.isArray(data?.stages)
+    ? data.stages.filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean).slice(0, MAX_SUGGESTED_STAGES)
+    : [];
+  if (!stages.length) throw new Error('No stages were suggested. Try again.');
+  return stages;
 }
 
 /** No longer sent: the server builds the weekly evidence. Kept as an exported type for older callers. */
