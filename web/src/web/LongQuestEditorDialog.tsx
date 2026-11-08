@@ -15,6 +15,12 @@ import {
   type Stat,
   UncertainSaveError,
   type ChainEditorInput,
+  type ProcessingAccess,
+  fetchMailboxStatus,
+  fetchProcessingAccess,
+  subscribeMailboxChanges,
+  subscribeProcessingAccessChanges,
+  suggestStages,
 } from '@eiyu/shared';
 import { useEiyu } from '../store/eiyu-store';
 
@@ -23,6 +29,39 @@ interface DraftStage { id: string | null; name: string; description: string | nu
 const MIN_STAGES = 1;
 const stagesOf = (quest?: LongQuest): DraftStage[] =>
   quest ? quest.stages.map(s => ({ id: s.id, name: s.name, description: s.description })) : [{ id: null, name: '', description: null }, { id: null, name: '', description: null }];
+
+interface SuggestAccess { access: ProcessingAccess; mailbox: { userId: string; version: number } }
+
+/** The access to ask for stage suggestions with, or null while the 18+ box, the AI agreement or a verified email is missing. */
+function useSuggestAccess(): SuggestAccess | null {
+  const [value, setValue] = useState<SuggestAccess | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let run = 0;
+    const read = async () => {
+      const mine = ++run;
+      try {
+        const [access, mailbox] = await Promise.all([fetchProcessingAccess(), fetchMailboxStatus()]);
+        if (!alive || mine !== run) return;
+        setValue(access.canGenerateDebrief && mailbox.verified && mailbox.userId === access.userId
+          ? { access, mailbox: { userId: mailbox.userId, version: mailbox.version } } : null);
+      } catch {
+        if (alive && mine === run) setValue(null);
+      }
+    };
+    void read();
+    const stops = [subscribeProcessingAccessChanges(() => void read()), subscribeMailboxChanges(() => void read())];
+    return () => { alive = false; stops.forEach(stop => stop()); };
+  }, []);
+  return value;
+}
+
+/** Fill the empty stage rows first, then add new rows. Stages the person already typed are never replaced. */
+function withSuggestedStages(current: DraftStage[], suggested: string[]): DraftStage[] {
+  const rest = [...suggested];
+  const filled = current.map(st => (st.name.trim() === '' && rest.length ? { ...st, name: rest.shift() as string } : st));
+  return [...filled, ...rest.map(name => ({ id: null, name, description: null }))];
+}
 
 /** Create (no quest) or edit (quest) a Long Quest inside the shared dialog. Mount it to open, unmount to close. */
 export default function LongQuestEditorDialog({ quest, onClose }: { quest?: LongQuest; onClose: () => void }) {
@@ -38,6 +77,12 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const suggestAccess = useSuggestAccess();
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const suggestingRef = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
 
   const dirty = editing
     ? name !== quest.name || stat !== quest.stat || description !== (quest.description ?? '') || strictOrder !== (quest.strictOrder !== false) || JSON.stringify(stages) !== JSON.stringify(stagesOf(quest))
@@ -87,6 +132,22 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
     }
   };
 
+  const suggest = async () => {
+    if (!suggestAccess || suggestingRef.current || !name.trim()) return;
+    suggestingRef.current = true;
+    setSuggesting(true);
+    setSuggestError(null);
+    try {
+      const suggested = await suggestStages(name.trim(), stat, suggestAccess);
+      if (mounted.current) setStages(prev => withSuggestedStages(prev, suggested));
+    } catch (err) {
+      if (mounted.current) setSuggestError(formatError(err));
+    } finally {
+      suggestingRef.current = false;
+      if (mounted.current) setSuggesting(false);
+    }
+  };
+
   useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
   const errorId = 'long-quest-name-error';
   return (
@@ -123,6 +184,15 @@ export default function LongQuestEditorDialog({ quest, onClose }: { quest?: Long
             </div>
           ))}
           <button type="button" onClick={() => setStages([...stages, { id: null, name: '', description: null }])} className="btn-secondary">+ Add stage</button>
+          {suggestAccess && (
+            <div>
+              <button type="button" className="btn-secondary" disabled={suggesting || !name.trim()} onClick={() => void suggest()}>
+                {suggesting ? 'Suggesting…' : 'Suggest stages'}
+              </button>
+              <p className="field-hint">{"Sends this chain's name and stat to Groq. Nothing is saved until you press Create."}</p>
+              {suggestError && <p role="alert" className="phase4-error" style={{ margin: 0 }}>{suggestError}</p>}
+            </div>
+          )}
         </fieldset>
         {error && <p role="alert" tabIndex={-1} ref={alertRef} className="phase4-error">{error}</p>}
         <div className="action-footer">
