@@ -4,11 +4,15 @@ import {createInstrumentedTestHandler as createAiProxyHandler} from './test-help
 function assert(value: unknown, message: string): asserts value {if (!value) throw new Error(message);}
 const allowed = {allowed: true, attemptNumber: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0};
 function fixture(options: {begin?: unknown; beginError?: string; retryError?: string; revoked?: () => boolean; access?: unknown;
-  generate?: (reserve: (attempt: number) => Promise<boolean>) => Promise<{summary: string}>} = {}) {
+  action?: 'weekly-summary' | 'stage-breakdown';
+  generate?: (reserve: (attempt: number) => Promise<boolean>) => Promise<Record<string, unknown>>} = {}) {
   let generated = 0, refunds = 0, retries = 0;
   let forwarded: Record<string, unknown> | undefined;
+  const rpcNames: string[] = [];
+  const action = options.action ?? 'weekly-summary';
   const client = {auth: {getUser: async () => ({data: {user: {id: 'synthetic-processing-owner'}}, error: null})},
     rpc: async (name: string,args:Record<string,unknown>) => {
+      rpcNames.push(name);
       if (name === 'ai_admit_execution') return options.beginError ? {data: null, error: {code: options.beginError}}
         : {data: admittedFixtureData(options.begin ?? allowed,args), error: null};
       if (name === 'ai_release_request') {refunds++; return {data: true, error: null};}
@@ -22,14 +26,16 @@ function fixture(options: {begin?: unknown; beginError?: string; retryError?: st
     generate: async (_action, payload, reserve) => {
       forwarded = payload;
       generated++;
-      return options.generate ? options.generate(reserve) : {summary: 'Synthetic reviewed debrief'};
+      return options.generate ? options.generate(reserve)
+        : action === 'stage-breakdown' ? {stages: ['Pick a route', 'Walk it once', 'Finish it']} : {summary: 'Synthetic reviewed debrief'};
     }});
+  const subject = action === 'stage-breakdown' ? {action, questName: 'Finish a long hike', stat: 'STR'} : {action, weekStart: '2026-10-19'};
   return {call: () => handler(new Request('https://local.test/ai', {method: 'POST',
     headers: {Authorization: 'Bearer synthetic-processing-token'}, body: JSON.stringify({
-      action: 'weekly-summary', weekStart: '2026-10-19',
+      ...subject,
       processingAccess: 'access' in options ? options.access
         : {contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0},
-    })})), counts: () => ({generated, refunds, retries}), forwarded: () => forwarded};
+    })})), counts: () => ({generated, refunds, retries}), forwarded: () => forwarded, rpcNames: () => rpcNames};
 }
 
 for (const access of [undefined, null, {}, {contractVersion: 0},
@@ -97,3 +103,67 @@ Deno.test('revocation during a held synthetic response denies release and refund
   assert(!(await response.text()).includes('Private response from withdrawn permission'), 'no revoked output leak');
 });
 
+
+// Part J: chain stage suggestions follow the same access rules as the weekly review.
+const stage = {action: 'stage-breakdown'} as const;
+for (const access of [undefined, null, {}, {contractVersion: 0},
+  {contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: '2', authorityVersion: 0}]) {
+  Deno.test(`stage requests missing a valid captured access contract fail before quota: ${JSON.stringify(access)}`, async () => {
+    const f = fixture({...stage, access}); const response = await f.call();
+    assert(response.status === 400 && f.counts().generated === 0 && !f.rpcNames().includes('ai_admit_execution'),
+      'a stage request without the captured revisions never reaches admission or the provider');
+  });
+}
+for (const key of ['ageVersion', 'mailboxVersion', 'consentVersion', 'authorityVersion'] as const) {
+  Deno.test(`a later ${key} cannot replace a stage request's captured grant`, async () => {
+    const f = fixture({...stage, begin: {...allowed, [key]: allowed[key] + 1}});
+    const response = await f.call();
+    assert(response.status === 403 && f.counts().generated === 0 && f.counts().refunds === 1, 'stale tuple denies before the provider with one refund');
+  });
+}
+for (const key of ['mailboxVersion', 'consentVersion', 'authorityVersion']) {
+  Deno.test(`stage generation rejects a ticket without a valid ${key}`, async () => {
+    const f = fixture({...stage, begin: {...allowed, [key]: undefined}}); const response = await f.call();
+    assert(response.status === 503 && f.counts().generated === 0 && f.counts().refunds === 1, 'incomplete access ticket is unavailable and refunded once');
+  });
+}
+Deno.test('a stage request sends only the quest name and stat to the generator, never the revisions', async () => {
+  const f = fixture(stage); const response = await f.call();
+  assert(response.status === 200 && (await response.json()).stages?.length === 3, 'stages are returned');
+  assert(JSON.stringify(f.forwarded()) === JSON.stringify({action: 'stage-breakdown', questName: 'Finish a long hike', stat: 'STR'}),
+    'prompt input carries no tracker text and no authorization tuple');
+  assert(!f.rpcNames().includes('ai_tracker_week_input'), 'no weekly evidence is read for a stage request');
+});
+for (const code of ['EP001', 'EP002']) {
+  Deno.test(`stage processing denial ${code} is a readable 403 before provider traffic`, async () => {
+    const f = fixture({...stage, beginError: code}); const response = await f.call(); const body = await response.text();
+    assert(response.status === 403 && /permission|access changed/i.test(body) && f.counts().generated === 0 && f.counts().refunds === 0,
+      'recoverable denial, nothing to refund');
+  });
+  Deno.test(`stage retry denial ${code} stops and refunds once`, async () => {
+    const f = fixture({...stage, retryError: code, generate: async reserve => {
+      if (!await reserve(2)) throw new Error('Synthetic denied retry');
+      return {stages: ['Must never release']};
+    }});
+    const response = await f.call();
+    assert(response.status === 403 && f.counts().retries === 1 && f.counts().refunds === 1, 'stop on denial with one refund');
+    assert(!(await response.text()).includes('Must never release'), 'never expose denied output');
+  });
+}
+Deno.test('revocation during a held stage response denies release and refunds once', async () => {
+  let finish!: () => void, started!: () => void, revoked = false;
+  const held = new Promise<void>(resolve => {finish = resolve;});
+  const generating = new Promise<void>(resolve => {started = resolve;});
+  const f = fixture({...stage, revoked: () => revoked, generate: async () => {started(); await held; return {stages: ['Private stage from withdrawn permission']};}});
+  const pending = f.call(); await generating; revoked = true; finish();
+  const response = await pending;
+  assert(response.status === 403 && f.counts().refunds === 1, 'revoked grant cannot release a held stage list');
+  assert(!(await response.text()).includes('Private stage from withdrawn permission'), 'no revoked output leak');
+});
+// G1 removed the birthday field, so no error may send anyone to look for one.
+for (const action of ['weekly-summary', 'stage-breakdown'] as const) {
+  Deno.test(`${action}: the adult-eligibility refusal does not mention a birthday`, async () => {
+    const f = fixture({action, beginError: 'EA001'}); const response = await f.call(); const body = await response.text();
+    assert(response.status === 403 && /18/.test(body) && !/birthday|birth/i.test(body), `message must point at the 18+ box, got: ${body}`);
+  });
+}

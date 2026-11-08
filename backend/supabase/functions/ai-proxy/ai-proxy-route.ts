@@ -32,7 +32,7 @@ function approvedProvider(raw: string | undefined, mode: RouteMode = 'groq-only'
   }
 }
 
-/** Production policy: one approved direct route, weekly review only, fail closed before quota. */
+/** Production policy: one approved direct route, weekly review and stage suggestions only, fail closed before quota. */
 export function createGroqOnlyHandler(
   dependencies: Omit<AiProxyDependencies, 'generate' | 'preflight' | 'allowedActions'>,
   getEnv: EnvGetter,
@@ -50,7 +50,7 @@ function singleProviderHandler(
   const provider = approvedProvider(getEnv('AI_PROVIDERS'), mode);
   const generate = createFailoverGenerator({ ...options, providers: provider ? [provider] : [],
     getKey: () => provider ? getEnv(provider.keyEnv) : undefined, returnRateLimits: true });
-  return createAiProxyHandler({ ...dependencies, generate, allowedActions: ['weekly-summary'],
+  return createAiProxyHandler({ ...dependencies, generate, allowedActions: ['weekly-summary', 'stage-breakdown'],
     preflight: () => {
       if (!provider || !getEnv(provider.keyEnv)?.trim()) throw new Error('Approved AI configuration missing.');
     },

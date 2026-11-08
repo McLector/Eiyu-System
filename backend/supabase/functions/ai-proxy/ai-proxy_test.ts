@@ -79,16 +79,17 @@ Deno.test('server adult eligibility denial returns 403 without provider traffic'
   const handler = createAiProxyHandler({ createUserClient: () => client, createServiceClient: () => client,
     generate: async () => { generated = true; return { stages: ['one'] }; } });
   const response = await handler(new Request('https://local.test/ai', { method: 'POST', headers: authHeaders,
-    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT' }) }));
+    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT', processingAccess: { contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0 } }) }));
   if (response.status !== 403 || generated) throw new Error('age denial must return 403 before a model request');
 });
 Deno.test('a birthday restriction during generation discards the response and refunds', async () => {
   let refunds = 0;
-  const client = fakeClient({ completion: { data: false, error: null }, onRpc: name => { if (name === 'ai_release_request') refunds++; } });
+  const client = fakeClient({ begin: { data: { allowed: true, attemptNumber: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0 }, error: null },
+    completion: { data: false, error: null }, onRpc: name => { if (name === 'ai_release_request') refunds++; } });
   const handler = createAiProxyHandler({ createUserClient: () => client, createServiceClient: () => client,
     generate: async () => ({ stages: ['Do not release'] }) });
   const response = await handler(new Request('https://local.test/ai', { method: 'POST', headers: authHeaders,
-    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT' }) }));
+    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT', processingAccess: { contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0 } }) }));
   if (response.status !== 403 || refunds !== 1 || JSON.stringify(await response.json()).includes('Do not release')) {
     throw new Error('a final fresh age check must discard the output and refund the logical request');
   }
@@ -99,7 +100,7 @@ Deno.test('an older quota backend without the age contract fails closed before g
   const handler = createAiProxyHandler({ createUserClient: () => client, createServiceClient: () => client,
     generate: async () => { generated = true; return { stages: ['one'] }; } });
   const response = await handler(new Request('https://local.test/ai', { method: 'POST', headers: authHeaders,
-    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT' }) }));
+    body: JSON.stringify({ action: 'stage-breakdown', questName: 'Read', stat: 'INT', processingAccess: { contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0 } }) }));
   if (response.status !== 503 || generated) throw new Error('missing age contract must fail closed');
 });
 

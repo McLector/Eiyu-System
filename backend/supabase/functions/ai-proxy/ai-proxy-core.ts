@@ -6,7 +6,8 @@ export type AiPayload = Record<string, unknown> & { action: AiAction };
 export type ProviderAttemptReservation = (attemptNumber: number) => Promise<boolean>;
 
 export const DEFAULT_AI_REQUEST_TIMEOUT_MS = 16_000;
-const PROCESSING_ACCESS_CHANGED = 'Weekly debrief access changed. Review your permissions, email verification and birthday in Profile.';
+const PROCESSING_ACCESS_CHANGED = 'AI access changed. Review your AI agreement and email verification on the Status page, then try again.';
+const ADULT_AI_REQUIRED = "Adult AI eligibility is required. Tick the \"I'm 18 or older\" box in the AI card on the Status page.";
 const processingRevisionKeys = ['ageVersion', 'mailboxVersion', 'consentVersion', 'authorityVersion'] as const;
 
 function capturedProcessingAccess(body: unknown): Record<typeof processingRevisionKeys[number], number> | null {
@@ -343,8 +344,10 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
       }
       // Authorization metadata is parsed separately; normalized prompt input
       // contains only the existing weekly evidence fields.
-      const capturedProcessing = payload.action === 'weekly-summary' ? capturedProcessingAccess(body) : null;
-      if (payload.action === 'weekly-summary' && !capturedProcessing) {
+      // The weekly review and stage suggestions run under the same access rules, so both carry the captured revisions.
+      const needsProcessingAccess = payload.action === 'weekly-summary' || payload.action === 'stage-breakdown';
+      const capturedProcessing = needsProcessingAccess ? capturedProcessingAccess(body) : null;
+      if (needsProcessingAccess && !capturedProcessing) {
         return json({error: 'Refresh your debrief permissions before trying again.'}, 400, cors);
       }
 
@@ -386,7 +389,7 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
           if (code === 'ET002') return json({ error: TRACKER_PERMISSION_REQUIRED }, 403, cors);
           if (code === 'EP001' || code === 'EP002') return json({ error: PROCESSING_ACCESS_CHANGED }, 403, cors);
           if (code === 'EM001') return json({ error: 'Verify your email to access your weekly debrief.' }, 403, cors);
-          if (code === 'EA001') return json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors);
+          if (code === 'EA001') return json({ error: ADULT_AI_REQUIRED }, 403, cors);
           if (code === '22023') return json({ error: 'Request payload is invalid.' }, 400, cors);
           return unavailableResponse(cors);
         }
@@ -414,7 +417,7 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
             return json({ error: 'Verify your email to access your weekly debrief.' }, 403, cors);
           }
           if (isPlainObject(error) && error.code === 'EA001') {
-            return json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors);
+            return json({ error: ADULT_AI_REQUIRED }, 403, cors);
           }
           return unavailableResponse(cors);
         }
@@ -441,7 +444,7 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
         return settled ? response : unavailableResponse(cors);
       };
       if (!Number.isSafeInteger(begin.ageVersion) || (begin.ageVersion as number) < 1 ||
-        (payload.action === 'weekly-summary' && (!Number.isSafeInteger(begin.mailboxVersion) || (begin.mailboxVersion as number) < 1
+        (needsProcessingAccess && (!Number.isSafeInteger(begin.mailboxVersion) || (begin.mailboxVersion as number) < 1
           || !Number.isSafeInteger(begin.consentVersion) || (begin.consentVersion as number) < 1
           || !Number.isSafeInteger(begin.authorityVersion) || (begin.authorityVersion as number) < 0))) {
         // The older backend already accepted and charged this request; no output can be released safely.
@@ -526,7 +529,7 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
           if (reservationFailure === 'unavailable') return { response: unavailableResponse(cors), refund: true };
           if (reservationFailure === 'processing') return {response: json({error: PROCESSING_ACCESS_CHANGED}, 403, cors), refund: true};
           if (reservationFailure === 'mailbox') return { response: json({ error: 'Verify your email to access your weekly debrief.' }, 403, cors), refund: true };
-          if (reservationFailure === 'age') return { response: json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors), refund: true };
+          if (reservationFailure === 'age') return { response: json({ error: ADULT_AI_REQUIRED }, 403, cors), refund: true };
           return { response: json(result, 200, cors), refund: false };
         } catch (error) {
           const stopped = abortedResponse(budget, cors);
@@ -536,7 +539,7 @@ export function createAiProxyHandler(dependencies: AiProxyDependencies): (reques
           if (reservationFailure === 'quota') {
             return { response: json({ error: 'Your daily AI limit has been reached. Please try again later.' }, 429, cors), refund: false };
           }
-          if (reservationFailure === 'age') return { response: json({ error: 'Adult AI eligibility is required. Check your birthday in Profile.' }, 403, cors), refund: true };
+          if (reservationFailure === 'age') return { response: json({ error: ADULT_AI_REQUIRED }, 403, cors), refund: true };
           if (reservationFailure === 'unavailable') return { response: unavailableResponse(cors), refund: true };
           if (error instanceof Error && (error as Error & { kind?: string }).kind === 'limited') {
             const interval = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;

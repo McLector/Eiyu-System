@@ -89,13 +89,28 @@ Deno.test('Groq-only route fails closed without its key even when legacy keys ex
   const f = fixture(undefined, { key: ' ' });
   assert((await f.request()).status === 503 && !f.calls.length && !f.rpcs.length, 'missing key denies before spend');
 });
-for (const body of [{ action: 'stage-breakdown', questName: 'Read', stat: 'INT' },
-  { action: 'easy-versions', habitName: 'Read', stat: 'INT' }]) {
-  Deno.test(`production route denies obsolete ${body.action} before spending`, async () => {
-    const f = fixture();
-    assert((await f.request(body)).status === 400 && !f.rpcs.length && !f.calls.length, 'only weekly review may call AI');
-  });
-}
+Deno.test('production route denies obsolete easy-versions before spending', async () => {
+  const f = fixture();
+  assert((await f.request({ action: 'easy-versions', habitName: 'Read', stat: 'INT' })).status === 400 && !f.rpcs.length && !f.calls.length,
+    'only the weekly review and stage suggestions may call AI');
+});
+const stageAccess = { contractVersion: 1, ageVersion: 1, mailboxVersion: 1, consentVersion: 2, authorityVersion: 0 };
+Deno.test('production route accepts a stage suggestion with its captured access revisions', async () => {
+  const f = fixture(undefined, { response: () => new Response(JSON.stringify({ choices: [{
+    message: { content: JSON.stringify(['Pick a route', 'Walk it once', 'Finish it']) }, finish_reason: 'stop' }] }), { status: 200 }) });
+  const response = await f.request({ action: 'stage-breakdown', questName: 'Finish a long hike', stat: 'STR', processingAccess: stageAccess });
+  const body = await response.json();
+  assert(response.status === 200 && JSON.stringify(body.stages) === JSON.stringify(['Pick a route', 'Walk it once', 'Finish it']), 'stage list returned');
+  assert(f.rpcs.includes('ai_admit_execution') && !f.rpcs.includes('ai_tracker_week_input'), 'admitted like the weekly review, with no weekly evidence read');
+  assert(f.calls.length === 1 && f.calls[0].url === 'https://api.groq.com/openai/v1/chat/completions', 'direct Groq only');
+  const sent = String(f.calls[0].init?.body);
+  assert(sent.includes('Finish a long hike') && !sent.includes('processingAccess'), 'the quest name goes out, the revisions do not');
+});
+Deno.test('production route refuses a stage suggestion without captured access revisions before spending', async () => {
+  const f = fixture();
+  assert((await f.request({ action: 'stage-breakdown', questName: 'Read', stat: 'INT' })).status === 400 && !f.rpcs.length && !f.calls.length,
+    'an old or hand-made client cannot skip the access check');
+});
 for (const message of ['Rate limit reached for tokens per minute (TPM)', 'Daily request limit reached', 'Quota exceeded']) {
   Deno.test(`Groq 429 returns retry-later without retry, fallback or assumed midnight reset: ${message}`, async () => {
     const f = fixture(undefined, { response: () => new Response(JSON.stringify({ error: { message, type: 'tokens', code: 'rate_limit_exceeded' } }),
